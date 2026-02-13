@@ -1,0 +1,25 @@
+{
+  "model": {
+    "provider": "anthropic",
+    "name": "claude-sonnet-4-5"
+  },
+  "memory": {
+    "currentSessionLimit": 50,
+    "crossSessionLimit": 30,
+    "memoriesLimit": 10,
+    "compactionThreshold": 200
+  },
+  "embeddings": {
+    "provider": "openai",
+    "model": "text-embedding-3-small"
+  },
+  "channels": {
+    "cli": {
+      "enabled": true,
+      "streamMode": "stream"
+    }
+  },
+  "cron": {
+    "jobs": []
+  }
+}

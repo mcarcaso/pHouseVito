@@ -34,6 +34,10 @@ export const PROVIDER_API_KEYS: Record<string, { envVar: string; description: st
     envVar: "XAI_API_KEY", 
     description: "xAI (Grok) API key — https://console.x.ai/" 
   },
+  openrouter: { 
+    envVar: "OPENROUTER_API_KEY", 
+    description: "OpenRouter API key — https://openrouter.ai/keys" 
+  },
 };
 
 // Add provider keys to system keys for dashboard visibility

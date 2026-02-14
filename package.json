@@ -4,7 +4,7 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "start": "cd dashboard && rm -rf dist && npm run build && cd .. && pm2 start ecosystem.config.cjs",
+    "start": "cd dashboard && rm -rf dist && npm run build && cd .. && pm2 start user/ecosystem.config.cjs",
     "stop": "pm2 stop vito-server",
     "restart": "pm2 restart vito-server",
     "logs": "pm2 logs vito-server",

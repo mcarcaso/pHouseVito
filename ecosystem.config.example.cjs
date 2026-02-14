@@ -1,5 +1,5 @@
-// PM2 Ecosystem Config — Copy to ecosystem.config.cjs and customize paths
-// cp ecosystem.config.example.cjs ecosystem.config.cjs
+// PM2 Ecosystem Config — Copy to user/ecosystem.config.cjs and customize paths
+// cp ecosystem.config.example.cjs user/ecosystem.config.cjs
 
 module.exports = {
   apps: [

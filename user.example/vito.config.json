@@ -5,13 +5,10 @@
   },
   "memory": {
     "currentSessionLimit": 50,
-    "crossSessionLimit": 30,
-    "memoriesLimit": 10,
-    "compactionThreshold": 200
-  },
-  "embeddings": {
-    "provider": "openai",
-    "model": "text-embedding-3-small"
+    "crossSessionLimit": 5,
+    "compactionThreshold": 200,
+    "includeToolsInCurrentSession": false,
+    "showArchivedInCrossSession": false
   },
   "channels": {
     "dashboard": {
@@ -22,6 +19,13 @@
       "enabled": false,
       "streamMode": "bundled",
       "allowedChatIds": []
+    },
+    "discord": {
+      "enabled": false,
+      "streamMode": "stream",
+      "allowedGuildIds": [],
+      "allowedChannelIds": [],
+      "requireMention": false
     }
   },
   "cron": {

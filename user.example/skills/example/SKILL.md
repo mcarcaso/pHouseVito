@@ -13,7 +13,7 @@ Use this skill when you want to demonstrate the skill system or test skill funct
 
 ## How to Use
 
-This is just an example - there's no actual functionality implemented yet.
+This is just an example — there's no actual functionality implemented yet.
 
 In a real skill, you might:
 1. Read data from a file
@@ -25,6 +25,6 @@ In a real skill, you might:
 
 Skills can include:
 - Markdown instructions (this file)
-- Scripts in any language (in a `scripts/` subdirectory)
+- Scripts in any language
 - Templates or other assets
 - Configuration files

@@ -1,5 +1,7 @@
-// PM2 Ecosystem Config — Copy to user/ecosystem.config.cjs and customize paths
-// cp ecosystem.config.example.cjs user/ecosystem.config.cjs
+// PM2 Ecosystem Config
+// Manages all processes: Vito server, Cloudflare tunnel, deployed apps
+//
+// Usage: pm2 start user/ecosystem.config.cjs
 
 module.exports = {
   apps: [

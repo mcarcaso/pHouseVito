@@ -33,75 +33,83 @@ A personal AI agent framework with persistent memory, extensible skills, and mul
 ### Prerequisites
 - Node.js 18+ 
 - npm or pnpm
+- PM2 (`npm install -g pm2`)
 
 ### Installation
 
 ```bash
+# Clone the repo
+git clone https://github.com/your-repo/vito3.0.git
+cd vito3.0
+
 # Install dependencies
 npm install
 
-# Build the dashboard
-npm run build:dashboard
+# Set up your user directory from the template
+cp -r user.example user
 
-# Start Vito (includes CLI and web dashboard)
+# Configure your secrets (API keys, tokens, etc.)
+# Edit user/secrets.json and fill in your keys
+
+# Configure your settings
+# Edit user/vito.config.json to set model, channels, etc.
+
+# Configure PM2 paths
+# Edit user/ecosystem.config.cjs and set your node path
+
+# Build and start
 npm start
 ```
 
 The dashboard will be available at **http://localhost:3030**
 
-### Environment Setup
+### User Directory
 
-Create a `.env` file with your API keys:
+The `user/` directory contains all your personal configuration, data, and customizations. It's gitignored so your secrets and data never end up in the repo.
 
-```bash
-# Required for LLM
-ANTHROPIC_API_KEY=your_key_here
+The `user.example/` directory is the template — copy it to `user/` to get started:
 
-# Required for embeddings
-OPENAI_API_KEY=your_key_here
 ```
-
-### Configuration
-
-Edit `vito.config.json` to customize:
-
-```json
-{
-  "model": {
-    "provider": "anthropic",
-    "name": "claude-sonnet-4"
-  },
-  "memory": {
-    "currentSessionLimit": 50,
-    "crossSessionLimit": 30,
-    "memoriesLimit": 10,
-    "compactionThreshold": 200
-  }
-}
+user/
+├── SOUL.md                  # Your agent's personality (edit this!)
+├── secrets.json             # API keys and tokens
+├── vito.config.json         # Model, memory, and channel settings
+├── ecosystem.config.cjs     # PM2 process manager config
+├── memories/                # Long-term memory docs (auto-managed)
+├── skills/                  # Your custom skills
+│   └── example/             # Example skill template
+├── apps/                    # Deployed web apps
+├── images/                  # Generated images and screenshots
+└── logs/                    # PM2 and app logs
 ```
 
 ### Personality
 
-Define your agent's personality in `SOUL.md`. This is how you make Vito yours.
+Edit `user/SOUL.md` to define your agent's personality. This is how you make Vito yours — give it a name, a vibe, and tell it what you care about.
 
 ## Project Structure
 
 ```
 vito3.0/
-├── src/
-│   ├── channels/          # Channel adapters (CLI, Dashboard, etc.)
-│   ├── db/                # SQLite schema and queries
-│   ├── memory/            # Memory management and embeddings
-│   ├── sessions/          # Session management
-│   ├── skills/            # Skill discovery
-│   └── orchestrator.ts    # Core message flow
-├── dashboard/             # React-based web UI
-│   └── src/
-│       └── components/    # Dashboard components
-├── skills/                # Your custom skills
-├── data/                  # SQLite database (gitignored)
-├── SOUL.md                # Agent personality
-└── vito.config.json       # Configuration
+├── src/                       # Core application code
+│   ├── channels/              # Channel adapters (Dashboard, Telegram, Discord)
+│   ├── db/                    # SQLite schema and queries
+│   ├── memory/                # Memory management and compaction
+│   ├── sessions/              # Session management
+│   ├── skills/                # Builtin skill discovery and loading
+│   └── orchestrator.ts        # Core message flow
+├── dashboard/                 # React-based web UI
+├── user.example/              # Template — copy to user/ to get started
+└── user/                      # Your data, config, and customizations (gitignored)
+    ├── SOUL.md                # Agent personality
+    ├── secrets.json           # API keys
+    ├── vito.config.json       # Configuration
+    ├── ecosystem.config.cjs   # PM2 config
+    ├── memories/              # Long-term memory docs
+    ├── skills/                # Custom skills
+    ├── apps/                  # Deployed web apps
+    ├── images/                # Generated media
+    └── logs/                  # Process logs
 ```
 
 ## Usage
@@ -126,7 +134,7 @@ Type your messages and press Enter. Type `/quit` to exit.
 
 ### Adding Skills
 
-Create a new directory in `skills/` with a `SKILL.md` file:
+Create a new directory in `user/skills/` with a `SKILL.md` file:
 
 ```markdown
 ---
@@ -197,10 +205,10 @@ Channels are adapters that convert between platform-specific formats and Vito's 
 
 ## Roadmap
 
-- [ ] Discord channel adapter
-- [ ] Telegram channel adapter
-- [ ] Cron job system for scheduled tasks
-- [ ] Secrets management UI
+- [x] Discord channel adapter
+- [x] Telegram channel adapter
+- [x] Cron job system for scheduled tasks
+- [x] Secrets management UI
 - [ ] Memory visualization
 - [ ] Export/backup tools
 - [ ] Multi-user support (optional)

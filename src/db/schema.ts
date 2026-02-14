@@ -75,10 +75,17 @@ export function createDatabase(dbPath: string): Database.Database {
       channel TEXT,
       timestamp INTEGER NOT NULL,
       user_message TEXT NOT NULL,
-      system_prompt TEXT NOT NULL
+      system_prompt TEXT NOT NULL,
+      model TEXT
     );
     CREATE INDEX IF NOT EXISTS idx_traces_timestamp ON traces(timestamp);
   `);
+  
+  // Migration: Add model column if missing
+  const traceColumns = db.pragma("table_info(traces)") as { name: string }[];
+  if (!traceColumns.some(c => c.name === "model")) {
+    db.exec("ALTER TABLE traces ADD COLUMN model TEXT");
+  }
 
   return db;
 }

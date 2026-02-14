@@ -207,15 +207,15 @@ export class Queries {
   insertTrace(trace: Omit<TraceRow, "id">): void {
     this.db
       .prepare(
-        `INSERT INTO traces (session_id, channel, timestamp, user_message, system_prompt)
-         VALUES (@session_id, @channel, @timestamp, @user_message, @system_prompt)`
+        `INSERT INTO traces (session_id, channel, timestamp, user_message, system_prompt, model)
+         VALUES (@session_id, @channel, @timestamp, @user_message, @system_prompt, @model)`
       )
       .run(trace);
   }
 
   getRecentTraces(limit: number = 50): Omit<TraceRow, "system_prompt">[] {
     return this.db
-      .prepare("SELECT id, session_id, channel, timestamp, user_message FROM traces ORDER BY timestamp DESC LIMIT ?")
+      .prepare("SELECT id, session_id, channel, timestamp, user_message, model FROM traces ORDER BY timestamp DESC LIMIT ?")
       .all(limit) as Omit<TraceRow, "system_prompt">[];
   }
 

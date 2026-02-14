@@ -147,6 +147,7 @@ export interface TraceRow {
   timestamp: number;
   user_message: string;
   system_prompt: string;
+  model: string | null;
 }
 
 // ── Skill types ──

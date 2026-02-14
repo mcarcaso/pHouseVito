@@ -102,6 +102,15 @@
   font-size: 0.75rem;
 }
 
+.trace-item-model {
+  color: #a78bfa;
+  background: rgba(167, 139, 250, 0.1);
+  padding: 0.1rem 0.4rem;
+  border-radius: 3px;
+  font-size: 0.75rem;
+  font-family: monospace;
+}
+
 .trace-item-time {
   color: #64748b;
   margin-left: auto;

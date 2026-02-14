@@ -285,18 +285,20 @@ export class Orchestrator {
     );
     this.logToFile(`[processMessage] System prompt built - length: ${systemPrompt.length} chars`);
 
-    // 4a. Snapshot the system prompt for this request
+    // 4. Set up output handler and message tracking
+    const handler = channel ? channel.createHandler(event) : null;
+    const sessionConfig: SessionConfig = JSON.parse(vitoSession.config || "{}");
+    
+    // 4a. Snapshot the system prompt for this request (includes model info)
+    const model = this.getModel(sessionConfig);
     this.queries.insertTrace({
       session_id: vitoSession.id,
       channel: event.channel,
       timestamp: Date.now(),
       user_message: event.content || "",
       system_prompt: systemPrompt,
+      model: model.id,
     });
-
-    // 4. Set up output handler and message tracking
-    const handler = channel ? channel.createHandler(event) : null;
-    const sessionConfig: SessionConfig = JSON.parse(vitoSession.config || "{}");
     const streamMode = this.getStreamMode(event.channel, sessionConfig);
     console.log(`[Orchestrator] Stream mode for ${event.channel}: ${streamMode}`);
 

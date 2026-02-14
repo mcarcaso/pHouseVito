@@ -8,6 +8,7 @@ interface TraceListItem {
   channel: string;
   timestamp: number;
   user_message: string;
+  model: string | null;
 }
 
 interface TraceDetail extends TraceListItem {
@@ -92,6 +93,10 @@ function Traces() {
                 <span className="meta-value">{formatDate(traceDetail.timestamp)}</span>
               </span>
               <span className="trace-meta-item">
+                <span className="meta-label">Model</span>
+                <span className="meta-value">{traceDetail.model || '—'}</span>
+              </span>
+              <span className="trace-meta-item">
                 <span className="meta-label">Prompt Size</span>
                 <span className="meta-value">{traceDetail.system_prompt.length.toLocaleString()} chars</span>
               </span>
@@ -162,6 +167,7 @@ function Traces() {
             <div className="trace-item-header">
               <span className="trace-item-id">#{trace.id}</span>
               <span className="trace-item-channel">{trace.channel || '—'}</span>
+              <span className="trace-item-model">{trace.model || '—'}</span>
               <span className="trace-item-time">
                 {formatDate(trace.timestamp)}
               </span>

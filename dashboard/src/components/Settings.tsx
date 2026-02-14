@@ -25,10 +25,17 @@ interface ProviderKeyInfo {
   description: string;
 }
 
+interface AuthStatus {
+  hasAuth: boolean;
+  authType?: 'apiKey' | 'oauth';
+  expiresAt?: number;
+}
+
 interface ProvidersResponse {
   providers: string[];
   keyStatus: Record<string, boolean>;
   keyInfo: Record<string, ProviderKeyInfo>;
+  authStatus?: Record<string, AuthStatus>;
 }
 
 function Settings() {
@@ -38,6 +45,7 @@ function Settings() {
   const [providers, setProviders] = useState<string[]>([]);
   const [keyStatus, setKeyStatus] = useState<Record<string, boolean>>({});
   const [keyInfo, setKeyInfo] = useState<Record<string, ProviderKeyInfo>>({});
+  const [authStatus, setAuthStatus] = useState<Record<string, AuthStatus>>({});
   const [models, setModels] = useState<ModelOption[]>([]);
   const [loadingModels, setLoadingModels] = useState(false);
 
@@ -56,6 +64,7 @@ function Settings() {
       setProviders(providerData.providers);
       setKeyStatus(providerData.keyStatus || {});
       setKeyInfo(providerData.keyInfo || {});
+      setAuthStatus(providerData.authStatus || {});
       // Load models for current provider
       if (safeConfig.model.provider) {
         loadModelsForProvider(safeConfig.model.provider);
@@ -113,13 +122,23 @@ function Settings() {
     setConfig({ ...config, model: { ...config.model, name } });
   };
 
-  // Only show providers that have API keys configured
+  // Only show providers that have API keys or OAuth configured
   const popularProviders = ['anthropic', 'openai', 'google', 'xai', 'groq', 'mistral', 'openrouter'];
-  const availableProviders = providers.filter(p => keyStatus[p] === true);
+  const availableProviders = providers.filter(p => authStatus[p]?.hasAuth === true);
   const sortedProviders = [
     ...popularProviders.filter(p => availableProviders.includes(p)),
     ...availableProviders.filter(p => !popularProviders.includes(p)).sort(),
   ];
+
+  // Helper to get auth display text
+  const getAuthDisplay = (provider: string): string => {
+    const status = authStatus[provider];
+    if (!status?.hasAuth) return '';
+    if (status.authType === 'oauth') {
+      return '✓ OAuth';
+    }
+    return `✓ ${keyInfo[provider]?.envVar || 'API Key'}`;
+  };
 
   return (
     <div className="settings-page">
@@ -153,9 +172,9 @@ function Settings() {
                     <option key={p} value={p}>{p}</option>
                   ))}
                 </select>
-                {config.model.provider && keyInfo[config.model.provider] && (
+                {config.model.provider && authStatus[config.model.provider]?.hasAuth && (
                   <span className="setting-hint key-hint has-key">
-                    ✓ Using {keyInfo[config.model.provider].envVar}
+                    {getAuthDisplay(config.model.provider)}
                   </span>
                 )}
               </>

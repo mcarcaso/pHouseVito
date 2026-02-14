@@ -12,7 +12,7 @@ import { readFileSync, writeFileSync, existsSync, mkdirSync, readdirSync, statSy
 import { execSync } from "child_process";
 import { fileURLToPath } from "url";
 import crypto from "crypto";
-import { readSecrets, writeSecrets, loadSecrets, getSecretsForDashboard, SYSTEM_KEYS, PROVIDER_API_KEYS, getProviderKeyStatus } from "../secrets.js";
+import { readSecrets, writeSecrets, loadSecrets, getSecretsForDashboard, SYSTEM_KEYS, PROVIDER_API_KEYS, getProviderKeyStatus, getProviderAuthStatus } from "../secrets.js";
 import { getProviders, getModels } from "@mariozechner/pi-ai";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -117,10 +117,12 @@ export class DashboardChannel implements Channel {
       try {
         const providers = getProviders();
         const keyStatus = getProviderKeyStatus();
+        const authStatus = getProviderAuthStatus();
         // Return providers with their API key status
         res.json({
           providers,
           keyStatus,
+          authStatus,
           keyInfo: PROVIDER_API_KEYS
         });
       } catch (err: any) {

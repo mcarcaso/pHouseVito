@@ -1,8 +1,10 @@
 import { resolve } from "path";
 import { existsSync, readFileSync, writeFileSync } from "fs";
+import { homedir } from "os";
 import { USER_DIR } from "./config.js";
 
 export const SECRETS_PATH = resolve(USER_DIR, "secrets.json");
+export const PI_AUTH_PATH = resolve(homedir(), ".pi/agent/auth.json");
 
 // System keys that always appear in the dashboard (with descriptions)
 export const SYSTEM_KEYS: Record<string, string> = {
@@ -45,15 +47,60 @@ for (const config of Object.values(PROVIDER_API_KEYS)) {
   SYSTEM_KEYS[config.envVar] = config.description;
 }
 
-/** Check which providers have valid API keys configured */
+/** Read Pi's OAuth auth.json for provider tokens */
+function readPiAuth(): Record<string, { type: string; access?: string; refresh?: string; expires?: number }> {
+  if (!existsSync(PI_AUTH_PATH)) return {};
+  try {
+    return JSON.parse(readFileSync(PI_AUTH_PATH, "utf-8"));
+  } catch {
+    return {};
+  }
+}
+
+export type AuthType = "api_key" | "oauth" | null;
+
+export interface ProviderAuthStatus {
+  hasAuth: boolean;
+  authType: AuthType;
+  expiresAt?: number; // For OAuth tokens
+}
+
+/** Check which providers have valid API keys or OAuth tokens configured */
 export function getProviderKeyStatus(): Record<string, boolean> {
-  const secrets = readSecrets();
+  const detailed = getProviderAuthStatus();
   const status: Record<string, boolean> = {};
+  for (const [provider, info] of Object.entries(detailed)) {
+    status[provider] = info.hasAuth;
+  }
+  return status;
+}
+
+/** Get detailed auth status for each provider (API key vs OAuth) */
+export function getProviderAuthStatus(): Record<string, ProviderAuthStatus> {
+  const secrets = readSecrets();
+  const piAuth = readPiAuth();
+  const status: Record<string, ProviderAuthStatus> = {};
   
   for (const [provider, config] of Object.entries(PROVIDER_API_KEYS)) {
     // Check secrets.json first, then fall back to process.env
-    const value = secrets[config.envVar] || process.env[config.envVar];
-    status[provider] = Boolean(value && value.trim().length > 0);
+    const apiKey = secrets[config.envVar] || process.env[config.envVar];
+    const hasApiKey = Boolean(apiKey && apiKey.trim().length > 0);
+    
+    // Also check Pi's OAuth auth.json for this provider
+    const oauthEntry = piAuth[provider];
+    const hasOAuth = Boolean(oauthEntry && oauthEntry.type === "oauth" && oauthEntry.access);
+    
+    if (hasApiKey) {
+      status[provider] = { hasAuth: true, authType: "api_key" };
+    } else if (hasOAuth) {
+      status[provider] = { 
+        hasAuth: true, 
+        authType: "oauth",
+        expiresAt: oauthEntry?.expires
+      };
+    } else {
+      status[provider] = { hasAuth: false, authType: null };
+    }
   }
   
   return status;

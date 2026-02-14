@@ -200,7 +200,7 @@ function Sessions() {
   useEffect(() => {
     fetch('/api/models/providers')
       .then(r => r.json())
-      .then(data => setProviders(data))
+      .then(data => setProviders(data.providers || []))
       .catch(err => console.error('Failed to load providers:', err));
   }, []);
 

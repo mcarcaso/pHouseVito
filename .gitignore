@@ -32,3 +32,6 @@ tmp/
 temp/
 *.tmp
 .venv/
+
+# Machine-specific config (use ecosystem.config.example.cjs as template)
+ecosystem.config.cjs

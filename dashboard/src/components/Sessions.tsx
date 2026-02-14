@@ -300,7 +300,7 @@ function Sessions() {
   // Detail view
   if (selectedSession) {
     return (
-      <div className="sessions-page">
+      <div className="sessions-page session-detail-page">
         <div className="page-header">
           <button className="back-link" onClick={() => setSearchParams({})}>‹ Sessions</button>
           <h2>Messages ({allMessages.length})</h2>

@@ -1,6 +1,9 @@
 .chatview-container {
   display: flex;
   flex-direction: column;
+  flex: 1;
+  min-height: 0; /* allow flex shrinking */
+  overflow: hidden;
 }
 
 .cv-filters {
@@ -41,6 +44,9 @@
   border-radius: 8px;
   display: flex;
   flex-direction: column;
+  flex: 1;
+  overflow-y: auto;
+  min-height: 0;
 }
 
 .cv-messages-reversed {

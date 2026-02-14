@@ -239,6 +239,8 @@
 /* ---- Main Content ---- */
 .content {
   flex: 1;
+  display: flex;
+  flex-direction: column;
 }
 
 /* ---- Sub-page Header ---- */

@@ -172,6 +172,15 @@
   color: #f87171;
 }
 
+.no-providers {
+  color: #f87171;
+}
+
+.no-providers a {
+  color: #7aa2f7;
+  text-decoration: underline;
+}
+
 @media (max-width: 768px) {
   .settings-content {
     max-width: 100%;

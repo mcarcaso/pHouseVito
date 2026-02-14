@@ -113,18 +113,13 @@ function Settings() {
     setConfig({ ...config, model: { ...config.model, name } });
   };
 
-  // Group providers into "popular" and "other"
+  // Only show providers that have API keys configured
   const popularProviders = ['anthropic', 'openai', 'google', 'xai', 'groq', 'mistral', 'openrouter'];
+  const availableProviders = providers.filter(p => keyStatus[p] === true);
   const sortedProviders = [
-    ...popularProviders.filter(p => providers.includes(p)),
-    ...providers.filter(p => !popularProviders.includes(p)).sort(),
+    ...popularProviders.filter(p => availableProviders.includes(p)),
+    ...availableProviders.filter(p => !popularProviders.includes(p)).sort(),
   ];
-
-  // Get key status indicator for a provider
-  const getKeyIndicator = (provider: string) => {
-    if (!(provider in keyStatus)) return null; // No info about this provider
-    return keyStatus[provider] ? '✓' : '✗';
-  };
 
   return (
     <div className="settings-page">
@@ -142,29 +137,28 @@ function Settings() {
 
           <div className="setting-row">
             <label>Provider</label>
-            <select
-              className="model-select"
-              value={config.model.provider}
-              onChange={(e) => handleProviderChange(e.target.value)}
-            >
-              <option value="">Select provider...</option>
-              {sortedProviders.map(p => {
-                const indicator = getKeyIndicator(p);
-                const hasKey = keyStatus[p];
-                return (
-                  <option key={p} value={p}>
-                    {indicator ? `${indicator} ` : ''}{p}{!hasKey && indicator ? ' (no key)' : ''}
-                  </option>
-                );
-              })}
-            </select>
-            {config.model.provider && keyInfo[config.model.provider] && (
-              <span className={`setting-hint key-hint ${keyStatus[config.model.provider] ? 'has-key' : 'no-key'}`}>
-                {keyStatus[config.model.provider] 
-                  ? `✓ API key configured (${keyInfo[config.model.provider].envVar})`
-                  : `✗ Missing: ${keyInfo[config.model.provider].envVar} — add in Secrets`
-                }
+            {sortedProviders.length === 0 ? (
+              <span className="setting-hint no-providers">
+                No API keys configured. Add provider keys in <a href="/secrets">Secrets</a>.
               </span>
+            ) : (
+              <>
+                <select
+                  className="model-select"
+                  value={config.model.provider}
+                  onChange={(e) => handleProviderChange(e.target.value)}
+                >
+                  <option value="">Select provider...</option>
+                  {sortedProviders.map(p => (
+                    <option key={p} value={p}>{p}</option>
+                  ))}
+                </select>
+                {config.model.provider && keyInfo[config.model.provider] && (
+                  <span className="setting-hint key-hint has-key">
+                    ✓ Using {keyInfo[config.model.provider].envVar}
+                  </span>
+                )}
+              </>
             )}
           </div>
 
@@ -187,8 +181,8 @@ function Settings() {
           </div>
 
           {config.model.provider && config.model.name && (
-            <div className={`current-model-badge ${keyStatus[config.model.provider] ? '' : 'no-key'}`}>
-              {keyStatus[config.model.provider] ? '🤖' : '⚠️'} {config.model.provider}/{config.model.name}
+            <div className="current-model-badge">
+              🤖 {config.model.provider}/{config.model.name}
             </div>
           )}
         </section>

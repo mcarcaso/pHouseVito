@@ -403,17 +403,53 @@
 
 /* ---- Mobile ---- */
 @media (max-width: 768px) {
+  /* Use card-style layout instead of table on mobile */
   .messages-table-container {
-    overflow-x: auto;
-    -webkit-overflow-scrolling: touch;
+    overflow-x: hidden;
   }
 
-  .messages-table {
-    min-width: 550px;
+  .messages-table,
+  .messages-table thead,
+  .messages-table tbody,
+  .messages-table tr,
+  .messages-table th,
+  .messages-table td {
+    display: block;
+  }
+
+  .messages-table thead {
+    display: none; /* Hide table header on mobile */
+  }
+
+  .messages-table tbody tr {
+    background: #151515;
+    border: 1px solid #222;
+    border-radius: 8px;
+    margin-bottom: 0.5rem;
+    padding: 0.75rem;
+  }
+
+  .messages-table td {
+    padding: 0.25rem 0;
+    border: none;
+  }
+
+  .messages-table td:before {
+    display: none;
   }
 
   .message-content-cell {
-    max-width: 250px;
+    max-width: 100%;
+  }
+
+  .content-preview {
+    white-space: normal;
+    word-break: break-word;
+  }
+
+  .content-preview.expanded {
+    white-space: pre-wrap;
+    word-break: break-word;
   }
 
   .session-config-bar {
@@ -422,8 +458,13 @@
     gap: 0.5rem;
   }
 
+  .session-id-label {
+    word-break: break-all;
+  }
+
   .model-override-controls {
     flex-wrap: wrap;
+    width: 100%;
   }
 
   .session-model-select {

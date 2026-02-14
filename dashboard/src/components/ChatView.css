@@ -145,8 +145,9 @@
   padding: 0.75rem;
   border-radius: 6px;
   margin: 0.5rem 0;
-  overflow-x: auto;
+  overflow-x: hidden;
   white-space: pre-wrap;
+  word-break: break-word;
 }
 
 .cv-message-content code {
@@ -217,6 +218,13 @@
   margin-right: 10%;
   padding: 0.75rem;
   margin-bottom: 0.5rem;
+  overflow: hidden;
+}
+
+@media (max-width: 768px) {
+  .cv-tool {
+    margin-right: 0;
+  }
 }
 
 .cv-activity-log {
@@ -228,7 +236,8 @@
 .cv-activity-item {
   padding: 0.2rem 0;
   color: #8b949e;
-  word-break: break-all;
+  word-break: break-word;
+  overflow-wrap: anywhere;
 }
 
 .cv-activity-item.start {

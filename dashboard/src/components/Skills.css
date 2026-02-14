@@ -93,9 +93,8 @@
   display: flex;
   gap: 0.5rem;
   padding: 0 1rem 0.75rem;
-  overflow-x: auto;
-  -webkit-overflow-scrolling: touch;
   flex-shrink: 0;
+  flex-wrap: wrap;
 }
 
 .files-tabs::-webkit-scrollbar {
@@ -129,7 +128,8 @@
 
 .file-viewer {
   flex: 1;
-  overflow: auto;
+  overflow-y: auto;
+  overflow-x: hidden;
   padding: 0 1rem 1rem;
 }
 
@@ -196,7 +196,9 @@
   background: #1a1a1a;
   padding: 1rem;
   border-radius: 8px;
-  overflow-x: auto;
+  overflow-x: hidden;
+  white-space: pre-wrap;
+  word-break: break-word;
   margin: 1rem 0;
 }
 
@@ -246,7 +248,9 @@
   background: #111;
   padding: 1.25rem;
   border-radius: 8px;
-  overflow-x: auto;
+  overflow-x: hidden;
+  white-space: pre-wrap;
+  word-break: break-word;
   color: #e0e0e0;
   font-family: 'SF Mono', 'Fira Code', monospace;
   font-size: 0.85rem;

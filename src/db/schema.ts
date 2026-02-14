@@ -60,5 +60,25 @@ export function createDatabase(dbPath: string): Database.Database {
     db.exec("ALTER TABLE memories ADD COLUMN title TEXT NOT NULL DEFAULT ''");
   }
 
+  // Add archived column to messages table
+  const messageColumns = db.pragma("table_info(messages)") as Array<{ name: string }>;
+  if (!messageColumns.some((c) => c.name === "archived")) {
+    db.exec("ALTER TABLE messages ADD COLUMN archived INTEGER NOT NULL DEFAULT 0");
+    db.exec("CREATE INDEX IF NOT EXISTS idx_messages_archived ON messages(archived)");
+  }
+
+  // Traces table — snapshot of system prompt per request
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS traces (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      session_id TEXT NOT NULL,
+      channel TEXT,
+      timestamp INTEGER NOT NULL,
+      user_message TEXT NOT NULL,
+      system_prompt TEXT NOT NULL
+    );
+    CREATE INDEX IF NOT EXISTS idx_traces_timestamp ON traces(timestamp);
+  `);
+
   return db;
 }

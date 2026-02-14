@@ -8,7 +8,7 @@ import {
 } from "@mariozechner/pi-coding-agent";
 import type { Queries } from "./db/queries.js";
 import { assembleContext, formatContextForPrompt } from "./memory/context.js";
-import { shouldCompact, runCompaction } from "./memory/compaction.js";
+import { shouldCompact, runCompaction, runSessionCompaction } from "./memory/compaction.js";
 import { SessionManager } from "./sessions/manager.js";
 import { discoverSkills, formatSkillsForPrompt } from "./skills/discovery.js";
 import { loadSkillTools, convertToolsForPi } from "./skills/loader.js";
@@ -34,11 +34,9 @@ export class Orchestrator {
   private cronScheduler: CronScheduler;
   private soul: string;
   private skillsDir: string;
-  private isProcessing = false;
-  private messageQueue: Array<{
-    event: InboundEvent;
-    channel: Channel | null;
-  }> = [];
+  /** Per-session message queues and processing locks */
+  private sessionQueues = new Map<string, Array<{ event: InboundEvent; channel: Channel | null }>>();
+  private sessionProcessing = new Set<string>();
   /** Track active Pi sessions so we can abort them on interrupt */
   private activeSessions = new Map<string, { piSession: AgentSession; aborted: boolean }>();
 
@@ -150,7 +148,7 @@ export class Orchestrator {
     console.log(`[handleInbound] ⚡ Received event from ${sessionKey}`);
     this.logToFile(`[handleInbound] Channel: ${event.channel}, Target: ${event.target}, Content: ${event.content ? event.content.substring(0, 50) + '...' : '(empty)'}`);
     
-    // If there's an active session for this key, abort it
+    // If there's an active session for this key, abort it (interrupt)
     const active = this.activeSessions.get(sessionKey);
     if (active && !active.aborted) {
       console.log(`[handleInbound] ⛔ Aborting active session for ${sessionKey}`);
@@ -163,30 +161,38 @@ export class Orchestrator {
       }
     }
 
-    // Remove any queued messages for the same session (user changed their mind)
-    const before = this.messageQueue.length;
-    this.messageQueue = this.messageQueue.filter(
-      (m) => `${m.event.channel}:${m.event.target}` !== sessionKey
-    );
-    if (this.messageQueue.length < before) {
-      console.log(`[handleInbound] Cleared ${before - this.messageQueue.length} queued messages for ${sessionKey}`);
+    // Get or create the per-session queue
+    if (!this.sessionQueues.has(sessionKey)) {
+      this.sessionQueues.set(sessionKey, []);
+    }
+    const queue = this.sessionQueues.get(sessionKey)!;
+
+    // Clear any previously queued messages for this session (user changed their mind)
+    if (queue.length > 0) {
+      console.log(`[handleInbound] Cleared ${queue.length} queued messages for ${sessionKey}`);
+      queue.length = 0;
     }
 
     // Queue message
-    this.messageQueue.push({ event, channel });
-    console.log(`[handleInbound] Message queued. Queue length: ${this.messageQueue.length}, isProcessing: ${this.isProcessing}`);
-    if (this.isProcessing) return;
-    await this.processQueue();
+    queue.push({ event, channel });
+    const isAlreadyProcessing = this.sessionProcessing.has(sessionKey);
+    console.log(`[handleInbound] Message queued for ${sessionKey}. Queue length: ${queue.length}, processing: ${isAlreadyProcessing}`);
+    if (isAlreadyProcessing) return;
+
+    // Process this session's queue (runs concurrently with other sessions)
+    await this.processSessionQueue(sessionKey);
   }
 
-  private async processQueue(): Promise<void> {
-    this.isProcessing = true;
-    while (this.messageQueue.length > 0) {
-      const { event, channel } = this.messageQueue.shift()!;
+  private async processSessionQueue(sessionKey: string): Promise<void> {
+    this.sessionProcessing.add(sessionKey);
+    const queue = this.sessionQueues.get(sessionKey);
+
+    while (queue && queue.length > 0) {
+      const { event, channel } = queue.shift()!;
       try {
         await this.processMessage(event, channel);
       } catch (err) {
-        console.error("Error processing message:", err);
+        console.error(`Error processing message for ${sessionKey}:`, err);
         if (channel) {
           const handler = channel.createHandler(event);
           await handler.relay(
@@ -195,7 +201,12 @@ export class Orchestrator {
         }
       }
     }
-    this.isProcessing = false;
+
+    this.sessionProcessing.delete(sessionKey);
+    // Clean up empty queues
+    if (queue && queue.length === 0) {
+      this.sessionQueues.delete(sessionKey);
+    }
   }
 
   private async processMessage(
@@ -249,6 +260,7 @@ export class Orchestrator {
       role: "user",
       content: storedContent,
       compacted: 0,
+      archived: 0,
     });
     this.logToFile(`[processMessage] User message stored`);
 
@@ -269,6 +281,15 @@ export class Orchestrator {
       channel?.getCustomPrompt?.() || ""
     );
     this.logToFile(`[processMessage] System prompt built - length: ${systemPrompt.length} chars`);
+
+    // 4a. Snapshot the system prompt for this request
+    this.queries.insertTrace({
+      session_id: vitoSession.id,
+      channel: event.channel,
+      timestamp: Date.now(),
+      user_message: event.content || "",
+      system_prompt: systemPrompt,
+    });
 
     // 4. Set up output handler and message tracking
     const handler = channel ? channel.createHandler(event) : null;
@@ -338,6 +359,7 @@ export class Orchestrator {
                 role: "assistant",
                 content: JSON.stringify(currentMessageText),
                 compacted: 0,
+                archived: 0,
               });
               this.logToFile(`[piSession] Assistant message stored in DB`);
 
@@ -367,6 +389,7 @@ export class Orchestrator {
                 args: agentEvent.args,
               }),
               compacted: 0,
+              archived: 0,
             });
             handler?.relayEvent?.({
               kind: "tool_start",
@@ -392,6 +415,7 @@ export class Orchestrator {
                 isError: agentEvent.isError,
               }),
               compacted: 0,
+              archived: 0,
             });
             handler?.relayEvent?.({
               kind: "tool_end",
@@ -421,13 +445,7 @@ export class Orchestrator {
       this.logPromptToFile(systemPrompt, promptText);
       this.logToFile(`[processMessage] Sending prompt to LLM... (length: ${promptText.length})`);
 
-      // Wrap the prompt call with a timeout (5 minutes default)
-      const timeoutMs = this.config.llmTimeoutMs ?? 5 * 60 * 1000;
-      const timeoutPromise = new Promise<never>((_, reject) => {
-        setTimeout(() => reject(new Error(`LLM call timed out after ${timeoutMs / 1000}s`)), timeoutMs);
-      });
-
-      await Promise.race([piSession.prompt(promptText), timeoutPromise]);
+      await piSession.prompt(promptText);
       this.logToFile(`[processMessage] LLM response completed successfully`);
       this.logToFile(`[processMessage] Completed messages count: ${completedMessages.length}`);
       llmError = null;
@@ -446,6 +464,7 @@ export class Orchestrator {
           role: "assistant",
           content: JSON.stringify("*(interrupted)*"),
           compacted: 0,
+          archived: 0,
         });
         
         if (handler) {
@@ -475,6 +494,8 @@ export class Orchestrator {
       piSession.dispose();
       await handler?.stopTyping?.();
       this.logToFile(`[processMessage] Pi session disposed`);
+
+
     }
 
     // If there was an error, skip normal response handling
@@ -555,58 +576,64 @@ export class Orchestrator {
       event.target
     );
 
-    // Get all uncompacted messages for this session
-    const uncompacted = this.queries.getAllUncompactedMessages()
-      .filter(m => m.session_id === vitoSession.id);
+    const handler = channel.createHandler(event);
 
-    if (uncompacted.length === 0) {
-      const handler = channel.createHandler(event);
+    // Check if there are any non-archived messages to process
+    const recentMessages = this.queries.getRecentMessages(vitoSession.id, 1);
+    if (recentMessages.length === 0) {
       await handler.relay(
-        "✅ Already starting fresh! No messages to compact."
+        "✅ Already starting fresh! No messages to archive."
       );
       return;
     }
 
-    const handler = channel.createHandler(event);
     await handler.startTyping?.();
 
     try {
-      // Force compaction for this session
-      console.log(`\n[/new] Compacting ${uncompacted.length} messages for session ${vitoSession.id}...`);
+      // Step 1: Compact any un-compacted messages in this session
+      const uncompacted = this.queries.getUncompactedMessagesForSession(vitoSession.id);
       
-      await runCompaction(this.queries, this.config, async (prompt) => {
-        const { session: compactionSession } = await createAgentSession({
-          sessionManager: PiSessionManager.inMemory(),
-          model: this.getModel(),
-          tools: [],
+      if (uncompacted.length > 0) {
+        console.log(`\n[/new] Compacting ${uncompacted.length} un-compacted messages for session ${vitoSession.id}...`);
+        
+        await runSessionCompaction(this.queries, vitoSession.id, async (prompt) => {
+          const { session: compactionSession } = await createAgentSession({
+            sessionManager: PiSessionManager.inMemory(),
+            model: this.getModel(),
+            tools: [],
+          });
+
+          let response = "";
+          compactionSession.subscribe((e: AgentSessionEvent) => {
+            if (
+              e.type === "message_update" &&
+              e.assistantMessageEvent.type === "text_delta"
+            ) {
+              response += e.assistantMessageEvent.delta;
+            }
+          });
+
+          await compactionSession.prompt(prompt);
+          compactionSession.dispose();
+          return response;
         });
 
-        let response = "";
-        compactionSession.subscribe((e: AgentSessionEvent) => {
-          if (
-            e.type === "message_update" &&
-            e.assistantMessageEvent.type === "text_delta"
-          ) {
-            response += e.assistantMessageEvent.delta;
-          }
-        });
+        console.log(`[/new] Compaction complete for session ${vitoSession.id}`);
+      }
 
-        await compactionSession.prompt(prompt);
-        compactionSession.dispose();
-        return response;
-      });
-
-      console.log(`[/new] Compaction complete for session ${vitoSession.id}`);
+      // Step 2: Archive ALL messages in this session (compacted and newly-compacted)
+      this.queries.markSessionArchived(vitoSession.id);
+      console.log(`[/new] All messages archived for session ${vitoSession.id}`);
 
       await handler.stopTyping?.();
       await handler.relay(
-        `✅ **Fresh start initiated!**\n\nCompacted ${uncompacted.length} message(s) into long-term memory. The conversation transcript has been cleared, but all messages are preserved in the database and available for memory formation.\n\nReady for a new conversation! 🚀`
+        `✅ **Fresh start!**\n\n${uncompacted.length > 0 ? `Compacted ${uncompacted.length} message(s) into long-term memory. ` : ""}All messages archived. Same session, clean slate.\n\nReady for a new conversation! 🚀`
       );
     } catch (err) {
       await handler.stopTyping?.();
-      console.error("[/new] Compaction failed:", err);
+      console.error("[/new] Compaction/archive failed:", err);
       await handler.relay(
-        "❌ Sorry, something went wrong while compacting messages. Please try again."
+        "❌ Sorry, something went wrong. Please try again."
       );
     }
   }
@@ -675,7 +702,7 @@ export class Orchestrator {
     const parts: string[] = [];
 
     if (this.soul) {
-      parts.push(this.soul);
+      parts.push(`<personality>\n${this.soul}\n</personality>`);
     }
 
     // Inject SYSTEM.md for architecture/system knowledge
@@ -683,28 +710,25 @@ export class Orchestrator {
       const systemMdPath = resolve(process.cwd(), "SYSTEM.md");
       if (existsSync(systemMdPath)) {
         const systemMd = readFileSync(systemMdPath, "utf-8");
-        parts.push(systemMd);
+        parts.push(`<system>\n${systemMd}\n</system>`);
       }
     } catch (err) {
       console.error("[Orchestrator] Failed to read SYSTEM.md:", err);
     }
 
     if (skillsPrompt) {
-      parts.push(skillsPrompt);
+      parts.push(`<skills>\n${skillsPrompt}\n</skills>`);
     }
 
     if (channelPrompt) {
-      parts.push(channelPrompt);
+      parts.push(`<channel>\n${channelPrompt}\n</channel>`);
     }
 
     if (contextPrompt) {
-      parts.push(
-        "## Memory Context\n\nThe following is your memory and conversation context. Use it to maintain continuity.\n\n" +
-          contextPrompt
-      );
+      parts.push(`<memory>\n${contextPrompt}\n</memory>`);
     }
 
-    return parts.join("\n\n---\n\n");
+    return parts.join("\n\n");
   }
 
   private getStreamMode(channelName: string, sessionConfig?: SessionConfig): StreamMode {

@@ -84,5 +84,5 @@ export function formatSkillsForPrompt(skills: SkillMeta[]): string {
     (s) => `- **${s.name}**: ${s.description} (read ${s.path} for full instructions)`
   );
 
-  return `## Available Skills\n\n${lines.join("\n")}`;
+  return lines.join("\n");
 }

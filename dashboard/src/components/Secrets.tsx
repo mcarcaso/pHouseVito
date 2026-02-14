@@ -61,7 +61,7 @@ function Secrets() {
     const res = await fetch(`/api/secrets/${encodeURIComponent(key)}`, {
       method: 'DELETE',
     });
-    if (!res.ok) return; // system keys can't be deleted
+    if (!res.ok) return;
     revealed.delete(key);
     setRevealed(new Set(revealed));
     fetchSecrets();
@@ -69,11 +69,8 @@ function Secrets() {
 
   const toggleReveal = (key: string) => {
     const next = new Set(revealed);
-    if (next.has(key)) {
-      next.delete(key);
-    } else {
-      next.add(key);
-    }
+    if (next.has(key)) next.delete(key);
+    else next.add(key);
     setRevealed(next);
   };
 
@@ -83,7 +80,7 @@ function Secrets() {
   };
 
   if (loading) {
-    return <div className="secrets-container">Loading secrets...</div>;
+    return <div className="secrets-page">Loading secrets...</div>;
   }
 
   const systemSecrets = secrets.filter((s) => s.system);
@@ -140,55 +137,55 @@ function Secrets() {
   );
 
   return (
-    <div className="secrets-container">
-      <div className="secrets-header">
+    <div className="secrets-page">
+      <div className="page-header">
         <h2>Secrets</h2>
+      </div>
+
+      <div className="secrets-content">
         <p className="secrets-subtitle">
           Environment variables from .env — changes apply immediately
         </p>
-      </div>
 
-      {systemSecrets.length > 0 && (
-        <>
-          <h3 className="secrets-section-title">System</h3>
-          <div className="secrets-list">
-            {systemSecrets.map(renderSecret)}
-          </div>
-        </>
-      )}
-
-      <h3 className="secrets-section-title">Custom</h3>
-      <div className="secrets-add">
-        <input
-          type="text"
-          placeholder="KEY_NAME"
-          value={newKey}
-          onChange={(e) => setNewKey(e.target.value.toUpperCase().replace(/[^A-Z0-9_]/g, ''))}
-          className="secrets-input key-input"
-        />
-        <input
-          type="text"
-          placeholder="value"
-          value={newValue}
-          onChange={(e) => setNewValue(e.target.value)}
-          onKeyDown={(e) => e.key === 'Enter' && addSecret()}
-          className="secrets-input value-input"
-        />
-        <button onClick={addSecret} className="secrets-btn add-btn" disabled={!newKey.trim() || !newValue}>
-          Add
-        </button>
-      </div>
-
-      <div className="secrets-list">
-        {userSecrets.map(renderSecret)}
-        {userSecrets.length === 0 && (
-          <div className="empty-state">
-            <p>No custom secrets</p>
-            <p className="help-text">
-              Add keys for your skills and integrations above.
-            </p>
-          </div>
+        {systemSecrets.length > 0 && (
+          <>
+            <h3 className="secrets-section-title">System</h3>
+            <div className="secrets-list">
+              {systemSecrets.map(renderSecret)}
+            </div>
+          </>
         )}
+
+        <h3 className="secrets-section-title">Custom</h3>
+        <div className="secrets-add">
+          <input
+            type="text"
+            placeholder="KEY_NAME"
+            value={newKey}
+            onChange={(e) => setNewKey(e.target.value.toUpperCase().replace(/[^A-Z0-9_]/g, ''))}
+            className="secrets-input key-input"
+          />
+          <input
+            type="text"
+            placeholder="value"
+            value={newValue}
+            onChange={(e) => setNewValue(e.target.value)}
+            onKeyDown={(e) => e.key === 'Enter' && addSecret()}
+            className="secrets-input value-input"
+          />
+          <button onClick={addSecret} className="secrets-btn add-btn" disabled={!newKey.trim() || !newValue}>
+            Add
+          </button>
+        </div>
+
+        <div className="secrets-list">
+          {userSecrets.map(renderSecret)}
+          {userSecrets.length === 0 && (
+            <div className="empty-state">
+              <p>No custom secrets</p>
+            </div>
+          )}
+        </div>
       </div>
     </div>
   );

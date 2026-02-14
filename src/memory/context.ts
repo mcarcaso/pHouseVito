@@ -30,6 +30,7 @@ export async function assembleContext(
     memoriesLimit,
     includeToolsInCurrentSession = true,
     includeToolsInCrossSession = false,
+    showArchivedInCrossSession = false,
   } = config.memory;
 
   // 1. Long-term memories (semantic search)
@@ -39,15 +40,16 @@ export async function assembleContext(
     memoriesLimit
   );
 
-  // 2. Cross-session messages
+  // 2. Cross-session messages (un-compacted only, optionally include archived)
   const crossSessionMessages = queries.getCrossSessionMessages(
     sessionId,
     crossSessionLimit,
-    includeToolsInCrossSession
+    includeToolsInCrossSession,
+    showArchivedInCrossSession
   );
   const crossSessionBlock = formatCrossSessionMessages(crossSessionMessages);
 
-  // 3. Current session messages
+  // 3. Current session messages (everything not archived, compacted or not)
   const currentSessionMessages = queries.getRecentMessages(
     sessionId,
     currentSessionLimit,
@@ -65,15 +67,15 @@ export function formatContextForPrompt(ctx: AssembledContext): string {
   const parts: string[] = [];
 
   if (ctx.memoriesBlock) {
-    parts.push(`[LONG-TERM MEMORIES]\n${ctx.memoriesBlock}`);
+    parts.push(`<long-term-memories>\n${ctx.memoriesBlock}\n</long-term-memories>`);
   }
 
   if (ctx.crossSessionBlock) {
-    parts.push(`[CROSS-SESSION SHORT-TERM]\n${ctx.crossSessionBlock}`);
+    parts.push(`<cross-session>\n${ctx.crossSessionBlock}\n</cross-session>`);
   }
 
   if (ctx.currentSessionBlock) {
-    parts.push(`[CURRENT SESSION SHORT-TERM]\n${ctx.currentSessionBlock}`);
+    parts.push(`<current-session>\n${ctx.currentSessionBlock}\n</current-session>`);
   }
 
   return parts.join("\n\n");

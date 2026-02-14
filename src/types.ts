@@ -85,6 +85,7 @@ export interface VitoConfig {
     compactionThreshold: number;
     includeToolsInCurrentSession?: boolean;
     includeToolsInCrossSession?: boolean;
+    showArchivedInCrossSession?: boolean;
   };
   embeddings: {
     provider: string;
@@ -122,6 +123,7 @@ export interface MessageRow {
   role: "user" | "assistant" | "system" | "tool";
   content: string; // JSON string
   compacted: number; // 0 or 1
+  archived: number; // 0 or 1
 }
 
 export interface MemoryRow {
@@ -143,6 +145,17 @@ export interface SessionRow {
   created_at: number;
   last_active_at: number;
   config: string; // JSON string of SessionConfig
+}
+
+// ── Trace types ──
+
+export interface TraceRow {
+  id: number;
+  session_id: string;
+  channel: string | null;
+  timestamp: number;
+  user_message: string;
+  system_prompt: string;
 }
 
 // ── Skill types ──

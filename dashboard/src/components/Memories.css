@@ -1,62 +1,60 @@
-.memories-container {
-  max-width: 1200px;
-  margin: 0 auto;
+.memories-page {
   height: 100%;
   display: flex;
   flex-direction: column;
+  overflow: hidden;
 }
 
-.memories-header {
-  margin-bottom: 1.5rem;
-}
-
-.memories-header h2 {
-  font-size: 1.5rem;
-  margin-bottom: 1rem;
-  color: #fff;
+.memories-search {
+  padding: 0 1rem 0.75rem;
+  flex-shrink: 0;
 }
 
 .search-input {
   width: 100%;
-  background: #111;
-  border: 1px solid #333;
-  border-radius: 6px;
+  background: #151515;
+  border: 1px solid #222;
+  border-radius: 8px;
   padding: 0.75rem 1rem;
   color: #e0e0e0;
   font-size: 0.95rem;
+  outline: none;
+  transition: border-color 0.2s;
 }
 
 .search-input:focus {
-  outline: none;
-  border-color: #555;
+  border-color: #2563eb;
 }
 
 .memories-list {
   flex: 1;
   overflow-y: auto;
-  background: #111;
-  border-radius: 8px;
-  padding: 1rem;
+  padding: 0 1rem 1rem;
 }
 
 .memory-item {
-  background: #1a1a1a;
-  border: 1px solid #333;
-  border-radius: 8px;
+  background: #151515;
+  border: 1px solid #222;
+  border-radius: 10px;
   padding: 1rem 1.25rem;
   margin-bottom: 0.5rem;
   cursor: pointer;
   transition: border-color 0.2s, background 0.2s;
+  -webkit-tap-highlight-color: transparent;
 }
 
 .memory-item:hover {
-  border-color: #444;
-  background: #1e1e1e;
+  border-color: #333;
+  background: #1a1a1a;
+}
+
+.memory-item:active {
+  transform: scale(0.99);
 }
 
 .memory-item.expanded {
-  border-color: #555;
-  background: #1e1e1e;
+  border-color: #333;
+  background: #1a1a1a;
 }
 
 .memory-header-row {
@@ -70,7 +68,7 @@
   font-weight: 600;
   color: #60a5fa;
   font-family: monospace;
-  font-size: 0.95rem;
+  font-size: 0.9rem;
 }
 
 .memory-badges {
@@ -81,8 +79,8 @@
 }
 
 .memory-time {
-  color: #666;
-  font-size: 0.8rem;
+  color: #555;
+  font-size: 0.75rem;
 }
 
 .embedding-badge {
@@ -92,12 +90,12 @@
 .memory-body {
   margin-top: 1rem;
   padding-top: 1rem;
-  border-top: 1px solid #333;
+  border-top: 1px solid #222;
 }
 
 .memory-body pre {
   color: #ccc;
-  font-size: 0.9rem;
+  font-size: 0.85rem;
   line-height: 1.6;
   white-space: pre-wrap;
   word-wrap: break-word;
@@ -108,32 +106,13 @@
 .empty-state {
   text-align: center;
   color: #666;
-  padding: 4rem 2rem;
-  font-size: 1rem;
+  padding: 3rem 1.5rem;
+  font-size: 0.95rem;
 }
 
-/* Mobile Responsive Styles */
 @media (max-width: 768px) {
-  .memories-header {
-    margin-bottom: 1rem;
-  }
-
-  .memories-header h2 {
-    font-size: 1.25rem;
-    margin-bottom: 0.75rem;
-  }
-
   .search-input {
-    padding: 0.625rem 0.875rem;
-    font-size: 1rem;
-  }
-
-  .memories-list {
-    padding: 0.75rem;
-  }
-
-  .memory-item {
-    padding: 0.875rem 1rem;
+    font-size: 1rem; /* Prevent iOS zoom */
   }
 
   .memory-title {
@@ -141,11 +120,6 @@
   }
 
   .memory-body pre {
-    font-size: 0.85rem;
-  }
-
-  .empty-state {
-    padding: 2rem 1rem;
-    font-size: 0.95rem;
+    font-size: 0.8rem;
   }
 }

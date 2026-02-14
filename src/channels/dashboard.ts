@@ -8,7 +8,8 @@ import express from "express";
 import { WebSocketServer, WebSocket } from "ws";
 import { createServer } from "http";
 import path from "path";
-import { readFileSync, writeFileSync, existsSync, mkdirSync } from "fs";
+import { readFileSync, writeFileSync, existsSync, mkdirSync, readdirSync } from "fs";
+import { execSync } from "child_process";
 import { fileURLToPath } from "url";
 import dotenv from "dotenv";
 import crypto from "crypto";
@@ -422,6 +423,107 @@ export class DashboardChannel implements Channel {
         filename: filename || `${id}.${ext}`,
         mimeType,
       });
+    });
+
+    // Server restart endpoint
+    this.app.post("/api/server/restart", (req, res) => {
+      res.json({ ok: true, message: "Restarting server..." });
+      // Give the response time to flush, then restart via PM2
+      setTimeout(() => {
+        try {
+          execSync("npx pm2 restart vito-server", {
+            stdio: "ignore",
+            env: { ...process.env, PATH: process.env.PATH + ":/usr/local/bin:/opt/homebrew/bin" },
+          });
+        } catch (e) {
+          // Process is already dying at this point
+        }
+      }, 500);
+    });
+
+    // Server status/info endpoint
+    this.app.get("/api/server/status", (req, res) => {
+      res.json({
+        uptime: process.uptime(),
+        pid: process.pid,
+        nodeVersion: process.version,
+        memoryUsage: process.memoryUsage(),
+      });
+    });
+
+    // List deployed apps with PM2 status
+    this.app.get("/api/apps", async (req, res) => {
+      try {
+        const appsDir = path.join(__dirname, "../../user/apps");
+        if (!existsSync(appsDir)) {
+          res.json([]);
+          return;
+        }
+
+        // Get PM2 process list as JSON
+        let pm2Processes: any[] = [];
+        try {
+          const pm2Output = execSync("npx pm2 jlist", {
+            timeout: 10000,
+            encoding: "utf-8",
+            env: { ...process.env, PATH: process.env.PATH + ":/usr/local/bin:/opt/homebrew/bin" },
+          });
+          pm2Processes = JSON.parse(pm2Output);
+        } catch (e) {
+          // PM2 unavailable, we'll just show apps without status
+        }
+
+        const appDirs = readdirSync(appsDir)
+          .filter((d: string) => {
+            const metaPath = path.join(appsDir, d, ".vito-app.json");
+            return existsSync(metaPath);
+          });
+
+        const apps = appDirs.map((appName: string) => {
+          const metaPath = path.join(appsDir, appName, ".vito-app.json");
+          const meta = JSON.parse(readFileSync(metaPath, "utf-8"));
+          const pm2Name = `app-${appName}`;
+          const pm2Process = pm2Processes.find(
+            (p: any) => p.name === pm2Name
+          );
+
+          return {
+            name: appName,
+            description: meta.description || "",
+            port: meta.port,
+            url: meta.url || `https://${appName}.theworstproductions.com`,
+            createdAt: meta.createdAt,
+            status: pm2Process?.pm2_env?.status || "unknown",
+            uptime: pm2Process?.pm2_env?.pm_uptime
+              ? Date.now() - pm2Process.pm2_env.pm_uptime
+              : null,
+            restarts: pm2Process?.pm2_env?.restart_time || 0,
+            memory: pm2Process?.monit?.memory || null,
+          };
+        });
+
+        res.json(apps);
+      } catch (e: any) {
+        res.status(500).json({ error: e.message });
+      }
+    });
+
+    // ── Traces ──
+
+    this.app.get("/api/traces", (req, res) => {
+      const limit = parseInt(req.query.limit as string) || 50;
+      const traces = this.queries.getRecentTraces(limit);
+      res.json(traces);
+    });
+
+    this.app.get("/api/traces/:id", (req, res) => {
+      const id = parseInt(req.params.id);
+      const trace = this.queries.getTrace(id);
+      if (!trace) {
+        res.status(404).json({ error: "Trace not found" });
+        return;
+      }
+      res.json(trace);
     });
 
     // Serve the React app for all other routes

@@ -1,5 +1,5 @@
 import type { Queries } from "../db/queries.js";
-import type { VitoConfig } from "../types.js";
+import type { MessageRow, VitoConfig } from "../types.js";
 import { embedBatch } from "./embeddings.js";
 
 /**
@@ -12,33 +12,24 @@ export function shouldCompact(queries: Queries, config: VitoConfig): boolean {
 }
 
 /**
- * Run LLM-driven memory compaction.
+ * Core compaction logic — takes a set of messages, current memories,
+ * and produces updated memory docs. Marks processed messages as compacted.
  *
- * 1. Gather all un-compacted messages (short-term across all sessions)
- * 2. Gather all current long-term memories
- * 3. Ask LLM to produce an updated set of memories
- * 4. Replace memories table with new set (re-embed each)
- * 5. Mark processed messages as compacted
- *
- * @param promptLLM - function that sends a prompt to the LLM and returns text response
+ * This is the shared engine used by both:
+ * - Global threshold-based compaction (oldest half of all un-compacted)
+ * - Session-scoped compaction via /new (all un-compacted in a session)
  */
-export async function runCompaction(
+async function compactMessages(
   queries: Queries,
-  config: VitoConfig,
+  messages: MessageRow[],
   promptLLM: (prompt: string) => Promise<string>
 ): Promise<void> {
-  const allUncompacted = queries.getAllUncompactedMessages();
-  if (allUncompacted.length === 0) return;
-
-  // Only compact the oldest half — keep the recent half in context
-  const half = Math.ceil(allUncompacted.length / 2);
-  const uncompacted = allUncompacted.slice(0, half);
-  console.log(`[Compaction] Compacting oldest ${uncompacted.length} of ${allUncompacted.length} messages`);
+  if (messages.length === 0) return;
 
   const currentMemories = queries.getAllMemories();
 
   // Build the compaction prompt
-  const shortTermSection = uncompacted
+  const shortTermSection = messages
     .map((m) => {
       const content = JSON.parse(m.content);
       const text = typeof content === "string" ? content : content.text || "";
@@ -100,7 +91,7 @@ ${shortTermSection}
   let embeddings: (Buffer | null)[];
   if (process.env.OPENAI_API_KEY) {
     try {
-      embeddings = await embedBatch(textsToEmbed, config.embeddings.model);
+      embeddings = await embedBatch(textsToEmbed);
     } catch {
       embeddings = newMemories.map(() => null);
     }
@@ -117,6 +108,42 @@ ${shortTermSection}
   queries.replaceAllMemories(memoriesWithEmbeddings);
 
   // Mark all processed messages as compacted
-  const ids = uncompacted.map((m) => m.id);
+  const ids = messages.map((m) => m.id);
   queries.markCompacted(ids);
+}
+
+/**
+ * Run global threshold-based compaction.
+ * Takes the oldest half of all un-compacted messages across all sessions.
+ */
+export async function runCompaction(
+  queries: Queries,
+  config: VitoConfig,
+  promptLLM: (prompt: string) => Promise<string>
+): Promise<void> {
+  const allUncompacted = queries.getAllUncompactedMessages();
+  if (allUncompacted.length === 0) return;
+
+  // Only compact the oldest half — keep the recent half in context
+  const half = Math.ceil(allUncompacted.length / 2);
+  const toCompact = allUncompacted.slice(0, half);
+  console.log(`[Compaction] Compacting oldest ${toCompact.length} of ${allUncompacted.length} messages`);
+
+  await compactMessages(queries, toCompact, promptLLM);
+}
+
+/**
+ * Run session-scoped compaction (used by /new command).
+ * Compacts all un-compacted messages in a specific session.
+ */
+export async function runSessionCompaction(
+  queries: Queries,
+  sessionId: string,
+  promptLLM: (prompt: string) => Promise<string>
+): Promise<void> {
+  const uncompacted = queries.getUncompactedMessagesForSession(sessionId);
+  if (uncompacted.length === 0) return;
+
+  console.log(`[Compaction] Session compaction: ${uncompacted.length} messages for ${sessionId}`);
+  await compactMessages(queries, uncompacted, promptLLM);
 }

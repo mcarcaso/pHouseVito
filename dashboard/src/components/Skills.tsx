@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import ReactMarkdown from 'react-markdown';
 import './Skills.css';
 
@@ -14,23 +15,29 @@ interface SkillFile {
 }
 
 function Skills() {
+  const [searchParams, setSearchParams] = useSearchParams();
+  const selectedSkillName = searchParams.get('name');
+
   const [skills, setSkills] = useState<Skill[]>([]);
   const [selectedSkill, setSelectedSkill] = useState<Skill | null>(null);
   const [files, setFiles] = useState<SkillFile[]>([]);
   const [selectedFile, setSelectedFile] = useState<SkillFile | null>(null);
   const [fileContent, setFileContent] = useState<string>('');
   const [loading, setLoading] = useState(true);
-  const [mobileView, setMobileView] = useState<'list' | 'detail'>('list');
 
   useEffect(() => {
     fetchSkills();
   }, []);
 
   useEffect(() => {
-    if (selectedSkill) {
-      fetchFiles(selectedSkill.name);
+    if (selectedSkillName && skills.length > 0) {
+      const skill = skills.find(s => s.name === selectedSkillName);
+      if (skill) {
+        setSelectedSkill(skill);
+        fetchFiles(skill.name);
+      }
     }
-  }, [selectedSkill]);
+  }, [selectedSkillName, skills]);
 
   useEffect(() => {
     if (selectedFile) {
@@ -43,12 +50,9 @@ function Skills() {
       const res = await fetch('/api/skills');
       const data = await res.json();
       setSkills(data);
-      if (data.length > 0) {
-        setSelectedSkill(data[0]);
-      }
-      setLoading(false);
     } catch (err) {
       console.error('Failed to fetch skills:', err);
+    } finally {
       setLoading(false);
     }
   };
@@ -58,9 +62,7 @@ function Skills() {
       const res = await fetch(`/api/skills/${encodeURIComponent(skillName)}/files`);
       const data = await res.json();
       setFiles(data);
-      if (data.length > 0) {
-        setSelectedFile(data[0]);
-      }
+      if (data.length > 0) setSelectedFile(data[0]);
     } catch (err) {
       console.error('Failed to fetch skill files:', err);
       setFiles([]);
@@ -80,10 +82,8 @@ function Skills() {
 
   const renderFileContent = () => {
     if (!selectedFile) return null;
-
     const extension = selectedFile.name.split('.').pop()?.toLowerCase();
     const isMarkdown = extension === 'md';
-
     if (isMarkdown) {
       return (
         <div className="file-content markdown-content">
@@ -91,8 +91,6 @@ function Skills() {
         </div>
       );
     }
-
-    // For other files, show as code
     return (
       <pre className="file-content code-content">
         <code>{fileContent}</code>
@@ -101,82 +99,64 @@ function Skills() {
   };
 
   if (loading) {
-    return <div className="skills-container">Loading skills...</div>;
+    return <div className="skills-page">Loading skills...</div>;
   }
 
-  if (skills.length === 0) {
+  // Detail view
+  if (selectedSkill) {
     return (
-      <div className="skills-container">
-        <div className="empty-state">
-          <p>No skills installed yet</p>
-          <p className="help-text">
-            Add skills to the <code>skills/</code> directory
-          </p>
+      <div className="skills-page">
+        <div className="page-header">
+          <button className="back-link" onClick={() => setSearchParams({})}>‹ Skills</button>
+          <h2>{selectedSkill.name}</h2>
+        </div>
+
+        <div className="skill-detail-content">
+          <div className="files-tabs">
+            {files.map((file) => (
+              <button
+                key={file.name}
+                className={`file-tab ${selectedFile?.name === file.name ? 'active' : ''}`}
+                onClick={() => setSelectedFile(file)}
+              >
+                {file.name}
+              </button>
+            ))}
+          </div>
+          <div className="file-viewer">
+            {selectedFile ? renderFileContent() : <div className="empty-state">No files</div>}
+          </div>
         </div>
       </div>
     );
   }
 
-  const handleSkillSelect = (skill: Skill) => {
-    setSelectedSkill(skill);
-    setMobileView('detail');
-  };
-
-  const handleBackToList = () => {
-    setMobileView('list');
-  };
-
+  // List view
   return (
-    <div className="skills-layout">
-      <div className={`skills-sidebar ${mobileView === 'list' ? 'mobile-show' : 'mobile-hide'}`}>
-        <div className="sidebar-header">
-          <h3>Skills ({skills.length})</h3>
-        </div>
-        <div className="skills-list">
-          {skills.map((skill) => (
-            <div
-              key={skill.name}
-              className={`skill-item ${selectedSkill?.name === skill.name ? 'active' : ''}`}
-              onClick={() => handleSkillSelect(skill)}
-            >
-              <div className="skill-icon">🛠️</div>
-              <div className="skill-info">
-                <div className="skill-name">{skill.name}</div>
-                <div className="skill-description">{skill.description}</div>
-              </div>
-            </div>
-          ))}
-        </div>
+    <div className="skills-page">
+      <div className="page-header">
+        <h2>Skills ({skills.length})</h2>
       </div>
 
-      <div className={`skills-main ${mobileView === 'detail' ? 'mobile-show' : 'mobile-hide'}`}>
-        {selectedSkill && (
-          <>
-            <div className="mobile-back-button" onClick={handleBackToList}>
-              ← Back to Skills
+      <div className="skills-list">
+        {skills.map((skill) => (
+          <div
+            key={skill.name}
+            className="skill-item"
+            onClick={() => setSearchParams({ name: skill.name })}
+          >
+            <span className="skill-icon">🛠️</span>
+            <div className="skill-info">
+              <div className="skill-name">{skill.name}</div>
+              <div className="skill-description">{skill.description}</div>
             </div>
-            <div className="files-header">
-              <h3>{selectedSkill.name}</h3>
-              <div className="files-tabs">
-                {files.map((file) => (
-                  <button
-                    key={file.name}
-                    className={`file-tab ${selectedFile?.name === file.name ? 'active' : ''}`}
-                    onClick={() => setSelectedFile(file)}
-                  >
-                    {file.name}
-                  </button>
-                ))}
-              </div>
-            </div>
-            <div className="file-viewer">
-              {selectedFile ? (
-                renderFileContent()
-              ) : (
-                <div className="empty-state">No files to display</div>
-              )}
-            </div>
-          </>
+            <span className="skill-arrow">›</span>
+          </div>
+        ))}
+        {skills.length === 0 && (
+          <div className="empty-state">
+            <p>No skills installed yet</p>
+          </div>
         )}
       </div>
     </div>

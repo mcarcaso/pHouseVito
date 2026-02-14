@@ -1,0 +1,135 @@
+.apps-page {
+  padding: 0;
+}
+
+.apps-content {
+  padding: 1rem;
+  max-width: 600px;
+  margin: 0 auto;
+}
+
+.apps-loading,
+.apps-empty {
+  text-align: center;
+  color: #666;
+  padding: 3rem 1rem;
+  font-size: 0.9rem;
+}
+
+.apps-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+/* App Card */
+.app-card {
+  background: #151515;
+  border: 1px solid #222;
+  border-radius: 12px;
+  padding: 1rem 1.25rem;
+}
+
+.app-card-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 0.5rem;
+}
+
+.app-name-row {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.app-status-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.app-status-dot.online {
+  background: #4ade80;
+  box-shadow: 0 0 6px rgba(74, 222, 128, 0.4);
+}
+
+.app-status-dot.stopped {
+  background: #888;
+}
+
+.app-status-dot.errored,
+.app-status-dot.unknown {
+  background: #f87171;
+}
+
+.app-name {
+  font-size: 1rem;
+  font-weight: 600;
+  color: #fff;
+}
+
+.app-status-badge {
+  font-size: 0.7rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  padding: 0.2rem 0.5rem;
+  border-radius: 6px;
+}
+
+.app-status-badge.online {
+  color: #4ade80;
+  background: rgba(74, 222, 128, 0.1);
+}
+
+.app-status-badge.stopped {
+  color: #888;
+  background: rgba(136, 136, 136, 0.1);
+}
+
+.app-status-badge.errored,
+.app-status-badge.unknown {
+  color: #f87171;
+  background: rgba(248, 113, 113, 0.1);
+}
+
+.app-description {
+  font-size: 0.85rem;
+  color: #888;
+  margin: 0 0 0.5rem;
+  line-height: 1.4;
+}
+
+.app-url {
+  display: inline-block;
+  font-size: 0.85rem;
+  color: #60a5fa;
+  text-decoration: none;
+  margin-bottom: 0.75rem;
+}
+
+.app-url:hover {
+  text-decoration: underline;
+}
+
+.app-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem 1rem;
+  font-size: 0.75rem;
+  color: #555;
+}
+
+/* Desktop */
+@media (min-width: 769px) {
+  .apps-content {
+    padding: 1.5rem;
+    max-width: 700px;
+  }
+
+  .app-card {
+    padding: 1.25rem 1.5rem;
+  }
+}

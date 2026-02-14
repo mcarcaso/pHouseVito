@@ -24,9 +24,9 @@ function Memories() {
       const res = await fetch('/api/memories');
       const data = await res.json();
       setMemories(data);
-      setLoading(false);
     } catch (err) {
       console.error('Failed to fetch memories:', err);
+    } finally {
       setLoading(false);
     }
   };
@@ -40,13 +40,16 @@ function Memories() {
   });
 
   if (loading) {
-    return <div className="memories-container">Loading memories...</div>;
+    return <div className="memories-page">Loading memories...</div>;
   }
 
   return (
-    <div className="memories-container">
-      <div className="memories-header">
-        <h2>Long-Term Memories ({memories.length})</h2>
+    <div className="memories-page">
+      <div className="page-header">
+        <h2>Memories ({memories.length})</h2>
+      </div>
+
+      <div className="memories-search">
         <input
           type="text"
           placeholder="Search memories..."
@@ -66,9 +69,7 @@ function Memories() {
             <div className="memory-header-row">
               <span className="memory-title">{memory.title || 'UNTITLED.md'}</span>
               <div className="memory-badges">
-                {memory.embedding && (
-                  <span className="embedding-badge">📊</span>
-                )}
+                {memory.embedding && <span className="embedding-badge">📊</span>}
                 <span className="memory-time">
                   {new Date(memory.timestamp).toLocaleDateString()}
                 </span>

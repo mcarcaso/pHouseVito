@@ -1,5 +1,5 @@
 import type Database from "better-sqlite3";
-import type { MessageRow, MemoryRow, SessionRow } from "../types.js";
+import type { MessageRow, MemoryRow, SessionRow, TraceRow } from "../types.js";
 
 export class Queries {
   constructor(private db: Database.Database) {}
@@ -45,21 +45,24 @@ export class Queries {
   insertMessage(msg: Omit<MessageRow, "id">): number {
     const result = this.db
       .prepare(
-        `INSERT INTO messages (session_id, channel, channel_target, timestamp, role, content, compacted)
-         VALUES (@session_id, @channel, @channel_target, @timestamp, @role, @content, @compacted)`
+        `INSERT INTO messages (session_id, channel, channel_target, timestamp, role, content, compacted, archived)
+         VALUES (@session_id, @channel, @channel_target, @timestamp, @role, @content, @compacted, @archived)`
       )
       .run(msg);
     return result.lastInsertRowid as number;
   }
 
-  /** Get N most recent un-compacted messages for a session */
+  /**
+   * Get recent messages for the CURRENT session context.
+   * Shows everything that's not archived (compacted or not).
+   */
   getRecentMessages(sessionId: string, limit: number, includeTools = true): MessageRow[] {
     const toolFilter = includeTools ? "" : " AND role != 'tool'";
     return this.db
       .prepare(
         `SELECT * FROM (
            SELECT * FROM messages
-           WHERE session_id = ? AND compacted = 0${toolFilter}
+           WHERE session_id = ? AND archived = 0${toolFilter}
            ORDER BY timestamp DESC
            LIMIT ?
          ) ORDER BY timestamp ASC`
@@ -67,7 +70,7 @@ export class Queries {
       .all(sessionId, limit) as MessageRow[];
   }
 
-  /** Get all messages for a session (including compacted) for dashboard */
+  /** Get all messages for a session (including compacted/archived) for dashboard */
   getAllMessagesForSession(sessionId: string, limit?: number): MessageRow[] {
     if (limit) {
       return this.db
@@ -91,18 +94,25 @@ export class Queries {
     }
   }
 
-  /** Get M most recent un-compacted messages from OTHER sessions */
+  /**
+   * Get recent messages from OTHER sessions for cross-session context.
+   * Only shows un-compacted, un-archived messages by default.
+   * Optionally includes archived messages (configurable).
+   */
   getCrossSessionMessages(
     excludeSessionId: string,
     limit: number,
-    includeTools = false
+    includeTools = false,
+    showArchived = false
   ): MessageRow[] {
     const toolFilter = includeTools ? "" : " AND role != 'tool'";
+    // Never show compacted from other sessions. Optionally show archived.
+    const archiveFilter = showArchived ? "" : " AND archived = 0";
     return this.db
       .prepare(
         `SELECT * FROM (
            SELECT * FROM messages
-           WHERE session_id != ? AND compacted = 0${toolFilter}
+           WHERE session_id != ? AND compacted = 0${archiveFilter}${toolFilter}
            ORDER BY timestamp DESC
            LIMIT ?
          ) ORDER BY timestamp ASC`
@@ -117,6 +127,15 @@ export class Queries {
         "SELECT * FROM messages WHERE compacted = 0 ORDER BY timestamp ASC"
       )
       .all() as MessageRow[];
+  }
+
+  /** Get un-compacted messages for a specific session */
+  getUncompactedMessagesForSession(sessionId: string): MessageRow[] {
+    return this.db
+      .prepare(
+        "SELECT * FROM messages WHERE session_id = ? AND compacted = 0 ORDER BY timestamp ASC"
+      )
+      .all(sessionId) as MessageRow[];
   }
 
   /** Count un-compacted messages */
@@ -136,6 +155,15 @@ export class Queries {
         `UPDATE messages SET compacted = 1 WHERE id IN (${placeholders})`
       )
       .run(...ids);
+  }
+
+  /** Mark all messages in a session as archived */
+  markSessionArchived(sessionId: string): void {
+    this.db
+      .prepare(
+        "UPDATE messages SET archived = 1 WHERE session_id = ?"
+      )
+      .run(sessionId);
   }
 
   // ── Memories ──
@@ -193,5 +221,28 @@ export class Queries {
       )
       .run(Date.now(), title, content, embedding);
     return result.lastInsertRowid as number;
+  }
+
+  // ── Traces ──
+
+  insertTrace(trace: Omit<TraceRow, "id">): void {
+    this.db
+      .prepare(
+        `INSERT INTO traces (session_id, channel, timestamp, user_message, system_prompt)
+         VALUES (@session_id, @channel, @timestamp, @user_message, @system_prompt)`
+      )
+      .run(trace);
+  }
+
+  getRecentTraces(limit: number = 50): Omit<TraceRow, "system_prompt">[] {
+    return this.db
+      .prepare("SELECT id, session_id, channel, timestamp, user_message FROM traces ORDER BY timestamp DESC LIMIT ?")
+      .all(limit) as Omit<TraceRow, "system_prompt">[];
+  }
+
+  getTrace(id: number): TraceRow | undefined {
+    return this.db
+      .prepare("SELECT * FROM traces WHERE id = ?")
+      .get(id) as TraceRow | undefined;
   }
 }

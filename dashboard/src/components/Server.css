@@ -1,0 +1,140 @@
+.server-page {
+  padding: 0;
+}
+
+.server-content {
+  padding: 1rem;
+  max-width: 600px;
+  margin: 0 auto;
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+/* Card */
+.server-card {
+  background: #151515;
+  border: 1px solid #222;
+  border-radius: 12px;
+  padding: 1.25rem;
+}
+
+.server-card-title {
+  font-size: 1rem;
+  font-weight: 600;
+  color: #fff;
+  margin: 0 0 1rem;
+}
+
+.server-card-desc {
+  font-size: 0.85rem;
+  color: #888;
+  margin: 0 0 1rem;
+  line-height: 1.5;
+}
+
+/* Stats */
+.server-stats {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.server-stat {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.stat-label {
+  font-size: 0.85rem;
+  color: #888;
+}
+
+.stat-value {
+  font-size: 0.85rem;
+  color: #ccc;
+  font-family: 'SF Mono', 'Fira Code', monospace;
+}
+
+.stat-online {
+  color: #4ade80;
+}
+
+.stat-offline {
+  color: #f87171;
+}
+
+/* Restart Button */
+.restart-btn {
+  display: block;
+  width: 100%;
+  padding: 0.85rem;
+  background: #1e1e1e;
+  border: 1px solid #333;
+  border-radius: 10px;
+  color: #f87171;
+  font-size: 0.9rem;
+  font-weight: 600;
+  font-family: inherit;
+  cursor: pointer;
+  transition: all 0.2s;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.restart-btn:hover {
+  background: #2a1515;
+  border-color: #f87171;
+}
+
+.restart-btn.confirm {
+  background: #7f1d1d;
+  border-color: #f87171;
+  color: #fff;
+  animation: pulse 1s ease-in-out infinite;
+}
+
+@keyframes pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.8; }
+}
+
+/* Restart Status */
+.restart-status {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.85rem;
+  background: #1a1a2e;
+  border: 1px solid #2563eb;
+  border-radius: 10px;
+  color: #60a5fa;
+  font-size: 0.9rem;
+  font-weight: 500;
+}
+
+.restart-spinner {
+  width: 18px;
+  height: 18px;
+  border: 2px solid #333;
+  border-top-color: #60a5fa;
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+  flex-shrink: 0;
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+
+/* Desktop */
+@media (min-width: 769px) {
+  .server-content {
+    padding: 1.5rem;
+    max-width: 700px;
+  }
+
+  .server-card {
+    padding: 1.5rem;
+  }
+}

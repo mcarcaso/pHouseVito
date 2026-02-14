@@ -60,15 +60,12 @@ function System() {
   };
 
   const discard = () => {
-    if (tab === 'soul') {
-      setSoulContent(soulOriginal);
-    } else {
-      setSystemContent(systemOriginal);
-    }
+    if (tab === 'soul') setSoulContent(soulOriginal);
+    else setSystemContent(systemOriginal);
   };
 
   return (
-    <div className="system-container">
+    <div className="system-page">
       <div className="system-header">
         <div className="system-tabs">
           <button
@@ -102,8 +99,8 @@ function System() {
 
       <p className="system-desc">
         {tab === 'soul'
-          ? 'The soul defines your assistant\'s personality, values, and boundaries. Loaded from user/SOUL.md.'
-          : 'The system prompt provides architecture context and instructions. Loaded from system.md.'}
+          ? "Personality, values, and boundaries. Loaded from user/SOUL.md."
+          : "Architecture context and instructions. Loaded from SYSTEM.md."}
       </p>
 
       <textarea
@@ -115,7 +112,7 @@ function System() {
             : setSystemContent(e.target.value)
         }
         spellCheck={false}
-        placeholder={tab === 'soul' ? 'Define your assistant\'s personality...' : 'System architecture context...'}
+        placeholder={tab === 'soul' ? "Define personality..." : "System architecture..."}
       />
     </div>
   );

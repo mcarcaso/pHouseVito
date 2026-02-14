@@ -69,6 +69,24 @@ All user-specific, non-versioned data lives here:
 - Changes automatically picked up without restart
 - Cron jobs re-initialized on config changes
 
+## Restarting the Server
+**⚠️ Restarting kills your process. You die. Only do this when absolutely necessary.**
+
+**🚨 NEVER restart the server yourself.** When a restart is needed, tell the user why and let them do it from the **Server page** in the dashboard (hamburger menu → Server → Restart button). The dashboard has a restart button with two-click confirmation and auto-reconnect polling. You don't touch `pm2 restart` — that's the user's call.
+
+To restart manually: `pm2 restart vito-server` (via Bash tool) — but only if the user explicitly asks you to.
+
+### When to restart:
+- Changes to **source code** in `src/` (TypeScript files)
+- Changes to **dashboard code** in `dashboard/` (after running `npm run build`)
+- Changes to channel configs or WebSocket server setup
+
+### When NOT to restart (these are already hot-reloaded):
+- **New or updated skills** — loaded fresh from disk on every message
+- **Config changes** to `user/vito.config.json` — hot-reloaded automatically
+- **SOUL.md or SYSTEM.md changes** — re-read on every message
+- **New apps** deployed via PM2 — managed independently
+
 ## Bash Tool Usage Guidelines
 **CRITICAL:** Always use timeouts for potentially long-running commands to prevent hanging!
 

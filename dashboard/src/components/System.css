@@ -1,4 +1,4 @@
-.system-container {
+.system-page {
   display: flex;
   flex-direction: column;
   height: 100%;
@@ -13,6 +13,7 @@
   align-items: center;
   margin-bottom: 0.5rem;
   flex-shrink: 0;
+  gap: 0.5rem;
 }
 
 .system-tabs {
@@ -21,19 +22,19 @@
 }
 
 .system-tab {
-  background: #1a1a1a;
-  border: 1px solid #333;
+  background: #151515;
+  border: 1px solid #222;
   border-radius: 6px;
   padding: 0.5rem 1rem;
   color: #888;
-  font-size: 0.9rem;
+  font-size: 0.85rem;
   cursor: pointer;
   transition: all 0.2s;
 }
 
 .system-tab:hover {
   color: #ccc;
-  border-color: #555;
+  border-color: #333;
 }
 
 .system-tab.active {
@@ -47,22 +48,22 @@
   gap: 0.5rem;
 }
 
-.system-actions .save-btn {
+.save-btn {
   background: #2563eb;
   color: white;
   border: none;
   border-radius: 6px;
-  padding: 0.5rem 1.25rem;
-  font-size: 0.9rem;
+  padding: 0.4rem 1rem;
+  font-size: 0.85rem;
   cursor: pointer;
   transition: background 0.2s;
 }
 
-.system-actions .save-btn:hover:not(:disabled) {
+.save-btn:hover:not(:disabled) {
   background: #1d4ed8;
 }
 
-.system-actions .save-btn:disabled {
+.save-btn:disabled {
   opacity: 0.4;
   cursor: default;
 }
@@ -72,20 +73,20 @@
   color: #888;
   border: 1px solid #333;
   border-radius: 6px;
-  padding: 0.5rem 1rem;
-  font-size: 0.9rem;
+  padding: 0.4rem 0.8rem;
+  font-size: 0.85rem;
   cursor: pointer;
   transition: all 0.2s;
 }
 
 .discard-btn:hover {
   color: #ccc;
-  border-color: #555;
+  border-color: #444;
 }
 
 .system-desc {
   font-size: 0.8rem;
-  color: #666;
+  color: #555;
   margin-bottom: 0.75rem;
   flex-shrink: 0;
 }
@@ -93,16 +94,17 @@
 .system-editor {
   flex: 1;
   background: #111;
-  border: 1px solid #333;
+  border: 1px solid #222;
   border-radius: 8px;
   padding: 1rem;
   color: #e0e0e0;
-  font-family: 'SF Mono', 'Fira Code', 'Consolas', monospace;
+  font-family: 'SF Mono', 'Fira Code', monospace;
   font-size: 0.85rem;
   line-height: 1.6;
   resize: none;
   outline: none;
   min-height: 0;
+  transition: border-color 0.2s;
 }
 
 .system-editor:focus {
@@ -110,17 +112,16 @@
 }
 
 .system-editor::placeholder {
-  color: #444;
+  color: #333;
 }
 
 @media (max-width: 768px) {
-  .system-container {
+  .system-page {
     padding: 0.75rem;
   }
 
   .system-header {
     flex-wrap: wrap;
-    gap: 0.5rem;
   }
 
   .system-tabs {
@@ -130,10 +131,15 @@
   .system-tab {
     flex: 1;
     text-align: center;
+    font-size: 0.85rem;
   }
 
   .system-actions {
     flex: 1 1 100%;
     justify-content: flex-end;
+  }
+
+  .system-editor {
+    font-size: 0.8rem;
   }
 }

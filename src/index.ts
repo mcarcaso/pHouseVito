@@ -75,6 +75,7 @@ async function main() {
         try {
           console.log("\n[Config] Detected changes, reloading...");
           const newConfig = loadConfig();
+          orchestrator.reloadConfig(newConfig);
           orchestrator.reloadCronJobs(newConfig.cron.jobs);
           dashboard.reloadConfig(newConfig);
           console.log("[Config] Reloaded successfully\n");

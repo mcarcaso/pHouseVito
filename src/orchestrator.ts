@@ -89,6 +89,12 @@ export class Orchestrator {
     this.cronScheduler.reload(jobs);
   }
 
+  /** Hot-reload the full config (model, memory, etc.) */
+  reloadConfig(config: VitoConfig): void {
+    this.config = config;
+    console.log(`[Orchestrator] Config reloaded — model: ${config.model.provider}/${config.model.name}`);
+  }
+
   /** Remove a one-time job from the config file after it completes */
   private async removeJobFromConfig(jobName: string): Promise<void> {
     console.log(`[Config] removeJobFromConfig called for: ${jobName}`);
@@ -306,7 +312,7 @@ export class Orchestrator {
     // 6. Create a fresh pi session per message (context comes from our DB,
     //    so there's no need to persist pi's internal message history)
     this.logToFile(`[processMessage] Creating Pi session...`);
-    const piSession = await this.createPiSession(systemPrompt, toolResultCallback);
+    const piSession = await this.createPiSession(systemPrompt, toolResultCallback, sessionConfig);
     this.logToFile(`[processMessage] Pi session created`);
 
     // Register active session so it can be aborted on interrupt
@@ -644,7 +650,8 @@ export class Orchestrator {
 
   private async createPiSession(
     systemPrompt: string,
-    toolResultCallback?: (result: string) => void
+    toolResultCallback?: (result: string) => void,
+    sessionConfig?: SessionConfig
   ): Promise<AgentSession> {
     this.logToFile(`[createPiSession] Creating new Pi session`);
     
@@ -665,9 +672,12 @@ export class Orchestrator {
     const customTools = convertToolsForPi(loadedSkills, toolResultCallback);
     this.logToFile(`[createPiSession] Converted tools for Pi`);
 
+    const model = this.getModel(sessionConfig);
+    this.logToFile(`[createPiSession] Using model: ${model.id}`);
+
     const { session: piSession } = await createAgentSession({
       sessionManager: PiSessionManager.inMemory(),
-      model: this.getModel(),
+      model,
       resourceLoader,
       customTools,
       thinkingLevel: "off",
@@ -718,8 +728,16 @@ Available commands: /new (compact + archive session)
     return sessionConfig?.streamMode || this.config.channels[channelName]?.streamMode || "final";
   }
 
-  private getModel() {
-    const { provider, name } = this.config.model;
+  private getModel(sessionConfig?: SessionConfig) {
+    // Per-session override takes priority over global config
+    if (sessionConfig?.model?.provider && sessionConfig?.model?.name) {
+      console.log(`[Model] Using session override: ${sessionConfig.model.provider}/${sessionConfig.model.name}`);
+      return getModel(sessionConfig.model.provider as any, sessionConfig.model.name as any);
+    }
+    
+    // Fallback to global config, with sensible defaults if undefined
+    const provider = this.config.model?.provider || "anthropic";
+    const name = this.config.model?.name || "claude-sonnet-4-20250514";
     return getModel(provider as any, name as any);
   }
 

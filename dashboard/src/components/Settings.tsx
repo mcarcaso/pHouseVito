@@ -16,17 +16,65 @@ interface Config {
   };
 }
 
+interface ModelOption {
+  id: string;
+}
+
+interface ProviderKeyInfo {
+  envVar: string;
+  description: string;
+}
+
+interface ProvidersResponse {
+  providers: string[];
+  keyStatus: Record<string, boolean>;
+  keyInfo: Record<string, ProviderKeyInfo>;
+}
+
 function Settings() {
   const [config, setConfig] = useState<Config | null>(null);
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
+  const [providers, setProviders] = useState<string[]>([]);
+  const [keyStatus, setKeyStatus] = useState<Record<string, boolean>>({});
+  const [keyInfo, setKeyInfo] = useState<Record<string, ProviderKeyInfo>>({});
+  const [models, setModels] = useState<ModelOption[]>([]);
+  const [loadingModels, setLoadingModels] = useState(false);
 
   useEffect(() => {
-    fetch('/api/config')
-      .then((res) => res.json())
-      .then((data) => setConfig(data))
-      .catch((err) => console.error('Failed to load config:', err));
+    // Load config and providers in parallel
+    Promise.all([
+      fetch('/api/config').then(r => r.json()),
+      fetch('/api/models/providers').then(r => r.json()) as Promise<ProvidersResponse>,
+    ]).then(([configData, providerData]) => {
+      // Ensure model config exists with defaults
+      const safeConfig = {
+        ...configData,
+        model: configData.model || { provider: '', name: '' },
+      };
+      setConfig(safeConfig);
+      setProviders(providerData.providers);
+      setKeyStatus(providerData.keyStatus || {});
+      setKeyInfo(providerData.keyInfo || {});
+      // Load models for current provider
+      if (safeConfig.model.provider) {
+        loadModelsForProvider(safeConfig.model.provider);
+      }
+    }).catch(err => console.error('Failed to load:', err));
   }, []);
+
+  const loadModelsForProvider = async (provider: string) => {
+    setLoadingModels(true);
+    try {
+      const res = await fetch(`/api/models/${provider}`);
+      const data = await res.json();
+      setModels(data);
+    } catch (err) {
+      console.error('Failed to load models:', err);
+      setModels([]);
+    }
+    setLoadingModels(false);
+  };
 
   const save = async () => {
     if (!config) return;
@@ -56,8 +104,26 @@ function Settings() {
     setConfig({ ...config, memory: { ...config.memory, [key]: value } });
   };
 
-  const updateModel = (key: string, value: string) => {
-    setConfig({ ...config, model: { ...config.model, [key]: value } });
+  const handleProviderChange = (provider: string) => {
+    setConfig({ ...config, model: { provider, name: '' } });
+    loadModelsForProvider(provider);
+  };
+
+  const handleModelChange = (name: string) => {
+    setConfig({ ...config, model: { ...config.model, name } });
+  };
+
+  // Group providers into "popular" and "other"
+  const popularProviders = ['anthropic', 'openai', 'google', 'xai', 'groq', 'mistral', 'openrouter'];
+  const sortedProviders = [
+    ...popularProviders.filter(p => providers.includes(p)),
+    ...providers.filter(p => !popularProviders.includes(p)).sort(),
+  ];
+
+  // Get key status indicator for a provider
+  const getKeyIndicator = (provider: string) => {
+    if (!(provider in keyStatus)) return null; // No info about this provider
+    return keyStatus[provider] ? '✓' : '✗';
   };
 
   return (
@@ -71,23 +137,60 @@ function Settings() {
 
       <div className="settings-content">
         <section className="settings-section">
-          <h3>Model</h3>
+          <h3>Global Model</h3>
+          <p className="section-desc">Default model used for all sessions unless overridden.</p>
+
           <div className="setting-row">
             <label>Provider</label>
-            <input
-              type="text"
+            <select
+              className="model-select"
               value={config.model.provider}
-              onChange={(e) => updateModel('provider', e.target.value)}
-            />
+              onChange={(e) => handleProviderChange(e.target.value)}
+            >
+              <option value="">Select provider...</option>
+              {sortedProviders.map(p => {
+                const indicator = getKeyIndicator(p);
+                const hasKey = keyStatus[p];
+                return (
+                  <option key={p} value={p}>
+                    {indicator ? `${indicator} ` : ''}{p}{!hasKey && indicator ? ' (no key)' : ''}
+                  </option>
+                );
+              })}
+            </select>
+            {config.model.provider && keyInfo[config.model.provider] && (
+              <span className={`setting-hint key-hint ${keyStatus[config.model.provider] ? 'has-key' : 'no-key'}`}>
+                {keyStatus[config.model.provider] 
+                  ? `✓ API key configured (${keyInfo[config.model.provider].envVar})`
+                  : `✗ Missing: ${keyInfo[config.model.provider].envVar} — add in Secrets`
+                }
+              </span>
+            )}
           </div>
+
           <div className="setting-row">
-            <label>Model name</label>
-            <input
-              type="text"
-              value={config.model.name}
-              onChange={(e) => updateModel('name', e.target.value)}
-            />
+            <label>Model</label>
+            {loadingModels ? (
+              <span className="setting-hint">Loading models...</span>
+            ) : (
+              <select
+                className="model-select"
+                value={config.model.name}
+                onChange={(e) => handleModelChange(e.target.value)}
+              >
+                <option value="">Select model...</option>
+                {models.map(m => (
+                  <option key={m.id} value={m.id}>{m.id}</option>
+                ))}
+              </select>
+            )}
           </div>
+
+          {config.model.provider && config.model.name && (
+            <div className={`current-model-badge ${keyStatus[config.model.provider] ? '' : 'no-key'}`}>
+              {keyStatus[config.model.provider] ? '🤖' : '⚠️'} {config.model.provider}/{config.model.name}
+            </div>
+          )}
         </section>
 
         <section className="settings-section">
@@ -145,8 +248,6 @@ function Settings() {
             />
             <span className="setting-hint">Include archived messages from other sessions</span>
           </div>
-
-
         </section>
 
         <section className="settings-section">

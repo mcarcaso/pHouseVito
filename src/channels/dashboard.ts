@@ -12,7 +12,8 @@ import { readFileSync, writeFileSync, existsSync, mkdirSync, readdirSync, statSy
 import { execSync } from "child_process";
 import { fileURLToPath } from "url";
 import crypto from "crypto";
-import { readSecrets, writeSecrets, loadSecrets, getSecretsForDashboard, SYSTEM_KEYS } from "../secrets.js";
+import { readSecrets, writeSecrets, loadSecrets, getSecretsForDashboard, SYSTEM_KEYS, PROVIDER_API_KEYS, getProviderKeyStatus } from "../secrets.js";
+import { getProviders, getModels } from "@mariozechner/pi-ai";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const ATTACHMENTS_DIR = path.join(process.cwd(), "data", "attachments");
@@ -109,6 +110,31 @@ export class DashboardChannel implements Channel {
       }
       this.saveConfig();
       res.json(this.config);
+    });
+
+    // Model discovery endpoints
+    this.app.get("/api/models/providers", (req, res) => {
+      try {
+        const providers = getProviders();
+        const keyStatus = getProviderKeyStatus();
+        // Return providers with their API key status
+        res.json({
+          providers,
+          keyStatus,
+          keyInfo: PROVIDER_API_KEYS
+        });
+      } catch (err: any) {
+        res.status(500).json({ error: err.message });
+      }
+    });
+
+    this.app.get("/api/models/:provider", (req, res) => {
+      try {
+        const models = getModels(req.params.provider as any);
+        res.json(models.map((m: any) => ({ id: m.id })));
+      } catch (err: any) {
+        res.status(400).json({ error: `Unknown provider: ${req.params.provider}` });
+      }
     });
 
     this.app.get("/api/sessions", (req, res) => {

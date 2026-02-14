@@ -10,6 +10,44 @@ export const SYSTEM_KEYS: Record<string, string> = {
   DISCORD_BOT_TOKEN: "Discord Bot token — get from https://discord.com/developers/applications (required for Discord channel)",
 };
 
+// Provider API keys — these map to AI model providers
+export const PROVIDER_API_KEYS: Record<string, { envVar: string; description: string }> = {
+  anthropic: { 
+    envVar: "ANTHROPIC_API_KEY", 
+    description: "Anthropic API key — https://console.anthropic.com/account/keys" 
+  },
+  openai: { 
+    envVar: "OPENAI_API_KEY", 
+    description: "OpenAI API key — https://platform.openai.com/api-keys" 
+  },
+  google: { 
+    envVar: "GOOGLE_GENERATIVE_AI_API_KEY", 
+    description: "Google AI API key — https://aistudio.google.com/app/apikey" 
+  },
+  groq: { 
+    envVar: "GROQ_API_KEY", 
+    description: "Groq API key — https://console.groq.com/keys" 
+  },
+  xai: { 
+    envVar: "XAI_API_KEY", 
+    description: "xAI (Grok) API key — https://console.x.ai/" 
+  },
+};
+
+/** Check which providers have valid API keys configured */
+export function getProviderKeyStatus(): Record<string, boolean> {
+  const secrets = readSecrets();
+  const status: Record<string, boolean> = {};
+  
+  for (const [provider, config] of Object.entries(PROVIDER_API_KEYS)) {
+    // Check secrets.json first, then fall back to process.env
+    const value = secrets[config.envVar] || process.env[config.envVar];
+    status[provider] = Boolean(value && value.trim().length > 0);
+  }
+  
+  return status;
+}
+
 export interface SecretEntry {
   key: string;
   value: string;

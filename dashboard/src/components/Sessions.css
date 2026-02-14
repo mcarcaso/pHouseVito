@@ -421,4 +421,109 @@
     align-items: flex-start;
     gap: 0.5rem;
   }
+
+  .model-override-controls {
+    flex-wrap: wrap;
+  }
+
+  .session-model-select {
+    width: 100%;
+    font-size: 1rem;
+  }
+}
+
+/* Session model override */
+.session-model-section {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.model-override-btn {
+  background: #1a1a2e;
+  border: 1px solid #2563eb33;
+  border-radius: 6px;
+  padding: 0.35rem 0.75rem;
+  color: #7aa2f7;
+  font-size: 0.8rem;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.model-override-btn:hover {
+  background: #1a1a3e;
+  border-color: #2563eb66;
+}
+
+.model-override-controls {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.session-model-select {
+  background: #111;
+  border: 1px solid #333;
+  border-radius: 6px;
+  padding: 0.35rem 0.5rem;
+  color: #e0e0e0;
+  font-size: 0.8rem;
+  outline: none;
+  cursor: pointer;
+  appearance: none;
+  -webkit-appearance: none;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='10' viewBox='0 0 12 12'%3E%3Cpath fill='%23666' d='M6 8L1 3h10z'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 0.5rem center;
+  padding-right: 1.5rem;
+  min-width: 140px;
+}
+
+.session-model-select:focus {
+  border-color: #2563eb;
+}
+
+.clear-override-btn {
+  background: #2a1a1a;
+  border: 1px solid #ff444433;
+  border-radius: 6px;
+  padding: 0.3rem 0.5rem;
+  color: #ff6b6b;
+  font-size: 0.75rem;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.clear-override-btn:hover {
+  background: #3a1a1a;
+  border-color: #ff444466;
+}
+
+.loading-hint {
+  font-size: 0.75rem;
+  color: #666;
+}
+
+.config-saved-hint {
+  font-size: 0.75rem;
+  color: #4ade80;
+  animation: fadeIn 0.2s;
+}
+
+.session-model-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  background: #1a1a2e;
+  border: 1px solid #2563eb33;
+  border-radius: 6px;
+  padding: 0.3rem 0.6rem;
+  font-size: 0.75rem;
+  color: #7aa2f7;
+  font-family: 'SF Mono', 'Fira Code', monospace;
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
 }

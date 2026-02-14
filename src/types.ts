@@ -123,6 +123,10 @@ export interface MessageRow {
 
 export interface SessionConfig {
   streamMode?: StreamMode;
+  model?: {
+    provider: string;
+    name: string;
+  };
 }
 
 export interface SessionRow {

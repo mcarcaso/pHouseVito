@@ -12,6 +12,14 @@ interface Session {
   config: string;
 }
 
+interface SessionConfig {
+  streamMode?: string;
+  model?: {
+    provider: string;
+    name: string;
+  };
+}
+
 interface Message {
   id: number;
   session_id: string;
@@ -19,6 +27,10 @@ interface Message {
   content: string;
   timestamp: number;
   compacted: boolean;
+}
+
+interface ModelOption {
+  id: string;
 }
 
 type SortField = 'id' | 'role' | 'timestamp' | 'compacted';
@@ -175,6 +187,96 @@ function Sessions() {
     return sortDirection === 'asc' ? '↑' : '↓';
   };
 
+  // Session model override state
+  const [sessionConfig, setSessionConfig] = useState<SessionConfig>({});
+  const [providers, setProviders] = useState<string[]>([]);
+  const [sessionModels, setSessionModels] = useState<ModelOption[]>([]);
+  const [loadingSessionModels, setLoadingSessionModels] = useState(false);
+  const [savingConfig, setSavingConfig] = useState(false);
+  const [configSaved, setConfigSaved] = useState(false);
+  const [showModelOverride, setShowModelOverride] = useState(false);
+
+  // Load providers once
+  useEffect(() => {
+    fetch('/api/models/providers')
+      .then(r => r.json())
+      .then(data => setProviders(data))
+      .catch(err => console.error('Failed to load providers:', err));
+  }, []);
+
+  // Load session config when session changes
+  useEffect(() => {
+    if (selectedSession) {
+      fetch(`/api/sessions/${selectedSession}/config`)
+        .then(r => r.json())
+        .then(data => {
+          setSessionConfig(data);
+          setShowModelOverride(!!data.model?.provider);
+          if (data.model?.provider) {
+            loadSessionModels(data.model.provider);
+          }
+        })
+        .catch(err => console.error('Failed to load session config:', err));
+    }
+  }, [selectedSession]);
+
+  const loadSessionModels = async (provider: string) => {
+    setLoadingSessionModels(true);
+    try {
+      const res = await fetch(`/api/models/${provider}`);
+      const data = await res.json();
+      setSessionModels(data);
+    } catch (err) {
+      setSessionModels([]);
+    }
+    setLoadingSessionModels(false);
+  };
+
+  const saveSessionConfig = async (config: SessionConfig) => {
+    if (!selectedSession) return;
+    setSavingConfig(true);
+    try {
+      const res = await fetch(`/api/sessions/${selectedSession}/config`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(config),
+      });
+      const updated = await res.json();
+      setSessionConfig(updated);
+      setConfigSaved(true);
+      setTimeout(() => setConfigSaved(false), 2000);
+    } catch (err) {
+      console.error('Failed to save session config:', err);
+    }
+    setSavingConfig(false);
+  };
+
+  const handleSessionProviderChange = (provider: string) => {
+    const newConfig = { ...sessionConfig, model: { provider, name: '' } };
+    setSessionConfig(newConfig);
+    loadSessionModels(provider);
+  };
+
+  const handleSessionModelChange = (name: string) => {
+    const newConfig = { ...sessionConfig, model: { ...sessionConfig.model!, name } };
+    setSessionConfig(newConfig);
+    saveSessionConfig(newConfig);
+  };
+
+  const clearModelOverride = () => {
+    const { model, ...rest } = sessionConfig;
+    const newConfig = rest;
+    setSessionConfig(newConfig);
+    setShowModelOverride(false);
+    saveSessionConfig(newConfig);
+  };
+
+  const popularProviders = ['anthropic', 'openai', 'google', 'xai', 'mistral', 'openrouter'];
+  const sortedProviders = [
+    ...popularProviders.filter(p => providers.includes(p)),
+    ...providers.filter(p => !popularProviders.includes(p)).sort(),
+  ];
+
   // Parse messages for ChatView
   const parsedMessages: ParsedMessage[] = allMessages.map((msg) =>
     parseDbMessage({ role: msg.role, content: msg.content, timestamp: msg.timestamp })
@@ -225,6 +327,56 @@ function Sessions() {
         <div className="session-detail-content">
           <div className="session-config-bar">
             <span className="session-id-label">{selectedSession}</span>
+            <div className="session-model-section">
+              {!showModelOverride ? (
+                <button
+                  className="model-override-btn"
+                  onClick={() => setShowModelOverride(true)}
+                >
+                  🤖 Set Model Override
+                </button>
+              ) : (
+                <div className="model-override-controls">
+                  <select
+                    className="session-model-select"
+                    value={sessionConfig.model?.provider || ''}
+                    onChange={(e) => handleSessionProviderChange(e.target.value)}
+                  >
+                    <option value="">Provider...</option>
+                    {sortedProviders.map(p => (
+                      <option key={p} value={p}>{p}</option>
+                    ))}
+                  </select>
+                  {loadingSessionModels ? (
+                    <span className="loading-hint">Loading...</span>
+                  ) : (
+                    <select
+                      className="session-model-select"
+                      value={sessionConfig.model?.name || ''}
+                      onChange={(e) => handleSessionModelChange(e.target.value)}
+                    >
+                      <option value="">Model...</option>
+                      {sessionModels.map(m => (
+                        <option key={m.id} value={m.id}>{m.id}</option>
+                      ))}
+                    </select>
+                  )}
+                  <button
+                    className="clear-override-btn"
+                    onClick={clearModelOverride}
+                    title="Remove model override (use global default)"
+                  >
+                    ✕
+                  </button>
+                  {configSaved && <span className="config-saved-hint">Saved ✓</span>}
+                </div>
+              )}
+              {sessionConfig.model?.provider && sessionConfig.model?.name && (
+                <span className="session-model-badge">
+                  🤖 {sessionConfig.model.provider}/{sessionConfig.model.name}
+                </span>
+              )}
+            </div>
           </div>
 
           {allMessages.length > 0 ? (

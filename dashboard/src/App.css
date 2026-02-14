@@ -3,11 +3,10 @@
 .app {
   display: flex;
   flex-direction: column;
-  height: 100vh;
-  height: 100dvh;
+  min-height: 100vh;
+  min-height: 100dvh;
   background: #0a0a0a;
   color: #e0e0e0;
-  overflow: hidden;
 }
 
 /* ---- Desktop Sidebar ---- */
@@ -32,6 +31,9 @@
     overflow-y: auto;
     overflow-x: hidden;
     flex-shrink: 0;
+    position: fixed;
+    left: 0;
+    top: 0;
   }
 
   .sidebar-header {
@@ -69,10 +71,7 @@
   /* Content fills remaining space */
   .content {
     flex: 1;
-    height: 100vh;
-    height: 100dvh;
-    overflow-y: auto;
-    overflow-x: hidden;
+    margin-left: 220px;
   }
 }
 
@@ -240,9 +239,6 @@
 /* ---- Main Content ---- */
 .content {
   flex: 1;
-  overflow-y: auto;
-  overflow-x: hidden;
-  -webkit-overflow-scrolling: touch;
 }
 
 /* ---- Sub-page Header ---- */

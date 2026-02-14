@@ -1,13 +1,10 @@
 .skills-page {
-  height: 100%;
   display: flex;
   flex-direction: column;
-  overflow: hidden;
+  padding-bottom: 2rem;
 }
 
 .skills-scroll {
-  flex: 1;
-  overflow-y: auto;
 }
 
 .skills-section-header {
@@ -20,7 +17,6 @@
 }
 
 .skills-list {
-  overflow-y: auto;
   padding: 0 1rem 1rem;
 }
 
@@ -127,9 +123,6 @@
 }
 
 .file-viewer {
-  flex: 1;
-  overflow-y: auto;
-  overflow-x: hidden;
   padding: 0 1rem 1rem;
 }
 

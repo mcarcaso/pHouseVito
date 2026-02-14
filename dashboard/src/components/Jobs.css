@@ -1,8 +1,7 @@
 .jobs-page {
-  height: 100%;
   display: flex;
   flex-direction: column;
-  overflow: hidden;
+  padding-bottom: 2rem;
 }
 
 .jobs-page .page-header {
@@ -27,8 +26,6 @@
 }
 
 .jobs-content {
-  flex: 1;
-  overflow-y: auto;
   padding: 0 1rem 1rem;
 }
 

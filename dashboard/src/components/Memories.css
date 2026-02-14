@@ -1,8 +1,7 @@
 .memories-page {
-  height: 100%;
   display: flex;
   flex-direction: column;
-  overflow: hidden;
+  padding-bottom: 2rem;
 }
 
 .memories-search {
@@ -27,8 +26,6 @@
 }
 
 .memories-list {
-  flex: 1;
-  overflow-y: auto;
   padding: 0 1rem 1rem;
 }
 

@@ -1,6 +1,6 @@
 import axios from 'axios';
 
-const API_URL = 'http://localhost:3000/api/cron/jobs';
+const API_URL = 'http://localhost:3030/api/cron/jobs';
 
 export const skill = {
   name: 'scheduler',

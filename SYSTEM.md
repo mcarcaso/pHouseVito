@@ -37,8 +37,10 @@ All user-specific, non-versioned data lives here:
 ## Key Patterns
 
 ### MEDIA Protocol
+**When a user asks you to send, share, or show a file (image, code file, document, etc.), use `MEDIA:/path/to/file` in your response.** The channel will handle rendering it appropriately — inline images in the dashboard, file uploads in Discord, etc. Don't just read a file and paste its contents when the user wants the actual file delivered. Reach for `MEDIA:` first.
+
 - Skills return **plain output** (just the file path, no `MEDIA:` prefix)
-- Pi learns to use `MEDIA:/path` syntax from system instructions
+- You use `MEDIA:/path` syntax when sharing files with the user
 - Orchestrator relays plain text as-is
 - Channels handle `MEDIA:` rendering:
   - Dashboard: renders images/files inline

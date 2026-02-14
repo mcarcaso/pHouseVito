@@ -1,10 +1,7 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { useSearchParams } from 'react-router-dom';
+import ChatView, { parseDbMessage, type ParsedMessage } from './ChatView';
 import './Sessions.css';
-
-interface SessionConfig {
-  [key: string]: unknown;
-}
 
 interface Session {
   id: string;
@@ -26,6 +23,7 @@ interface Message {
 
 type SortField = 'id' | 'role' | 'timestamp' | 'compacted';
 type SortDirection = 'asc' | 'desc';
+type ViewMode = 'table' | 'chat';
 
 function Sessions() {
   const [searchParams, setSearchParams] = useSearchParams();
@@ -34,12 +32,12 @@ function Sessions() {
   const [sessions, setSessions] = useState<Session[]>([]);
   const [allMessages, setAllMessages] = useState<Message[]>([]);
   const [displayedMessages, setDisplayedMessages] = useState<Message[]>([]);
-  const [sessionConfig, setSessionConfig] = useState<SessionConfig>({});
   const [loading, setLoading] = useState(true);
   const [messageOffset, setMessageOffset] = useState(0);
   const [sortField, setSortField] = useState<SortField>('timestamp');
   const [sortDirection, setSortDirection] = useState<SortDirection>('desc');
   const [expandedMessages, setExpandedMessages] = useState<Set<number>>(new Set());
+  const [viewMode, setViewMode] = useState<ViewMode>('chat');
   const MESSAGE_PAGE_SIZE = 20;
   const [autoRefresh, setAutoRefresh] = useState(true);
   const autoRefreshRef = useRef(autoRefresh);
@@ -59,7 +57,6 @@ function Sessions() {
     fetchSessions();
   }, []);
 
-  // Auto-refresh timer
   useEffect(() => {
     if (!autoRefresh) return;
     const interval = setInterval(() => {
@@ -75,7 +72,6 @@ function Sessions() {
   useEffect(() => {
     if (selectedSession) {
       fetchMessages(selectedSession);
-      fetchSessionConfig(selectedSession);
     }
   }, [selectedSession]);
 
@@ -116,17 +112,6 @@ function Sessions() {
       console.error('Failed to fetch messages:', err);
     }
   };
-
-  const fetchSessionConfig = async (sessionId: string) => {
-    try {
-      const res = await fetch(`/api/sessions/${sessionId}/config`);
-      const data = await res.json();
-      setSessionConfig(data);
-    } catch (err) {
-      console.error('Failed to fetch session config:', err);
-    }
-  };
-
 
   const handleSort = (field: SortField) => {
     if (sortField === field) {
@@ -190,11 +175,16 @@ function Sessions() {
     return sortDirection === 'asc' ? '↑' : '↓';
   };
 
+  // Parse messages for ChatView
+  const parsedMessages: ParsedMessage[] = allMessages.map((msg) =>
+    parseDbMessage({ role: msg.role, content: msg.content, timestamp: msg.timestamp })
+  );
+
   if (loading) {
     return <div className="sessions-page">Loading sessions...</div>;
   }
 
-  // Two views: list or detail (based on URL params)
+  // Detail view
   if (selectedSession) {
     return (
       <div className="sessions-page">
@@ -202,6 +192,22 @@ function Sessions() {
           <button className="back-link" onClick={() => setSearchParams({})}>‹ Sessions</button>
           <h2>Messages ({allMessages.length})</h2>
           <div className="refresh-controls">
+            <div className="view-mode-toggle">
+              <button
+                className={`view-mode-btn ${viewMode === 'chat' ? 'active' : ''}`}
+                onClick={() => setViewMode('chat')}
+                title="Chat View"
+              >
+                💬
+              </button>
+              <button
+                className={`view-mode-btn ${viewMode === 'table' ? 'active' : ''}`}
+                onClick={() => setViewMode('table')}
+                title="Table View"
+              >
+                📋
+              </button>
+            </div>
             <label className="auto-refresh-toggle">
               <input
                 type="checkbox"
@@ -219,87 +225,97 @@ function Sessions() {
         <div className="session-detail-content">
           <div className="session-config-bar">
             <span className="session-id-label">{selectedSession}</span>
-
           </div>
 
           {allMessages.length > 0 ? (
-            <>
-              <div className="messages-table-actions">
-                <button
-                  className="expand-all-btn"
-                  onClick={() => {
-                    if (expandedMessages.size > 0) {
-                      setExpandedMessages(new Set());
-                    } else {
-                      setExpandedMessages(new Set(displayedMessages.map((m) => m.id)));
-                    }
-                  }}
-                >
-                  {expandedMessages.size > 0 ? 'Collapse All' : 'Expand All'}
-                </button>
+            viewMode === 'chat' ? (
+              <div className="session-chat-view">
+                <ChatView
+                  messages={parsedMessages}
+                  autoScroll={false}
+                  showFilters={true}
+                  reversed={true}
+                />
               </div>
-              <div className="messages-table-container">
-                <table className="messages-table">
-                  <thead>
-                    <tr>
-                      <th onClick={() => handleSort('id')} className="sortable">
-                        ID {getSortIcon('id')}
-                      </th>
-                      <th onClick={() => handleSort('role')} className="sortable">
-                        Role {getSortIcon('role')}
-                      </th>
-                      <th onClick={() => handleSort('timestamp')} className="sortable">
-                        Time {getSortIcon('timestamp')}
-                      </th>
-                      <th>Content</th>
-                      <th onClick={() => handleSort('compacted')} className="sortable">
-                        C {getSortIcon('compacted')}
-                      </th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {displayedMessages.map((msg) => {
-                      const content = parseContent(msg.content);
-                      const isExpanded = expandedMessages.has(msg.id);
-                      return (
-                        <tr key={msg.id} className={`message-row ${msg.role}`}>
-                          <td className="message-id">{msg.id}</td>
-                          <td className="message-role">
-                            <span className={`role-badge ${msg.role}`}>{msg.role}</span>
-                          </td>
-                          <td className="message-timestamp">
-                            {formatTimestamp(msg.timestamp)}
-                          </td>
-                          <td className="message-content-cell">
-                            <div
-                              className={`content-preview expandable ${isExpanded ? 'expanded' : ''}`}
-                              onClick={() => toggleMessageExpanded(msg.id)}
-                            >
-                              {isExpanded ? content : truncateContent(content, 150)}
-                            </div>
-                          </td>
-                          <td className="message-compacted">
-                            {msg.compacted ? (
-                              <span className="compacted-badge">✓</span>
-                            ) : (
-                              <span className="not-compacted">—</span>
-                            )}
-                          </td>
-                        </tr>
-                      );
-                    })}
-                  </tbody>
-                </table>
-              </div>
-
-              {displayedMessages.length < allMessages.length && (
-                <div className="load-more-container">
-                  <button className="load-more-btn" onClick={loadMoreMessages}>
-                    Load More ({displayedMessages.length} of {allMessages.length})
+            ) : (
+              <>
+                <div className="messages-table-actions">
+                  <button
+                    className="expand-all-btn"
+                    onClick={() => {
+                      if (expandedMessages.size > 0) {
+                        setExpandedMessages(new Set());
+                      } else {
+                        setExpandedMessages(new Set(displayedMessages.map((m) => m.id)));
+                      }
+                    }}
+                  >
+                    {expandedMessages.size > 0 ? 'Collapse All' : 'Expand All'}
                   </button>
                 </div>
-              )}
-            </>
+                <div className="messages-table-container">
+                  <table className="messages-table">
+                    <thead>
+                      <tr>
+                        <th onClick={() => handleSort('id')} className="sortable">
+                          ID {getSortIcon('id')}
+                        </th>
+                        <th onClick={() => handleSort('role')} className="sortable">
+                          Role {getSortIcon('role')}
+                        </th>
+                        <th onClick={() => handleSort('timestamp')} className="sortable">
+                          Time {getSortIcon('timestamp')}
+                        </th>
+                        <th>Content</th>
+                        <th onClick={() => handleSort('compacted')} className="sortable">
+                          C {getSortIcon('compacted')}
+                        </th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {displayedMessages.map((msg) => {
+                        const content = parseContent(msg.content);
+                        const isExpanded = expandedMessages.has(msg.id);
+                        return (
+                          <tr key={msg.id} className={`message-row ${msg.role}`}>
+                            <td className="message-id">{msg.id}</td>
+                            <td className="message-role">
+                              <span className={`role-badge ${msg.role}`}>{msg.role}</span>
+                            </td>
+                            <td className="message-timestamp">
+                              {formatTimestamp(msg.timestamp)}
+                            </td>
+                            <td className="message-content-cell">
+                              <div
+                                className={`content-preview expandable ${isExpanded ? 'expanded' : ''}`}
+                                onClick={() => toggleMessageExpanded(msg.id)}
+                              >
+                                {isExpanded ? content : truncateContent(content, 150)}
+                              </div>
+                            </td>
+                            <td className="message-compacted">
+                              {msg.compacted ? (
+                                <span className="compacted-badge">✓</span>
+                              ) : (
+                                <span className="not-compacted">—</span>
+                              )}
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+
+                {displayedMessages.length < allMessages.length && (
+                  <div className="load-more-container">
+                    <button className="load-more-btn" onClick={loadMoreMessages}>
+                      Load More ({displayedMessages.length} of {allMessages.length})
+                    </button>
+                  </div>
+                )}
+              </>
+            )
           ) : (
             <div className="empty-state">No messages in this session</div>
           )}

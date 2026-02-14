@@ -363,6 +363,44 @@
   padding: 3rem 1.5rem;
 }
 
+/* View mode toggle */
+.view-mode-toggle {
+  display: flex;
+  background: #111;
+  border-radius: 6px;
+  border: 1px solid #222;
+  overflow: hidden;
+}
+
+.view-mode-btn {
+  background: transparent;
+  border: none;
+  color: #666;
+  padding: 0.35rem 0.6rem;
+  cursor: pointer;
+  font-size: 0.9rem;
+  transition: all 0.2s;
+  line-height: 1;
+}
+
+.view-mode-btn:hover {
+  background: #1a1a1a;
+  color: #e0e0e0;
+}
+
+.view-mode-btn.active {
+  background: #1e3a5f;
+  color: #60a5fa;
+}
+
+/* Session chat view */
+.session-chat-view {
+  flex: 1;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
 /* ---- Mobile ---- */
 @media (max-width: 768px) {
   .messages-table-container {

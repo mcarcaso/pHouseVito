@@ -694,6 +694,8 @@ For system architecture, file structure, restart rules, bash guidelines, and ope
 
 You can query the SQLite database (user/vito.db) for more message history if needed. Read SYSTEM.md for schema details.
 
+To send/share a file or image inline, output MEDIA:/path/to/file on its own line. The channel will deliver it as an attachment. Don't paste file contents when the user asks you to "send" a file — use MEDIA: instead.
+
 Available commands: /new (compact + archive session)
 </system>`);
 

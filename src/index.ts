@@ -1,13 +1,39 @@
 import { resolve } from "path";
+import { existsSync, writeFileSync, watch } from "fs";
+import dotenv from "dotenv";
 import { createDatabase } from "./db/schema.js";
 import { Queries } from "./db/queries.js";
-import { loadConfig, loadSoul } from "./config.js";
+import { ensureUserDir, loadConfig, loadSoul, USER_DIR } from "./config.js";
 import { Orchestrator } from "./orchestrator.js";
-import { CLIChannel } from "./channels/cli.js";
+import { DashboardChannel } from "./channels/dashboard.js";
+import { TelegramChannel } from "./channels/telegram.js";
 
 const ROOT = process.cwd();
 
+// Known keys the app cares about
+const MANAGED_KEYS = [
+  "ANTHROPIC_API_KEY",
+  "OPENAI_API_KEY",
+  "TELEGRAM_BOT_TOKEN",
+];
+
 async function main() {
+  // Ensure user/ directory exists (copy from user.example/ on first run)
+  ensureUserDir();
+
+  // Seed .env on first run — populate from shell env or leave blank as placeholders
+  const envPath = resolve(USER_DIR, ".env");
+  if (!existsSync(envPath)) {
+    const lines = MANAGED_KEYS.map((key) =>
+      `${key}=${process.env[key] || ""}`
+    );
+    writeFileSync(envPath, lines.join("\n") + "\n", "utf-8");
+    console.log(`.env created with ${MANAGED_KEYS.length} key(s)`);
+  }
+
+  // Load .env as source of truth (override shell vars)
+  dotenv.config({ path: envPath, override: true });
+
   console.log("Starting Vito...\n");
 
   // Load config and soul
@@ -20,26 +46,58 @@ async function main() {
   }
 
   // Initialize database
-  const dbPath = resolve(ROOT, "data", "vito.db");
+  const dbPath = resolve(USER_DIR, "vito.db");
   const db = createDatabase(dbPath);
   const queries = new Queries(db);
   console.log(`Database: ${dbPath}`);
 
   // Create orchestrator
-  const skillsDir = resolve(ROOT, "skills");
+  const skillsDir = resolve(USER_DIR, "skills");
   const orchestrator = new Orchestrator(queries, config, soul, skillsDir);
 
-  // Register CLI channel
-  const cli = new CLIChannel();
-  orchestrator.registerChannel(cli);
+  // Register Dashboard channel (starts web server)
+  const dashboard = new DashboardChannel(db, queries, config);
+  dashboard.setSkillsGetter(() => orchestrator.getSkills());
+  dashboard.setCronManager({
+    scheduleJob: (job) => orchestrator.getCronScheduler().scheduleJob(job),
+    removeJob: (name) => orchestrator.getCronScheduler().removeJob(name),
+    getActiveJobs: () => orchestrator.getCronScheduler().getActiveJobs(),
+  });
+  orchestrator.registerChannel(dashboard);
 
-  // Start channels (sets up listeners but doesn't prompt yet)
+  // Register Telegram channel
+  const telegram = new TelegramChannel(config);
+  orchestrator.registerChannel(telegram);
+
+  // Start channels
   await orchestrator.start();
 
-  console.log("\nVito is ready. Type /quit to exit.\n");
+  console.log("\nVito is ready. Dashboard at http://localhost:3030\n");
 
-  // Now start the CLI prompt loop (after all startup messages are done)
-  cli.startPrompting();
+  // Watch config file for changes (hot-reload cron jobs)
+  const configPath = resolve(USER_DIR, "vito.config.json");
+  let reloadTimeout: NodeJS.Timeout | null = null;
+  
+  watch(configPath, (eventType) => {
+    if (eventType === "change") {
+      // Debounce rapid changes
+      if (reloadTimeout) clearTimeout(reloadTimeout);
+      
+      reloadTimeout = setTimeout(() => {
+        try {
+          console.log("\n[Config] Detected changes, reloading...");
+          const newConfig = loadConfig();
+          orchestrator.reloadCronJobs(newConfig.cron.jobs);
+          dashboard.reloadConfig(newConfig);
+          console.log("[Config] Reloaded successfully\n");
+        } catch (err) {
+          console.error("[Config] Failed to reload:", err);
+        }
+      }, 500); // Wait 500ms for file write to complete
+    }
+  });
+  
+  console.log("[Config] Watching for changes...\n");
 
   // Handle graceful shutdown
   process.on("SIGINT", async () => {
@@ -48,6 +106,9 @@ async function main() {
     db.close();
     process.exit(0);
   });
+
+  // Keep process alive (dashboard server handles connections)
+  process.stdin.resume();
 }
 
 main().catch((err) => {

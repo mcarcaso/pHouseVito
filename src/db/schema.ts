@@ -18,7 +18,8 @@ export function createDatabase(dbPath: string): Database.Database {
       channel TEXT,
       channel_target TEXT,
       created_at INTEGER NOT NULL,
-      last_active_at INTEGER NOT NULL
+      last_active_at INTEGER NOT NULL,
+      config JSON DEFAULT '{}'
     );
 
     CREATE TABLE IF NOT EXISTS messages (
@@ -36,6 +37,7 @@ export function createDatabase(dbPath: string): Database.Database {
     CREATE TABLE IF NOT EXISTS memories (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       timestamp INTEGER NOT NULL,
+      title TEXT NOT NULL DEFAULT '',
       content TEXT NOT NULL,
       embedding BLOB
     );
@@ -45,6 +47,18 @@ export function createDatabase(dbPath: string): Database.Database {
     CREATE INDEX IF NOT EXISTS idx_messages_timestamp ON messages(timestamp);
     CREATE INDEX IF NOT EXISTS idx_sessions_last_active ON sessions(last_active_at);
   `);
+
+  // Migrations for existing databases
+  const columns = db.pragma("table_info(sessions)") as Array<{ name: string }>;
+  if (!columns.some((c) => c.name === "config")) {
+    db.exec("ALTER TABLE sessions ADD COLUMN config JSON DEFAULT '{}'");
+  }
+
+  // Add title column to memories table
+  const memoryColumns = db.pragma("table_info(memories)") as Array<{ name: string }>;
+  if (!memoryColumns.some((c) => c.name === "title")) {
+    db.exec("ALTER TABLE memories ADD COLUMN title TEXT NOT NULL DEFAULT ''");
+  }
 
   return db;
 }

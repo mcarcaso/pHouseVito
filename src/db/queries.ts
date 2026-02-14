@@ -15,8 +15,8 @@ export class Queries {
   upsertSession(session: SessionRow): void {
     this.db
       .prepare(
-        `INSERT INTO sessions (id, channel, channel_target, created_at, last_active_at)
-         VALUES (@id, @channel, @channel_target, @created_at, @last_active_at)
+        `INSERT INTO sessions (id, channel, channel_target, created_at, last_active_at, config)
+         VALUES (@id, @channel, @channel_target, @created_at, @last_active_at, @config)
          ON CONFLICT(id) DO UPDATE SET last_active_at = @last_active_at`
       )
       .run(session);
@@ -34,6 +34,12 @@ export class Queries {
       .run(timestamp, id);
   }
 
+  updateSessionConfig(id: string, config: string): void {
+    this.db
+      .prepare("UPDATE sessions SET config = ? WHERE id = ?")
+      .run(config, id);
+  }
+
   // ── Messages ──
 
   insertMessage(msg: Omit<MessageRow, "id">): number {
@@ -47,12 +53,13 @@ export class Queries {
   }
 
   /** Get N most recent un-compacted messages for a session */
-  getRecentMessages(sessionId: string, limit: number): MessageRow[] {
+  getRecentMessages(sessionId: string, limit: number, includeTools = true): MessageRow[] {
+    const toolFilter = includeTools ? "" : " AND role != 'tool'";
     return this.db
       .prepare(
         `SELECT * FROM (
            SELECT * FROM messages
-           WHERE session_id = ? AND compacted = 0
+           WHERE session_id = ? AND compacted = 0${toolFilter}
            ORDER BY timestamp DESC
            LIMIT ?
          ) ORDER BY timestamp ASC`
@@ -60,16 +67,42 @@ export class Queries {
       .all(sessionId, limit) as MessageRow[];
   }
 
+  /** Get all messages for a session (including compacted) for dashboard */
+  getAllMessagesForSession(sessionId: string, limit?: number): MessageRow[] {
+    if (limit) {
+      return this.db
+        .prepare(
+          `SELECT * FROM (
+             SELECT * FROM messages
+             WHERE session_id = ?
+             ORDER BY timestamp DESC
+             LIMIT ?
+           ) ORDER BY timestamp ASC`
+        )
+        .all(sessionId, limit) as MessageRow[];
+    } else {
+      return this.db
+        .prepare(
+          `SELECT * FROM messages
+           WHERE session_id = ?
+           ORDER BY timestamp ASC`
+        )
+        .all(sessionId) as MessageRow[];
+    }
+  }
+
   /** Get M most recent un-compacted messages from OTHER sessions */
   getCrossSessionMessages(
     excludeSessionId: string,
-    limit: number
+    limit: number,
+    includeTools = false
   ): MessageRow[] {
+    const toolFilter = includeTools ? "" : " AND role != 'tool'";
     return this.db
       .prepare(
         `SELECT * FROM (
            SELECT * FROM messages
-           WHERE session_id != ? AND compacted = 0
+           WHERE session_id != ? AND compacted = 0${toolFilter}
            ORDER BY timestamp DESC
            LIMIT ?
          ) ORDER BY timestamp ASC`
@@ -114,29 +147,51 @@ export class Queries {
   }
 
   replaceAllMemories(
-    memories: Array<{ content: string; embedding: Buffer | null }>
+    memories: Array<{ title: string; content: string; embedding: Buffer | null }>
   ): void {
     const tx = this.db.transaction(
-      (mems: Array<{ content: string; embedding: Buffer | null }>) => {
+      (mems: Array<{ title: string; content: string; embedding: Buffer | null }>) => {
         this.db.prepare("DELETE FROM memories").run();
         const insert = this.db.prepare(
-          "INSERT INTO memories (timestamp, content, embedding) VALUES (?, ?, ?)"
+          "INSERT INTO memories (timestamp, title, content, embedding) VALUES (?, ?, ?, ?)"
         );
         const now = Date.now();
         for (const mem of mems) {
-          insert.run(now, mem.content, mem.embedding);
+          insert.run(now, mem.title, mem.content, mem.embedding);
         }
       }
     );
     tx(memories);
   }
 
-  insertMemory(content: string, embedding: Buffer | null): number {
+  /** Search memories by keyword (LIKE match), return top N */
+  searchMemoriesByKeyword(keywords: string[], limit: number): MemoryRow[] {
+    if (keywords.length === 0) {
+      return this.db
+        .prepare("SELECT * FROM memories ORDER BY timestamp DESC LIMIT ?")
+        .all(limit) as MemoryRow[];
+    }
+    const titleClauses = keywords.map(() => "title LIKE ?");
+    const contentClauses = keywords.map(() => "content LIKE ?");
+    const allClauses = [...titleClauses, ...contentClauses];
+    const params = keywords.map((k) => `%${k}%`);
+    const allParams = [...params, ...params]; // title params + content params
+    return this.db
+      .prepare(
+        `SELECT *, (${allClauses.join(" + ")}) as matches FROM memories
+         WHERE ${allClauses.join(" OR ")}
+         ORDER BY matches DESC, timestamp DESC
+         LIMIT ?`
+      )
+      .all(...allParams, ...allParams, limit) as MemoryRow[];
+  }
+
+  insertMemory(title: string, content: string, embedding: Buffer | null): number {
     const result = this.db
       .prepare(
-        "INSERT INTO memories (timestamp, content, embedding) VALUES (?, ?, ?)"
+        "INSERT INTO memories (timestamp, title, content, embedding) VALUES (?, ?, ?, ?)"
       )
-      .run(Date.now(), content, embedding);
+      .run(Date.now(), title, content, embedding);
     return result.lastInsertRowid as number;
   }
 }

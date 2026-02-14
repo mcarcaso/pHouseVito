@@ -1,0 +1,130 @@
+.settings-container {
+  max-width: 700px;
+  margin: 0 auto;
+  padding: 1rem;
+}
+
+.settings-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 1.5rem;
+}
+
+.settings-header h2 {
+  font-size: 1.2rem;
+  color: #fff;
+}
+
+.save-btn {
+  background: #2563eb;
+  color: white;
+  border: none;
+  border-radius: 6px;
+  padding: 0.5rem 1.5rem;
+  font-size: 0.9rem;
+  cursor: pointer;
+  transition: background 0.2s;
+}
+
+.save-btn:hover:not(:disabled) {
+  background: #1d4ed8;
+}
+
+.save-btn:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+
+.settings-section {
+  background: #111;
+  border-radius: 8px;
+  padding: 1.25rem;
+  margin-bottom: 1rem;
+}
+
+.settings-section h3 {
+  font-size: 1rem;
+  color: #fff;
+  margin-bottom: 0.25rem;
+}
+
+.section-desc {
+  font-size: 0.8rem;
+  color: #666;
+  margin-bottom: 1rem;
+}
+
+.setting-row {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  padding: 0.6rem 0;
+  border-bottom: 1px solid #1a1a1a;
+}
+
+.setting-row:last-child {
+  border-bottom: none;
+}
+
+.setting-row label {
+  flex: 0 0 240px;
+  font-size: 0.9rem;
+  color: #ccc;
+}
+
+.setting-row input[type="number"],
+.setting-row input[type="text"] {
+  background: #1a1a1a;
+  border: 1px solid #333;
+  border-radius: 6px;
+  padding: 0.5rem 0.75rem;
+  color: #e0e0e0;
+  font-size: 0.9rem;
+  width: 120px;
+  outline: none;
+}
+
+.setting-row input[type="text"] {
+  width: 250px;
+}
+
+.setting-row input[type="number"]:focus,
+.setting-row input[type="text"]:focus {
+  border-color: #2563eb;
+}
+
+.setting-row input[type="checkbox"] {
+  width: 18px;
+  height: 18px;
+  accent-color: #2563eb;
+  cursor: pointer;
+}
+
+.setting-hint {
+  font-size: 0.8rem;
+  color: #666;
+}
+
+@media (max-width: 768px) {
+  .settings-container {
+    padding: 0.75rem;
+  }
+
+  .setting-row {
+    flex-wrap: wrap;
+    gap: 0.5rem;
+  }
+
+  .setting-row label {
+    flex: 1 1 100%;
+  }
+
+  .setting-row input[type="text"] {
+    width: 100%;
+  }
+
+  .setting-hint {
+    flex: 1 1 100%;
+  }
+}

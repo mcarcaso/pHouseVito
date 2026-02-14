@@ -1,0 +1,151 @@
+.memories-container {
+  max-width: 1200px;
+  margin: 0 auto;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+}
+
+.memories-header {
+  margin-bottom: 1.5rem;
+}
+
+.memories-header h2 {
+  font-size: 1.5rem;
+  margin-bottom: 1rem;
+  color: #fff;
+}
+
+.search-input {
+  width: 100%;
+  background: #111;
+  border: 1px solid #333;
+  border-radius: 6px;
+  padding: 0.75rem 1rem;
+  color: #e0e0e0;
+  font-size: 0.95rem;
+}
+
+.search-input:focus {
+  outline: none;
+  border-color: #555;
+}
+
+.memories-list {
+  flex: 1;
+  overflow-y: auto;
+  background: #111;
+  border-radius: 8px;
+  padding: 1rem;
+}
+
+.memory-item {
+  background: #1a1a1a;
+  border: 1px solid #333;
+  border-radius: 8px;
+  padding: 1rem 1.25rem;
+  margin-bottom: 0.5rem;
+  cursor: pointer;
+  transition: border-color 0.2s, background 0.2s;
+}
+
+.memory-item:hover {
+  border-color: #444;
+  background: #1e1e1e;
+}
+
+.memory-item.expanded {
+  border-color: #555;
+  background: #1e1e1e;
+}
+
+.memory-header-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 1rem;
+}
+
+.memory-title {
+  font-weight: 600;
+  color: #60a5fa;
+  font-family: monospace;
+  font-size: 0.95rem;
+}
+
+.memory-badges {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  flex-shrink: 0;
+}
+
+.memory-time {
+  color: #666;
+  font-size: 0.8rem;
+}
+
+.embedding-badge {
+  font-size: 0.75rem;
+}
+
+.memory-body {
+  margin-top: 1rem;
+  padding-top: 1rem;
+  border-top: 1px solid #333;
+}
+
+.memory-body pre {
+  color: #ccc;
+  font-size: 0.9rem;
+  line-height: 1.6;
+  white-space: pre-wrap;
+  word-wrap: break-word;
+  font-family: inherit;
+  margin: 0;
+}
+
+.empty-state {
+  text-align: center;
+  color: #666;
+  padding: 4rem 2rem;
+  font-size: 1rem;
+}
+
+/* Mobile Responsive Styles */
+@media (max-width: 768px) {
+  .memories-header {
+    margin-bottom: 1rem;
+  }
+
+  .memories-header h2 {
+    font-size: 1.25rem;
+    margin-bottom: 0.75rem;
+  }
+
+  .search-input {
+    padding: 0.625rem 0.875rem;
+    font-size: 1rem;
+  }
+
+  .memories-list {
+    padding: 0.75rem;
+  }
+
+  .memory-item {
+    padding: 0.875rem 1rem;
+  }
+
+  .memory-title {
+    font-size: 0.85rem;
+  }
+
+  .memory-body pre {
+    font-size: 0.85rem;
+  }
+
+  .empty-state {
+    padding: 2rem 1rem;
+    font-size: 0.95rem;
+  }
+}

@@ -79,24 +79,42 @@ export class CLIChannel implements Channel {
   }
 
   createHandler(event: InboundEvent): OutputHandler {
-    let isFirstChunk = true;
+    let buffer = "";
 
     return {
       relay: async (msg) => {
-        if (msg.text) {
-          if (isFirstChunk) {
-            process.stdout.write("assistant: ");
-            isFirstChunk = false;
-          }
-          process.stdout.write(msg.text);
+        console.log(`[CLI] relay() called with text length: ${msg?.length || 0}`);
+        // In "none" mode, relay is called once with full text AFTER stopTyping
+        // In "stream" mode, relay is called many times with deltas BEFORE stopTyping
+        buffer += msg;
+        
+        console.log(`[CLI] Buffer length after relay: ${buffer.length}`);
+        
+        // If buffer looks complete (no more chunks coming), flush immediately
+        // This handles "none" mode where relay is called after stopTyping
+        if (buffer.length > 0) {
+          console.log(`[CLI] Flushing immediately from relay()`);
+          this.flushOutput(buffer);
+          buffer = "";
         }
-        if (msg.attachments) {
-          for (const att of msg.attachments) {
-            console.log(`\n[Attachment: ${att.path || att.url || att.filename}]`);
-          }
+      },
+      
+      stopTyping: async () => {
+        console.log(`[CLI] stopTyping() called, buffer length: ${buffer.length}`);
+        // Flush any remaining buffer (handles "stream" mode)
+        if (buffer.length > 0) {
+          console.log(`[CLI] Flushing from stopTyping()`);
+          this.flushOutput(buffer);
+          buffer = "";
         }
       },
     };
+  }
+
+  private flushOutput(text: string): void {
+    console.log(`[CLI] flushOutput() called with text length: ${text.length}`);
+    process.stdout.write("\nassistant: ");
+    process.stdout.write(text);
   }
 
   getSessionKey(event: InboundEvent): string {

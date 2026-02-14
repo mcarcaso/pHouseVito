@@ -21,6 +21,7 @@ export class SessionManager {
       channel_target: target,
       created_at: now,
       last_active_at: now,
+      config: "{}",
     };
     this.queries.upsertSession(session);
     return session;

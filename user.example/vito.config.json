@@ -14,9 +14,14 @@
     "model": "text-embedding-3-small"
   },
   "channels": {
-    "cli": {
+    "dashboard": {
       "enabled": true,
       "streamMode": "stream"
+    },
+    "telegram": {
+      "enabled": false,
+      "streamMode": "bundled",
+      "allowedChatIds": []
     }
   },
   "cron": {

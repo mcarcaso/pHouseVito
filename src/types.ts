@@ -44,17 +44,28 @@ export interface Attachment {
 
 export interface OutputHandler {
   relay(msg: OutboundMessage): Promise<void>;
+  /** Send a structured agent event (tool calls, thinking, etc.) to the UI */
+  relayEvent?(event: AgentActivityEvent): Promise<void>;
   startTyping?(): Promise<void>;
   stopTyping?(): Promise<void>;
+  /** Signal that a complete assistant message has ended — flush any buffer */
+  endMessage?(): Promise<void>;
   startReaction?(emoji?: string): Promise<void>;
   stopReaction?(): Promise<void>;
 }
 
-export interface OutboundMessage {
-  text?: string;
-  attachments?: Attachment[];
-  replyTo?: string;
+export interface AgentActivityEvent {
+  kind: "tool_start" | "tool_end" | "thinking";
+  toolName?: string;
+  toolCallId?: string;
+  args?: any;
+  result?: any;
+  isError?: boolean;
+  content?: string;
 }
+
+// Channels receive plain text; they handle MEDIA: prefixes themselves
+export type OutboundMessage = string;
 
 // ── Stream modes ──
 
@@ -72,6 +83,8 @@ export interface VitoConfig {
     crossSessionLimit: number;
     memoriesLimit: number;
     compactionThreshold: number;
+    includeToolsInCurrentSession?: boolean;
+    includeToolsInCrossSession?: boolean;
   };
   embeddings: {
     provider: string;
@@ -95,7 +108,7 @@ export interface CronJobConfig {
   timezone?: string;
   session: string;
   prompt: string;
-  type?: "message" | "task";
+  oneTime?: boolean; // If true, job will be removed from config after firing
 }
 
 // ── DB row types ──
@@ -114,8 +127,13 @@ export interface MessageRow {
 export interface MemoryRow {
   id: number;
   timestamp: number;
+  title: string;
   content: string;
   embedding: Buffer | null;
+}
+
+export interface SessionConfig {
+  streamMode?: StreamMode;
 }
 
 export interface SessionRow {
@@ -124,6 +142,7 @@ export interface SessionRow {
   channel_target: string | null;
   created_at: number;
   last_active_at: number;
+  config: string; // JSON string of SessionConfig
 }
 
 // ── Skill types ──
@@ -132,4 +151,5 @@ export interface SkillMeta {
   name: string;
   description: string;
   path: string; // path to SKILL.md
+  isBuiltin?: boolean; // true if skill is in src/skills/builtin/
 }

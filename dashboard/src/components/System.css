@@ -1,0 +1,139 @@
+.system-container {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  max-width: 900px;
+  margin: 0 auto;
+  padding: 1rem;
+}
+
+.system-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 0.5rem;
+  flex-shrink: 0;
+}
+
+.system-tabs {
+  display: flex;
+  gap: 0.25rem;
+}
+
+.system-tab {
+  background: #1a1a1a;
+  border: 1px solid #333;
+  border-radius: 6px;
+  padding: 0.5rem 1rem;
+  color: #888;
+  font-size: 0.9rem;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.system-tab:hover {
+  color: #ccc;
+  border-color: #555;
+}
+
+.system-tab.active {
+  background: #2563eb;
+  border-color: #2563eb;
+  color: white;
+}
+
+.system-actions {
+  display: flex;
+  gap: 0.5rem;
+}
+
+.system-actions .save-btn {
+  background: #2563eb;
+  color: white;
+  border: none;
+  border-radius: 6px;
+  padding: 0.5rem 1.25rem;
+  font-size: 0.9rem;
+  cursor: pointer;
+  transition: background 0.2s;
+}
+
+.system-actions .save-btn:hover:not(:disabled) {
+  background: #1d4ed8;
+}
+
+.system-actions .save-btn:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
+.discard-btn {
+  background: transparent;
+  color: #888;
+  border: 1px solid #333;
+  border-radius: 6px;
+  padding: 0.5rem 1rem;
+  font-size: 0.9rem;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.discard-btn:hover {
+  color: #ccc;
+  border-color: #555;
+}
+
+.system-desc {
+  font-size: 0.8rem;
+  color: #666;
+  margin-bottom: 0.75rem;
+  flex-shrink: 0;
+}
+
+.system-editor {
+  flex: 1;
+  background: #111;
+  border: 1px solid #333;
+  border-radius: 8px;
+  padding: 1rem;
+  color: #e0e0e0;
+  font-family: 'SF Mono', 'Fira Code', 'Consolas', monospace;
+  font-size: 0.85rem;
+  line-height: 1.6;
+  resize: none;
+  outline: none;
+  min-height: 0;
+}
+
+.system-editor:focus {
+  border-color: #2563eb;
+}
+
+.system-editor::placeholder {
+  color: #444;
+}
+
+@media (max-width: 768px) {
+  .system-container {
+    padding: 0.75rem;
+  }
+
+  .system-header {
+    flex-wrap: wrap;
+    gap: 0.5rem;
+  }
+
+  .system-tabs {
+    flex: 1 1 100%;
+  }
+
+  .system-tab {
+    flex: 1;
+    text-align: center;
+  }
+
+  .system-actions {
+    flex: 1 1 100%;
+    justify-content: flex-end;
+  }
+}

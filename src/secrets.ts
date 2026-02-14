@@ -6,8 +6,10 @@ export const SECRETS_PATH = resolve(USER_DIR, "secrets.json");
 
 // System keys that always appear in the dashboard (with descriptions)
 export const SYSTEM_KEYS: Record<string, string> = {
+  // Channel tokens
   TELEGRAM_BOT_TOKEN: "Telegram Bot API token — get from @BotFather (required for Telegram channel)",
   DISCORD_BOT_TOKEN: "Discord Bot token — get from https://discord.com/developers/applications (required for Discord channel)",
+  // Provider API keys (auto-populated from PROVIDER_API_KEYS below)
 };
 
 // Provider API keys — these map to AI model providers
@@ -33,6 +35,11 @@ export const PROVIDER_API_KEYS: Record<string, { envVar: string; description: st
     description: "xAI (Grok) API key — https://console.x.ai/" 
   },
 };
+
+// Add provider keys to system keys for dashboard visibility
+for (const config of Object.values(PROVIDER_API_KEYS)) {
+  SYSTEM_KEYS[config.envVar] = config.description;
+}
 
 /** Check which providers have valid API keys configured */
 export function getProviderKeyStatus(): Record<string, boolean> {
@@ -73,21 +80,28 @@ export function writeSecrets(secrets: Record<string, string>): void {
 
 /** Load secrets.json into process.env (override existing) */
 export function loadSecrets(): void {
-  if (!existsSync(SECRETS_PATH)) {
-    // Seed with system keys from env (first run migration)
-    const seed: Record<string, string> = {};
-    for (const key of Object.keys(SYSTEM_KEYS)) {
-      seed[key] = process.env[key] || "";
+  const existing = existsSync(SECRETS_PATH) ? readSecrets() : {};
+  let updated = false;
+
+  // Seed any missing system keys from env
+  for (const key of Object.keys(SYSTEM_KEYS)) {
+    if (!(key in existing) && process.env[key]) {
+      existing[key] = process.env[key]!;
+      updated = true;
     }
-    writeSecrets(seed);
-    console.log(`secrets.json created with ${Object.keys(seed).length} key(s)`);
   }
 
-  const secrets = readSecrets();
-  for (const [key, value] of Object.entries(secrets)) {
-    process.env[key] = value;
+  // Write if we added new keys
+  if (updated || !existsSync(SECRETS_PATH)) {
+    writeSecrets(existing);
+    console.log(`secrets.json updated with ${Object.keys(existing).length} key(s)`);
   }
-  console.log(`Loaded ${Object.keys(secrets).length} secret(s) from secrets.json`);
+
+  // Load into process.env
+  for (const [key, value] of Object.entries(existing)) {
+    if (value) process.env[key] = value;
+  }
+  console.log(`Loaded ${Object.keys(existing).length} secret(s) from secrets.json`);
 }
 
 /** Get secrets formatted for the dashboard API */

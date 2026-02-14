@@ -15,7 +15,6 @@ Think of it as your evolving identity document. Don't be afraid to rewrite it â€
 ## Available Commands
 
 - `/new` - Compact the current conversation into long-term memory and start fresh
-- `/reload` - Hot-reload all skills from disk without restarting Vito
 
 ## File Structure
 

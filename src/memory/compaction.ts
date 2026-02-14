@@ -1,6 +1,9 @@
 import type { Queries } from "../db/queries.js";
 import type { MessageRow, VitoConfig } from "../types.js";
-import { embedBatch } from "./embeddings.js";
+import { readFileSync, writeFileSync, readdirSync, existsSync, mkdirSync, unlinkSync } from "fs";
+import { join } from "path";
+
+const MEMORIES_DIR = join(process.cwd(), "user", "memories");
 
 /**
  * Check if compaction should be triggered.
@@ -11,9 +14,37 @@ export function shouldCompact(queries: Queries, config: VitoConfig): boolean {
   return count > config.memory.compactionThreshold;
 }
 
+/** Read all memory docs from user/memories/*.md */
+function readMemoryFiles(): Array<{ title: string; content: string }> {
+  if (!existsSync(MEMORIES_DIR)) return [];
+  const files = readdirSync(MEMORIES_DIR).filter((f) => f.endsWith(".md"));
+  return files.map((f) => ({
+    title: f,
+    content: readFileSync(join(MEMORIES_DIR, f), "utf-8"),
+  }));
+}
+
+/** Write memory docs to user/memories/ — replaces all existing files */
+function writeMemoryFiles(memories: Array<{ title: string; content: string }>): void {
+  mkdirSync(MEMORIES_DIR, { recursive: true });
+
+  // Remove existing .md files
+  if (existsSync(MEMORIES_DIR)) {
+    const existing = readdirSync(MEMORIES_DIR).filter((f) => f.endsWith(".md"));
+    for (const f of existing) {
+      unlinkSync(join(MEMORIES_DIR, f));
+    }
+  }
+
+  // Write new files
+  for (const mem of memories) {
+    writeFileSync(join(MEMORIES_DIR, mem.title), mem.content);
+  }
+}
+
 /**
- * Core compaction logic — takes a set of messages, current memories,
- * and produces updated memory docs. Marks processed messages as compacted.
+ * Core compaction logic — takes a set of messages, current memory files,
+ * and produces updated memory docs as files. Marks processed messages as compacted.
  *
  * This is the shared engine used by both:
  * - Global threshold-based compaction (oldest half of all un-compacted)
@@ -26,7 +57,7 @@ async function compactMessages(
 ): Promise<void> {
   if (messages.length === 0) return;
 
-  const currentMemories = queries.getAllMemories();
+  const currentMemories = readMemoryFiles();
 
   // Build the compaction prompt
   const shortTermSection = messages
@@ -86,26 +117,8 @@ ${shortTermSection}
 
   if (newMemories.length === 0) return;
 
-  // Embed new memories if embeddings are configured (embed title + body together)
-  const textsToEmbed = newMemories.map((m) => `${m.title}\n${m.content}`);
-  let embeddings: (Buffer | null)[];
-  if (process.env.OPENAI_API_KEY) {
-    try {
-      embeddings = await embedBatch(textsToEmbed);
-    } catch {
-      embeddings = newMemories.map(() => null);
-    }
-  } else {
-    embeddings = newMemories.map(() => null);
-  }
-
-  // Replace memories table
-  const memoriesWithEmbeddings = newMemories.map((mem, i) => ({
-    title: mem.title,
-    content: mem.content,
-    embedding: embeddings[i] || null,
-  }));
-  queries.replaceAllMemories(memoriesWithEmbeddings);
+  // Write memory docs as files (no embeddings, no DB)
+  writeMemoryFiles(newMemories);
 
   // Mark all processed messages as compacted
   const ids = messages.map((m) => m.id);

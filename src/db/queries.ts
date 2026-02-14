@@ -1,5 +1,5 @@
 import type Database from "better-sqlite3";
-import type { MessageRow, MemoryRow, SessionRow, TraceRow } from "../types.js";
+import type { MessageRow, SessionRow, TraceRow } from "../types.js";
 
 export class Queries {
   constructor(private db: Database.Database) {}
@@ -120,6 +120,42 @@ export class Queries {
       .all(excludeSessionId, limit) as MessageRow[];
   }
 
+  /**
+   * Get last N messages per OTHER session for cross-session context.
+   * Ignores compaction status, but excludes archived.
+   */
+  getCrossSessionMessagesPerSession(
+    excludeSessionId: string,
+    perSessionLimit: number,
+    includeTools = false
+  ): MessageRow[] {
+    const toolFilter = includeTools ? "" : " AND role != 'tool'";
+    // Get distinct other sessions that have non-archived messages
+    const sessions = this.db
+      .prepare(
+        `SELECT DISTINCT session_id FROM messages
+         WHERE session_id != ? AND archived = 0${toolFilter}
+         ORDER BY (SELECT MAX(timestamp) FROM messages m2 WHERE m2.session_id = messages.session_id) DESC`
+      )
+      .all(excludeSessionId) as Array<{ session_id: string }>;
+
+    const allMessages: MessageRow[] = [];
+    for (const session of sessions) {
+      const msgs = this.db
+        .prepare(
+          `SELECT * FROM (
+             SELECT * FROM messages
+             WHERE session_id = ? AND archived = 0${toolFilter}
+             ORDER BY timestamp DESC
+             LIMIT ?
+           ) ORDER BY timestamp ASC`
+        )
+        .all(session.session_id, perSessionLimit) as MessageRow[];
+      allMessages.push(...msgs);
+    }
+    return allMessages;
+  }
+
   /** Get all un-compacted messages across all sessions */
   getAllUncompactedMessages(): MessageRow[] {
     return this.db
@@ -164,63 +200,6 @@ export class Queries {
         "UPDATE messages SET archived = 1 WHERE session_id = ?"
       )
       .run(sessionId);
-  }
-
-  // ── Memories ──
-
-  getAllMemories(): MemoryRow[] {
-    return this.db
-      .prepare("SELECT * FROM memories ORDER BY timestamp ASC")
-      .all() as MemoryRow[];
-  }
-
-  replaceAllMemories(
-    memories: Array<{ title: string; content: string; embedding: Buffer | null }>
-  ): void {
-    const tx = this.db.transaction(
-      (mems: Array<{ title: string; content: string; embedding: Buffer | null }>) => {
-        this.db.prepare("DELETE FROM memories").run();
-        const insert = this.db.prepare(
-          "INSERT INTO memories (timestamp, title, content, embedding) VALUES (?, ?, ?, ?)"
-        );
-        const now = Date.now();
-        for (const mem of mems) {
-          insert.run(now, mem.title, mem.content, mem.embedding);
-        }
-      }
-    );
-    tx(memories);
-  }
-
-  /** Search memories by keyword (LIKE match), return top N */
-  searchMemoriesByKeyword(keywords: string[], limit: number): MemoryRow[] {
-    if (keywords.length === 0) {
-      return this.db
-        .prepare("SELECT * FROM memories ORDER BY timestamp DESC LIMIT ?")
-        .all(limit) as MemoryRow[];
-    }
-    const titleClauses = keywords.map(() => "title LIKE ?");
-    const contentClauses = keywords.map(() => "content LIKE ?");
-    const allClauses = [...titleClauses, ...contentClauses];
-    const params = keywords.map((k) => `%${k}%`);
-    const allParams = [...params, ...params]; // title params + content params
-    return this.db
-      .prepare(
-        `SELECT *, (${allClauses.join(" + ")}) as matches FROM memories
-         WHERE ${allClauses.join(" OR ")}
-         ORDER BY matches DESC, timestamp DESC
-         LIMIT ?`
-      )
-      .all(...allParams, ...allParams, limit) as MemoryRow[];
-  }
-
-  insertMemory(title: string, content: string, embedding: Buffer | null): number {
-    const result = this.db
-      .prepare(
-        "INSERT INTO memories (timestamp, title, content, embedding) VALUES (?, ?, ?, ?)"
-      )
-      .run(Date.now(), title, content, embedding);
-    return result.lastInsertRowid as number;
   }
 
   // ── Traces ──

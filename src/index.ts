@@ -1,38 +1,22 @@
 import { resolve } from "path";
-import { existsSync, writeFileSync, watch } from "fs";
-import dotenv from "dotenv";
+import { existsSync, writeFileSync, readFileSync, watch } from "fs";
 import { createDatabase } from "./db/schema.js";
 import { Queries } from "./db/queries.js";
 import { ensureUserDir, loadConfig, loadSoul, USER_DIR } from "./config.js";
 import { Orchestrator } from "./orchestrator.js";
 import { DashboardChannel } from "./channels/dashboard.js";
 import { TelegramChannel } from "./channels/telegram.js";
+import { DiscordChannel } from "./channels/discord.js";
+import { loadSecrets } from "./secrets.js";
 
 const ROOT = process.cwd();
-
-// Known keys the app cares about
-const MANAGED_KEYS = [
-  "ANTHROPIC_API_KEY",
-  "OPENAI_API_KEY",
-  "TELEGRAM_BOT_TOKEN",
-];
 
 async function main() {
   // Ensure user/ directory exists (copy from user.example/ on first run)
   ensureUserDir();
 
-  // Seed .env on first run — populate from shell env or leave blank as placeholders
-  const envPath = resolve(USER_DIR, ".env");
-  if (!existsSync(envPath)) {
-    const lines = MANAGED_KEYS.map((key) =>
-      `${key}=${process.env[key] || ""}`
-    );
-    writeFileSync(envPath, lines.join("\n") + "\n", "utf-8");
-    console.log(`.env created with ${MANAGED_KEYS.length} key(s)`);
-  }
-
-  // Load .env as source of truth (override shell vars)
-  dotenv.config({ path: envPath, override: true });
+  // Load secrets.json as source of truth (inject into process.env)
+  loadSecrets();
 
   console.log("Starting Vito...\n");
 
@@ -68,6 +52,10 @@ async function main() {
   // Register Telegram channel
   const telegram = new TelegramChannel(config);
   orchestrator.registerChannel(telegram);
+
+  // Register Discord channel
+  const discord = new DiscordChannel(config);
+  orchestrator.registerChannel(discord);
 
   // Start channels
   await orchestrator.start();

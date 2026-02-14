@@ -6,7 +6,6 @@ interface Memory {
   timestamp: number;
   title: string;
   content: string;
-  embedding: any;
 }
 
 function Memories() {
@@ -69,7 +68,6 @@ function Memories() {
             <div className="memory-header-row">
               <span className="memory-title">{memory.title || 'UNTITLED.md'}</span>
               <div className="memory-badges">
-                {memory.embedding && <span className="embedding-badge">📊</span>}
                 <span className="memory-time">
                   {new Date(memory.timestamp).toLocaleDateString()}
                 </span>

@@ -3,7 +3,7 @@ import { useSearchParams } from 'react-router-dom';
 import './Sessions.css';
 
 interface SessionConfig {
-  streamMode?: string;
+  [key: string]: unknown;
 }
 
 interface Session {
@@ -127,16 +127,6 @@ function Sessions() {
     }
   };
 
-  const updateStreamMode = async (mode: string) => {
-    if (!selectedSession) return;
-    const value = mode || undefined;
-    await fetch(`/api/sessions/${selectedSession}/config`, {
-      method: 'PUT',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ streamMode: value }),
-    });
-    setSessionConfig((prev) => ({ ...prev, streamMode: value }));
-  };
 
   const handleSort = (field: SortField) => {
     if (sortField === field) {
@@ -229,19 +219,7 @@ function Sessions() {
         <div className="session-detail-content">
           <div className="session-config-bar">
             <span className="session-id-label">{selectedSession}</span>
-            <div className="session-config">
-              <label className="config-label">Stream mode</label>
-              <select
-                className="config-select"
-                value={sessionConfig.streamMode || ''}
-                onChange={(e) => updateStreamMode(e.target.value)}
-              >
-                <option value="">Channel default</option>
-                <option value="stream">Stream</option>
-                <option value="bundled">Bundled</option>
-                <option value="final">Final</option>
-              </select>
-            </div>
+
           </div>
 
           {allMessages.length > 0 ? (

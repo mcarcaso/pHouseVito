@@ -36,6 +36,11 @@ function Skills() {
         setSelectedSkill(skill);
         fetchFiles(skill.name);
       }
+    } else if (!selectedSkillName) {
+      setSelectedSkill(null);
+      setFiles([]);
+      setSelectedFile(null);
+      setFileContent('');
     }
   }, [selectedSkillName, skills]);
 
@@ -131,6 +136,25 @@ function Skills() {
     );
   }
 
+  // Separate builtin vs user skills
+  const builtinSkills = skills.filter(s => s.path.includes('/skills/builtin/'));
+  const userSkills = skills.filter(s => !s.path.includes('/skills/builtin/'));
+
+  const renderSkillItem = (skill: Skill) => (
+    <div
+      key={skill.name}
+      className="skill-item"
+      onClick={() => setSearchParams({ name: skill.name })}
+    >
+      <span className="skill-icon">🛠️</span>
+      <div className="skill-info">
+        <div className="skill-name">{skill.name}</div>
+        <div className="skill-description">{skill.description}</div>
+      </div>
+      <span className="skill-arrow">›</span>
+    </div>
+  );
+
   // List view
   return (
     <div className="skills-page">
@@ -138,21 +162,25 @@ function Skills() {
         <h2>Skills ({skills.length})</h2>
       </div>
 
-      <div className="skills-list">
-        {skills.map((skill) => (
-          <div
-            key={skill.name}
-            className="skill-item"
-            onClick={() => setSearchParams({ name: skill.name })}
-          >
-            <span className="skill-icon">🛠️</span>
-            <div className="skill-info">
-              <div className="skill-name">{skill.name}</div>
-              <div className="skill-description">{skill.description}</div>
+      <div className="skills-scroll">
+        {userSkills.length > 0 && (
+          <>
+            <div className="skills-section-header">User Skills ({userSkills.length})</div>
+            <div className="skills-list">
+              {userSkills.map(renderSkillItem)}
             </div>
-            <span className="skill-arrow">›</span>
-          </div>
-        ))}
+          </>
+        )}
+
+        {builtinSkills.length > 0 && (
+          <>
+            <div className="skills-section-header">System Skills ({builtinSkills.length})</div>
+            <div className="skills-list">
+              {builtinSkills.map(renderSkillItem)}
+            </div>
+          </>
+        )}
+
         {skills.length === 0 && (
           <div className="empty-state">
             <p>No skills installed yet</p>

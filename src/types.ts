@@ -81,15 +81,10 @@ export interface VitoConfig {
   memory: {
     currentSessionLimit: number;
     crossSessionLimit: number;
-    memoriesLimit: number;
     compactionThreshold: number;
     includeToolsInCurrentSession?: boolean;
     includeToolsInCrossSession?: boolean;
     showArchivedInCrossSession?: boolean;
-  };
-  embeddings: {
-    provider: string;
-    model: string;
   };
   channels: Record<string, ChannelConfig>;
   cron: {
@@ -124,14 +119,6 @@ export interface MessageRow {
   content: string; // JSON string
   compacted: number; // 0 or 1
   archived: number; // 0 or 1
-}
-
-export interface MemoryRow {
-  id: number;
-  timestamp: number;
-  title: string;
-  content: string;
-  embedding: Buffer | null;
 }
 
 export interface SessionConfig {

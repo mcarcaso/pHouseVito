@@ -9,15 +9,10 @@ interface Config {
   memory: {
     currentSessionLimit: number;
     crossSessionLimit: number;
-    memoriesLimit: number;
     compactionThreshold: number;
     includeToolsInCurrentSession?: boolean;
     includeToolsInCrossSession?: boolean;
     showArchivedInCrossSession?: boolean;
-  };
-  embeddings: {
-    provider: string;
-    model: string;
   };
 }
 
@@ -43,7 +38,6 @@ function Settings() {
         body: JSON.stringify({
           model: config.model,
           memory: config.memory,
-          embeddings: config.embeddings,
         }),
       });
       const updated = await res.json();
@@ -129,7 +123,7 @@ function Settings() {
               onChange={(e) => updateMemory('crossSessionLimit', parseInt(e.target.value) || 0)}
               min={0}
             />
-            <span className="setting-hint">Recent messages from other sessions</span>
+            <span className="setting-hint">Messages per other session (cross-session context)</span>
           </div>
 
           <div className="setting-row">
@@ -152,16 +146,7 @@ function Settings() {
             <span className="setting-hint">Include archived messages from other sessions</span>
           </div>
 
-          <div className="setting-row">
-            <label>Long-term memories</label>
-            <input
-              type="number"
-              value={config.memory.memoriesLimit}
-              onChange={(e) => updateMemory('memoriesLimit', parseInt(e.target.value) || 0)}
-              min={0}
-            />
-            <span className="setting-hint">Max memories via semantic search</span>
-          </div>
+
         </section>
 
         <section className="settings-section">

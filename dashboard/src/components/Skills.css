@@ -5,8 +5,21 @@
   overflow: hidden;
 }
 
-.skills-list {
+.skills-scroll {
   flex: 1;
+  overflow-y: auto;
+}
+
+.skills-section-header {
+  padding: 0.5rem 1.25rem 0.4rem;
+  font-size: 0.75rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: #666;
+}
+
+.skills-list {
   overflow-y: auto;
   padding: 0 1rem 1rem;
 }

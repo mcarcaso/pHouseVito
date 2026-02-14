@@ -1,10 +1,9 @@
 import type { Queries } from "../db/queries.js";
-import type { MessageRow, MemoryRow, VitoConfig } from "../types.js";
-import { embed, findTopK } from "./embeddings.js";
+import type { MessageRow, VitoConfig } from "../types.js";
+import { readdirSync, existsSync } from "fs";
+import { join } from "path";
 
-function embeddingsEnabled(): boolean {
-  return !!process.env.OPENAI_API_KEY;
-}
+const MEMORIES_DIR = join(process.cwd(), "user", "memories");
 
 export interface AssembledContext {
   memoriesBlock: string;
@@ -15,9 +14,9 @@ export interface AssembledContext {
 /**
  * Build the 3-layer context for a given session.
  *
- * 1. [LONG-TERM MEMORIES] — semantic search over memory blobs
- * 2. [CROSS-SESSION SHORT-TERM] — recent messages from OTHER sessions
- * 3. [CURRENT SESSION SHORT-TERM] — recent messages from THIS session
+ * 1. Memory titles — lightweight list of .md files, read on demand with Read tool
+ * 2. Cross-session — last N messages per other session (excludes archived)
+ * 3. Current session — recent messages from this session
  */
 export async function assembleContext(
   queries: Queries,
@@ -27,25 +26,19 @@ export async function assembleContext(
   const {
     currentSessionLimit,
     crossSessionLimit,
-    memoriesLimit,
     includeToolsInCurrentSession = true,
     includeToolsInCrossSession = false,
     showArchivedInCrossSession = false,
   } = config.memory;
 
-  // 1. Long-term memories (semantic search)
-  const memoriesBlock = await buildMemoriesBlock(
-    queries,
-    sessionId,
-    memoriesLimit
-  );
+  // 1. Long-term memories — just file titles from user/memories/
+  const memoriesBlock = buildMemoriesTitlesBlock();
 
-  // 2. Cross-session messages (un-compacted only, optionally include archived)
-  const crossSessionMessages = queries.getCrossSessionMessages(
+  // 2. Cross-session messages — last N per session, exclude archived
+  const crossSessionMessages = queries.getCrossSessionMessagesPerSession(
     sessionId,
     crossSessionLimit,
-    includeToolsInCrossSession,
-    showArchivedInCrossSession
+    includeToolsInCrossSession
   );
   const crossSessionBlock = formatCrossSessionMessages(crossSessionMessages);
 
@@ -67,7 +60,7 @@ export function formatContextForPrompt(ctx: AssembledContext): string {
   const parts: string[] = [];
 
   if (ctx.memoriesBlock) {
-    parts.push(`<long-term-memories>\n${ctx.memoriesBlock}\n</long-term-memories>`);
+    parts.push(`<memories>\n${ctx.memoriesBlock}\n</memories>`);
   }
 
   if (ctx.crossSessionBlock) {
@@ -81,69 +74,18 @@ export function formatContextForPrompt(ctx: AssembledContext): string {
   return parts.join("\n\n");
 }
 
-async function buildMemoriesBlock(
-  queries: Queries,
-  sessionId: string,
-  limit: number
-): Promise<string> {
-  const allMemories = queries.getAllMemories();
-  if (allMemories.length === 0) return "";
+/**
+ * Build a lightweight memory block — just file titles from user/memories/.
+ * The LLM can use the Read tool to pull full content when needed.
+ */
+function buildMemoriesTitlesBlock(): string {
+  if (!existsSync(MEMORIES_DIR)) return "";
 
-  // Get recent messages to extract query context
-  const recentMessages = queries.getRecentMessages(sessionId, 5);
-  if (recentMessages.length === 0) {
-    return allMemories
-      .slice(0, limit)
-      .map((m) => `### ${m.title || "UNTITLED.md"}\n${m.content}`)
-      .join("\n\n");
-  }
+  const files = readdirSync(MEMORIES_DIR).filter((f) => f.endsWith(".md"));
+  if (files.length === 0) return "";
 
-  // Extract text from recent messages
-  const recentTexts = recentMessages.map((m) => extractMessageText(m.content));
-  const queryText = recentTexts.join(" ");
-
-  // Semantic search if embeddings are available
-  if (embeddingsEnabled()) {
-    const withEmbeddings = allMemories.filter(
-      (m) => m.embedding !== null
-    ) as Array<{ id: number; title: string; content: string; embedding: Buffer }>;
-
-    if (withEmbeddings.length > 0) {
-      try {
-        const queryEmbedding = await embed(queryText);
-        const topK = findTopK(queryEmbedding, withEmbeddings, limit);
-        // Find matching full memory rows to get titles
-        return topK.map((m) => {
-          const full = allMemories.find((am) => am.id === m.id);
-          const title = full?.title || "UNTITLED.md";
-          return `### ${title}\n${m.content}`;
-        }).join("\n\n");
-      } catch {
-        // Fall through to keyword search
-      }
-    }
-  }
-
-  // Keyword search fallback — extract significant words from recent messages
-  const stopWords = new Set([
-    "the", "a", "an", "is", "are", "was", "were", "be", "been", "being",
-    "have", "has", "had", "do", "does", "did", "will", "would", "could",
-    "should", "may", "might", "can", "shall", "to", "of", "in", "for",
-    "on", "with", "at", "by", "from", "as", "into", "about", "like",
-    "through", "after", "over", "between", "out", "up", "down", "that",
-    "this", "it", "i", "you", "he", "she", "we", "they", "me", "him",
-    "her", "us", "them", "my", "your", "his", "its", "our", "their",
-    "what", "which", "who", "when", "where", "how", "not", "no", "but",
-    "and", "or", "if", "then", "so", "just", "also", "than", "too",
-  ]);
-  const keywords = queryText
-    .toLowerCase()
-    .split(/\W+/)
-    .filter((w) => w.length > 2 && !stopWords.has(w));
-  const unique = [...new Set(keywords)].slice(0, 10);
-
-  const results = queries.searchMemoriesByKeyword(unique, limit);
-  return results.map((m) => `### ${m.title || "UNTITLED.md"}\n${m.content}`).join("\n\n");
+  const titles = files.map((f) => `- ${f}`).join("\n");
+  return `Long-term memory documents (titles only — content loaded on demand during compaction):\n${titles}\nUse the Read tool on user/memories/<filename> to load any document when you need details.`;
 }
 
 /** Extract display text from a stored message, including attachment references */

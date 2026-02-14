@@ -8,11 +8,11 @@ import express from "express";
 import { WebSocketServer, WebSocket } from "ws";
 import { createServer } from "http";
 import path from "path";
-import { readFileSync, writeFileSync, existsSync, mkdirSync, readdirSync } from "fs";
+import { readFileSync, writeFileSync, existsSync, mkdirSync, readdirSync, statSync } from "fs";
 import { execSync } from "child_process";
 import { fileURLToPath } from "url";
-import dotenv from "dotenv";
 import crypto from "crypto";
+import { readSecrets, writeSecrets, loadSecrets, getSecretsForDashboard, SYSTEM_KEYS } from "../secrets.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const ATTACHMENTS_DIR = path.join(process.cwd(), "data", "attachments");
@@ -99,7 +99,14 @@ export class DashboardChannel implements Channel {
       // Deep merge updates into config
       if (updates.model) Object.assign(this.config.model, updates.model);
       if (updates.memory) Object.assign(this.config.memory, updates.memory);
-      if (updates.embeddings) Object.assign(this.config.embeddings, updates.embeddings);
+      if (updates.channels) {
+        for (const [name, channelUpdate] of Object.entries(updates.channels)) {
+          if (!this.config.channels[name]) {
+            this.config.channels[name] = { enabled: true };
+          }
+          Object.assign(this.config.channels[name], channelUpdate);
+        }
+      }
       this.saveConfig();
       res.json(this.config);
     });
@@ -136,7 +143,23 @@ export class DashboardChannel implements Channel {
     });
 
     this.app.get("/api/memories", (req, res) => {
-      const memories = this.queries.getAllMemories();
+      const memoriesDir = path.join(process.cwd(), "user", "memories");
+      if (!existsSync(memoriesDir)) {
+        res.json([]);
+        return;
+      }
+      const files = readdirSync(memoriesDir).filter((f: string) => f.endsWith(".md"));
+      const memories = files.map((f: string, i: number) => {
+        const filePath = path.join(memoriesDir, f);
+        const content = readFileSync(filePath, "utf-8");
+        const stat = statSync(filePath);
+        return {
+          id: i + 1,
+          timestamp: stat.mtimeMs,
+          title: f,
+          content,
+        };
+      });
       res.json(memories);
     });
 
@@ -235,7 +258,7 @@ export class DashboardChannel implements Channel {
     });
 
     this.app.get("/api/secrets", (req, res) => {
-      res.json(getSecrets());
+      res.json(getSecretsForDashboard());
     });
 
     this.app.put("/api/secrets/:key", (req, res) => {
@@ -244,15 +267,10 @@ export class DashboardChannel implements Channel {
         res.status(400).json({ error: "value must be a string" });
         return;
       }
-      const entries = readEnv();
-      const existing = entries.find((e) => e.key === req.params.key);
-      if (existing) {
-        existing.value = value;
-      } else {
-        entries.push({ key: req.params.key, value });
-      }
-      writeEnv(entries);
-      reloadEnv();
+      const secrets = readSecrets();
+      secrets[req.params.key] = value;
+      writeSecrets(secrets);
+      loadSecrets();
       res.json({ key: req.params.key, value });
     });
 
@@ -261,10 +279,11 @@ export class DashboardChannel implements Channel {
         res.status(400).json({ error: "Cannot delete a system key — clear its value instead" });
         return;
       }
-      const entries = readEnv().filter((e) => e.key !== req.params.key);
-      writeEnv(entries);
+      const secrets = readSecrets();
+      delete secrets[req.params.key];
+      writeSecrets(secrets);
       delete process.env[req.params.key];
-      reloadEnv();
+      loadSecrets();
       res.status(204).end();
     });
 
@@ -648,65 +667,4 @@ class DashboardOutputHandler implements OutputHandler {
   }
 }
 
-// ── .env helpers ──
-
-const ENV_PATH = path.join(process.cwd(), "user", ".env");
-
-const SYSTEM_KEYS: Record<string, string> = {
-  OPENAI_API_KEY: "OpenAI API key — used for embeddings (optional, enables semantic memory search)",
-  TELEGRAM_BOT_TOKEN: "Telegram Bot API token — get from @BotFather (required for Telegram channel)",
-};
-
-interface EnvEntry {
-  key: string;
-  value: string;
-  system?: boolean;
-  description?: string;
-}
-
-function getSecrets(): EnvEntry[] {
-  const fileEntries = readEnv();
-  const seen = new Set(fileEntries.map((e) => e.key));
-
-  // Tag file entries that are system keys
-  const results: EnvEntry[] = fileEntries.map((e) => ({
-    ...e,
-    system: e.key in SYSTEM_KEYS,
-    description: SYSTEM_KEYS[e.key],
-  }));
-
-  // Append any system keys missing from the file
-  for (const [key, description] of Object.entries(SYSTEM_KEYS)) {
-    if (!seen.has(key)) {
-      results.unshift({ key, value: "", system: true, description });
-    }
-  }
-
-  return results;
-}
-
-function readEnv(): EnvEntry[] {
-  if (!existsSync(ENV_PATH)) return [];
-  const content = readFileSync(ENV_PATH, "utf-8");
-  const entries: EnvEntry[] = [];
-  for (const line of content.split("\n")) {
-    const trimmed = line.trim();
-    if (!trimmed || trimmed.startsWith("#")) continue;
-    const eq = trimmed.indexOf("=");
-    if (eq === -1) continue;
-    entries.push({
-      key: trimmed.slice(0, eq),
-      value: trimmed.slice(eq + 1),
-    });
-  }
-  return entries;
-}
-
-function writeEnv(entries: EnvEntry[]): void {
-  const content = entries.map((e) => `${e.key}=${e.value}`).join("\n") + "\n";
-  writeFileSync(ENV_PATH, content, "utf-8");
-}
-
-function reloadEnv(): void {
-  dotenv.config({ path: ENV_PATH, override: true });
-}
+// Secrets helpers now live in ../secrets.ts

@@ -122,9 +122,13 @@ export class Orchestrator {
       const channelConfig = this.config.channels[name];
       if (!channelConfig?.enabled) continue;
 
-      await channel.start();
-      await channel.listen((event) => this.handleInbound(event, channel));
-      console.log(`Channel started: ${name}`);
+      try {
+        await channel.start();
+        await channel.listen((event) => this.handleInbound(event, channel));
+        console.log(`Channel started: ${name}`);
+      } catch (err) {
+        console.error(`Channel failed to start: ${name}`, err);
+      }
     }
     
     // Start cron scheduler
@@ -220,13 +224,6 @@ export class Orchestrator {
     if (channel && event.content?.trim() === '/new') {
       this.logToFile(`[processMessage] Handling /new command`);
       await this.handleNewCommand(event, channel);
-      return;
-    }
-
-    // Check for /reload command (only for non-cron messages)
-    if (channel && event.content?.trim() === '/reload') {
-      this.logToFile(`[processMessage] Handling /reload command`);
-      await this.handleReloadCommand(event, channel);
       return;
     }
 
@@ -638,20 +635,6 @@ export class Orchestrator {
     }
   }
 
-  private async handleReloadCommand(
-    event: InboundEvent,
-    channel: Channel
-  ): Promise<void> {
-    const handler = channel.createHandler(event);
-    const skills = this.getSkills();
-    const loadedSkills = await loadSkillTools(this.skillsDir);
-    const toolCount = loadedSkills.reduce((sum, s) => sum + s.tools.length, 0);
-
-    await handler.relay(
-      `Skills are always loaded from disk on each message.\n\n**Current:** ${skills.length} skill(s) with ${toolCount} tool(s)`
-    );
-  }
-
   private notifyResponseComplete(channel: Channel): void {
     // Hook for channels that need post-response actions (e.g. re-prompting)
     if ("reprompt" in channel && typeof (channel as any).reprompt === "function") {
@@ -705,16 +688,14 @@ export class Orchestrator {
       parts.push(`<personality>\n${this.soul}\n</personality>`);
     }
 
-    // Inject SYSTEM.md for architecture/system knowledge
-    try {
-      const systemMdPath = resolve(process.cwd(), "SYSTEM.md");
-      if (existsSync(systemMdPath)) {
-        const systemMd = readFileSync(systemMdPath, "utf-8");
-        parts.push(`<system>\n${systemMd}\n</system>`);
-      }
-    } catch (err) {
-      console.error("[Orchestrator] Failed to read SYSTEM.md:", err);
-    }
+    // Point to SYSTEM.md instead of injecting it — keep prompt lean
+    parts.push(`<system>
+For system architecture, file structure, restart rules, bash guidelines, and operational knowledge, read SYSTEM.md using the Read tool. Only pull it when you need system-level context.
+
+You can query the SQLite database (user/vito.db) for more message history if needed. Read SYSTEM.md for schema details.
+
+Available commands: /new (compact + archive session)
+</system>`);
 
     if (skillsPrompt) {
       parts.push(`<skills>\n${skillsPrompt}\n</skills>`);

@@ -10,6 +10,7 @@ import Settings from './components/Settings';
 import System from './components/System';
 import Server from './components/Server';
 import Apps from './components/Apps';
+import Channels from './components/Channels';
 import Traces from './components/Traces';
 import './App.css';
 
@@ -42,6 +43,7 @@ function App() {
     if (path.startsWith('/memories')) return 'Memories';
     if (path.startsWith('/skills')) return 'Skills';
     if (path.startsWith('/jobs')) return 'Jobs';
+    if (path.startsWith('/channels')) return 'Channels';
     if (path.startsWith('/settings')) return 'Settings';
     if (path.startsWith('/secrets')) return 'Secrets';
     if (path.startsWith('/system')) return 'System';
@@ -89,6 +91,10 @@ function App() {
       <div className="nav-menu-divider" />
       <span className="nav-menu-section">Config</span>
 
+      <NavLink to="/channels" className="nav-menu-item">
+        <span className="nav-menu-icon">📡</span>
+        Channels
+      </NavLink>
       <NavLink to="/settings" className="nav-menu-item">
         <span className="nav-menu-icon">⚙️</span>
         Settings
@@ -157,6 +163,7 @@ function App() {
           <Route path="/memories" element={<Memories />} />
           <Route path="/skills" element={<Skills />} />
           <Route path="/jobs" element={<Jobs />} />
+          <Route path="/channels" element={<Channels />} />
           <Route path="/settings" element={<Settings />} />
           <Route path="/secrets" element={<Secrets />} />
           <Route path="/system" element={<System />} />

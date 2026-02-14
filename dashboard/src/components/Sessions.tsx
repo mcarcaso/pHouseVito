@@ -33,6 +33,11 @@ interface ModelOption {
   id: string;
 }
 
+interface AuthStatus {
+  hasAuth: boolean;
+  authType?: 'apiKey' | 'oauth';
+}
+
 type SortField = 'id' | 'role' | 'timestamp' | 'compacted';
 type SortDirection = 'asc' | 'desc';
 type ViewMode = 'table' | 'chat';
@@ -190,6 +195,7 @@ function Sessions() {
   // Session model override state
   const [sessionConfig, setSessionConfig] = useState<SessionConfig>({});
   const [providers, setProviders] = useState<string[]>([]);
+  const [authStatus, setAuthStatus] = useState<Record<string, AuthStatus>>({});
   const [sessionModels, setSessionModels] = useState<ModelOption[]>([]);
   const [loadingSessionModels, setLoadingSessionModels] = useState(false);
   const [savingConfig, setSavingConfig] = useState(false);
@@ -200,7 +206,10 @@ function Sessions() {
   useEffect(() => {
     fetch('/api/models/providers')
       .then(r => r.json())
-      .then(data => setProviders(data.providers || []))
+      .then(data => {
+        setProviders(data.providers || []);
+        setAuthStatus(data.authStatus || {});
+      })
       .catch(err => console.error('Failed to load providers:', err));
   }, []);
 
@@ -271,10 +280,12 @@ function Sessions() {
     saveSessionConfig(newConfig);
   };
 
-  const popularProviders = ['anthropic', 'openai', 'google', 'xai', 'mistral', 'openrouter'];
+  // Only show providers that have API keys or OAuth configured
+  const popularProviders = ['anthropic', 'openai', 'google', 'xai', 'groq', 'mistral', 'openrouter'];
+  const availableProviders = providers.filter(p => authStatus[p]?.hasAuth === true);
   const sortedProviders = [
-    ...popularProviders.filter(p => providers.includes(p)),
-    ...providers.filter(p => !popularProviders.includes(p)).sort(),
+    ...popularProviders.filter(p => availableProviders.includes(p)),
+    ...availableProviders.filter(p => !popularProviders.includes(p)).sort(),
   ];
 
   // Parse messages for ChatView

@@ -13,7 +13,7 @@ Create and deploy web apps using ANY technology stack — static HTML, React, No
 - **Metadata:** `.vito-app.json` in each app folder (name, description, port, URL, createdAt)
 - **PM2 tracking:** Each app registered as `app-<name>` in PM2
 - **Cloudflare tunnel:** Adds ingress entry to `~/.cloudflared/config.yml`, restarts tunnel
-- **Wildcard DNS:** `*.theworstproductions.com` resolves via wildcard — no manual DNS setup needed
+- **DNS Records:** Created automatically via `cloudflared tunnel route dns` command for each app
 - **Ports:** Auto-assigned starting from 3100, scanned from tunnel config to avoid conflicts
 - **Dashboard:** Apps page (`/apps`) reads metadata + PM2 status via `GET /api/apps`
 

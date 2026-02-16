@@ -73,9 +73,16 @@ All user-specific, non-versioned data lives here:
 ## Restarting the Server
 **⚠️ Restarting kills your process. You die. Only do this when absolutely necessary.**
 
-**🚨 NEVER restart the server yourself.** When a restart is needed, tell the user why and let them do it from the **Server page** in the dashboard (hamburger menu → Server → Restart button). The dashboard has a restart button with two-click confirmation and auto-reconnect polling. You don't touch `pm2 restart` — that's the user's call.
+**🚨 ABSOLUTE RULE: NEVER restart the server yourself. NEVER suggest the user restart immediately.**
 
-To restart manually: `pm2 restart vito-server` (via Bash tool) — but only if the user explicitly asks you to.
+When code changes require a restart:
+1. Tell the user "changes are ready"
+2. Let THEM decide when to restart
+3. They may have long-running jobs (pi calculations, etc.) that would be killed
+
+The user restarts from the **Server page** in the dashboard (hamburger menu → Server → Restart button), or manually via `pm2 restart vito-server`. You don't touch it. You don't rush them. You wait.
+
+**Why this matters:** Long-running computations, background jobs, and in-progress work all die on restart. The user knows what's running — you don't. Respect the operation.
 
 ### When to restart:
 - Changes to **source code** in `src/` (TypeScript files)

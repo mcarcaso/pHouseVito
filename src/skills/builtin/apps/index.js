@@ -204,6 +204,13 @@ async function createApp(name, description, files) {
   // Add to Cloudflare config
   addCloudflareEntry(name, port, description);
 
+  // Create DNS record via cloudflared CLI
+  try {
+    execSync(`cloudflared tunnel route dns vito-services ${name}.${DOMAIN}`, { stdio: 'pipe' });
+  } catch (e) {
+    // DNS record might already exist, that's fine
+  }
+
   // Start the server (handles deps install, detects server type)
   startAppServer(name, port, appDir);
 

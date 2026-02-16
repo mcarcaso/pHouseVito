@@ -5,6 +5,9 @@ import { join } from "path";
 
 const MEMORIES_DIR = join(process.cwd(), "user", "memories");
 
+// Lock to prevent concurrent compaction
+let isCompacting = false;
+
 /**
  * Check if compaction should be triggered.
  * Returns true when un-compacted message count exceeds threshold.
@@ -59,12 +62,24 @@ async function compactMessages(
 
   const currentMemories = readMemoryFiles();
 
+  // Map type to display role for compaction
+  const typeToRole = (type: string): string => {
+    switch (type) {
+      case "user": return "user";
+      case "thought": return "assistant";
+      case "assistant": return "assistant";
+      case "tool_start": return "tool";
+      case "tool_end": return "tool";
+      default: return type;
+    }
+  };
+
   // Build the compaction prompt
   const shortTermSection = messages
     .map((m) => {
       const content = JSON.parse(m.content);
       const text = typeof content === "string" ? content : content.text || "";
-      return `[${m.session_id}] ${m.role}: ${text}`;
+      return `[${m.session_id}] ${typeToRole(m.type)}: ${text}`;
     })
     .join("\n");
 
@@ -134,15 +149,27 @@ export async function runCompaction(
   config: VitoConfig,
   promptLLM: (prompt: string) => Promise<string>
 ): Promise<void> {
-  const allUncompacted = queries.getAllUncompactedMessages();
-  if (allUncompacted.length === 0) return;
+  // Check lock — skip if already compacting
+  if (isCompacting) {
+    console.log("[Compaction] Already in progress, skipping...");
+    return;
+  }
 
-  // Only compact the oldest half — keep the recent half in context
-  const half = Math.ceil(allUncompacted.length / 2);
-  const toCompact = allUncompacted.slice(0, half);
-  console.log(`[Compaction] Compacting oldest ${toCompact.length} of ${allUncompacted.length} messages`);
+  isCompacting = true;
+  try {
+    const allUncompacted = queries.getAllUncompactedMessages();
+    if (allUncompacted.length === 0) return;
 
-  await compactMessages(queries, toCompact, promptLLM);
+    // Compact a percentage of messages (default 50%) — keep the rest in context
+    const percent = config.memory.compactionPercent ?? 50;
+    const count = Math.ceil(allUncompacted.length * (percent / 100));
+    const toCompact = allUncompacted.slice(0, count);
+    console.log(`[Compaction] Compacting oldest ${toCompact.length} of ${allUncompacted.length} messages (${percent}%)`);
+
+    await compactMessages(queries, toCompact, promptLLM);
+  } finally {
+    isCompacting = false;
+  }
 }
 
 /**
@@ -154,9 +181,20 @@ export async function runSessionCompaction(
   sessionId: string,
   promptLLM: (prompt: string) => Promise<string>
 ): Promise<void> {
-  const uncompacted = queries.getUncompactedMessagesForSession(sessionId);
-  if (uncompacted.length === 0) return;
+  // Check lock — skip if already compacting
+  if (isCompacting) {
+    console.log("[Compaction] Already in progress, skipping session compaction...");
+    return;
+  }
 
-  console.log(`[Compaction] Session compaction: ${uncompacted.length} messages for ${sessionId}`);
-  await compactMessages(queries, uncompacted, promptLLM);
+  isCompacting = true;
+  try {
+    const uncompacted = queries.getUncompactedMessagesForSession(sessionId);
+    if (uncompacted.length === 0) return;
+
+    console.log(`[Compaction] Session compaction: ${uncompacted.length} messages for ${sessionId}`);
+    await compactMessages(queries, uncompacted, promptLLM);
+  } finally {
+    isCompacting = false;
+  }
 }

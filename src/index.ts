@@ -24,7 +24,11 @@ async function main() {
   const config = loadConfig();
   const soul = loadSoul();
 
-  console.log(`Model: ${config.model.provider}/${config.model.name}`);
+  // Log the active model
+  const activeModel = config.harnesses?.["pi-coding-agent"]?.model || config.model;
+  if (activeModel) {
+    console.log(`Model: ${activeModel.provider}/${activeModel.name}`);
+  }
   if (soul) {
     console.log("SOUL.md loaded");
   }

@@ -1,18 +1,16 @@
-import { getModel } from "@mariozechner/pi-ai";
+
 import {
-  createAgentSession,
-  DefaultResourceLoader,
-  SessionManager as PiSessionManager,
   type AgentSession,
   type AgentSessionEvent,
 } from "@mariozechner/pi-coding-agent";
+import { PiHarness, ClaudeCodeHarness, withTracing, type Harness, type TracingOptions } from "./harnesses/index.js";
 import type { Queries } from "./db/queries.js";
 import { assembleContext, formatContextForPrompt } from "./memory/context.js";
 import { shouldCompact, runCompaction, runSessionCompaction } from "./memory/compaction.js";
 import { SessionManager } from "./sessions/manager.js";
 import { discoverSkills, formatSkillsForPrompt } from "./skills/discovery.js";
-import { loadSkillTools, convertToolsForPi } from "./skills/loader.js";
 import { CronScheduler } from "./cron/scheduler.js";
+
 import type {
   VitoConfig,
   InboundEvent,
@@ -24,7 +22,8 @@ import type {
   CronJobConfig,
 } from "./types.js";
 import { resolve, join } from "path";
-import { existsSync, mkdirSync, writeFileSync, readFileSync, appendFileSync } from "fs";
+import { existsSync, mkdirSync, writeFileSync, readFileSync } from "fs";
+import { randomBytes } from "crypto";
 
 
 
@@ -37,8 +36,9 @@ export class Orchestrator {
   /** Per-session message queues and processing locks */
   private sessionQueues = new Map<string, Array<{ event: InboundEvent; channel: Channel | null }>>();
   private sessionProcessing = new Set<string>();
-  /** Track active Pi sessions so we can abort them on interrupt */
-  private activeSessions = new Map<string, { piSession: AgentSession; aborted: boolean }>();
+  /** Track active requests so they can be aborted on interrupt */
+  private activeRequests = new Map<string, { abort: AbortController; aborted: boolean }>();
+
 
   constructor(
     private queries: Queries,
@@ -92,7 +92,9 @@ export class Orchestrator {
   /** Hot-reload the full config (model, memory, etc.) */
   reloadConfig(config: VitoConfig): void {
     this.config = config;
-    console.log(`[Orchestrator] Config reloaded — model: ${config.model.provider}/${config.model.name}`);
+    const activeModel = config.harnesses?.["pi-coding-agent"]?.model || config.model;
+    const modelStr = activeModel ? `${activeModel.provider}/${activeModel.name}` : "default";
+    console.log(`[Orchestrator] Config reloaded — model: ${modelStr}`);
   }
 
   /** Remove a one-time job from the config file after it completes */
@@ -120,6 +122,66 @@ export class Orchestrator {
     } catch (err) {
       console.error(`[Config] ❌ Failed to remove job ${jobName} from config:`, err);
     }
+  }
+
+  /** Download attachments that have URL but no local path */
+  private async downloadAttachments(event: InboundEvent): Promise<void> {
+    if (!event.attachments?.length) return;
+    
+    const imagesDir = resolve(process.cwd(), "user/images");
+    mkdirSync(imagesDir, { recursive: true });
+    
+    for (const attachment of event.attachments) {
+      // Skip if already has a local path
+      if (attachment.path) continue;
+      // Skip if no URL to download from
+      if (!attachment.url) continue;
+      
+      try {
+        console.log(`[Orchestrator] Downloading attachment from: ${attachment.url.substring(0, 80)}...`);
+        
+        const response = await fetch(attachment.url);
+        if (!response.ok) {
+          console.error(`[Orchestrator] Failed to download attachment: ${response.status}`);
+          continue;
+        }
+        
+        const buffer = Buffer.from(await response.arrayBuffer());
+        
+        // Generate unique filename
+        const ext = this.getExtensionForMime(attachment.mimeType || "application/octet-stream");
+        const filename = `${Date.now()}_${randomBytes(4).toString("hex")}${ext}`;
+        const localPath = join(imagesDir, filename);
+        
+        writeFileSync(localPath, buffer);
+        attachment.path = localPath;
+        attachment.buffer = buffer; // Keep buffer for passing to harness if needed
+        
+        console.log(`[Orchestrator] ✓ Downloaded attachment to: ${localPath}`);
+      } catch (err) {
+        console.error(`[Orchestrator] Error downloading attachment:`, err);
+      }
+    }
+  }
+  
+  /** Get file extension from MIME type */
+  private getExtensionForMime(mimeType: string): string {
+    const map: Record<string, string> = {
+      "image/jpeg": ".jpg",
+      "image/jpg": ".jpg",
+      "image/png": ".png",
+      "image/gif": ".gif",
+      "image/webp": ".webp",
+      "image/svg+xml": ".svg",
+      "audio/mpeg": ".mp3",
+      "audio/ogg": ".ogg",
+      "audio/wav": ".wav",
+      "video/mp4": ".mp4",
+      "video/webm": ".webm",
+      "application/pdf": ".pdf",
+      "text/plain": ".txt",
+    };
+    return map[mimeType] || "";
   }
 
   /** Start all enabled channels and begin listening */
@@ -156,19 +218,13 @@ export class Orchestrator {
   ): Promise<void> {
     const sessionKey = `${event.channel}:${event.target}`;
     console.log(`[handleInbound] ⚡ Received event from ${sessionKey}`);
-    this.logToFile(`[handleInbound] Channel: ${event.channel}, Target: ${event.target}, Content: ${event.content ? event.content.substring(0, 50) + '...' : '(empty)'}`);
     
-    // If there's an active session for this key, abort it (interrupt)
-    const active = this.activeSessions.get(sessionKey);
+    // If there's an active request for this key, abort it (interrupt)
+    const active = this.activeRequests.get(sessionKey);
     if (active && !active.aborted) {
-      console.log(`[handleInbound] ⛔ Aborting active session for ${sessionKey}`);
-      this.logToFile(`[handleInbound] Aborting active Pi session for ${sessionKey}`);
+      console.log(`[handleInbound] ⛔ Aborting active request for ${sessionKey}`);
       active.aborted = true;
-      try {
-        await active.piSession.abort();
-      } catch (err) {
-        console.error(`[handleInbound] Error aborting session: ${err}`);
-      }
+      active.abort.abort();
     }
 
     // Get or create the per-session queue
@@ -223,26 +279,22 @@ export class Orchestrator {
     event: InboundEvent,
     channel: Channel | null
   ): Promise<void> {
-    this.logToFile(`[processMessage] START - Channel: ${event.channel}, Target: ${event.target}`);
-    this.logToFile(`[processMessage] Content: ${event.content ? event.content.substring(0, 100) + '...' : '(empty)'}`);
-    
     // Check for /new command (only for non-cron messages)
     if (channel && event.content?.trim() === '/new') {
-      this.logToFile(`[processMessage] Handling /new command`);
       await this.handleNewCommand(event, channel);
       return;
     }
 
     // 1. Resolve/create Vito session
-    this.logToFile(`[processMessage] Resolving session...`);
     const vitoSession = this.sessionManager.resolveSession(
       event.channel,
       event.target
     );
-    this.logToFile(`[processMessage] Session resolved: ${vitoSession.id}`);
+
+    // 1.5. Download any remote attachments (e.g., from Telegram)
+    await this.downloadAttachments(event);
 
     // 2. Store the user message in our DB (paths only, no base64)
-    this.logToFile(`[processMessage] Storing user message in DB...`);
     const storedContent = event.attachments?.length
       ? JSON.stringify({
           text: event.content,
@@ -260,218 +312,224 @@ export class Orchestrator {
       channel: event.channel,
       channel_target: event.target,
       timestamp: event.timestamp,
-      role: "user",
+      type: "user",
       content: storedContent,
       compacted: 0,
       archived: 0,
     });
-    this.logToFile(`[processMessage] User message stored`);
 
     // 3. Build fresh context
-    this.logToFile(`[processMessage] Building context...`);
     const ctx = await assembleContext(
       this.queries,
       vitoSession.id,
       this.config
     );
-    this.logToFile(`[processMessage] Context assembled`);
-    
     const contextPrompt = formatContextForPrompt(ctx);
     const skillsPrompt = formatSkillsForPrompt(this.getSkills());
-    const systemPrompt = this.buildSystemPrompt(
-      contextPrompt,
-      skillsPrompt,
-      channel?.getCustomPrompt?.() || ""
-    );
-    this.logToFile(`[processMessage] System prompt built - length: ${systemPrompt.length} chars`);
 
     // 4. Set up output handler and message tracking
     const handler = channel ? channel.createHandler(event) : null;
     const sessionConfig: SessionConfig = JSON.parse(vitoSession.config || "{}");
-    
-    // 4a. Snapshot the system prompt for this request (includes model info)
-    const model = this.getModel(sessionConfig);
-    this.queries.insertTrace({
+
+    // Create harness for this request (respects session config overrides)
+    // Wrap with tracing to log all events
+    const innerHarness = this.getHarness(sessionConfig);
+    const harness = withTracing(innerHarness, {
       session_id: vitoSession.id,
       channel: event.channel,
-      timestamp: Date.now(),
-      user_message: event.content || "",
-      system_prompt: systemPrompt,
-      model: model.id,
+      target: event.target,
+      model: this.getModelString(sessionConfig),
     });
+
+    // Build system prompt with harness-specific custom instructions
+    const systemPrompt = this.buildSystemPrompt(
+      contextPrompt,
+      skillsPrompt,
+      channel?.getCustomPrompt?.() || "",
+      innerHarness.getCustomInstructions?.() || ""
+    );
+    
     const streamMode = this.getStreamMode(event.channel, sessionConfig);
     console.log(`[Orchestrator] Stream mode for ${event.channel}: ${streamMode}`);
 
-    // 5. Collect response using proper event lifecycle
-    let currentMessageText = "";
+    // 5. Collect response using harness
     const completedMessages: string[] = [];
-    
-    // Callback to capture tool results so they can be relayed with MEDIA: attachments
-    const toolResultCallback = (result: string) => {
-      completedMessages.push(result);
-    };
+    const assistantMessageIds: number[] = [];
+    let currentMessageText = "";
 
-    // 6. Create a fresh pi session per message (context comes from our DB,
-    //    so there's no need to persist pi's internal message history)
-    this.logToFile(`[processMessage] Creating Pi session...`);
-    const piSession = await this.createPiSession(systemPrompt, toolResultCallback, sessionConfig);
-    this.logToFile(`[processMessage] Pi session created`);
-
-    // Register active session so it can be aborted on interrupt
+    // 6. Set up abort controller for this request
     const sessionKey = `${event.channel}:${event.target}`;
-    const activeEntry = { piSession, aborted: false };
-    this.activeSessions.set(sessionKey, activeEntry);
+    const abortController = new AbortController();
+    const activeEntry = { abort: abortController, aborted: false };
+    this.activeRequests.set(sessionKey, activeEntry);
 
-    // Start typing indicator if available
+    // Start typing indicator
     await handler?.startTyping?.();
-    this.logToFile(`[processMessage] Typing indicator started`);
 
-    const unsubscribe = piSession.subscribe(
-      (agentEvent: AgentSessionEvent) => {
-        this.logToFile(`[piSession] Event type: ${agentEvent.type}`);
-        switch (agentEvent.type) {
-          case "message_start":
-            // New message boundary — reset accumulator
-            this.logToFile(`[piSession] message_start - message role: ${agentEvent.message?.role || 'unknown'}`);
-            currentMessageText = "";
-            break;
+    let llmError: string | null = null;
+    const execStart = Date.now();
 
-          case "message_update": {
-            const msgEvent = agentEvent.assistantMessageEvent;
-            if (msgEvent.type === "text_delta") {
-              currentMessageText += msgEvent.delta;
-              this.logToFile(`[piSession] text_delta: "${msgEvent.delta}"`);
+    // 7. Build user message (include attachment file paths if any)
+    let promptText = event.content || "";
+    if (event.attachments?.length) {
+      const refs = event.attachments
+        .map((a) => {
+          const ref = a.path || a.filename || "(attachment)";
+          return `[Attached ${a.type}: ${ref}]`;
+        })
+        .join("\n");
+      promptText = promptText ? `${promptText}\n\n${refs}` : refs;
+    }
+
+    console.log(`[Orchestrator] Sending prompt to LLM (${promptText.length} chars)...`);
+
+    try {
+      await harness.run(
+        systemPrompt,
+        promptText,
+        {
+          onInvocation: () => {
+            // Tracing is handled by TracingHarness wrapper
+          },
+          onRawEvent: (agentEvent) => {
+            // Tracing is handled by TracingHarness wrapper
+            // Handle streaming text
+            const e = agentEvent as AgentSessionEvent;
+            if (e.type === "message_start") {
+              currentMessageText = "";
+            } else if (e.type === "message_update") {
+              const msgEvent = e.assistantMessageEvent;
+              if (msgEvent.type === "text_delta") {
+                currentMessageText += msgEvent.delta;
+                if (streamMode === "stream" && handler) {
+                  handler.relay(msgEvent.delta).catch(() => {});
+                }
+              }
+            } else if (e.type === "message_end") {
+              if (e.message.role === "assistant" && currentMessageText) {
+                completedMessages.push(currentMessageText);
+
+                const msgId = this.queries.insertMessage({
+                  session_id: vitoSession.id,
+                  channel: event.channel,
+                  channel_target: event.target,
+                  timestamp: Date.now(),
+                  type: "thought",
+                  content: JSON.stringify(currentMessageText),
+                  compacted: 0,
+                  archived: 0,
+                });
+                assistantMessageIds.push(msgId);
+
+                if (streamMode === "stream" && handler) {
+                  handler.endMessage?.()?.catch(() => {});
+                  handler.startTyping?.()?.catch(() => {});
+                }
+              }
+              currentMessageText = "";
+            }
+          },
+          onNormalizedEvent: (normEvent) => {
+            // Handle normalized assistant messages (for harnesses that don't use message_end)
+            if (normEvent.kind === "assistant" && normEvent.content) {
+              completedMessages.push(normEvent.content);
+              
+              const msgId = this.queries.insertMessage({
+                session_id: vitoSession.id,
+                channel: event.channel,
+                channel_target: event.target,
+                timestamp: Date.now(),
+                type: "thought",
+                content: JSON.stringify(normEvent.content),
+                compacted: 0,
+                archived: 0,
+              });
+              assistantMessageIds.push(msgId);
+              
+              // For streaming mode, relay immediately (if we haven't already via raw events)
               if (streamMode === "stream" && handler) {
-                handler.relay(msgEvent.delta).catch(() => {});
+                handler.relay(normEvent.content).catch(() => {});
+                handler.endMessage?.()?.catch(() => {});
               }
             }
-            break;
-          }
-
-          case "message_end":
-            // Message fully received — store it as a discrete unit
-            this.logToFile(`[piSession] message_end - role: ${agentEvent.message.role}, length: ${currentMessageText.length}`);
-            if (agentEvent.message.role === "assistant" && currentMessageText) {
-              this.logToFile(`[piSession] FULL ASSISTANT MESSAGE:\n${currentMessageText}\n===END ASSISTANT MESSAGE===`);
-              completedMessages.push(currentMessageText);
-
-              // Insert assistant message into DB immediately
+            
+            // Handle normalized tool events (cleaner interface)
+            if (normEvent.kind === "tool_start") {
               this.queries.insertMessage({
                 session_id: vitoSession.id,
                 channel: event.channel,
                 channel_target: event.target,
                 timestamp: Date.now(),
-                role: "assistant",
-                content: JSON.stringify(currentMessageText),
+                type: "tool_start",
+                content: JSON.stringify({
+                  toolName: normEvent.tool,
+                  toolCallId: normEvent.callId,
+                  args: normEvent.args,
+                }),
                 compacted: 0,
                 archived: 0,
               });
-              this.logToFile(`[piSession] Assistant message stored in DB`);
-
-              // In stream mode, flush each message as it completes
-              // then re-send typing indicator since the agent is still working
-              if (streamMode === "stream" && handler) {
-                this.logToFile(`[piSession] Stream mode: calling endMessage() and restarting typing`);
-                handler.endMessage?.()?.catch(() => {});
-                handler.startTyping?.()?.catch(() => {});
-              }
+              handler?.relayEvent?.({
+                kind: "tool_start",
+                toolName: normEvent.tool,
+                toolCallId: normEvent.callId,
+                args: normEvent.args,
+              })?.catch(() => {});
+            } else if (normEvent.kind === "tool_end") {
+              this.queries.insertMessage({
+                session_id: vitoSession.id,
+                channel: event.channel,
+                channel_target: event.target,
+                timestamp: Date.now(),
+                type: "tool_end",
+                content: JSON.stringify({
+                  toolName: normEvent.tool,
+                  toolCallId: normEvent.callId,
+                  result: normEvent.result,
+                  isError: !normEvent.success,
+                }),
+                compacted: 0,
+                archived: 0,
+              });
+              handler?.relayEvent?.({
+                kind: "tool_end",
+                toolName: normEvent.tool,
+                toolCallId: normEvent.callId,
+                result: normEvent.result,
+                isError: !normEvent.success,
+              })?.catch(() => {});
             }
-            currentMessageText = "";
-            break;
+          },
+        },
+        abortController.signal
+      );
 
-          case "tool_execution_start":
-            this.logToFile(`[piSession] Tool start: ${agentEvent.toolName} (${agentEvent.toolCallId})`);
-            this.queries.insertMessage({
-              session_id: vitoSession.id,
-              channel: event.channel,
-              channel_target: event.target,
-              timestamp: Date.now(),
-              role: "tool",
-              content: JSON.stringify({
-                phase: "start",
-                toolName: agentEvent.toolName,
-                toolCallId: agentEvent.toolCallId,
-                args: agentEvent.args,
-              }),
-              compacted: 0,
-              archived: 0,
-            });
-            handler?.relayEvent?.({
-              kind: "tool_start",
-              toolName: agentEvent.toolName,
-              toolCallId: agentEvent.toolCallId,
-              args: agentEvent.args,
-            })?.catch(() => {});
-            break;
+      console.log(`[Orchestrator] LLM response complete (${completedMessages.length} messages)`);
 
-          case "tool_execution_end":
-            this.logToFile(`[piSession] Tool end: ${agentEvent.toolName} (error: ${agentEvent.isError})`);
-            this.queries.insertMessage({
-              session_id: vitoSession.id,
-              channel: event.channel,
-              channel_target: event.target,
-              timestamp: Date.now(),
-              role: "tool",
-              content: JSON.stringify({
-                phase: "end",
-                toolName: agentEvent.toolName,
-                toolCallId: agentEvent.toolCallId,
-                result: agentEvent.result,
-                isError: agentEvent.isError,
-              }),
-              compacted: 0,
-              archived: 0,
-            });
-            handler?.relayEvent?.({
-              kind: "tool_end",
-              toolName: agentEvent.toolName,
-              toolCallId: agentEvent.toolCallId,
-              result: agentEvent.result,
-              isError: agentEvent.isError,
-            })?.catch(() => {});
-            break;
-        }
-      }
-    );
-
-    let llmError: string | null = null;
-
-    try {
-      // 7. Send prompt to pi (include attachment file paths if any)
-      let promptText = event.content || "";
-      if (event.attachments?.length) {
-        const refs = event.attachments
-          .map((a) => `[Attached ${a.type}: ${a.path}]`)
-          .join("\n");
-        promptText = promptText ? `${promptText}\n\n${refs}` : refs;
+      // Mark the last assistant message as 'assistant' (the actual response, not a thought)
+      if (assistantMessageIds.length > 0) {
+        const lastMsgId = assistantMessageIds[assistantMessageIds.length - 1];
+        this.queries.updateMessageType(lastMsgId, "assistant");
       }
 
-      // Log the full prompt to a file for inspection
-      this.logPromptToFile(systemPrompt, promptText);
-      this.logToFile(`[processMessage] Sending prompt to LLM... (length: ${promptText.length})`);
-
-      await piSession.prompt(promptText);
-      this.logToFile(`[processMessage] LLM response completed successfully`);
-      this.logToFile(`[processMessage] Completed messages count: ${completedMessages.length}`);
       llmError = null;
     } catch (err) {
       // Handle abort gracefully (user interrupted)
       if (activeEntry.aborted) {
-        this.logToFile(`[processMessage] Session was aborted by user interrupt`);
         console.log(`[Orchestrator] ⛔ Session ${sessionKey} aborted by user`);
-        
+
         // Store an assistant message noting the interruption
         this.queries.insertMessage({
           session_id: vitoSession.id,
           channel: event.channel,
           channel_target: event.target,
           timestamp: Date.now(),
-          role: "assistant",
+          type: "assistant",
           content: JSON.stringify("*(interrupted)*"),
           compacted: 0,
           archived: 0,
         });
-        
+
         if (handler) {
           if (streamMode === "stream") {
             await handler.endMessage?.();
@@ -483,9 +541,8 @@ export class Orchestrator {
       } else {
         // Handle timeout or other errors
         llmError = err instanceof Error ? err.message : String(err);
-        this.logToFile(`[processMessage] ERROR during LLM call: ${llmError}`);
         console.error(`[Orchestrator] Error during LLM call: ${llmError}`);
-        
+
         // Send error message to user
         if (handler) {
           await handler.relay(`⚠️ ${llmError}`);
@@ -493,14 +550,8 @@ export class Orchestrator {
         }
       }
     } finally {
-      this.logToFile(`[processMessage] Cleaning up Pi session...`);
-      this.activeSessions.delete(sessionKey);
-      unsubscribe();
-      piSession.dispose();
+      this.activeRequests.delete(sessionKey);
       await handler?.stopTyping?.();
-      this.logToFile(`[processMessage] Pi session disposed`);
-
-
     }
 
     // If there was an error, skip normal response handling
@@ -509,20 +560,20 @@ export class Orchestrator {
     }
 
     // 8. Relay responses for non-stream modes
-    this.logToFile(`[processMessage] Relaying response - mode: ${streamMode}, messages: ${completedMessages.length}`);
+
     if (handler) {
       if (streamMode === "bundled") {
         // Send all messages combined as one blob after the agent loop finishes
         const combined = completedMessages.join("\n\n");
         await handler.relay(combined);
         await handler.endMessage?.();
-        this.logToFile(`[processMessage] Bundled response sent`);
+
       } else if (streamMode === "final" && completedMessages.length > 0) {
         // Send only the final message
         const last = completedMessages[completedMessages.length - 1];
         await handler.relay(last);
         await handler.endMessage?.();
-        this.logToFile(`[processMessage] Final response sent`);
+
       }
     }
 
@@ -531,45 +582,20 @@ export class Orchestrator {
     // 10. Signal the channel that the response is complete (for re-prompting)
     if (channel) {
       this.notifyResponseComplete(channel);
-      this.logToFile(`[processMessage] Response complete notification sent`);
+
     }
 
     // 11. Check if compaction is needed (run in background)
     if (shouldCompact(this.queries, this.config)) {
-      this.logToFile(`[processMessage] Compaction threshold reached, running in background...`);
       console.log("\nCompaction threshold reached, running memory compaction...");
-      runCompaction(this.queries, this.config, async (prompt) => {
-        const { session: compactionSession } = await createAgentSession({
-          sessionManager: PiSessionManager.inMemory(),
-          model: this.getModel(),
-          tools: [],
-        });
-
-        let response = "";
-        compactionSession.subscribe((e: AgentSessionEvent) => {
-          if (
-            e.type === "message_update" &&
-            e.assistantMessageEvent.type === "text_delta"
-          ) {
-            response += e.assistantMessageEvent.delta;
-          }
-        });
-
-        await compactionSession.prompt(prompt);
-        compactionSession.dispose();
-        return response;
-      })
+      runCompaction(this.queries, this.config, (prompt) => this.runCompactionPrompt(prompt))
         .then(() => {
           console.log("Compaction complete.");
-          this.logToFile(`[processMessage] Compaction completed successfully`);
         })
         .catch((err) => {
           console.error("Compaction failed:", err);
-          this.logToFile(`[processMessage] Compaction FAILED: ${err}`);
         });
     }
-    
-    this.logToFile(`[processMessage] END - message processing complete`);
   }
 
   private async handleNewCommand(
@@ -601,27 +627,7 @@ export class Orchestrator {
       if (uncompacted.length > 0) {
         console.log(`\n[/new] Compacting ${uncompacted.length} un-compacted messages for session ${vitoSession.id}...`);
         
-        await runSessionCompaction(this.queries, vitoSession.id, async (prompt) => {
-          const { session: compactionSession } = await createAgentSession({
-            sessionManager: PiSessionManager.inMemory(),
-            model: this.getModel(),
-            tools: [],
-          });
-
-          let response = "";
-          compactionSession.subscribe((e: AgentSessionEvent) => {
-            if (
-              e.type === "message_update" &&
-              e.assistantMessageEvent.type === "text_delta"
-            ) {
-              response += e.assistantMessageEvent.delta;
-            }
-          });
-
-          await compactionSession.prompt(prompt);
-          compactionSession.dispose();
-          return response;
-        });
+        await runSessionCompaction(this.queries, vitoSession.id, (prompt) => this.runCompactionPrompt(prompt));
 
         console.log(`[/new] Compaction complete for session ${vitoSession.id}`);
       }
@@ -650,49 +656,48 @@ export class Orchestrator {
     }
   }
 
-  private async createPiSession(
-    systemPrompt: string,
-    toolResultCallback?: (result: string) => void,
-    sessionConfig?: SessionConfig
-  ): Promise<AgentSession> {
-    this.logToFile(`[createPiSession] Creating new Pi session`);
-    
-    const resourceLoader = new DefaultResourceLoader({
-      cwd: process.cwd(),
-      noExtensions: true,
-      noSkills: true,
-      noPromptTemplates: true,
-      noThemes: true,
-      systemPrompt,
-    });
-    await resourceLoader.reload();
-    this.logToFile(`[createPiSession] Resource loader initialized`);
-
-    const loadedSkills = await loadSkillTools(this.skillsDir);
-    this.logToFile(`[createPiSession] Loaded ${loadedSkills.length} skills`);
-    
-    const customTools = convertToolsForPi(loadedSkills, toolResultCallback);
-    this.logToFile(`[createPiSession] Converted tools for Pi`);
-
-    const model = this.getModel(sessionConfig);
-    this.logToFile(`[createPiSession] Using model: ${model.id}`);
-
-    const { session: piSession } = await createAgentSession({
-      sessionManager: PiSessionManager.inMemory(),
-      model,
-      resourceLoader,
-      customTools,
+  /**
+   * Run a compaction prompt through the harness (no tools, simple summarization)
+   */
+  private async runCompactionPrompt(prompt: string): Promise<string> {
+    // Create a minimal harness for compaction (no skills needed)
+    const piConfig = this.getDefaultPiConfig();
+    const compactionHarness = new PiHarness({
+      model: piConfig.model,
       thinkingLevel: "off",
+      // No skillsDir — compaction doesn't need tools
     });
-    this.logToFile(`[createPiSession] Pi session created successfully`);
 
-    return piSession;
+    const systemPrompt = `You are a conversation summarizer. Condense the provided messages while preserving:
+- Key facts and decisions
+- Important context and user preferences
+- Any commitments or action items
+
+Be concise but comprehensive.`;
+
+    let response = "";
+    await compactionHarness.run(
+      systemPrompt,
+      prompt,
+      {
+        onInvocation: () => {}, // Not tracing compaction
+        onRawEvent: () => {},
+        onNormalizedEvent: (event) => {
+          if (event.kind === "assistant") {
+            response = event.content;
+          }
+        },
+      }
+    );
+
+    return response;
   }
 
   private buildSystemPrompt(
     contextPrompt: string,
     skillsPrompt: string,
-    channelPrompt: string
+    channelPrompt: string,
+    harnessInstructions: string = ""
   ): string {
     const parts: string[] = [];
 
@@ -708,6 +713,8 @@ You can query the SQLite database (user/vito.db) for more message history if nee
 
 To send/share a file or image inline, output MEDIA:/path/to/file on its own line. The channel will deliver it as an attachment. Don't paste file contents when the user asks you to "send" a file — use MEDIA: instead.
 
+NEVER restart yourself. You don't know what long-running jobs might be in progress. When changes need a restart, say "changes are ready, restart when you're clear" and let the boss decide when.
+
 Available commands: /new (compact + archive session)
 </system>`);
 
@@ -719,6 +726,11 @@ Available commands: /new (compact + archive session)
       parts.push(`<channel>\n${channelPrompt}\n</channel>`);
     }
 
+    // Inject harness-specific instructions if they exist (before memory)
+    if (harnessInstructions) {
+      parts.push(`<custom-instructions>\n${harnessInstructions}\n</custom-instructions>`);
+    }
+
     if (contextPrompt) {
       parts.push(`<memory>\n${contextPrompt}\n</memory>`);
     }
@@ -726,68 +738,98 @@ Available commands: /new (compact + archive session)
     return parts.join("\n\n");
   }
 
+  /** Get a human-readable model string from session config */
+  private getModelString(sessionConfig?: SessionConfig): string {
+    const harnessName = sessionConfig?.harness || this.config.harnesses?.default || "pi-coding-agent";
+    if (harnessName === "claude-code") {
+      const globalCCConfig = this.config.harnesses?.["claude-code"] as Record<string, any> | undefined;
+      return sessionConfig?.["claude-code"]?.model || globalCCConfig?.model || "sonnet";
+    }
+    const sessionOverrides = sessionConfig?.["pi-coding-agent"];
+    const legacyModel = sessionConfig?.model;
+    const model = legacyModel || sessionOverrides?.model || this.getDefaultPiConfig().model;
+    return `${model.provider}/${model.name}`;
+  }
+
   private getStreamMode(channelName: string, sessionConfig?: SessionConfig): StreamMode {
     return sessionConfig?.streamMode || this.config.channels[channelName]?.streamMode || "final";
   }
 
-  private getModel(sessionConfig?: SessionConfig) {
-    // Per-session override takes priority over global config
-    if (sessionConfig?.model?.provider && sessionConfig?.model?.name) {
-      console.log(`[Model] Using session override: ${sessionConfig.model.provider}/${sessionConfig.model.name}`);
-      return getModel(sessionConfig.model.provider as any, sessionConfig.model.name as any);
+  /**
+   * Get the default harness config (with backward compat for old config.model)
+   */
+  private getDefaultPiConfig() {
+    // New config structure takes priority
+    if (this.config.harnesses?.["pi-coding-agent"]) {
+      return this.config.harnesses["pi-coding-agent"];
+    }
+    // Fall back to deprecated config.model
+    if (this.config.model) {
+      return {
+        model: this.config.model,
+        thinkingLevel: "off" as const,
+      };
+    }
+    // Ultimate fallback
+    return {
+      model: { provider: "anthropic", name: "claude-sonnet-4-20250514" },
+      thinkingLevel: "off" as const,
+    };
+  }
+
+  /**
+   * Create a harness for the given session config.
+   * Session config can override which harness to use and harness-specific settings.
+   */
+  private getHarness(sessionConfig?: SessionConfig): Harness {
+    // Determine which harness to use
+    const harnessName = sessionConfig?.harness || this.config.harnesses?.default || "pi-coding-agent";
+    
+    if (harnessName === "claude-code") {
+      // Claude Code harness - merge global config with session overrides
+      const globalConfig = this.config.harnesses?.["claude-code"] || {};
+      const sessionOverrides = sessionConfig?.["claude-code"] || {};
+      
+      // Session overrides take precedence over global config
+      const mergedConfig = { ...globalConfig, ...sessionOverrides };
+      
+      const harness = new ClaudeCodeHarness({
+        model: mergedConfig.model || "sonnet",
+        cwd: mergedConfig.cwd || process.cwd(),
+        permissionMode: mergedConfig.permissionMode || "bypassPermissions",
+        allowedTools: mergedConfig.allowedTools,
+      });
+
+      console.log(`[Orchestrator] 🎭 Created harness: ${harness.getName()} (model: ${mergedConfig.model || "sonnet"})`);
+      return harness;
     }
     
-    // Fallback to global config, with sensible defaults if undefined
-    const provider = this.config.model?.provider || "anthropic";
-    const name = this.config.model?.name || "claude-sonnet-4-20250514";
-    return getModel(provider as any, name as any);
-  }
-
-  private currentLogFile: string | null = null;
-
-  private logToFile(message: string): void {
-    try {
-      const logDir = join(process.cwd(), "logs");
-      if (!existsSync(logDir)) {
-        mkdirSync(logDir, { recursive: true });
-      }
-
-      // Use the current log file or create a new one
-      if (!this.currentLogFile) {
-        const timestamp = new Date().toISOString().replace(/[:.]/g, "-");
-        this.currentLogFile = join(logDir, `vito-${timestamp}.log`);
-      }
-
-      const timestamp = new Date().toISOString();
-      const logLine = `[${timestamp}] ${message}\n`;
-      
-      // Append to the log file
-      appendFileSync(this.currentLogFile, logLine, "utf-8");
-    } catch (err) {
-      console.error(`[Orchestrator] Failed to write to log file:`, err);
+    // Default: pi-coding-agent
+    if (harnessName !== "pi-coding-agent") {
+      console.warn(`[Orchestrator] Unknown harness "${harnessName}", falling back to pi-coding-agent`);
     }
-  }
 
-  private logPromptToFile(systemPrompt: string, userMessage: string): void {
-    try {
-      const logDir = join(process.cwd(), "logs");
-      if (!existsSync(logDir)) {
-        mkdirSync(logDir, { recursive: true });
-      }
-      const timestamp = new Date().toISOString().replace(/[:.]/g, "-");
-      const filePath = join(logDir, `prompt-${timestamp}.txt`);
-      const content =
-        `=== SYSTEM PROMPT (${systemPrompt.length} chars) ===\n\n` +
-        systemPrompt +
-        `\n\n=== USER MESSAGE ===\n\n` +
-        userMessage +
-        `\n`;
-      writeFileSync(filePath, content, "utf-8");
-      console.log(`[Orchestrator] Prompt logged to ${filePath}`);
-      this.logToFile(`[logPromptToFile] Written to ${filePath}`);
-    } catch (err) {
-      console.error(`[Orchestrator] Failed to write prompt file:`, err);
-    }
+    // Get base config for pi-coding-agent
+    const baseConfig = this.getDefaultPiConfig();
+    
+    // Apply session-level overrides (new structure)
+    const sessionOverrides = sessionConfig?.["pi-coding-agent"];
+    
+    // Also support deprecated sessionConfig.model for backward compat
+    const legacyModelOverride = sessionConfig?.model;
+    
+    // Merge: base < session overrides < legacy model override
+    const model = legacyModelOverride || sessionOverrides?.model || baseConfig.model;
+    const thinkingLevel = sessionOverrides?.thinkingLevel || baseConfig.thinkingLevel || "off";
+    
+    const harness = new PiHarness({
+      model,
+      thinkingLevel,
+      skillsDir: this.skillsDir,
+    });
+
+    console.log(`[Orchestrator] 🎭 Created harness: ${harness.getName()} (${model.provider}/${model.name})`);
+    return harness;
   }
 }
 

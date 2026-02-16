@@ -1,5 +1,5 @@
 import type Database from "better-sqlite3";
-import type { MessageRow, SessionRow, TraceRow } from "../types.js";
+import type { MessageRow, SessionRow, TraceRow, MsgType } from "../types.js";
 
 export class Queries {
   constructor(private db: Database.Database) {}
@@ -45,11 +45,18 @@ export class Queries {
   insertMessage(msg: Omit<MessageRow, "id">): number {
     const result = this.db
       .prepare(
-        `INSERT INTO messages (session_id, channel, channel_target, timestamp, role, content, compacted, archived)
-         VALUES (@session_id, @channel, @channel_target, @timestamp, @role, @content, @compacted, @archived)`
+        `INSERT INTO messages (session_id, channel, channel_target, timestamp, type, content, compacted, archived)
+         VALUES (@session_id, @channel, @channel_target, @timestamp, @type, @content, @compacted, @archived)`
       )
       .run(msg);
     return result.lastInsertRowid as number;
+  }
+  
+  /** Update message type (for marking assistant vs thought) */
+  updateMessageType(id: number, type: MsgType): void {
+    this.db
+      .prepare("UPDATE messages SET type = ? WHERE id = ?")
+      .run(type, id);
   }
 
   /**
@@ -57,7 +64,7 @@ export class Queries {
    * Shows everything that's not archived (compacted or not).
    */
   getRecentMessages(sessionId: string, limit: number, includeTools = true): MessageRow[] {
-    const toolFilter = includeTools ? "" : " AND role != 'tool'";
+    const toolFilter = includeTools ? "" : " AND type NOT IN ('tool_start', 'tool_end')";
     return this.db
       .prepare(
         `SELECT * FROM (
@@ -71,27 +78,66 @@ export class Queries {
   }
 
   /** Get all messages for a session (including compacted/archived) for dashboard */
-  getAllMessagesForSession(sessionId: string, limit?: number): MessageRow[] {
-    if (limit) {
+  getAllMessagesForSession(sessionId: string, limit?: number, beforeId?: number, hideThoughts?: boolean, hideTools?: boolean): MessageRow[] {
+    // Build filter clause based on filter options
+    let filterClause = "";
+    if (hideThoughts) {
+      filterClause += " AND type != 'thought'";
+    }
+    if (hideTools) {
+      filterClause += " AND type NOT IN ('tool_start', 'tool_end')";
+    }
+    
+    if (limit && beforeId) {
+      // Paginated: get N messages before a specific ID
       return this.db
         .prepare(
           `SELECT * FROM (
              SELECT * FROM messages
-             WHERE session_id = ?
-             ORDER BY timestamp DESC
+             WHERE session_id = ? AND id < ?${filterClause}
+             ORDER BY id DESC
              LIMIT ?
-           ) ORDER BY timestamp ASC`
+           ) ORDER BY id ASC`
+        )
+        .all(sessionId, beforeId, limit) as MessageRow[];
+    } else if (limit) {
+      // Just limit: get most recent N messages
+      return this.db
+        .prepare(
+          `SELECT * FROM (
+             SELECT * FROM messages
+             WHERE session_id = ?${filterClause}
+             ORDER BY id DESC
+             LIMIT ?
+           ) ORDER BY id ASC`
         )
         .all(sessionId, limit) as MessageRow[];
     } else {
       return this.db
         .prepare(
           `SELECT * FROM messages
-           WHERE session_id = ?
-           ORDER BY timestamp ASC`
+           WHERE session_id = ?${filterClause}
+           ORDER BY id ASC`
         )
         .all(sessionId) as MessageRow[];
     }
+  }
+
+  /** Count total messages for a session */
+  countMessagesForSession(sessionId: string, hideThoughts?: boolean, hideTools?: boolean): number {
+    let sql = "SELECT COUNT(*) as count FROM messages WHERE session_id = ?";
+    
+    if (hideThoughts) {
+      sql += " AND type != 'thought'";
+    }
+    if (hideTools) {
+      sql += " AND type NOT IN ('tool_start', 'tool_end')";
+    }
+    
+    const row = this.db
+      .prepare(sql)
+      .get(sessionId) as { count: number };
+    return row.count;
   }
 
   /**
@@ -105,7 +151,7 @@ export class Queries {
     includeTools = false,
     showArchived = false
   ): MessageRow[] {
-    const toolFilter = includeTools ? "" : " AND role != 'tool'";
+    const toolFilter = includeTools ? "" : " AND type NOT IN ('tool_start', 'tool_end')";
     // Never show compacted from other sessions. Optionally show archived.
     const archiveFilter = showArchived ? "" : " AND archived = 0";
     return this.db
@@ -129,7 +175,7 @@ export class Queries {
     perSessionLimit: number,
     includeTools = false
   ): MessageRow[] {
-    const toolFilter = includeTools ? "" : " AND role != 'tool'";
+    const toolFilter = includeTools ? "" : " AND type NOT IN ('tool_start', 'tool_end')";
     // Get distinct other sessions that have non-archived messages
     const sessions = this.db
       .prepare(

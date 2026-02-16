@@ -8,7 +8,7 @@ import express from "express";
 import { WebSocketServer, WebSocket } from "ws";
 import { createServer } from "http";
 import path from "path";
-import { readFileSync, writeFileSync, existsSync, mkdirSync, readdirSync, statSync } from "fs";
+import { readFileSync, writeFileSync, existsSync, mkdirSync, readdirSync, statSync, openSync, readSync, closeSync } from "fs";
 import { execSync } from "child_process";
 import { fileURLToPath } from "url";
 import crypto from "crypto";
@@ -108,8 +108,80 @@ export class DashboardChannel implements Channel {
           Object.assign(this.config.channels[name], channelUpdate);
         }
       }
+      if (updates.harnesses) {
+        if (!this.config.harnesses) {
+          this.config.harnesses = {};
+        }
+        // Merge each harness config
+        for (const [name, harnessUpdate] of Object.entries(updates.harnesses)) {
+          if (name === 'default') {
+            // Default is just a string
+            this.config.harnesses.default = harnessUpdate as string;
+          } else {
+            // Harness-specific config
+            this.config.harnesses[name] = harnessUpdate;
+          }
+        }
+      }
       this.saveConfig();
       res.json(this.config);
+    });
+
+    // Compaction status endpoint
+    this.app.get("/api/compaction/status", (req, res) => {
+      const uncompactedCount = this.queries.countUncompacted();
+      const threshold = this.config.memory.compactionThreshold;
+      res.json({
+        uncompactedCount,
+        threshold,
+        progress: Math.min(uncompactedCount / threshold, 1),
+        willTrigger: uncompactedCount > threshold
+      });
+    });
+
+    // Harnesses endpoint
+    this.app.get("/api/harnesses", (req, res) => {
+      // Get config and list registered harnesses
+      const harnesses = this.config.harnesses || {};
+      const defaultHarness = harnesses.default || "pi-coding-agent";
+      
+      // Build harness info
+      const available: Record<string, any> = {
+        "pi-coding-agent": {
+          name: "pi-coding-agent",
+          description: "Pi Coding Agent — Anthropic Claude with full tool use",
+          config: harnesses["pi-coding-agent"] || this.config.model || null,
+          isDefault: defaultHarness === "pi-coding-agent"
+        },
+        "claude-code": {
+          name: "claude-code",
+          description: "Claude Code CLI — Anthropic's official coding agent",
+          config: harnesses["claude-code"] || { model: "sonnet", permissionMode: "bypassPermissions" },
+          isDefault: defaultHarness === "claude-code"
+        }
+      };
+      
+      // Get sessions with harness overrides
+      const sessions = this.queries.getAllSessions();
+      const sessionOverrides = sessions
+        .map((s: any) => {
+          const config = JSON.parse(s.config || "{}");
+          if (config.harness || config["pi-coding-agent"] || config.model) {
+            return {
+              id: s.id,
+              harness: config.harness || "pi-coding-agent",
+              overrides: config["pi-coding-agent"] || (config.model ? { model: config.model } : null)
+            };
+          }
+          return null;
+        })
+        .filter(Boolean);
+      
+      res.json({
+        default: defaultHarness,
+        available,
+        sessionOverrides
+      });
     });
 
     // Model discovery endpoints
@@ -145,8 +217,13 @@ export class DashboardChannel implements Channel {
     });
 
     this.app.get("/api/sessions/:id/messages", (req, res) => {
-      const messages = this.queries.getAllMessagesForSession(req.params.id);
-      res.json(messages);
+      const limit = req.query.limit ? parseInt(req.query.limit as string) : undefined;
+      const beforeId = req.query.before ? parseInt(req.query.before as string) : undefined;
+      const hideThoughts = req.query.hideThoughts === 'true';
+      const hideTools = req.query.hideTools === 'true';
+      const messages = this.queries.getAllMessagesForSession(req.params.id, limit, beforeId, hideThoughts, hideTools);
+      const total = this.queries.countMessagesForSession(req.params.id, hideThoughts, hideTools);
+      res.json({ messages, total });
     });
 
     this.app.get("/api/sessions/:id/config", (req, res) => {
@@ -166,6 +243,12 @@ export class DashboardChannel implements Channel {
       }
       const current = JSON.parse(session.config || "{}");
       const updated = { ...current, ...req.body };
+      // Remove keys that are explicitly set to null
+      for (const key of Object.keys(updated)) {
+        if (updated[key] === null) {
+          delete updated[key];
+        }
+      }
       this.queries.updateSessionConfig(req.params.id, JSON.stringify(updated));
       res.json(updated);
     });
@@ -555,22 +638,101 @@ export class DashboardChannel implements Channel {
       }
     });
 
-    // ── Traces ──
+    // ── Logs ──
 
-    this.app.get("/api/traces", (req, res) => {
-      const limit = parseInt(req.query.limit as string) || 50;
-      const traces = this.queries.getRecentTraces(limit);
-      res.json(traces);
+    this.app.get("/api/logs", (req, res) => {
+      try {
+        const logsDir = path.join(process.cwd(), "logs");
+        if (!existsSync(logsDir)) {
+          res.json([]);
+          return;
+        }
+        
+        // Support both old .log and new .jsonl formats
+        const files = readdirSync(logsDir)
+          .filter(f => (f.startsWith("request-") && f.endsWith(".log")) ||
+                       (f.startsWith("trace-") && f.endsWith(".jsonl")))
+          .map(filename => {
+            const filePath = path.join(logsDir, filename);
+            const stats = statSync(filePath);
+            const isJsonl = filename.endsWith(".jsonl");
+
+            // Read only the first 4KB for preview (avoids reading multi-MB trace files)
+            let preview = "";
+            const readSize = Math.min(stats.size, 4096);
+            const buf = Buffer.alloc(readSize);
+            const fd = openSync(filePath, "r");
+            readSync(fd, buf, 0, readSize, 0);
+            closeSync(fd);
+            const head = buf.toString("utf-8");
+
+            if (isJsonl) {
+              // Parse first line (header) for preview
+              try {
+                const firstLine = head.split("\n")[0];
+                const header = JSON.parse(firstLine);
+                preview = `Session: ${header.session_id}\nChannel: ${header.channel}\nModel: ${header.model}`;
+              } catch {
+                preview = head.split("\n").slice(0, 3).join("\n");
+              }
+            } else {
+              preview = head.split("\n").slice(0, 8).join("\n");
+            }
+
+            return {
+              filename,
+              timestamp: stats.mtime.getTime(),
+              size: stats.size,
+              preview,
+              format: isJsonl ? "jsonl" : "text",
+            };
+          })
+          .sort((a, b) => b.timestamp - a.timestamp); // Newest first
+        
+        const limit = parseInt(req.query.limit as string) || 50;
+        res.json(files.slice(0, limit));
+      } catch (e: any) {
+        res.status(500).json({ error: e.message });
+      }
     });
 
-    this.app.get("/api/traces/:id", (req, res) => {
-      const id = parseInt(req.params.id);
-      const trace = this.queries.getTrace(id);
-      if (!trace) {
-        res.status(404).json({ error: "Trace not found" });
-        return;
+    this.app.get("/api/logs/:filename", (req, res) => {
+      try {
+        const filename = req.params.filename;
+        // Security: only allow request-*.log or trace-*.jsonl files
+        const isOldFormat = filename.startsWith("request-") && filename.endsWith(".log");
+        const isNewFormat = filename.startsWith("trace-") && filename.endsWith(".jsonl");
+        
+        if ((!isOldFormat && !isNewFormat) || filename.includes("..")) {
+          res.status(400).json({ error: "Invalid filename" });
+          return;
+        }
+        
+        const filePath = path.join(process.cwd(), "logs", filename);
+        if (!existsSync(filePath)) {
+          res.status(404).json({ error: "Log not found" });
+          return;
+        }
+        
+        const content = readFileSync(filePath, "utf-8");
+        
+        if (isNewFormat) {
+          // Parse JSONL and return structured data
+          const lines = content.trim().split("\n").filter(Boolean);
+          const parsed = lines.map(line => {
+            try {
+              return JSON.parse(line);
+            } catch {
+              return { type: "parse_error", raw: line };
+            }
+          });
+          res.json({ filename, format: "jsonl", lines: parsed });
+        } else {
+          res.json({ filename, format: "text", content });
+        }
+      } catch (e: any) {
+        res.status(500).json({ error: e.message });
       }
-      res.json(trace);
     });
 
     // Serve the React app for all other routes

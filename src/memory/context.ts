@@ -49,7 +49,8 @@ export async function assembleContext(
     includeToolsInCurrentSession
   );
   const currentSessionBlock = formatCurrentSessionMessages(
-    currentSessionMessages
+    currentSessionMessages,
+    sessionId
   );
 
   return { memoriesBlock, crossSessionBlock, currentSessionBlock };
@@ -95,10 +96,24 @@ function extractMessageText(raw: string): string {
   let text = content.text || "";
   if (Array.isArray(content.attachments)) {
     for (const a of content.attachments) {
-      text += `\n[Attached ${a.type}: ${a.path}]`;
+      // Use path, filename, or url — whatever's available
+      const ref = a.path || a.filename || a.url || "(attachment)";
+      text += `\n[Attached ${a.type}: ${ref}]`;
     }
   }
   return text;
+}
+
+/** Map internal type to display role for context */
+function typeToRole(type: string): string {
+  switch (type) {
+    case "user": return "user";
+    case "thought": return "assistant";
+    case "assistant": return "assistant";
+    case "tool_start": return "tool";
+    case "tool_end": return "tool";
+    default: return type;
+  }
 }
 
 function formatCrossSessionMessages(messages: MessageRow[]): string {
@@ -118,41 +133,44 @@ function formatCrossSessionMessages(messages: MessageRow[]): string {
     const ago = formatTimeAgo(lastActive);
     const channelInfo = msgs[0].channel || "unknown";
 
-    parts.push(`[Session: ${channelInfo} ${sessionId} — last active ${ago}]`);
+    parts.push(`[Session: ${sessionId} — last active ${ago}]`);
     for (const msg of msgs) {
       const time = formatTimestamp(msg.timestamp);
       const text = extractMessageText(msg.content);
-      parts.push(`[${time}] ${msg.role}: ${text}`);
+      parts.push(`[${time}] ${typeToRole(msg.type)}: ${text}`);
     }
   }
 
   return parts.join("\n");
 }
 
-function formatCurrentSessionMessages(messages: MessageRow[]): string {
+function formatCurrentSessionMessages(messages: MessageRow[], sessionId: string): string {
   if (messages.length === 0) return "";
 
-  return messages
+  const header = `[Session: ${sessionId}]`;
+  const body = messages
     .map((msg) => {
       const time = formatTimestamp(msg.timestamp);
-      if (msg.role === "tool") {
-        return formatToolMessage(msg.content, time);
+      if (msg.type === "tool_start" || msg.type === "tool_end") {
+        return formatToolMessage(msg.content, time, msg.type);
       }
       const text = extractMessageText(msg.content);
-      return `[${time}] ${msg.role}: ${text}`;
+      return `[${time}] ${typeToRole(msg.type)}: ${text}`;
     })
     .join("\n");
+  
+  return `${header}\n${body}`;
 }
 
-function formatToolMessage(raw: string, time: string): string {
+function formatToolMessage(raw: string, time: string, type: string): string {
   try {
     const content = JSON.parse(raw);
     const name = content.toolName || "unknown";
-    if (content.phase === "start") {
+    if (type === "tool_start") {
       const args = content.args ? JSON.stringify(content.args) : "";
       return `[${time}] tool: ${name}(${args})`;
     }
-    if (content.phase === "end") {
+    if (type === "tool_end") {
       const status = content.isError ? "ERROR" : "OK";
       const result = typeof content.result === "string"
         ? content.result.slice(0, 500)

@@ -151,14 +151,28 @@ class DiscordOutputHandler implements OutputHandler {
   private typingTimeout: ReturnType<typeof setTimeout> | null = null;
   private typingStopped = false;
   private channel: TextChannel | DMChannel | null = null;
+  private channelReady: Promise<void>;
 
   constructor(
     private client: Client,
     private event: InboundEvent
   ) {
-    // Get the channel from the raw message
-    const rawMsg = event.raw as DiscordMessage;
-    this.channel = rawMsg.channel as TextChannel | DMChannel;
+    // Get the channel from the raw message, OR fetch by target ID (for cron jobs)
+    const rawMsg = event.raw as DiscordMessage | undefined;
+    if (rawMsg?.channel) {
+      this.channel = rawMsg.channel as TextChannel | DMChannel;
+      this.channelReady = Promise.resolve();
+    } else if (event.target) {
+      // Cron job or other non-message trigger — fetch channel by ID
+      this.channelReady = this.client.channels.fetch(event.target).then((ch) => {
+        this.channel = ch as TextChannel | DMChannel;
+        console.log(`[Discord] Fetched channel ${event.target} for cron job`);
+      }).catch((err) => {
+        console.error(`[Discord] Failed to fetch channel ${event.target}: ${err.message}`);
+      });
+    } else {
+      this.channelReady = Promise.resolve();
+    }
   }
 
   async relay(msg: OutboundMessage): Promise<void> {
@@ -166,6 +180,7 @@ class DiscordOutputHandler implements OutputHandler {
   }
 
   async startTyping(): Promise<void> {
+    await this.channelReady;
     if (!this.channel || this.typingStopped) return;
     // Clear any existing typing state
     if (this.typingInterval) {
@@ -211,35 +226,66 @@ class DiscordOutputHandler implements OutputHandler {
   }
 
   private async flushBuffer(): Promise<void> {
+    await this.channelReady;
     if (!this.buffer || !this.channel) return;
 
     const text = this.buffer;
     this.buffer = "";
 
-    // Parse MEDIA: protocol for local file attachments
+    // Split message at MEDIA: markers and send in order: text, attachment, text, attachment, etc.
     const mediaRegex = /MEDIA:(\/[^\s\n`*"<>|]+)/g;
-    const mediaMatches = [...text.matchAll(mediaRegex)];
+    const parts: Array<{ type: "text"; content: string } | { type: "media"; path: string }> = [];
+    
+    let lastIndex = 0;
+    let match;
+    while ((match = mediaRegex.exec(text)) !== null) {
+      // Add text before this match
+      const before = text.slice(lastIndex, match.index).trim();
+      if (before) {
+        parts.push({ type: "text", content: before });
+      }
+      // Add the media
+      parts.push({ type: "media", path: match[1] });
+      lastIndex = match.index + match[0].length;
+    }
+    // Add remaining text after last match
+    const after = text.slice(lastIndex).trim();
+    if (after) {
+      parts.push({ type: "text", content: after });
+    }
 
-    if (mediaMatches.length > 0) {
-      const filePaths = mediaMatches.map(m => m[1]);
-      const remainingText = text.replace(mediaRegex, "").trim();
+    // If no media found, just send as text
+    if (parts.length === 0) {
+      for (const chunk of splitMessage(text, DISCORD_MAX_LENGTH)) {
+        await this.channel.send(chunk);
+      }
+      return;
+    }
 
-      // Send files via raw fetch to Discord API (bypasses discord.js undici socket pool issues)
-      const validFiles = filePaths.filter(f => fs.existsSync(f));
+    // Send parts in order
+    for (const part of parts) {
+      if (part.type === "text") {
+        for (const chunk of splitMessage(part.content, DISCORD_MAX_LENGTH)) {
+          await this.channel.send(chunk);
+        }
+      } else {
+        const filePath = part.path;
+        if (!fs.existsSync(filePath)) {
+          console.error(`[Discord] File not found: ${filePath}`);
+          continue;
+        }
 
-      if (validFiles.length > 0) {
         try {
           const form = new FormData();
-          if (remainingText) {
-            form.append("payload_json", JSON.stringify({ content: remainingText }));
-          }
-          for (let i = 0; i < validFiles.length; i++) {
-            const fileData = fs.readFileSync(validFiles[i]);
-            const ext = path.extname(validFiles[i]).toLowerCase();
-            const mimeMap: Record<string, string> = { ".png": "image/png", ".jpg": "image/jpeg", ".jpeg": "image/jpeg", ".gif": "image/gif", ".webp": "image/webp", ".mp4": "video/mp4" };
-            const mime = mimeMap[ext] || "application/octet-stream";
-            form.append(`files[${i}]`, new Blob([fileData], { type: mime }), path.basename(validFiles[i]));
-          }
+          const fileData = fs.readFileSync(filePath);
+          const ext = path.extname(filePath).toLowerCase();
+          const mimeMap: Record<string, string> = { 
+            ".png": "image/png", ".jpg": "image/jpeg", ".jpeg": "image/jpeg", 
+            ".gif": "image/gif", ".webp": "image/webp", ".mp4": "video/mp4",
+            ".mp3": "audio/mpeg", ".wav": "audio/wav", ".ogg": "audio/ogg"
+          };
+          const mime = mimeMap[ext] || "application/octet-stream";
+          form.append("files[0]", new Blob([fileData], { type: mime }), path.basename(filePath));
 
           const token = process.env.DISCORD_BOT_TOKEN;
           const res = await fetch(`https://discord.com/api/v10/channels/${this.channel.id}/messages`, {
@@ -252,23 +298,10 @@ class DiscordOutputHandler implements OutputHandler {
             const body = await res.text();
             throw new Error(`Discord API ${res.status}: ${body}`);
           }
+          console.log(`[Discord] ✅ Sent attachment: ${filePath}`);
         } catch (error: any) {
-          console.error(`[Discord] Failed to send with attachments:`, error.message);
-          // Fallback: send text without files
-          if (remainingText) {
-            for (const chunk of splitMessage(remainingText, DISCORD_MAX_LENGTH)) {
-              await this.channel.send(chunk);
-            }
-          }
+          console.error(`[Discord] ❌ Failed to send attachment: ${error.message}`);
         }
-      } else if (remainingText) {
-        for (const chunk of splitMessage(remainingText, DISCORD_MAX_LENGTH)) {
-          await this.channel.send(chunk);
-        }
-      }
-    } else {
-      for (const chunk of splitMessage(text, DISCORD_MAX_LENGTH)) {
-        await this.channel.send(chunk);
       }
     }
   }

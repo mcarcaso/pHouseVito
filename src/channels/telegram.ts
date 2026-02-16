@@ -209,22 +209,53 @@ class TelegramOutputHandler implements OutputHandler {
     const text = this.buffer;
     this.buffer = "";
 
-    // Parse MEDIA: protocol - check if message contains media paths
-    // Match MEDIA: followed by an absolute path (must start with /)
+    // Split message at MEDIA: markers and send in order: text, attachment, text, attachment, etc.
     const mediaRegex = /MEDIA:(\/[^\s\n`*"<>|]+)/g;
-    const mediaMatches = [...text.matchAll(mediaRegex)];
+    const parts: Array<{ type: "text"; content: string } | { type: "media"; path: string }> = [];
+    
+    let lastIndex = 0;
+    let match;
+    while ((match = mediaRegex.exec(text)) !== null) {
+      // Add text before this match
+      const before = text.slice(lastIndex, match.index).trim();
+      if (before) {
+        parts.push({ type: "text", content: before });
+      }
+      // Add the media
+      parts.push({ type: "media", path: match[1] });
+      lastIndex = match.index + match[0].length;
+    }
+    // Add remaining text after last match
+    const after = text.slice(lastIndex).trim();
+    if (after) {
+      parts.push({ type: "text", content: after });
+    }
 
-    if (mediaMatches.length > 0) {
-      // Send media files
-      for (const match of mediaMatches) {
-        const filePath = match[1];
+    // If no media found, just send as text
+    if (parts.length === 0) {
+      const chunks = splitMessage(text, TELEGRAM_MAX_LENGTH);
+      console.log(`[Telegram] Sending ${chunks.length} chunk(s) to chat ${this.chatId}`);
+      for (const chunk of chunks) {
+        await this.bot.api.sendMessage(this.chatId, chunk);
+        console.log(`[Telegram] ✅ Sent chunk of ${chunk.length} chars`);
+      }
+      return;
+    }
+
+    // Send parts in order
+    for (const part of parts) {
+      if (part.type === "text") {
+        const chunks = splitMessage(part.content, TELEGRAM_MAX_LENGTH);
+        for (const chunk of chunks) {
+          await this.bot.api.sendMessage(this.chatId, chunk);
+          console.log(`[Telegram] ✅ Sent text chunk of ${chunk.length} chars`);
+        }
+      } else {
+        const filePath = part.path;
         console.log(`[Telegram] Sending media file: ${filePath}`);
         
         try {
-          // Determine if it's an image or document based on extension
           const isImage = /\.(jpg|jpeg|png|gif|webp)$/i.test(filePath);
-          
-          // Use InputFile for local files (grammY pattern)
           const { InputFile } = await import("grammy");
           const inputFile = new InputFile(filePath);
           
@@ -237,26 +268,8 @@ class TelegramOutputHandler implements OutputHandler {
           }
         } catch (error) {
           console.error(`[Telegram] ❌ Failed to send media: ${error}`);
-          // Fallback: send as text
           await this.bot.api.sendMessage(this.chatId, `Error sending media: ${filePath}`);
         }
-      }
-
-      // Send any remaining text (with MEDIA: tags stripped)
-      const remainingText = text.replace(mediaRegex, '').trim();
-      if (remainingText) {
-        const chunks = splitMessage(remainingText, TELEGRAM_MAX_LENGTH);
-        for (const chunk of chunks) {
-          await this.bot.api.sendMessage(this.chatId, chunk);
-        }
-      }
-    } else {
-      // No media, send as text
-      const chunks = splitMessage(text, TELEGRAM_MAX_LENGTH);
-      console.log(`[Telegram] Sending ${chunks.length} chunk(s) to chat ${this.chatId}`);
-      for (const chunk of chunks) {
-        await this.bot.api.sendMessage(this.chatId, chunk);
-        console.log(`[Telegram] ✅ Sent chunk of ${chunk.length} chars`);
       }
     }
   }

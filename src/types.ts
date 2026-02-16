@@ -94,35 +94,54 @@ export interface ClaudeCodeHarnessConfig {
 // export interface OpenAIHarnessConfig { ... }
 // export interface LocalLlamaHarnessConfig { ... }
 
-export interface HarnessesConfig {
-  /** Which harness to use by default */
-  default: string;
-  /** Pi Coding Agent harness config */
-  "pi-coding-agent"?: PiHarnessConfig;
-  /** Claude Code CLI harness config */
-  "claude-code"?: ClaudeCodeHarnessConfig;
-  // Add more harnesses here
-  // "openai"?: OpenAIHarnessConfig;
-  // "local-llama"?: LocalLlamaHarnessConfig;
+// ── Unified Settings Type ──
+// This is the cascading settings type: Global → Channel → Session
+// Each level can override any setting. More specific wins.
+
+export interface Settings {
+  /** Which harness to use */
+  harness?: string;
+  /** How to deliver responses: stream (real-time), bundled (chunks), final (single message) */
+  streamMode?: StreamMode;
+  /** Memory/context settings */
+  memory?: {
+    currentSessionLimit?: number;
+    crossSessionLimit?: number;
+  };
+  /** Pi Coding Agent harness overrides */
+  "pi-coding-agent"?: Partial<PiHarnessConfig>;
+  /** Claude Code CLI harness overrides */
+  "claude-code"?: Partial<ClaudeCodeHarnessConfig>;
 }
 
+/** Deep merge helper type for settings resolution */
+export type ResolvedSettings = Required<Pick<Settings, "harness" | "streamMode">> & {
+  memory: Required<NonNullable<Settings["memory"]>>;
+  "pi-coding-agent"?: Partial<PiHarnessConfig>;
+  "claude-code"?: Partial<ClaudeCodeHarnessConfig>;
+};
+
 export interface VitoConfig {
-  /** @deprecated Use harnesses.pi-coding-agent.model instead */
-  model?: {
-    provider: string;
-    name: string;
+  /** Global default settings — baseline for all channels and sessions */
+  settings: Settings;
+  /** Global harness configurations (full configs, not overrides) */
+  harnesses: {
+    "pi-coding-agent"?: PiHarnessConfig;
+    "claude-code"?: ClaudeCodeHarnessConfig;
   };
-  harnesses?: HarnessesConfig;
+  /** Global memory settings (compaction, tools inclusion, etc.) */
   memory: {
-    currentSessionLimit: number;
-    crossSessionLimit: number;
     compactionThreshold: number;
     compactionPercent?: number; // Percentage of messages to compact (default: 50)
     includeToolsInCurrentSession?: boolean;
     includeToolsInCrossSession?: boolean;
     showArchivedInCrossSession?: boolean;
   };
+  /** Per-channel configuration */
   channels: Record<string, ChannelConfig>;
+  /** Per-session overrides (keyed by session ID, e.g., "telegram:5473044160") */
+  sessions?: Record<string, Settings>;
+  /** Cron job configuration */
   cron: {
     jobs: CronJobConfig[];
   };
@@ -130,7 +149,9 @@ export interface VitoConfig {
 
 export interface ChannelConfig {
   enabled: boolean;
-  streamMode?: StreamMode;
+  /** Channel-specific settings overrides */
+  settings?: Settings;
+  /** Allow any additional channel-specific config (e.g., allowedChatIds for Telegram) */
   [key: string]: any;
 }
 
@@ -167,21 +188,9 @@ export interface MessageRow {
   archived: number; // 0 or 1
 }
 
-export interface SessionConfig {
-  streamMode?: StreamMode;
-  /** Which harness to use for this session (overrides global default) */
-  harness?: string;
-  /** Per-harness config overrides */
-  "pi-coding-agent"?: Partial<PiHarnessConfig>;
-  "claude-code"?: Partial<ClaudeCodeHarnessConfig>;
-  // Add more harness overrides as needed
-  
-  /** @deprecated Use harness + pi-coding-agent.model instead */
-  model?: {
-    provider: string;
-    name: string;
-  };
-}
+// SessionConfig is now just Settings — keeping the alias for backward compat
+// (some code may still reference SessionConfig)
+export type SessionConfig = Settings;
 
 export interface SessionRow {
   id: string;

@@ -4,6 +4,7 @@ import { ClaudeCodeHarness, PiHarness, withPersistence, withRelay, withTracing, 
 import { shouldCompact, acquireCompactionLock, releaseCompactionLock } from "./memory/compaction.js";
 import { assembleContext, formatContextForPrompt } from "./memory/context.js";
 import { SessionManager } from "./sessions/manager.js";
+import { getEffectiveSettings } from "./settings.js";
 import { discoverSkills, formatSkillsForPrompt } from "./skills/discovery.js";
 
 import { randomBytes } from "crypto";
@@ -13,9 +14,8 @@ import type {
   Channel,
   CronJobConfig,
   InboundEvent,
-  SessionConfig,
+  ResolvedSettings,
   SkillMeta,
-  StreamMode,
   VitoConfig
 } from "./types.js";
 
@@ -155,9 +155,8 @@ export class Orchestrator {
   /** Hot-reload the full config (model, memory, etc.) */
   reloadConfig(config: VitoConfig): void {
     this.config = config;
-    const activeModel = config.harnesses?.["pi-coding-agent"]?.model || config.model;
-    const modelStr = activeModel ? `${activeModel.provider}/${activeModel.name}` : "default";
-    console.log(`[Orchestrator] Config reloaded — model: ${modelStr}`);
+    const defaultHarness = config.settings?.harness || "claude-code";
+    console.log(`[Orchestrator] Config reloaded — default harness: ${defaultHarness}`);
   }
 
   /**
@@ -435,27 +434,32 @@ Treat unknowns as puzzles to solve, not gaps to fill with questions.
         }
       : event.content;
 
-    // 3. Build fresh context
+    // 3. Get effective settings with cascade: Global → Channel → Session
+    const sessionKey = `${event.channel}:${event.target}`;
+    const effectiveSettings = getEffectiveSettings(this.config, event.channel, sessionKey);
+    console.log(`[Orchestrator] Effective settings for ${sessionKey}: harness=${effectiveSettings.harness}, streamMode=${effectiveSettings.streamMode}, memory=${JSON.stringify(effectiveSettings.memory)}`);
+
+    // 4. Build fresh context (uses effective settings for memory limits)
     const ctx = await assembleContext(
       this.queries,
       vitoSession.id,
-      this.config
+      this.config,
+      effectiveSettings
     );
     const contextPrompt = formatContextForPrompt(ctx);
     const skillsPrompt = formatSkillsForPrompt(this.getSkills());
 
-    // 4. Set up output handler and message tracking
+    // 5. Set up output handler and message tracking
     const handler = channel ? channel.createHandler(event) : null;
-    const sessionConfig: SessionConfig = JSON.parse(vitoSession.config || "{}");
 
-    // Create harness for this request (respects session config overrides)
+    // Create harness for this request (respects cascaded settings)
     // Build decorator chain: relay → persistence → tracing → inner harness
-    const innerHarness = this.getHarness(sessionConfig);
+    const innerHarness = this.getHarness(effectiveSettings);
     const tracedHarness = withTracing(innerHarness, {
       session_id: vitoSession.id,
       channel: event.channel,
       target: event.target,
-      model: this.getModelString(sessionConfig),
+      model: this.getModelString(effectiveSettings),
     });
     const persistedHarness = withPersistence(tracedHarness, {
       queries: this.queries,
@@ -465,7 +469,7 @@ Treat unknowns as puzzles to solve, not gaps to fill with questions.
       userContent,
       userTimestamp: event.timestamp,
     });
-    const streamMode = this.getStreamMode(event.channel, sessionConfig);
+    const streamMode = effectiveSettings.streamMode;
     console.log(`[Orchestrator] Stream mode for ${event.channel}: ${streamMode}`);
     const harness = withTyping(withRelay(persistedHarness, { handler, streamMode }), handler);
 
@@ -478,7 +482,6 @@ Treat unknowns as puzzles to solve, not gaps to fill with questions.
     );
 
     // Set up abort controller for this request
-    const sessionKey = `${event.channel}:${event.target}`;
     const abortController = new AbortController();
     const activeEntry = { abort: abortController, aborted: false };
     this.activeRequests.set(sessionKey, activeEntry);
@@ -647,22 +650,28 @@ Treat unknowns as puzzles to solve, not gaps to fill with questions.
       event.target
     );
 
+    const sessionKey = `${event.channel}:${event.target}`;
+    
+    // Get effective settings for system compaction session
+    const effectiveSettings = getEffectiveSettings(this.config, event.channel, sessionKey);
+
     // Build context (compaction session will have minimal context)
     const ctx = await assembleContext(
       this.queries,
       vitoSession.id,
-      this.config
+      this.config,
+      effectiveSettings
     );
     const contextPrompt = formatContextForPrompt(ctx);
     const skillsPrompt = formatSkillsForPrompt(this.getSkills());
 
     // Create harness with full tool access
-    const innerHarness = this.getHarness({});
+    const innerHarness = this.getHarness(effectiveSettings);
     const tracedHarness = withTracing(innerHarness, {
       session_id: vitoSession.id,
       channel: event.channel,
       target: event.target,
-      model: this.getModelString({}),
+      model: this.getModelString(effectiveSettings),
     });
     const persistedHarness = withPersistence(tracedHarness, {
       queries: this.queries,
@@ -765,56 +774,35 @@ Treat unknowns as puzzles to solve, not gaps to fill with questions.
     return parts.join("\n\n");
   }
 
-  /** Get a human-readable model string from session config */
-  private getModelString(sessionConfig?: SessionConfig): string {
-    const harnessName = sessionConfig?.harness || this.config.harnesses?.default || "pi-coding-agent";
+  /** Get a human-readable model string from resolved settings */
+  private getModelString(settings: ResolvedSettings): string {
+    const harnessName = settings.harness;
     if (harnessName === "claude-code") {
-      const globalCCConfig = this.config.harnesses?.["claude-code"] as Record<string, any> | undefined;
-      return sessionConfig?.["claude-code"]?.model || globalCCConfig?.model || "sonnet";
+      // Get model from cascaded settings, fallback to global harness config
+      const globalCCConfig = this.config.harnesses?.["claude-code"];
+      return settings["claude-code"]?.model || globalCCConfig?.model || "sonnet";
     }
-    const sessionOverrides = sessionConfig?.["pi-coding-agent"];
-    const legacyModel = sessionConfig?.model;
-    const model = legacyModel || sessionOverrides?.model || this.getDefaultPiConfig().model;
+    // Pi harness
+    const globalPiConfig = this.config.harnesses?.["pi-coding-agent"];
+    const model = settings["pi-coding-agent"]?.model || globalPiConfig?.model || 
+      { provider: "anthropic", name: "claude-sonnet-4-20250514" };
     return `${model.provider}/${model.name}`;
   }
 
-  private getStreamMode(channelName: string, sessionConfig?: SessionConfig): StreamMode {
-    return sessionConfig?.streamMode || this.config.channels[channelName]?.streamMode || "final";
-  }
-
   /**
-   * Get the default harness config (with backward compat for old config.model)
+   * Create a harness for the given resolved settings.
+   * Settings come pre-cascaded: Global → Channel → Session
    */
-  private getDefaultPiConfig() {
-    // New config structure takes priority
-    if (this.config.harnesses?.["pi-coding-agent"]) {
-      return this.config.harnesses["pi-coding-agent"];
-    }
-    // Fall back to deprecated config.model
-    if (this.config.model) {
-      return { model: this.config.model };
-    }
-    // Ultimate fallback
-    return {
-      model: { provider: "anthropic", name: "claude-sonnet-4-20250514" },
-    };
-  }
-
-  /**
-   * Create a harness for the given session config.
-   * Session config can override which harness to use and harness-specific settings.
-   */
-  private getHarness(sessionConfig?: SessionConfig): Harness {
-    // Determine which harness to use
-    const harnessName = sessionConfig?.harness || this.config.harnesses?.default || "pi-coding-agent";
+  private getHarness(settings: ResolvedSettings): Harness {
+    const harnessName = settings.harness;
     
     if (harnessName === "claude-code") {
-      // Claude Code harness - merge global config with session overrides
+      // Claude Code harness - merge global config with cascaded overrides
       const globalConfig = this.config.harnesses?.["claude-code"] || {};
-      const sessionOverrides = sessionConfig?.["claude-code"] || {};
+      const cascadedOverrides = settings["claude-code"] || {};
       
-      // Session overrides take precedence over global config
-      const mergedConfig = { ...globalConfig, ...sessionOverrides };
+      // Cascaded overrides (from settings cascade) take precedence over global config
+      const mergedConfig = { ...globalConfig, ...cascadedOverrides };
       
       const harness = new ClaudeCodeHarness({
         model: mergedConfig.model || "sonnet",
@@ -833,20 +821,18 @@ Treat unknowns as puzzles to solve, not gaps to fill with questions.
     }
 
     // Get base config for pi-coding-agent
-    const baseConfig = this.getDefaultPiConfig();
+    const globalPiConfig = this.config.harnesses?.["pi-coding-agent"] || {
+      model: { provider: "anthropic", name: "claude-sonnet-4-20250514" },
+    };
     
-    // Apply session-level overrides (new structure)
-    const sessionOverrides = sessionConfig?.["pi-coding-agent"];
-    
-    // Also support deprecated sessionConfig.model for backward compat
-    const legacyModelOverride = sessionConfig?.model;
-    
-    // Merge: base < session overrides < legacy model override
-    const model = legacyModelOverride || sessionOverrides?.model || baseConfig.model;
+    // Apply cascaded overrides
+    const cascadedOverrides = settings["pi-coding-agent"] || {};
+    const model = cascadedOverrides.model || globalPiConfig.model;
+    const thinkingLevel = cascadedOverrides.thinkingLevel || globalPiConfig.thinkingLevel;
 
     const harness = new PiHarness({
       model,
-      thinkingLevel: sessionOverrides?.thinkingLevel,
+      thinkingLevel,
       skillsDir: this.skillsDir,
     });
 

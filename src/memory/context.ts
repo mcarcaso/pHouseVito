@@ -1,5 +1,5 @@
 import type { Queries } from "../db/queries.js";
-import type { MessageRow, VitoConfig } from "../types.js";
+import type { MessageRow, ResolvedSettings, VitoConfig } from "../types.js";
 import { readdirSync, existsSync, readFileSync } from "fs";
 import { join } from "path";
 
@@ -9,6 +9,16 @@ export interface AssembledContext {
   memoriesBlock: string;
   crossSessionBlock: string;
   currentSessionBlock: string;
+}
+
+export interface ContextOptions {
+  /** From resolved settings cascade */
+  currentSessionLimit: number;
+  crossSessionLimit: number;
+  /** From global config.memory */
+  includeToolsInCurrentSession?: boolean;
+  includeToolsInCrossSession?: boolean;
+  showArchivedInCrossSession?: boolean;
 }
 
 /**
@@ -21,11 +31,17 @@ export interface AssembledContext {
 export async function assembleContext(
   queries: Queries,
   sessionId: string,
-  config: VitoConfig
+  config: VitoConfig,
+  effectiveSettings?: ResolvedSettings
 ): Promise<AssembledContext> {
+  // Use effective settings if provided, otherwise fall back to legacy config.memory
+  const currentSessionLimit = effectiveSettings?.memory.currentSessionLimit ?? 
+    (config.settings?.memory?.currentSessionLimit ?? 100);
+  const crossSessionLimit = effectiveSettings?.memory.crossSessionLimit ??
+    (config.settings?.memory?.crossSessionLimit ?? 5);
+  
+  // These are still global-only settings (not cascaded)
   const {
-    currentSessionLimit,
-    crossSessionLimit,
     includeToolsInCurrentSession = true,
     includeToolsInCrossSession = false,
     showArchivedInCrossSession = false,

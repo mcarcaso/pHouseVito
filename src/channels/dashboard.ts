@@ -107,7 +107,12 @@ export class DashboardChannel implements Channel {
     this.app.put("/api/config", (req, res) => {
       const updates = req.body;
       // Deep merge updates into config
-      if (updates.model) Object.assign(this.config.model, updates.model);
+      if (updates.settings) {
+        if (!this.config.settings) {
+          this.config.settings = {};
+        }
+        Object.assign(this.config.settings, updates.settings);
+      }
       if (updates.memory) Object.assign(this.config.memory, updates.memory);
       if (updates.channels) {
         for (const [name, channelUpdate] of Object.entries(updates.channels)) {
@@ -123,14 +128,14 @@ export class DashboardChannel implements Channel {
         }
         // Merge each harness config
         for (const [name, harnessUpdate] of Object.entries(updates.harnesses)) {
-          if (name === 'default') {
-            // Default is just a string
-            this.config.harnesses.default = harnessUpdate as string;
-          } else {
-            // Harness-specific config
-            this.config.harnesses[name] = harnessUpdate;
-          }
+          (this.config.harnesses as any)[name] = harnessUpdate;
         }
+      }
+      if (updates.sessions) {
+        if (!this.config.sessions) {
+          this.config.sessions = {};
+        }
+        Object.assign(this.config.sessions, updates.sessions);
       }
       this.saveConfig();
       res.json(this.config);
@@ -152,14 +157,14 @@ export class DashboardChannel implements Channel {
     this.app.get("/api/harnesses", (req, res) => {
       // Get config and list registered harnesses
       const harnesses = this.config.harnesses || {};
-      const defaultHarness = harnesses.default || "pi-coding-agent";
+      const defaultHarness = this.config.settings?.harness || "claude-code";
       
       // Build harness info
       const available: Record<string, any> = {
         "pi-coding-agent": {
           name: "pi-coding-agent",
           description: "Pi Coding Agent — Anthropic Claude with full tool use",
-          config: harnesses["pi-coding-agent"] || this.config.model || null,
+          config: harnesses["pi-coding-agent"] || null,
           isDefault: defaultHarness === "pi-coding-agent"
         },
         "claude-code": {
@@ -170,21 +175,14 @@ export class DashboardChannel implements Channel {
         }
       };
       
-      // Get sessions with harness overrides
-      const sessions = this.queries.getAllSessions();
-      const sessionOverrides = sessions
-        .map((s: any) => {
-          const config = JSON.parse(s.config || "{}");
-          if (config.harness || config["pi-coding-agent"] || config.model) {
-            return {
-              id: s.id,
-              harness: config.harness || "pi-coding-agent",
-              overrides: config["pi-coding-agent"] || (config.model ? { model: config.model } : null)
-            };
-          }
-          return null;
-        })
-        .filter(Boolean);
+      // Get session overrides from config file
+      const sessionOverrides = this.config.sessions 
+        ? Object.entries(this.config.sessions).map(([id, settings]: [string, any]) => ({
+            id,
+            harness: settings.harness || defaultHarness,
+            overrides: settings["pi-coding-agent"] || settings["claude-code"] || null
+          }))
+        : [];
       
       res.json({
         default: defaultHarness,
@@ -236,29 +234,48 @@ export class DashboardChannel implements Channel {
     });
 
     this.app.get("/api/sessions/:id/config", (req, res) => {
-      const session = this.queries.getSession(req.params.id);
+      const sessionId = req.params.id;
+      const session = this.queries.getSession(sessionId);
       if (!session) {
         res.status(404).json({ error: "Session not found" });
         return;
       }
-      res.json(JSON.parse(session.config || "{}"));
+      // Session settings now live in config file, not DB
+      const sessionSettings = this.config.sessions?.[sessionId] || {};
+      res.json(sessionSettings);
     });
 
     this.app.put("/api/sessions/:id/config", (req, res) => {
-      const session = this.queries.getSession(req.params.id);
+      const sessionId = req.params.id;
+      const session = this.queries.getSession(sessionId);
       if (!session) {
         res.status(404).json({ error: "Session not found" });
         return;
       }
-      const current = JSON.parse(session.config || "{}");
+      
+      // Session settings now live in config file, not DB
+      if (!this.config.sessions) {
+        this.config.sessions = {};
+      }
+      
+      const current = this.config.sessions[sessionId] || {};
       const updated = { ...current, ...req.body };
+      
       // Remove keys that are explicitly set to null
       for (const key of Object.keys(updated)) {
-        if (updated[key] === null) {
-          delete updated[key];
+        if ((updated as any)[key] === null) {
+          delete (updated as any)[key];
         }
       }
-      this.queries.updateSessionConfig(req.params.id, JSON.stringify(updated));
+      
+      // If session settings are now empty, remove the entry
+      if (Object.keys(updated).length === 0) {
+        delete this.config.sessions[sessionId];
+      } else {
+        this.config.sessions[sessionId] = updated;
+      }
+      
+      this.saveConfig();
       res.json(updated);
     });
 

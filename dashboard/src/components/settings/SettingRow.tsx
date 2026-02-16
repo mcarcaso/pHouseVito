@@ -127,11 +127,11 @@ export function renderSegmented(
   options: { value: string; label: string }[]
 ) {
   return (
-    <div className="flex rounded-md overflow-hidden border border-neutral-700">
+    <div className="flex rounded-md overflow-hidden border border-neutral-700 shrink-0">
       {options.map((opt) => (
         <button
           key={opt.value}
-          className={`px-3 py-1.5 text-xs transition-colors border-r border-neutral-700 last:border-r-0 ${
+          className={`px-2 sm:px-3 py-1.5 text-xs transition-colors border-r border-neutral-700 last:border-r-0 whitespace-nowrap ${
             value === opt.value
               ? 'bg-blue-950 text-blue-400'
               : 'bg-neutral-900 text-neutral-500 hover:text-neutral-300 hover:bg-neutral-800'

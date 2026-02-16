@@ -131,11 +131,9 @@ export class DashboardChannel implements Channel {
           (this.config.harnesses as any)[name] = harnessUpdate;
         }
       }
-      if (updates.sessions) {
-        if (!this.config.sessions) {
-          this.config.sessions = {};
-        }
-        Object.assign(this.config.sessions, updates.sessions);
+      if (updates.sessions !== undefined) {
+        // Replace sessions entirely (allows deletion)
+        this.config.sessions = updates.sessions || {};
       }
       this.saveConfig();
       res.json(this.config);

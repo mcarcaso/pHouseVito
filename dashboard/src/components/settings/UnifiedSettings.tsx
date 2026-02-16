@@ -36,7 +36,7 @@ export default function UnifiedSettings() {
         <h2 className="text-lg font-semibold text-white">Settings</h2>
         <div className="flex-1" />
         {saving && <span className="text-xs text-neutral-500">Saving...</span>}
-        {saved && <span className="text-xs text-green-400 animate-[fadeIn_0.2s]">\u2713 Saved</span>}
+        {saved && <span className="text-xs text-green-400 animate-[fadeIn_0.2s]">✓ Saved</span>}
       </div>
 
       {/* Tab bar */}

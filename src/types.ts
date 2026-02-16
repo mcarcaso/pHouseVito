@@ -73,15 +73,51 @@ export type StreamMode = "stream" | "bundled" | "final";
 
 // ── Config types ──
 
-export interface VitoConfig {
+// ── Harness config types ──
+
+export interface PiHarnessConfig {
   model: {
     provider: string;
     name: string;
   };
+  thinkingLevel?: "off" | "low" | "medium" | "high";
+}
+
+export interface ClaudeCodeHarnessConfig {
+  model?: string;  // "sonnet", "opus", "haiku", or full model name
+  cwd?: string;
+  permissionMode?: "default" | "acceptEdits" | "bypassPermissions" | "plan";
+  allowedTools?: string[];
+}
+
+// Add more harness configs here as we add harnesses
+// export interface OpenAIHarnessConfig { ... }
+// export interface LocalLlamaHarnessConfig { ... }
+
+export interface HarnessesConfig {
+  /** Which harness to use by default */
+  default: string;
+  /** Pi Coding Agent harness config */
+  "pi-coding-agent"?: PiHarnessConfig;
+  /** Claude Code CLI harness config */
+  "claude-code"?: ClaudeCodeHarnessConfig;
+  // Add more harnesses here
+  // "openai"?: OpenAIHarnessConfig;
+  // "local-llama"?: LocalLlamaHarnessConfig;
+}
+
+export interface VitoConfig {
+  /** @deprecated Use harnesses.pi-coding-agent.model instead */
+  model?: {
+    provider: string;
+    name: string;
+  };
+  harnesses?: HarnessesConfig;
   memory: {
     currentSessionLimit: number;
     crossSessionLimit: number;
     compactionThreshold: number;
+    compactionPercent?: number; // Percentage of messages to compact (default: 50)
     includeToolsInCurrentSession?: boolean;
     includeToolsInCrossSession?: boolean;
     showArchivedInCrossSession?: boolean;
@@ -109,13 +145,23 @@ export interface CronJobConfig {
 
 // ── DB row types ──
 
+/**
+ * Unified message type — replaces separate 'role' and 'message_type' columns.
+ * - user: User message
+ * - thought: Assistant intermediate response (mid-agentic-loop)
+ * - assistant: Assistant final response (end of turn)
+ * - tool_start: Tool execution request
+ * - tool_end: Tool execution result
+ */
+export type MsgType = "user" | "thought" | "assistant" | "tool_start" | "tool_end";
+
 export interface MessageRow {
   id: number;
   session_id: string;
   channel: string | null;
   channel_target: string | null;
   timestamp: number;
-  role: "user" | "assistant" | "system" | "tool";
+  type: MsgType;
   content: string; // JSON string
   compacted: number; // 0 or 1
   archived: number; // 0 or 1
@@ -123,6 +169,14 @@ export interface MessageRow {
 
 export interface SessionConfig {
   streamMode?: StreamMode;
+  /** Which harness to use for this session (overrides global default) */
+  harness?: string;
+  /** Per-harness config overrides */
+  "pi-coding-agent"?: Partial<PiHarnessConfig>;
+  "claude-code"?: Partial<ClaudeCodeHarnessConfig>;
+  // Add more harness overrides as needed
+  
+  /** @deprecated Use harness + pi-coding-agent.model instead */
   model?: {
     provider: string;
     name: string;

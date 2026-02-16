@@ -657,10 +657,18 @@ export class Orchestrator {
   private async runCompactionPrompt(prompt: string): Promise<string> {
     // Create a minimal harness for compaction (no skills needed)
     const piConfig = this.getDefaultPiConfig();
-    const compactionHarness = new PiHarness({
+    const innerHarness = new PiHarness({
       model: piConfig.model,
       thinkingLevel: "off",
       // No skillsDir — compaction doesn't need tools
+    });
+
+    // Wrap with tracing so compaction runs are visible in logs/
+    const compactionHarness = withTracing(innerHarness, {
+      session_id: "compaction",
+      channel: "system",
+      target: "memory",
+      model: `${piConfig.model.provider}/${piConfig.model.name}`,
     });
 
     const systemPrompt = `You are a conversation summarizer. Condense the provided messages while preserving:
@@ -675,7 +683,7 @@ Be concise but comprehensive.`;
       systemPrompt,
       prompt,
       {
-        onInvocation: () => {}, // Not tracing compaction
+        onInvocation: () => {},
         onRawEvent: () => {},
         onNormalizedEvent: (event) => {
           if (event.kind === "assistant") {
@@ -685,6 +693,7 @@ Be concise but comprehensive.`;
       }
     );
 
+    console.log(`[Compaction] Trace written to ${compactionHarness.tracePath}`);
     return response;
   }
 

@@ -32,6 +32,8 @@ function Channels() {
   const [saved, setSaved] = useState(false);
   const [needsRestart, setNeedsRestart] = useState(false);
   const [newId, setNewId] = useState<Record<string, string>>({});
+  const [registeringCommands, setRegisteringCommands] = useState(false);
+  const [commandsResult, setCommandsResult] = useState<{ success: boolean; message: string } | null>(null);
 
   useEffect(() => {
     fetch('/api/config')
@@ -311,6 +313,45 @@ function Channels() {
                           : 'Bot responds to all messages in allowed channels'}
                       </span>
                     </div>
+                  </div>
+                )}
+
+                {isDiscord && (
+                  <div className="flex flex-col gap-2 py-2.5 border-t border-[#1a1a1a]">
+                    <label className="text-sm text-[#ccc]">Slash Commands</label>
+                    <div className="flex items-center gap-3">
+                      <button
+                        className="bg-[#1a2a1a] text-green-400 border border-[#2a4a2a] rounded-md px-3 py-1.5 text-sm cursor-pointer transition-all hover:bg-[#2a4a2a] disabled:opacity-40 disabled:cursor-default"
+                        disabled={registeringCommands}
+                        onClick={async () => {
+                          setRegisteringCommands(true);
+                          setCommandsResult(null);
+                          try {
+                            const res = await fetch('/api/discord/register-commands', { method: 'POST' });
+                            const data = await res.json();
+                            if (data.success) {
+                              setCommandsResult({ success: true, message: `Registered ${data.count} command(s)` });
+                            } else {
+                              setCommandsResult({ success: false, message: data.error || 'Failed' });
+                            }
+                          } catch (err: any) {
+                            setCommandsResult({ success: false, message: err.message });
+                          }
+                          setRegisteringCommands(false);
+                          setTimeout(() => setCommandsResult(null), 5000);
+                        }}
+                      >
+                        {registeringCommands ? 'Registering...' : 'Register Slash Commands'}
+                      </button>
+                      {commandsResult && (
+                        <span className={`text-sm ${commandsResult.success ? 'text-green-400' : 'text-red-400'}`}>
+                          {commandsResult.success ? '✓' : '✗'} {commandsResult.message}
+                        </span>
+                      )}
+                    </div>
+                    <span className="text-xs text-[#555]">
+                      Registers /new with Discord. Only needed once (or when commands change).
+                    </span>
                   </div>
                 )}
 

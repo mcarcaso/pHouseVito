@@ -356,6 +356,7 @@ export class Orchestrator {
     const completedMessages: string[] = [];
     const assistantMessageIds: number[] = [];
     let currentMessageText = "";
+    let rawStreamedContent = false; // Track if raw text_delta events streamed content for this message
 
     // 6. Set up abort controller for this request
     const sessionKey = `${event.channel}:${event.target}`;
@@ -397,10 +398,12 @@ export class Orchestrator {
             const e = agentEvent as AgentSessionEvent;
             if (e.type === "message_start") {
               currentMessageText = "";
+              rawStreamedContent = false;
             } else if (e.type === "message_update") {
               const msgEvent = e.assistantMessageEvent;
               if (msgEvent.type === "text_delta") {
                 currentMessageText += msgEvent.delta;
+                rawStreamedContent = true;
                 if (streamMode === "stream" && handler) {
                   handler.relay(msgEvent.delta).catch(() => {});
                 }
@@ -427,8 +430,17 @@ export class Orchestrator {
               });
               assistantMessageIds.push(msgId);
               
-              // For streaming mode, signal message boundary (content already streamed via raw text_delta events)
+              // For streaming mode, relay content and signal message boundary
+              // If raw text_delta events already streamed the content, buffer will flush what's there.
+              // If not (e.g. claude-code harness doesn't emit text_delta), relay the full content now.
               if (streamMode === "stream" && handler) {
+                if (!rawStreamedContent) {
+                  // Harness didn't emit raw text_delta events (e.g. claude-code) — relay full content now
+                  handler.relay(normEvent.content).catch((err: any) => {
+                    console.error(`[Orchestrator] relay failed during stream: ${err.message}`);
+                  });
+                }
+                rawStreamedContent = false; // Reset for next message
                 handler.endMessage?.()?.catch((err: any) => {
                   console.error(`[Orchestrator] endMessage failed during stream: ${err.message}`);
                 });
@@ -683,6 +695,22 @@ Be concise but comprehensive.`;
     harnessInstructions: string = ""
   ): string {
     const parts: string[] = [];
+
+    // Full date with day-of-week at the very top — every harness, every channel
+    const now = new Date();
+    const dateStr = now.toLocaleDateString("en-US", {
+      weekday: "long",
+      year: "numeric",
+      month: "long",
+      day: "numeric",
+      timeZone: "America/Toronto",
+    });
+    const timeStr = now.toLocaleTimeString("en-US", {
+      hour: "numeric",
+      minute: "2-digit",
+      timeZone: "America/Toronto",
+    });
+    parts.push(`Today is ${dateStr}. Current time: ${timeStr} ET.`);
 
     if (this.soul) {
       parts.push(`<personality>\n${this.soul}\n</personality>`);

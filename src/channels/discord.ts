@@ -1,4 +1,4 @@
-import { Client, GatewayIntentBits, Partials, Message as DiscordMessage, TextChannel, DMChannel, AttachmentBuilder } from "discord.js";
+import { Client, GatewayIntentBits, Partials, Message as DiscordMessage, TextChannel, DMChannel, AttachmentBuilder, REST, Routes, SlashCommandBuilder, ChatInputCommandInteraction } from "discord.js";
 import * as fs from "fs";
 import * as path from "path";
 import type {
@@ -74,6 +74,13 @@ export class DiscordChannel implements Channel {
       return true;
     };
 
+    const isInteractionAllowed = (interaction: ChatInputCommandInteraction): boolean => {
+      if (!interaction.guild) return true;
+      if (allowedGuildIds.length > 0 && !allowedGuildIds.includes(interaction.guild.id)) return false;
+      if (allowedChannelIds.length > 0 && !allowedChannelIds.includes(interaction.channelId)) return false;
+      return true;
+    };
+
     this.client.on("messageCreate", async (msg) => {
       // Ignore bot's own messages
       if (msg.author.bot) return;
@@ -120,9 +127,75 @@ export class DiscordChannel implements Channel {
       onEvent(event);
     });
 
+    // Handle slash command interactions
+    this.client.on("interactionCreate", async (interaction) => {
+      if (!interaction.isChatInputCommand()) return;
+
+      if (!isInteractionAllowed(interaction)) {
+        await interaction.reply({ content: "Not allowed in this server/channel.", ephemeral: true });
+        return;
+      }
+
+      if (interaction.commandName === "new") {
+        // Defer the reply since compaction can take a while
+        await interaction.deferReply();
+
+        const target = interaction.guild ? interaction.channelId : interaction.user.id;
+
+        const event: InboundEvent = {
+          sessionKey: `discord:${target}`,
+          channel: "discord",
+          target: target,
+          author: interaction.user.tag,
+          timestamp: Date.now(),
+          content: "/new",
+          raw: interaction,
+        };
+
+        console.log(`[Discord] ⚡ Slash command /new from ${interaction.user.tag}`);
+        onEvent(event);
+      }
+    });
+
     return () => {
       // Cleanup handled by stop()
     };
+  }
+
+  /**
+   * Register slash commands with the Discord API.
+   * Call once (or when commands change). Commands persist until removed.
+   */
+  async registerSlashCommands(): Promise<{ success: boolean; count: number; error?: string }> {
+    if (!this.client?.user) {
+      return { success: false, count: 0, error: "Discord client not initialized" };
+    }
+
+    const token = process.env.DISCORD_BOT_TOKEN;
+    if (!token) {
+      return { success: false, count: 0, error: "DISCORD_BOT_TOKEN not set" };
+    }
+
+    const commands = [
+      new SlashCommandBuilder()
+        .setName("new")
+        .setDescription("Start a fresh conversation — compacts and archives the current session"),
+    ];
+
+    const rest = new REST({ version: "10" }).setToken(token);
+
+    try {
+      const data = await rest.put(
+        Routes.applicationCommands(this.client.user.id),
+        { body: commands.map((c) => c.toJSON()) }
+      ) as any[];
+
+      console.log(`[Discord] ✅ Registered ${data.length} slash command(s)`);
+      return { success: true, count: data.length };
+    } catch (err: any) {
+      console.error(`[Discord] ❌ Failed to register slash commands:`, err.message);
+      return { success: false, count: 0, error: err.message };
+    }
   }
 
   createHandler(event: InboundEvent): OutputHandler {
@@ -152,13 +225,26 @@ class DiscordOutputHandler implements OutputHandler {
   private typingStopped = false;
   private channel: TextChannel | DMChannel | null = null;
   private channelReady: Promise<void>;
+  private interaction: ChatInputCommandInteraction | null = null;
+  private interactionReplied = false;
 
   constructor(
     private client: Client,
     private event: InboundEvent
   ) {
+    // Check if this is a slash command interaction
+    const raw = event.raw;
+    if (raw && typeof raw === "object" && "commandName" in raw && "editReply" in raw) {
+      this.interaction = raw as ChatInputCommandInteraction;
+      // For interactions, we still need the channel for typing indicators
+      this.channelReady = this.client.channels.fetch(event.target).then((ch) => {
+        this.channel = ch as TextChannel | DMChannel;
+      }).catch(() => {});
+      return;
+    }
+
     // Get the channel from the raw message, OR fetch by target ID (for cron jobs)
-    const rawMsg = event.raw as DiscordMessage | undefined;
+    const rawMsg = raw as DiscordMessage | undefined;
     if (rawMsg?.channel) {
       this.channel = rawMsg.channel as TextChannel | DMChannel;
       this.channelReady = Promise.resolve();
@@ -225,9 +311,21 @@ class DiscordOutputHandler implements OutputHandler {
     (this.channel as TextChannel).sendTyping?.().catch(() => {});
   }
 
+  /** Send a message — uses interaction.editReply for the first slash command response, then falls back to channel.send */
+  private async sendMessage(content: string): Promise<void> {
+    if (this.interaction && !this.interactionReplied) {
+      this.interactionReplied = true;
+      await this.interaction.editReply(content);
+    } else if (this.channel) {
+      await this.channel.send(content);
+    }
+  }
+
   private async flushBuffer(): Promise<void> {
     await this.channelReady;
-    if (!this.buffer || !this.channel) return;
+    if (!this.buffer) return;
+    // Need either channel or interaction to send
+    if (!this.channel && !this.interaction) return;
 
     const text = this.buffer;
     this.buffer = "";
@@ -235,7 +333,7 @@ class DiscordOutputHandler implements OutputHandler {
     // Split message at MEDIA: markers and send in order: text, attachment, text, attachment, etc.
     const mediaRegex = /MEDIA:(\/[^\s\n`*"<>|]+)/g;
     const parts: Array<{ type: "text"; content: string } | { type: "media"; path: string }> = [];
-    
+
     let lastIndex = 0;
     let match;
     while ((match = mediaRegex.exec(text)) !== null) {
@@ -258,7 +356,7 @@ class DiscordOutputHandler implements OutputHandler {
     if (parts.length === 0) {
       for (const chunk of splitMessage(text, DISCORD_MAX_LENGTH)) {
         try {
-          await this.channel.send(chunk);
+          await this.sendMessage(chunk);
         } catch (err: any) {
           console.error(`[Discord] ❌ flushBuffer text send failed: ${err.message}`);
           throw err;
@@ -271,7 +369,7 @@ class DiscordOutputHandler implements OutputHandler {
     for (const part of parts) {
       if (part.type === "text") {
         for (const chunk of splitMessage(part.content, DISCORD_MAX_LENGTH)) {
-          await this.channel.send(chunk);
+          await this.sendMessage(chunk);
         }
       } else {
         const filePath = part.path;
@@ -293,7 +391,8 @@ class DiscordOutputHandler implements OutputHandler {
           form.append("files[0]", new Blob([fileData], { type: mime }), path.basename(filePath));
 
           const token = process.env.DISCORD_BOT_TOKEN;
-          const res = await fetch(`https://discord.com/api/v10/channels/${this.channel.id}/messages`, {
+          const channelId = this.channel?.id || this.interaction?.channelId;
+          const res = await fetch(`https://discord.com/api/v10/channels/${channelId}/messages`, {
             method: "POST",
             headers: { Authorization: `Bot ${token}` },
             body: form,

@@ -49,6 +49,9 @@ export class DashboardChannel implements Channel {
     removeJob: (name: string) => boolean;
     getActiveJobs: () => string[];
   };
+  private discordChannel?: {
+    registerSlashCommands: () => Promise<{ success: boolean; count: number; error?: string }>;
+  };
 
   constructor(private db: any, private queries: any, private config: any) {
     this.setupExpress();
@@ -75,6 +78,12 @@ export class DashboardChannel implements Channel {
     getActiveJobs: () => string[];
   }) {
     this.cronManager = manager;
+  }
+
+  setDiscordChannel(discord: {
+    registerSlashCommands: () => Promise<{ success: boolean; count: number; error?: string }>;
+  }) {
+    this.discordChannel = discord;
   }
 
   reloadConfig(config: any) {
@@ -366,6 +375,20 @@ export class DashboardChannel implements Channel {
       }
       
       res.json({ success: true });
+    });
+
+    // Discord slash command registration
+    this.app.post("/api/discord/register-commands", async (req, res) => {
+      if (!this.discordChannel) {
+        res.status(400).json({ success: false, error: "Discord channel not configured" });
+        return;
+      }
+      try {
+        const result = await this.discordChannel.registerSlashCommands();
+        res.json(result);
+      } catch (err: any) {
+        res.status(500).json({ success: false, error: err.message });
+      }
     });
 
     this.app.get("/api/secrets", (req, res) => {

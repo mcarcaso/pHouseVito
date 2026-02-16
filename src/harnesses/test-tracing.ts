@@ -5,7 +5,7 @@
  */
 
 import { PiHarness } from "./pi-coding-agent/index.js";
-import { withTracing } from "./proxy.js";
+import { withTracing } from "./tracing.js";
 import { readFileSync } from "fs";
 import { resolve } from "path";
 

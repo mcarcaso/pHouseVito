@@ -8,7 +8,7 @@ import express from "express";
 import { WebSocketServer, WebSocket } from "ws";
 import { createServer } from "http";
 import path from "path";
-import { readFileSync, writeFileSync, existsSync, mkdirSync, readdirSync, statSync, openSync, readSync, closeSync } from "fs";
+import { readFileSync, writeFileSync, existsSync, mkdirSync, readdirSync, statSync, openSync, readSync, closeSync, unlinkSync } from "fs";
 import { execSync } from "child_process";
 import { fileURLToPath } from "url";
 import crypto from "crypto";
@@ -779,6 +779,61 @@ export class DashboardChannel implements Channel {
         } else {
           res.json({ filename, format: "text", content });
         }
+      } catch (e: any) {
+        res.status(500).json({ error: e.message });
+      }
+    });
+
+    // Delete a single trace file
+    this.app.delete("/api/logs/:filename", (req, res) => {
+      try {
+        const filename = req.params.filename;
+        // Security: only allow request-*.log or trace-*.jsonl files
+        const isOldFormat = filename.startsWith("request-") && filename.endsWith(".log");
+        const isNewFormat = filename.startsWith("trace-") && filename.endsWith(".jsonl");
+        
+        if ((!isOldFormat && !isNewFormat) || filename.includes("..")) {
+          res.status(400).json({ error: "Invalid filename" });
+          return;
+        }
+        
+        const filePath = path.join(process.cwd(), "logs", filename);
+        if (!existsSync(filePath)) {
+          res.status(404).json({ error: "Log not found" });
+          return;
+        }
+        
+        unlinkSync(filePath);
+        res.json({ success: true, deleted: filename });
+      } catch (e: any) {
+        res.status(500).json({ error: e.message });
+      }
+    });
+
+    // Delete all trace files
+    this.app.delete("/api/logs", (req, res) => {
+      try {
+        const logsDir = path.join(process.cwd(), "logs");
+        if (!existsSync(logsDir)) {
+          res.json({ success: true, deleted: 0 });
+          return;
+        }
+        
+        const files = readdirSync(logsDir)
+          .filter(f => (f.startsWith("request-") && f.endsWith(".log")) ||
+                       (f.startsWith("trace-") && f.endsWith(".jsonl")));
+        
+        let deleted = 0;
+        for (const filename of files) {
+          try {
+            unlinkSync(path.join(logsDir, filename));
+            deleted++;
+          } catch {
+            // Skip files that can't be deleted
+          }
+        }
+        
+        res.json({ success: true, deleted });
       } catch (e: any) {
         res.status(500).json({ error: e.message });
       }

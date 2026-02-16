@@ -11,7 +11,7 @@
 
 import { resolve } from "path";
 import { PiHarness } from "./pi-coding-agent/index.js";
-import { withTracing } from "./proxy.js";
+import { withTracing } from "./tracing.js";
 import type { NormalizedEvent } from "./types.js";
 
 const USER_DIR = resolve(process.cwd(), "user");

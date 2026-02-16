@@ -112,6 +112,31 @@ function Traces() {
     }
   }, []);
 
+  const deleteLog = useCallback(async (filename: string) => {
+    if (!confirm(`Delete trace "${filename}"?`)) return;
+    try {
+      await fetch(`/api/logs/${encodeURIComponent(filename)}`, { method: 'DELETE' });
+      // If we're viewing this log, go back to list
+      if (selectedLog === filename) {
+        setSearchParams({});
+        setLogDetail(null);
+      }
+      fetchLogs();
+    } catch (err) {
+      console.error('Failed to delete log:', err);
+    }
+  }, [selectedLog, setSearchParams, fetchLogs]);
+
+  const deleteAllLogs = useCallback(async () => {
+    if (!confirm(`Delete ALL ${logs.length} traces? This cannot be undone.`)) return;
+    try {
+      await fetch('/api/logs', { method: 'DELETE' });
+      fetchLogs();
+    } catch (err) {
+      console.error('Failed to delete logs:', err);
+    }
+  }, [logs.length, fetchLogs]);
+
   useEffect(() => {
     if (selectedLog) {
       fetchLogDetail(selectedLog);
@@ -401,6 +426,13 @@ function Traces() {
             />
             Live
           </label>
+          <button
+            className="w-8 h-8 flex items-center justify-center rounded-md border bg-neutral-900 border-neutral-800 text-red-400 hover:bg-red-950 hover:border-red-800 text-sm cursor-pointer transition-all"
+            onClick={() => deleteLog(logDetail.filename)}
+            title="Delete trace"
+          >
+            ✕
+          </button>
         </div>
 
         {logDetail.format === 'jsonl' ? (
@@ -448,6 +480,15 @@ function Traces() {
           >
             ↻
           </button>
+          {logs.length > 0 && (
+            <button
+              className="px-3 h-8 flex items-center justify-center rounded-md border bg-neutral-900 border-neutral-800 text-red-400 hover:bg-red-950 hover:border-red-800 text-xs cursor-pointer transition-all"
+              onClick={deleteAllLogs}
+              title="Delete all traces"
+            >
+              Delete All
+            </button>
+          )}
         </div>
       </div>
 
@@ -458,7 +499,7 @@ function Traces() {
           return (
             <div
               key={log.filename}
-              className="bg-neutral-900 border border-neutral-800 rounded-xl px-4 py-3 cursor-pointer transition-all hover:bg-neutral-850 hover:border-neutral-700 active:scale-[0.99]"
+              className="bg-neutral-900 border border-neutral-800 rounded-xl px-4 py-3 cursor-pointer transition-all hover:bg-neutral-850 hover:border-neutral-700 active:scale-[0.99] group"
               onClick={() => setSearchParams({ file: log.filename })}
             >
               <div className="flex items-center gap-3 mb-2 text-sm flex-wrap">
@@ -479,6 +520,13 @@ function Traces() {
                 <span className="text-neutral-600 ml-auto text-xs">
                   {formatDate(log.timestamp)}
                 </span>
+                <button
+                  className="w-6 h-6 flex items-center justify-center rounded border bg-neutral-900 border-neutral-700 text-red-400 hover:bg-red-950 hover:border-red-800 text-xs cursor-pointer transition-all opacity-0 group-hover:opacity-100"
+                  onClick={(e) => { e.stopPropagation(); deleteLog(log.filename); }}
+                  title="Delete trace"
+                >
+                  ✕
+                </button>
               </div>
               <div className="text-neutral-400 text-sm leading-relaxed font-mono">
                 {info.session || log.filename}

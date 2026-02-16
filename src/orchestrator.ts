@@ -1,30 +1,23 @@
-
-import {
-  type AgentSession,
-  type AgentSessionEvent,
-} from "@mariozechner/pi-coding-agent";
-import { PiHarness, ClaudeCodeHarness, withTracing, type Harness, type TracingOptions } from "./harnesses/index.js";
+import { CronScheduler } from "./cron/scheduler.js";
 import type { Queries } from "./db/queries.js";
+import { ClaudeCodeHarness, PiHarness, withPersistence, withRelay, withTracing, withTyping, type Harness } from "./harnesses/index.js";
+import { runCompaction, runSessionCompaction, shouldCompact } from "./memory/compaction.js";
 import { assembleContext, formatContextForPrompt } from "./memory/context.js";
-import { shouldCompact, runCompaction, runSessionCompaction } from "./memory/compaction.js";
 import { SessionManager } from "./sessions/manager.js";
 import { discoverSkills, formatSkillsForPrompt } from "./skills/discovery.js";
-import { CronScheduler } from "./cron/scheduler.js";
 
+import { randomBytes } from "crypto";
+import { mkdirSync, writeFileSync } from "fs";
+import { join, resolve } from "path";
 import type {
-  VitoConfig,
-  InboundEvent,
   Channel,
-  OutboundMessage,
-  StreamMode,
+  CronJobConfig,
+  InboundEvent,
   SessionConfig,
   SkillMeta,
-  CronJobConfig,
+  StreamMode,
+  VitoConfig
 } from "./types.js";
-import { resolve, join } from "path";
-import { existsSync, mkdirSync, writeFileSync, readFileSync } from "fs";
-import { randomBytes } from "crypto";
-
 
 
 export class Orchestrator {
@@ -294,9 +287,9 @@ export class Orchestrator {
     // 1.5. Download any remote attachments (e.g., from Telegram)
     await this.downloadAttachments(event);
 
-    // 2. Store the user message in our DB (paths only, no base64)
-    const storedContent = event.attachments?.length
-      ? JSON.stringify({
+    // 2. Build user content for DB (paths only, no base64)
+    const userContent = event.attachments?.length
+      ? {
           text: event.content,
           attachments: event.attachments.map((a) => ({
             type: a.type,
@@ -304,19 +297,8 @@ export class Orchestrator {
             filename: a.filename,
             mimeType: a.mimeType,
           })),
-        })
-      : JSON.stringify(event.content);
-
-    this.queries.insertMessage({
-      session_id: vitoSession.id,
-      channel: event.channel,
-      channel_target: event.target,
-      timestamp: event.timestamp,
-      type: "user",
-      content: storedContent,
-      compacted: 0,
-      archived: 0,
-    });
+        }
+      : event.content;
 
     // 3. Build fresh context
     const ctx = await assembleContext(
@@ -332,14 +314,25 @@ export class Orchestrator {
     const sessionConfig: SessionConfig = JSON.parse(vitoSession.config || "{}");
 
     // Create harness for this request (respects session config overrides)
-    // Wrap with tracing to log all events
+    // Build decorator chain: relay → persistence → tracing → inner harness
     const innerHarness = this.getHarness(sessionConfig);
-    const harness = withTracing(innerHarness, {
+    const tracedHarness = withTracing(innerHarness, {
       session_id: vitoSession.id,
       channel: event.channel,
       target: event.target,
       model: this.getModelString(sessionConfig),
     });
+    const persistedHarness = withPersistence(tracedHarness, {
+      queries: this.queries,
+      sessionId: vitoSession.id,
+      channel: event.channel,
+      target: event.target,
+      userContent,
+      userTimestamp: event.timestamp,
+    });
+    const streamMode = this.getStreamMode(event.channel, sessionConfig);
+    console.log(`[Orchestrator] Stream mode for ${event.channel}: ${streamMode}`);
+    const harness = withTyping(withRelay(persistedHarness, { handler, streamMode }), handler);
 
     // Build system prompt with harness-specific custom instructions
     const systemPrompt = this.buildSystemPrompt(
@@ -348,29 +341,14 @@ export class Orchestrator {
       channel?.getCustomPrompt?.() || "",
       innerHarness.getCustomInstructions?.() || ""
     );
-    
-    const streamMode = this.getStreamMode(event.channel, sessionConfig);
-    console.log(`[Orchestrator] Stream mode for ${event.channel}: ${streamMode}`);
 
-    // 5. Collect response using harness
-    const completedMessages: string[] = [];
-    const assistantMessageIds: number[] = [];
-    let currentMessageText = "";
-    let rawStreamedContent = false; // Track if raw text_delta events streamed content for this message
-
-    // 6. Set up abort controller for this request
+    // Set up abort controller for this request
     const sessionKey = `${event.channel}:${event.target}`;
     const abortController = new AbortController();
     const activeEntry = { abort: abortController, aborted: false };
     this.activeRequests.set(sessionKey, activeEntry);
 
-    // Start typing indicator
-    await handler?.startTyping?.();
-
-    let llmError: string | null = null;
-    const execStart = Date.now();
-
-    // 7. Build user message (include attachment file paths if any)
+    // Build user message (include attachment file paths if any)
     let promptText = event.content || "";
     if (event.attachments?.length) {
       const refs = event.attachments
@@ -388,199 +366,27 @@ export class Orchestrator {
       await harness.run(
         systemPrompt,
         promptText,
-        {
-          onInvocation: () => {
-            // Tracing is handled by TracingHarness wrapper
-          },
-          onRawEvent: (agentEvent) => {
-            // Tracing is handled by TracingHarness wrapper
-            // Handle streaming text
-            const e = agentEvent as AgentSessionEvent;
-            if (e.type === "message_start") {
-              currentMessageText = "";
-              rawStreamedContent = false;
-            } else if (e.type === "message_update") {
-              const msgEvent = e.assistantMessageEvent;
-              if (msgEvent.type === "text_delta") {
-                currentMessageText += msgEvent.delta;
-                rawStreamedContent = true;
-                if (streamMode === "stream" && handler) {
-                  handler.relay(msgEvent.delta).catch(() => {});
-                }
-              }
-            } else if (e.type === "message_end") {
-              // Reset streaming text buffer — actual message saving happens in onNormalizedEvent
-              currentMessageText = "";
-            }
-          },
-          onNormalizedEvent: (normEvent) => {
-            // Handle normalized assistant messages — single source of truth for DB inserts
-            if (normEvent.kind === "assistant" && normEvent.content) {
-              completedMessages.push(normEvent.content);
-              
-              const msgId = this.queries.insertMessage({
-                session_id: vitoSession.id,
-                channel: event.channel,
-                channel_target: event.target,
-                timestamp: Date.now(),
-                type: "thought",
-                content: JSON.stringify(normEvent.content),
-                compacted: 0,
-                archived: 0,
-              });
-              assistantMessageIds.push(msgId);
-              
-              // For streaming mode, relay content and signal message boundary
-              // If raw text_delta events already streamed the content, buffer will flush what's there.
-              // If not (e.g. claude-code harness doesn't emit text_delta), relay the full content now.
-              if (streamMode === "stream" && handler) {
-                if (!rawStreamedContent) {
-                  // Harness didn't emit raw text_delta events (e.g. claude-code) — relay full content now
-                  handler.relay(normEvent.content).catch((err: any) => {
-                    console.error(`[Orchestrator] relay failed during stream: ${err.message}`);
-                  });
-                }
-                rawStreamedContent = false; // Reset for next message
-                handler.endMessage?.()?.catch((err: any) => {
-                  console.error(`[Orchestrator] endMessage failed during stream: ${err.message}`);
-                });
-                handler.startTyping?.()?.catch(() => {});
-              }
-            }
-            
-            // Handle normalized tool events (cleaner interface)
-            if (normEvent.kind === "tool_start") {
-              this.queries.insertMessage({
-                session_id: vitoSession.id,
-                channel: event.channel,
-                channel_target: event.target,
-                timestamp: Date.now(),
-                type: "tool_start",
-                content: JSON.stringify({
-                  toolName: normEvent.tool,
-                  toolCallId: normEvent.callId,
-                  args: normEvent.args,
-                }),
-                compacted: 0,
-                archived: 0,
-              });
-              handler?.relayEvent?.({
-                kind: "tool_start",
-                toolName: normEvent.tool,
-                toolCallId: normEvent.callId,
-                args: normEvent.args,
-              })?.catch(() => {});
-            } else if (normEvent.kind === "tool_end") {
-              this.queries.insertMessage({
-                session_id: vitoSession.id,
-                channel: event.channel,
-                channel_target: event.target,
-                timestamp: Date.now(),
-                type: "tool_end",
-                content: JSON.stringify({
-                  toolName: normEvent.tool,
-                  toolCallId: normEvent.callId,
-                  result: normEvent.result,
-                  isError: !normEvent.success,
-                }),
-                compacted: 0,
-                archived: 0,
-              });
-              handler?.relayEvent?.({
-                kind: "tool_end",
-                toolName: normEvent.tool,
-                toolCallId: normEvent.callId,
-                result: normEvent.result,
-                isError: !normEvent.success,
-              })?.catch(() => {});
-            }
-          },
-        },
+        { onRawEvent: () => {}, onNormalizedEvent: () => {} },
         abortController.signal
       );
-
-      console.log(`[Orchestrator] LLM response complete (${completedMessages.length} messages)`);
-
-      // Mark the last assistant message as 'assistant' (the actual response, not a thought)
-      if (assistantMessageIds.length > 0) {
-        const lastMsgId = assistantMessageIds[assistantMessageIds.length - 1];
-        this.queries.updateMessageType(lastMsgId, "assistant");
-      }
-
-      llmError = null;
+      console.log(`[Orchestrator] LLM response complete`);
     } catch (err) {
-      // Handle abort gracefully (user interrupted)
       if (activeEntry.aborted) {
         console.log(`[Orchestrator] ⛔ Session ${sessionKey} aborted by user`);
-
-        // Store an assistant message noting the interruption
-        this.queries.insertMessage({
-          session_id: vitoSession.id,
-          channel: event.channel,
-          channel_target: event.target,
-          timestamp: Date.now(),
-          type: "assistant",
-          content: JSON.stringify("*(interrupted)*"),
-          compacted: 0,
-          archived: 0,
-        });
-
-        if (handler) {
-          if (streamMode === "stream") {
-            await handler.endMessage?.();
-          }
-          await handler.relay("*(interrupted)*");
-          await handler.endMessage?.();
-        }
-        llmError = "aborted";
       } else {
-        // Handle timeout or other errors
-        llmError = err instanceof Error ? err.message : String(err);
-        console.error(`[Orchestrator] Error during LLM call: ${llmError}`);
-
-        // Send error message to user
-        if (handler) {
-          await handler.relay(`⚠️ ${llmError}`);
-          await handler.endMessage?.();
-        }
+        console.error(`[Orchestrator] Error during LLM call: ${err instanceof Error ? err.message : err}`);
       }
+      return;
     } finally {
       this.activeRequests.delete(sessionKey);
-      await handler?.stopTyping?.();
     }
 
-    // If there was an error, skip normal response handling
-    if (llmError) {
-      return;
-    }
-
-    // 8. Relay responses for non-stream modes
-
-    if (handler) {
-      if (streamMode === "bundled") {
-        // Send all messages combined as one blob after the agent loop finishes
-        const combined = completedMessages.join("\n\n");
-        await handler.relay(combined);
-        await handler.endMessage?.();
-
-      } else if (streamMode === "final" && completedMessages.length > 0) {
-        // Send only the final message
-        const last = completedMessages[completedMessages.length - 1];
-        await handler.relay(last);
-        await handler.endMessage?.();
-
-      }
-    }
-
-    // 9. Assistant messages already inserted in message_end event handler above
-
-    // 10. Signal the channel that the response is complete (for re-prompting)
+    // Signal the channel that the response is complete (for re-prompting)
     if (channel) {
       this.notifyResponseComplete(channel);
-
     }
 
-    // 11. Check if compaction is needed (run in background)
+    // Check if compaction is needed (run in background)
     if (shouldCompact(this.queries, this.config)) {
       console.log("\nCompaction threshold reached, running memory compaction...");
       runCompaction(this.queries, this.config, (prompt) => this.runCompactionPrompt(prompt))
@@ -659,7 +465,6 @@ export class Orchestrator {
     const piConfig = this.getDefaultPiConfig();
     const innerHarness = new PiHarness({
       model: piConfig.model,
-      thinkingLevel: "off",
       // No skillsDir — compaction doesn't need tools
     });
 
@@ -795,15 +600,11 @@ Treat unknowns as puzzles to solve, not gaps to fill with questions.
     }
     // Fall back to deprecated config.model
     if (this.config.model) {
-      return {
-        model: this.config.model,
-        thinkingLevel: "off" as const,
-      };
+      return { model: this.config.model };
     }
     // Ultimate fallback
     return {
       model: { provider: "anthropic", name: "claude-sonnet-4-20250514" },
-      thinkingLevel: "off" as const,
     };
   }
 
@@ -850,11 +651,10 @@ Treat unknowns as puzzles to solve, not gaps to fill with questions.
     
     // Merge: base < session overrides < legacy model override
     const model = legacyModelOverride || sessionOverrides?.model || baseConfig.model;
-    const thinkingLevel = sessionOverrides?.thinkingLevel || baseConfig.thinkingLevel || "off";
-    
+
     const harness = new PiHarness({
       model,
-      thinkingLevel,
+      thinkingLevel: sessionOverrides?.thinkingLevel,
       skillsDir: this.skillsDir,
     });
 

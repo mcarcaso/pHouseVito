@@ -64,7 +64,7 @@ const CLAUDE_CODE_TOOLS = [
 ];
 
 const CLAUDE_CODE_MODELS = [
-  { id: 'sonnet', label: 'Claude Sonnet (default)' },
+  { id: 'sonnet', label: 'Claude Sonnet' },
   { id: 'opus', label: 'Claude Opus' },
   { id: 'haiku', label: 'Claude Haiku' },
   { id: 'claude-sonnet-4-20250514', label: 'Claude Sonnet 4 (2025-05-14)' },

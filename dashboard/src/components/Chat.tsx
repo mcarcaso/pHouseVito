@@ -20,17 +20,18 @@ function playNotificationSound() {
   }
 }
 
+const POLL_INTERVAL = 5000; // 5 seconds
+
 function Chat() {
   const [allMessages, setAllMessages] = useState<ParsedMessage[]>([]);
   const [input, setInput] = useState('');
-  const [isTyping, setIsTyping] = useState(false);
-  const [isConnected, setIsConnected] = useState(false);
+  const [isTyping] = useState(false); // Unused but kept for ChatView prop
   const [attachments, setAttachments] = useState<Attachment[]>([]);
   const [filterState, setFilterState] = useState<FilterState>({ showThoughts: true, showTools: true });
-  const wsRef = useRef<WebSocket | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const lastAssistantTsRef = useRef<number | null>(null);
   const initialLoadRef = useRef(true);
+  const pollTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   const fetchMessages = useCallback((filter?: FilterState) => {
     const params = new URLSearchParams();
@@ -66,61 +67,26 @@ function Chat() {
           initialLoadRef.current = false;
           lastAssistantTsRef.current = latestAssistantTs;
           setAllMessages(messages);
-          setIsTyping(false);
         }
       })
       .catch((err) => console.error('Failed to load messages:', err));
   }, []);
 
+  // Polling — fetch messages every 5s
   useEffect(() => {
+    // Initial fetch
     fetchMessages(filterState);
 
-    let ws: WebSocket | null = null;
-    let reconnectTimer: ReturnType<typeof setTimeout> | null = null;
-    let unmounted = false;
-
-    const connect = () => {
-      if (unmounted) return;
-      const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-      ws = new WebSocket(`${protocol}//${window.location.host}`);
-      wsRef.current = ws;
-
-      ws.onopen = () => {
-        setIsConnected(true);
-      };
-
-      ws.onmessage = (event) => {
-        const msg = JSON.parse(event.data);
-        if (msg.type === 'refresh') {
-          fetchMessages(filterState);
-        } else if (msg.type === 'typing') {
-          setIsTyping(true);
-        } else if (msg.type === 'done') {
-          fetchMessages(filterState);
-          setIsTyping(false);
-        }
-      };
-
-      ws.onclose = () => {
-        setIsConnected(false);
-        wsRef.current = null;
-        if (!unmounted) {
-          reconnectTimer = setTimeout(connect, 3000);
-        }
-      };
-
-      ws.onerror = (error) => {
-        console.error('WebSocket error:', error);
-        ws?.close();
-      };
-    };
-
-    connect();
+    // Start polling
+    pollTimerRef.current = setInterval(() => {
+      fetchMessages(filterState);
+    }, POLL_INTERVAL);
 
     return () => {
-      unmounted = true;
-      if (reconnectTimer) clearTimeout(reconnectTimer);
-      ws?.close();
+      if (pollTimerRef.current) {
+        clearInterval(pollTimerRef.current);
+        pollTimerRef.current = null;
+      }
     };
   }, [fetchMessages, filterState]);
 
@@ -155,7 +121,7 @@ function Chat() {
   };
 
   const sendMessage = async () => {
-    if ((!input.trim() && attachments.length === 0) || !wsRef.current) return;
+    if (!input.trim() && attachments.length === 0) return;
 
     const text = input;
     const currentAttachments = [...attachments];
@@ -185,17 +151,26 @@ function Chat() {
       }
     }
 
-    wsRef.current.send(
-      JSON.stringify({
-        type: 'chat',
-        content: text,
-        attachments: uploaded.length > 0 ? uploaded : undefined,
-        sessionId: 'dashboard:default',
-      })
-    );
+    const payload = {
+      type: 'chat' as const,
+      content: text,
+      attachments: uploaded.length > 0 ? uploaded : undefined,
+      sessionId: 'dashboard:default',
+    };
 
-    setTimeout(() => fetchMessages(filterState), 100);
-    setIsTyping(true);
+    // Send via HTTP POST
+    try {
+      await fetch('/api/chat', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      });
+    } catch (err) {
+      console.error('Failed to send message:', err);
+    }
+
+    // Fetch immediately to show our sent message
+    setTimeout(() => fetchMessages(filterState), 200);
   };
 
   const handleKeyPress = (e: React.KeyboardEvent) => {
@@ -250,8 +225,8 @@ function Chat() {
       <div className="fixed top-[52px] md:top-0 left-0 right-0 md:left-[200px] bg-neutral-900 z-[90] px-2 py-2 md:px-3 border-b border-neutral-700">
         <div className="flex items-center justify-between max-w-[1200px] mx-auto">
           <div className="flex items-center gap-2 bg-neutral-800 rounded-lg px-3 py-2 text-sm">
-            <span className={`w-2 h-2 rounded-full ${isConnected ? 'bg-green-400 animate-pulse' : 'bg-neutral-500'}`} />
-            {isConnected ? 'Connected' : 'Disconnected'}
+            <span className="w-2 h-2 rounded-full bg-green-400 animate-pulse" />
+            Polling
           </div>
           <div className="flex gap-2">
             <FilterButton
@@ -293,7 +268,7 @@ function Chat() {
           multiple
           style={{ display: 'none' }}
         />
-        
+
         {attachments.length > 0 && (
           <div className="flex gap-2 mb-3 flex-wrap max-w-[1200px] mx-auto">
             {attachments.map((att, idx) => (
@@ -319,7 +294,6 @@ function Chat() {
           <button
             className="bg-neutral-800 text-neutral-400 border border-neutral-700 rounded-md p-2.5 md:p-3 cursor-pointer text-lg md:text-xl transition-colors hover:bg-neutral-700 hover:border-neutral-600 disabled:opacity-50 disabled:cursor-not-allowed h-fit"
             onClick={() => fileInputRef.current?.click()}
-            disabled={!isConnected}
             title="Attach files or images"
           >
             +
@@ -331,12 +305,11 @@ function Chat() {
             onPaste={handlePaste}
             placeholder="Type a message..."
             rows={3}
-            disabled={!isConnected}
             className="flex-1 bg-neutral-950 border border-neutral-700 rounded-md p-2.5 md:p-3 text-neutral-200 resize-none text-base focus:outline-none focus:border-neutral-500 disabled:opacity-50 disabled:cursor-not-allowed"
           />
           <button
             onClick={sendMessage}
-            disabled={(!input.trim() && attachments.length === 0) || !isConnected}
+            disabled={!input.trim() && attachments.length === 0}
             className="bg-blue-600 text-white border-none rounded-md px-4 md:px-6 py-2.5 md:py-3 cursor-pointer font-semibold text-sm md:text-base transition-colors hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed"
           >
             Send

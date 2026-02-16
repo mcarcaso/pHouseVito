@@ -59,6 +59,8 @@ All user-specific, non-versioned data lives here:
 - Structure: `user/skills/<name>/` with `SKILL.md` and `index.js`
 - Return simple output (no MEDIA: prefix or markdown formatting)
 - Dashboard uses ReactMarkdown for rendering skill output
+- **Always read `SKILL.md` first** — it documents the exact command to run, input format, and output structure. Script names vary (run.js, generate.py, edit.sh, etc.) — never guess.
+- Treat skills as self-documenting. If you need to use a skill, navigate to `user/skills/<name>/SKILL.md` and follow its instructions exactly.
 
 ### Sessions
 - Format: `channelName:targetName` (e.g., `"dashboard:default"`)

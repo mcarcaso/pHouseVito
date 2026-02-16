@@ -406,31 +406,12 @@ export class Orchestrator {
                 }
               }
             } else if (e.type === "message_end") {
-              if (e.message.role === "assistant" && currentMessageText) {
-                completedMessages.push(currentMessageText);
-
-                const msgId = this.queries.insertMessage({
-                  session_id: vitoSession.id,
-                  channel: event.channel,
-                  channel_target: event.target,
-                  timestamp: Date.now(),
-                  type: "thought",
-                  content: JSON.stringify(currentMessageText),
-                  compacted: 0,
-                  archived: 0,
-                });
-                assistantMessageIds.push(msgId);
-
-                if (streamMode === "stream" && handler) {
-                  handler.endMessage?.()?.catch(() => {});
-                  handler.startTyping?.()?.catch(() => {});
-                }
-              }
+              // Reset streaming text buffer — actual message saving happens in onNormalizedEvent
               currentMessageText = "";
             }
           },
           onNormalizedEvent: (normEvent) => {
-            // Handle normalized assistant messages (for harnesses that don't use message_end)
+            // Handle normalized assistant messages — single source of truth for DB inserts
             if (normEvent.kind === "assistant" && normEvent.content) {
               completedMessages.push(normEvent.content);
               
@@ -446,10 +427,12 @@ export class Orchestrator {
               });
               assistantMessageIds.push(msgId);
               
-              // For streaming mode, relay immediately (if we haven't already via raw events)
+              // For streaming mode, signal message boundary (content already streamed via raw text_delta events)
               if (streamMode === "stream" && handler) {
-                handler.relay(normEvent.content).catch(() => {});
-                handler.endMessage?.()?.catch(() => {});
+                handler.endMessage?.()?.catch((err: any) => {
+                  console.error(`[Orchestrator] endMessage failed during stream: ${err.message}`);
+                });
+                handler.startTyping?.()?.catch(() => {});
               }
             }
             
@@ -716,6 +699,16 @@ To send/share a file or image inline, output MEDIA:/path/to/file on its own line
 NEVER restart yourself. You don't know what long-running jobs might be in progress. When changes need a restart, say "changes are ready, restart when you're clear" and let the boss decide when.
 
 Available commands: /new (compact + archive session)
+
+## Investigation First
+
+When instructions are vague or incomplete, investigate before asking:
+- Check user memories in user/memories/ — they contain context, preferences, and prior intel
+- Check existing files and configs
+- Query the message history if needed
+- Only ask clarifying questions if you've genuinely exhausted available context
+
+Treat unknowns as puzzles to solve, not gaps to fill with questions.
 </system>`);
 
     if (skillsPrompt) {

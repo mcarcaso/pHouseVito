@@ -555,6 +555,32 @@ export class DashboardChannel implements Channel {
       });
     });
 
+    // HTTP fallback for sending chat messages (when WebSocket is dead)
+    this.app.post("/api/chat", (req, res) => {
+      const msg = req.body as DashboardMessage;
+      console.log(`[Dashboard] HTTP chat received: content=${msg.content?.substring(0, 50)}`);
+
+      if (msg.type === "chat" && msg.content && this.eventHandler) {
+        const sessionId = msg.sessionId || "dashboard:default";
+        const parts = sessionId.split(":");
+        const target = parts.length > 1 ? parts.slice(1).join(":") : "default";
+
+        const event: InboundEvent = {
+          sessionKey: sessionId,
+          channel: "dashboard",
+          target: target,
+          author: "user",
+          timestamp: Date.now(),
+          content: msg.content || "",
+          raw: msg,
+        };
+        this.eventHandler(event);
+        res.json({ ok: true });
+      } else {
+        res.status(400).json({ error: "Invalid chat message or no handler" });
+      }
+    });
+
     // Server restart endpoint
     this.app.post("/api/server/restart", (req, res) => {
       res.json({ ok: true, message: "Restarting server..." });
@@ -742,39 +768,13 @@ export class DashboardChannel implements Channel {
   }
 
   private setupWebSocket() {
+    // WebSocket kept for potential future use (live streaming, etc.)
+    // Chat messages are now sent via HTTP POST /api/chat
+    // Frontend polls for new messages instead of listening to WS events
     this.wss.on("connection", (ws) => {
-      console.log("Dashboard client connected");
       this.clients.add(ws);
-
-      ws.on("message", (data) => {
-        try {
-          const msg: DashboardMessage = JSON.parse(data.toString());
-
-          if (msg.type === "chat" && msg.content && this.eventHandler) {
-            // Parse sessionId to extract target (e.g., "dashboard:default" -> "default")
-            const sessionId = msg.sessionId || "dashboard:default";
-            const parts = sessionId.split(":");
-            const target = parts.length > 1 ? parts.slice(1).join(":") : "default";
-            
-            const event: InboundEvent = {
-              sessionKey: sessionId,
-              channel: "dashboard",
-              target: target,
-              author: "user",
-              timestamp: Date.now(),
-              content: msg.content || "",
-              raw: msg,
-            };
-            this.eventHandler(event);
-          }
-        } catch (err) {
-          console.error("Error processing dashboard message:", err);
-        }
-      });
-
       ws.on("close", () => {
         this.clients.delete(ws);
-        console.log("Dashboard client disconnected");
       });
     });
   }

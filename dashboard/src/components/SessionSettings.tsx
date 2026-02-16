@@ -432,7 +432,7 @@ function SessionSettings() {
                     saveConfig(newConfig);
                   }}
                 >
-                  <option value="">Default (sonnet)</option>
+                  <option value="">Default</option>
                   <option value="sonnet">Sonnet</option>
                   <option value="opus">Opus</option>
                   <option value="haiku">Haiku</option>
@@ -472,7 +472,7 @@ function SessionSettings() {
               
               {(claudeCodeConfig.model || claudeCodeConfig.permissionMode) && (
                 <div className="inline-flex items-center gap-2 bg-purple-950/50 border border-purple-600/30 rounded-lg px-3 py-2 text-sm text-purple-400 font-mono">
-                  🔧 claude-code/{claudeCodeConfig.model || 'sonnet'}
+                  🔧 claude-code/{claudeCodeConfig.model || 'default'}
                 </div>
               )}
             </div>

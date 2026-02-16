@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import ReactMarkdown from 'react-markdown';
+import remarkGfm from 'remark-gfm';
 
 interface Skill {
   name: string;
@@ -91,7 +92,7 @@ function Skills() {
     if (isMarkdown) {
       return (
         <div className="max-w-4xl mx-auto text-neutral-200 leading-relaxed [&_h1]:text-white [&_h1]:text-2xl [&_h1]:sm:text-3xl [&_h1]:mt-6 [&_h1]:mb-3 [&_h1]:border-b-2 [&_h1]:border-neutral-700 [&_h1]:pb-2 [&_h2]:text-white [&_h2]:text-xl [&_h2]:mt-6 [&_h2]:mb-3 [&_h2]:border-b [&_h2]:border-neutral-800 [&_h2]:pb-2 [&_h3]:text-white [&_h3]:text-lg [&_h3]:mt-4 [&_h3]:mb-2 [&_p]:my-3 [&_ul]:my-3 [&_ul]:pl-6 [&_ol]:my-3 [&_ol]:pl-6 [&_li]:my-2 [&_code]:bg-neutral-800 [&_code]:px-1.5 [&_code]:py-0.5 [&_code]:rounded [&_code]:font-mono [&_code]:text-cyan-400 [&_code]:text-[0.9em] [&_pre]:bg-neutral-900 [&_pre]:p-4 [&_pre]:rounded-lg [&_pre]:overflow-x-auto [&_pre]:whitespace-pre-wrap [&_pre]:break-words [&_pre]:my-4 [&_pre_code]:bg-transparent [&_pre_code]:p-0 [&_pre_code]:text-neutral-200 [&_blockquote]:border-l-4 [&_blockquote]:border-blue-600 [&_blockquote]:my-4 [&_blockquote]:pl-4 [&_blockquote]:text-neutral-400 [&_blockquote]:italic [&_a]:text-cyan-400 [&_a]:no-underline hover:[&_a]:underline [&_table]:w-full [&_table]:border-collapse [&_table]:my-4 [&_th]:border [&_th]:border-neutral-700 [&_th]:p-2 [&_th]:text-left [&_th]:bg-neutral-800 [&_th]:font-semibold [&_td]:border [&_td]:border-neutral-700 [&_td]:p-2">
-          <ReactMarkdown>{fileContent}</ReactMarkdown>
+          <ReactMarkdown remarkPlugins={[remarkGfm]}>{fileContent}</ReactMarkdown>
         </div>
       );
     }

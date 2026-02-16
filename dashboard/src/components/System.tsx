@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import ReactMarkdown from 'react-markdown';
+import remarkGfm from 'remark-gfm';
 
 type Tab = 'soul' | 'system';
 
@@ -58,7 +59,7 @@ function System() {
         </p>
 
         <div className="bg-neutral-900 border border-neutral-800 rounded-xl p-5 text-neutral-300 leading-relaxed [&_h1]:text-white [&_h1]:text-xl [&_h1]:mt-6 [&_h1]:mb-3 [&_h1]:first:mt-0 [&_h2]:text-white [&_h2]:text-lg [&_h2]:mt-6 [&_h2]:mb-3 [&_h2]:first:mt-0 [&_h3]:text-white [&_h3]:text-base [&_h3]:mt-4 [&_h3]:mb-2 [&_h3]:first:mt-0 [&_p]:mb-4 [&_ul]:mb-4 [&_ul]:pl-6 [&_ol]:mb-4 [&_ol]:pl-6 [&_li]:mb-1 [&_code]:bg-neutral-800 [&_code]:px-1.5 [&_code]:py-0.5 [&_code]:rounded [&_code]:font-mono [&_code]:text-[0.85em] [&_pre]:bg-neutral-950 [&_pre]:border [&_pre]:border-neutral-800 [&_pre]:rounded-lg [&_pre]:p-4 [&_pre]:overflow-x-auto [&_pre]:mb-4 [&_pre_code]:bg-transparent [&_pre_code]:p-0 [&_strong]:text-white [&_a]:text-blue-400">
-          <ReactMarkdown>{currentContent}</ReactMarkdown>
+          <ReactMarkdown remarkPlugins={[remarkGfm]}>{currentContent}</ReactMarkdown>
         </div>
       </div>
     </div>

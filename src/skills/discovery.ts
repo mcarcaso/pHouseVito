@@ -80,9 +80,9 @@ export function discoverSkills(skillsDir: string): SkillMeta[] {
 export function formatSkillsForPrompt(skills: SkillMeta[]): string {
   if (skills.length === 0) return "";
 
-  const lines = skills.map(
-    (s) => `- **${s.name}**: ${s.description} (read ${s.path} for full instructions)`
-  );
+  const names = skills.map((s) => s.name).join(", ");
 
-  return lines.join("\n");
+  return `Skills are installed in user/skills/ and src/skills/builtin/. When the user asks you to do something, check if a skill exists for it before trying to do it yourself. Skills have a SKILL.md that tells you exactly how to use them — always read it first.
+
+Available: ${names}`;
 }

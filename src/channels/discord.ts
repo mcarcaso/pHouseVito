@@ -257,7 +257,12 @@ class DiscordOutputHandler implements OutputHandler {
     // If no media found, just send as text
     if (parts.length === 0) {
       for (const chunk of splitMessage(text, DISCORD_MAX_LENGTH)) {
-        await this.channel.send(chunk);
+        try {
+          await this.channel.send(chunk);
+        } catch (err: any) {
+          console.error(`[Discord] ❌ flushBuffer text send failed: ${err.message}`);
+          throw err;
+        }
       }
       return;
     }

@@ -50,13 +50,16 @@ export async function assembleContext(
   // 1. Long-term memories — just file titles from user/memories/
   const memoriesBlock = buildMemoriesTitlesBlock();
 
+  // Load session aliases for human-readable display
+  const aliases = queries.getSessionAliases();
+
   // 2. Cross-session messages — last N per session, exclude archived
   const crossSessionMessages = queries.getCrossSessionMessagesPerSession(
     sessionId,
     crossSessionLimit,
     includeToolsInCrossSession
   );
-  const crossSessionBlock = formatCrossSessionMessages(crossSessionMessages);
+  const crossSessionBlock = formatCrossSessionMessages(crossSessionMessages, aliases);
 
   // 3. Current session messages (everything not archived, compacted or not)
   const currentSessionMessages = queries.getRecentMessages(
@@ -66,7 +69,8 @@ export async function assembleContext(
   );
   const currentSessionBlock = formatCurrentSessionMessages(
     currentSessionMessages,
-    sessionId
+    sessionId,
+    aliases[sessionId]
   );
 
   return { memoriesBlock, crossSessionBlock, currentSessionBlock };
@@ -157,7 +161,7 @@ function typeToRole(type: string): string {
   }
 }
 
-function formatCrossSessionMessages(messages: MessageRow[]): string {
+function formatCrossSessionMessages(messages: MessageRow[], aliases?: Record<string, string>): string {
   if (messages.length === 0) return "";
 
   // Group by session
@@ -173,8 +177,9 @@ function formatCrossSessionMessages(messages: MessageRow[]): string {
     const lastActive = msgs[msgs.length - 1].timestamp;
     const ago = formatTimeAgo(lastActive);
     const channelInfo = msgs[0].channel || "unknown";
+    const displayName = aliases?.[sessionId] || sessionId;
 
-    parts.push(`[Session: ${sessionId} — last active ${ago}]`);
+    parts.push(`[Session: ${displayName} — last active ${ago}]`);
     for (const msg of msgs) {
       const time = formatTimestamp(msg.timestamp);
       const text = extractMessageText(msg.content);
@@ -185,10 +190,11 @@ function formatCrossSessionMessages(messages: MessageRow[]): string {
   return parts.join("\n");
 }
 
-function formatCurrentSessionMessages(messages: MessageRow[], sessionId: string): string {
+function formatCurrentSessionMessages(messages: MessageRow[], sessionId: string, alias?: string): string {
   if (messages.length === 0) return "";
 
-  const header = `[Session: ${sessionId}]`;
+  const displayName = alias || sessionId;
+  const header = `[Session: ${displayName}]`;
   const body = messages
     .map((msg) => {
       const time = formatTimestamp(msg.timestamp);

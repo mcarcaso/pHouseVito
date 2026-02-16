@@ -199,6 +199,7 @@ export interface SessionRow {
   created_at: number;
   last_active_at: number;
   config: string; // JSON string of SessionConfig
+  alias: string | null;
 }
 
 // ── Trace types ──

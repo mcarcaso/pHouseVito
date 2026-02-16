@@ -10,6 +10,7 @@ interface Session {
   created_at: number;
   last_active_at: number;
   config: string;
+  alias: string | null;
 }
 
 interface SessionConfig {
@@ -51,6 +52,11 @@ function Sessions() {
   autoRefreshRef.current = autoRefresh;
 
   const [filterState, setFilterState] = useState<FilterState>({ showThoughts: true, showTools: true });
+
+  // Alias editing state
+  const [editingAlias, setEditingAlias] = useState<string | null>(null);
+  const [aliasInput, setAliasInput] = useState('');
+  const aliasInputRef = useRef<HTMLInputElement>(null);
 
   const fetchSessionsSilent = useCallback(async () => {
     try {
@@ -101,9 +107,9 @@ function Sessions() {
       if (loadMore) {
         setLoadingMore(true);
       }
-      
+
       const beforeId = loadMore && allMessages.length > 0 ? allMessages[0].id : undefined;
-      
+
       const params = new URLSearchParams();
       params.set('limit', String(MESSAGES_PER_PAGE));
       if (beforeId) {
@@ -113,31 +119,31 @@ function Sessions() {
         if (!filter.showThoughts) params.set('hideThoughts', 'true');
         if (!filter.showTools) params.set('hideTools', 'true');
       }
-      
+
       const res = await fetch(`/api/sessions/${sessionId}/messages?${params}`);
       const data = await res.json();
-      
+
       if (loadMore) {
         setAllMessages(prev => [...data.messages, ...prev]);
       } else {
         setAllMessages(data.messages);
       }
-      
+
       setTotalMessages(data.total);
-      
+
       if (loadMore) {
         setHasMoreMessages(data.messages.length >= MESSAGES_PER_PAGE);
       } else {
         setHasMoreMessages(data.messages.length < data.total);
       }
-      
+
     } catch (err) {
       console.error('Failed to fetch messages:', err);
     } finally {
       setLoadingMore(false);
     }
   };
-  
+
   const loadEarlierMessages = () => {
     if (selectedSession && !loadingMore) {
       fetchMessages(selectedSession, true, filterState);
@@ -155,9 +161,47 @@ function Sessions() {
     return date.toLocaleDateString();
   };
 
+  // ── Alias management ──
+
+  const startEditingAlias = (sessionId: string, currentAlias: string | null, e?: React.MouseEvent) => {
+    if (e) e.stopPropagation();
+    setEditingAlias(sessionId);
+    setAliasInput(currentAlias || '');
+    setTimeout(() => aliasInputRef.current?.focus(), 50);
+  };
+
+  const saveAlias = async (sessionId: string) => {
+    try {
+      await fetch(`/api/sessions/${sessionId}/alias`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ alias: aliasInput.trim() || null }),
+      });
+      // Update local state
+      setSessions(prev => prev.map(s =>
+        s.id === sessionId ? { ...s, alias: aliasInput.trim() || null } : s
+      ));
+    } catch (err) {
+      console.error('Failed to save alias:', err);
+    }
+    setEditingAlias(null);
+  };
+
+  const cancelEditingAlias = () => {
+    setEditingAlias(null);
+    setAliasInput('');
+  };
+
+  const getSessionDisplayName = (session: Session): string => {
+    return session.alias || session.id;
+  };
+
+  const getSelectedSessionObj = (): Session | undefined =>
+    sessions.find(s => s.id === selectedSession);
+
   // Load session config to check for overrides (for indicator badge)
   const [sessionConfig, setSessionConfig] = useState<SessionConfig>({});
-  
+
   useEffect(() => {
     if (selectedSession) {
       fetch(`/api/sessions/${selectedSession}/config`)
@@ -166,7 +210,7 @@ function Sessions() {
         .catch(err => console.error('Failed to load session config:', err));
     }
   }, [selectedSession]);
-  
+
   // Check if session has any overrides configured
   const hasOverrides = sessionConfig.streamMode || sessionConfig.harness || sessionConfig.model || sessionConfig['pi-coding-agent'];
 
@@ -175,7 +219,7 @@ function Sessions() {
   );
 
   const hasScrolledRef = useRef(false);
-  
+
   useEffect(() => {
     if (allMessages.length > 0 && !hasScrolledRef.current) {
       hasScrolledRef.current = true;
@@ -195,6 +239,9 @@ function Sessions() {
 
   // Detail view
   if (selectedSession) {
+    const currentSession = getSelectedSessionObj();
+    const displayName = currentSession ? getSessionDisplayName(currentSession) : selectedSession;
+
     return (
       <div className="flex flex-col pb-8">
         {/* Sticky header container - top-[52px] on mobile for the fixed header, top-0 on desktop */}
@@ -207,7 +254,40 @@ function Sessions() {
             >
               ‹
             </button>
-            <span className="text-sm text-neutral-500 flex-1">{totalMessages} messages</span>
+            <div className="flex-1 min-w-0">
+              {editingAlias === selectedSession ? (
+                <div className="flex items-center gap-2" onClick={e => e.stopPropagation()}>
+                  <input
+                    ref={aliasInputRef}
+                    type="text"
+                    value={aliasInput}
+                    onChange={e => setAliasInput(e.target.value)}
+                    onKeyDown={e => {
+                      if (e.key === 'Enter') saveAlias(selectedSession);
+                      if (e.key === 'Escape') cancelEditingAlias();
+                    }}
+                    onBlur={() => saveAlias(selectedSession)}
+                    placeholder="Session alias..."
+                    className="bg-neutral-900 border border-neutral-700 rounded-md px-2 py-1 text-sm text-neutral-200 focus:outline-none focus:border-blue-600 transition-colors w-48"
+                  />
+                </div>
+              ) : (
+                <div className="flex items-center gap-2 min-w-0">
+                  <span className="text-sm font-medium text-white truncate">{displayName}</span>
+                  <button
+                    className="text-neutral-600 hover:text-neutral-400 text-xs transition-colors shrink-0"
+                    onClick={(e) => startEditingAlias(selectedSession, currentSession?.alias || null, e)}
+                    title="Rename session"
+                  >
+                    ✏️
+                  </button>
+                  {currentSession?.alias && (
+                    <span className="text-xs text-neutral-600 font-mono truncate hidden sm:inline">{selectedSession}</span>
+                  )}
+                </div>
+              )}
+              <span className="text-xs text-neutral-500">{totalMessages} messages</span>
+            </div>
             <div className="flex items-center gap-2">
               <FilterButton
                 active={!filterState.showThoughts}
@@ -234,7 +314,7 @@ function Sessions() {
                     ? 'bg-blue-950 border-blue-600 text-blue-400'
                     : 'bg-neutral-900 border-neutral-800 text-neutral-500 hover:bg-neutral-800 hover:border-neutral-700 hover:text-neutral-300'
                 }`}
-                onClick={() => navigate(`/sessions/${selectedSession}/settings`)}
+                onClick={() => navigate(`/settings?tab=sessions&session=${encodeURIComponent(selectedSession!)}`)}
                 title="Session Settings"
               >
                 ⚙️
@@ -299,16 +379,49 @@ function Sessions() {
         {sessions.map((session) => {
           const config: SessionConfig = JSON.parse(session.config || '{}');
           const hasConfig = config.streamMode || config.harness || config.model || config['pi-coding-agent'];
-          
+          const isEditingThis = editingAlias === session.id;
+
           return (
             <div
               key={session.id}
               className="bg-neutral-900 border border-neutral-800 rounded-xl px-4 py-3 cursor-pointer transition-all hover:bg-neutral-850 hover:border-neutral-700 active:scale-[0.99]"
-              onClick={() => setSearchParams({ id: session.id })}
+              onClick={() => !isEditingThis && setSearchParams({ id: session.id })}
             >
               <div className="flex justify-between items-start mb-1">
-                <span className="font-semibold text-blue-500 capitalize text-sm">{session.channel}</span>
-                <div className="flex items-center gap-2">
+                <div className="flex items-center gap-2 min-w-0 flex-1">
+                  <span className="font-semibold text-blue-500 capitalize text-sm shrink-0">{session.channel}</span>
+                  {isEditingThis ? (
+                    <input
+                      ref={aliasInputRef}
+                      type="text"
+                      value={aliasInput}
+                      onChange={e => setAliasInput(e.target.value)}
+                      onKeyDown={e => {
+                        if (e.key === 'Enter') saveAlias(session.id);
+                        if (e.key === 'Escape') cancelEditingAlias();
+                      }}
+                      onBlur={() => saveAlias(session.id)}
+                      onClick={e => e.stopPropagation()}
+                      placeholder="Session alias..."
+                      className="bg-neutral-950 border border-neutral-700 rounded-md px-2 py-0.5 text-sm text-neutral-200 focus:outline-none focus:border-blue-600 transition-colors flex-1 min-w-0"
+                      autoFocus
+                    />
+                  ) : (
+                    <>
+                      {session.alias && (
+                        <span className="text-sm text-neutral-200 font-medium truncate">{session.alias}</span>
+                      )}
+                      <button
+                        className="text-neutral-600 hover:text-neutral-400 text-xs transition-colors shrink-0"
+                        onClick={(e) => startEditingAlias(session.id, session.alias, e)}
+                        title="Rename session"
+                      >
+                        ✏️
+                      </button>
+                    </>
+                  )}
+                </div>
+                <div className="flex items-center gap-2 shrink-0">
                   <button
                     className={`relative w-7 h-7 flex items-center justify-center rounded-md text-sm transition-all ${
                       hasConfig
@@ -317,7 +430,7 @@ function Sessions() {
                     }`}
                     onClick={(e) => {
                       e.stopPropagation();
-                      navigate(`/sessions/${session.id}/settings`);
+                      navigate(`/settings?tab=sessions&session=${encodeURIComponent(session.id)}`);
                     }}
                     title="Session Settings"
                   >

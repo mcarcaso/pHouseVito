@@ -40,6 +40,24 @@ export class Queries {
       .run(config, id);
   }
 
+  updateSessionAlias(id: string, alias: string | null): void {
+    this.db
+      .prepare("UPDATE sessions SET alias = ? WHERE id = ?")
+      .run(alias, id);
+  }
+
+  /** Get a map of session ID → alias for all sessions that have aliases */
+  getSessionAliases(): Record<string, string> {
+    const rows = this.db
+      .prepare("SELECT id, alias FROM sessions WHERE alias IS NOT NULL AND alias != ''")
+      .all() as Array<{ id: string; alias: string }>;
+    const map: Record<string, string> = {};
+    for (const row of rows) {
+      map[row.id] = row.alias;
+    }
+    return map;
+  }
+
   // ── Messages ──
 
   insertMessage(msg: Omit<MessageRow, "id">): number {

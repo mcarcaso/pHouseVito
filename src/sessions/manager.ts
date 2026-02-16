@@ -22,6 +22,7 @@ export class SessionManager {
       created_at: now,
       last_active_at: now,
       config: "{}",
+      alias: null,
     };
     this.queries.upsertSession(session);
     return session;

@@ -156,5 +156,11 @@ export function createDatabase(dbPath: string): Database.Database {
     db.exec("ALTER TABLE traces ADD COLUMN model TEXT");
   }
 
+  // Migration: Add alias column to sessions table
+  const sessionColumns = db.pragma("table_info(sessions)") as Array<{ name: string }>;
+  if (!sessionColumns.some((c) => c.name === "alias")) {
+    db.exec("ALTER TABLE sessions ADD COLUMN alias TEXT DEFAULT NULL");
+  }
+
   return db;
 }

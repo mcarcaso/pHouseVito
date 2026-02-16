@@ -6,14 +6,11 @@ import Memories from './components/Memories';
 import Skills from './components/Skills';
 import Secrets from './components/Secrets';
 import Jobs from './components/Jobs';
-import Settings from './components/Settings';
 import System from './components/System';
 import Server from './components/Server';
 import Apps from './components/Apps';
-import Channels from './components/Channels';
 import Traces from './components/Traces';
-import Harnesses from './components/Harnesses';
-import SessionSettings from './components/SessionSettings';
+import UnifiedSettings from './components/settings/UnifiedSettings';
 
 function App() {
   const [menuOpen, setMenuOpen] = useState(false);
@@ -44,7 +41,6 @@ function App() {
     if (path.startsWith('/memories')) return 'Memories';
     if (path.startsWith('/skills')) return 'Skills';
     if (path.startsWith('/jobs')) return 'Jobs';
-    if (path.startsWith('/channels')) return 'Channels';
     if (path.startsWith('/settings')) return 'Settings';
     if (path.startsWith('/secrets')) return 'Secrets';
     if (path.startsWith('/system')) return 'System';
@@ -99,14 +95,6 @@ function App() {
       <div className="h-px bg-neutral-800 my-1.5 mx-2" />
       <span className="block px-3 py-1 text-[10px] font-semibold text-neutral-600 uppercase tracking-wider">Config</span>
 
-      <NavLink to="/channels" className={navItemClass}>
-        <span className="w-6 text-center text-base">📡</span>
-        Channels
-      </NavLink>
-      <NavLink to="/harnesses" className={navItemClass}>
-        <span className="w-6 text-center text-base">🎭</span>
-        Harnesses
-      </NavLink>
       <NavLink to="/settings" className={navItemClass}>
         <span className="w-6 text-center text-base">⚙️</span>
         Settings
@@ -167,9 +155,9 @@ function App() {
 
       {/* Overlay when menu open (mobile) */}
       {menuOpen && (
-        <div 
-          className="md:hidden fixed inset-0 bg-black/40 z-[150] animate-[overlayFade_0.15s_ease-out]" 
-          onClick={() => setMenuOpen(false)} 
+        <div
+          className="md:hidden fixed inset-0 bg-black/40 z-[150] animate-[overlayFade_0.15s_ease-out]"
+          onClick={() => setMenuOpen(false)}
         />
       )}
 
@@ -177,23 +165,32 @@ function App() {
         <Routes>
           <Route path="/chat" element={<Chat />} />
           <Route path="/sessions" element={<Sessions />} />
-          <Route path="/sessions/:id/settings" element={<SessionSettings />} />
+          <Route path="/settings" element={<UnifiedSettings />} />
           <Route path="/memories" element={<Memories />} />
           <Route path="/skills" element={<Skills />} />
           <Route path="/jobs" element={<Jobs />} />
-          <Route path="/channels" element={<Channels />} />
-          <Route path="/harnesses" element={<Harnesses />} />
-          <Route path="/settings" element={<Settings />} />
           <Route path="/secrets" element={<Secrets />} />
           <Route path="/system" element={<System />} />
           <Route path="/server" element={<Server />} />
           <Route path="/apps" element={<Apps />} />
           <Route path="/traces" element={<Traces />} />
+          {/* Redirects for old routes */}
+          <Route path="/channels" element={<Navigate to="/settings?tab=channels" replace />} />
+          <Route path="/harnesses" element={<Navigate to="/settings" replace />} />
+          <Route path="/sessions/:id/settings" element={<SessionSettingsRedirect />} />
           <Route path="*" element={<Navigate to="/chat" replace />} />
         </Routes>
       </main>
     </div>
   );
+}
+
+/** Redirect old /sessions/:id/settings to new unified settings with session pre-selected */
+function SessionSettingsRedirect() {
+  const location = useLocation();
+  const match = location.pathname.match(/\/sessions\/(.+)\/settings/);
+  const sessionId = match?.[1] || '';
+  return <Navigate to={`/settings?tab=sessions&session=${encodeURIComponent(sessionId)}`} replace />;
 }
 
 export default App;

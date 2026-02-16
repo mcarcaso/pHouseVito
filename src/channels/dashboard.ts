@@ -279,6 +279,20 @@ export class DashboardChannel implements Channel {
       res.json(updated);
     });
 
+    this.app.put("/api/sessions/:id/alias", (req, res) => {
+      const sessionId = req.params.id;
+      const session = this.queries.getSession(sessionId);
+      if (!session) {
+        res.status(404).json({ error: "Session not found" });
+        return;
+      }
+      const { alias } = req.body;
+      // Empty string or null means remove alias
+      const cleanAlias = alias && alias.trim() ? alias.trim() : null;
+      this.queries.updateSessionAlias(sessionId, cleanAlias);
+      res.json({ id: sessionId, alias: cleanAlias });
+    });
+
     this.app.get("/api/memories", (req, res) => {
       const memoriesDir = path.join(process.cwd(), "user", "memories");
       if (!existsSync(memoriesDir)) {

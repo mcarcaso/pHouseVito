@@ -1,6 +1,6 @@
-import { useState, useEffect, useRef, useCallback } from 'react';
-import ChatView, { parseDbMessage, type ParsedMessage, type Attachment } from './ChatView';
-import './Chat.css';
+import { useState, useEffect, useRef, useCallback, useLayoutEffect } from 'react';
+import ChatView, { parseDbMessage, type ParsedMessage, type Attachment, type FilterState } from './ChatView';
+import FilterButton from './FilterButton';
 
 function playNotificationSound() {
   try {
@@ -26,17 +26,26 @@ function Chat() {
   const [isTyping, setIsTyping] = useState(false);
   const [isConnected, setIsConnected] = useState(false);
   const [attachments, setAttachments] = useState<Attachment[]>([]);
+  const [filterState, setFilterState] = useState<FilterState>({ showThoughts: true, showTools: true });
   const wsRef = useRef<WebSocket | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const lastAssistantTsRef = useRef<number | null>(null);
   const initialLoadRef = useRef(true);
 
-  const fetchMessages = useCallback(() => {
-    fetch('/api/sessions/dashboard:default/messages')
+  const fetchMessages = useCallback((filter?: FilterState) => {
+    const params = new URLSearchParams();
+    if (filter) {
+      if (!filter.showThoughts) params.set('hideThoughts', 'true');
+      if (!filter.showTools) params.set('hideTools', 'true');
+    }
+    const url = `/api/sessions/dashboard:default/messages${params.toString() ? '?' + params.toString() : ''}`;
+    fetch(url)
       .then((res) => res.json())
       .then((data) => {
-        if (Array.isArray(data)) {
-          const messages = data.map(parseDbMessage);
+        // Handle both old format (array) and new format ({messages, total})
+        const rawMessages = Array.isArray(data) ? data : data.messages;
+        if (Array.isArray(rawMessages)) {
+          const messages = rawMessages.map(parseDbMessage);
 
           let latestAssistantTs: number | null = null;
           for (let i = messages.length - 1; i >= 0; i--) {
@@ -64,7 +73,7 @@ function Chat() {
   }, []);
 
   useEffect(() => {
-    fetchMessages();
+    fetchMessages(filterState);
 
     let ws: WebSocket | null = null;
     let reconnectTimer: ReturnType<typeof setTimeout> | null = null;
@@ -83,11 +92,11 @@ function Chat() {
       ws.onmessage = (event) => {
         const msg = JSON.parse(event.data);
         if (msg.type === 'refresh') {
-          fetchMessages();
+          fetchMessages(filterState);
         } else if (msg.type === 'typing') {
           setIsTyping(true);
         } else if (msg.type === 'done') {
-          fetchMessages();
+          fetchMessages(filterState);
           setIsTyping(false);
         }
       };
@@ -113,7 +122,7 @@ function Chat() {
       if (reconnectTimer) clearTimeout(reconnectTimer);
       ws?.close();
     };
-  }, [fetchMessages]);
+  }, [fetchMessages, filterState]);
 
   const handleFileSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = e.target.files;
@@ -185,7 +194,7 @@ function Chat() {
       })
     );
 
-    setTimeout(() => fetchMessages(), 100);
+    setTimeout(() => fetchMessages(filterState), 100);
     setIsTyping(true);
   };
 
@@ -228,21 +237,55 @@ function Chat() {
     }
   };
 
+  // Auto-scroll to bottom on initial load
+  useLayoutEffect(() => {
+    if (allMessages.length > 0) {
+      window.scrollTo({ top: document.body.scrollHeight, behavior: 'instant' });
+    }
+  }, [allMessages.length === 0]); // Only on first load when messages arrive
+
   return (
-    <div className="chat-container">
-      <div className="chat-status">
-        <span className={`status-indicator ${isConnected ? 'connected' : 'disconnected'}`} />
-        {isConnected ? 'Connected' : 'Disconnected'}
+    <div className="flex flex-col min-h-full max-w-[1200px] mx-auto w-full">
+      {/* Fixed status bar */}
+      <div className="fixed top-[52px] md:top-0 left-0 right-0 md:left-[200px] bg-neutral-900 z-[90] px-2 py-2 md:px-3 border-b border-neutral-700">
+        <div className="flex items-center justify-between max-w-[1200px] mx-auto">
+          <div className="flex items-center gap-2 bg-neutral-800 rounded-lg px-3 py-2 text-sm">
+            <span className={`w-2 h-2 rounded-full ${isConnected ? 'bg-green-400 animate-pulse' : 'bg-neutral-500'}`} />
+            {isConnected ? 'Connected' : 'Disconnected'}
+          </div>
+          <div className="flex gap-2">
+            <FilterButton
+              active={!filterState.showThoughts}
+              onClick={() => setFilterState(prev => ({ ...prev, showThoughts: !prev.showThoughts }))}
+              title={filterState.showThoughts ? 'Hide thoughts' : 'Show thoughts'}
+              emoji="💭"
+            />
+            <FilterButton
+              active={!filterState.showTools}
+              onClick={() => setFilterState(prev => ({ ...prev, showTools: !prev.showTools }))}
+              title={filterState.showTools ? 'Hide tools' : 'Show tools'}
+              emoji="🔧"
+            />
+          </div>
+        </div>
       </div>
 
-      <ChatView
-        messages={allMessages}
-        isTyping={isTyping}
-        autoScroll={true}
-        showFilters={true}
-      />
+      {/* Messages scroll naturally */}
+      <div className="pt-[55px] md:pt-[60px] pb-[160px] md:pb-[180px] px-2 md:px-3">
+        <ChatView
+          messages={allMessages}
+          isTyping={isTyping}
+          autoScroll={false}
+          showFilters={true}
+          static={true}
+          filterState={filterState}
+          onFilterStateChange={setFilterState}
+          serverSideFiltering={true}
+        />
+      </div>
 
-      <div className="chat-input">
+      {/* Fixed input bar */}
+      <div className="fixed bottom-0 left-0 right-0 md:left-[200px] bg-neutral-900 p-2 md:p-3 border-t border-neutral-700 z-[90]">
         <input
           type="file"
           ref={fileInputRef}
@@ -250,29 +293,31 @@ function Chat() {
           multiple
           style={{ display: 'none' }}
         />
+        
         {attachments.length > 0 && (
-          <div className="attachment-preview">
+          <div className="flex gap-2 mb-3 flex-wrap max-w-[1200px] mx-auto">
             {attachments.map((att, idx) => (
-              <div key={idx} className="preview-item">
+              <div key={idx} className="relative bg-neutral-800 border border-neutral-700 rounded-md p-2 max-w-[150px]">
                 {att.type === 'image' ? (
-                  <img src={att.data || att.url} alt={att.filename || 'Preview'} className="preview-image" />
+                  <img src={att.data || att.url} alt={att.filename || 'Preview'} className="w-full h-[100px] object-cover rounded block" />
                 ) : (
-                  <div className="preview-file">{att.filename}</div>
+                  <div className="p-2 text-sm text-center text-neutral-400">{att.filename}</div>
                 )}
                 <button
-                  className="remove-attachment"
+                  className="absolute -top-2 -right-2 w-6 h-6 rounded-full bg-red-600 text-white border-2 border-neutral-900 cursor-pointer text-lg leading-none flex items-center justify-center hover:bg-red-700 transition-colors"
                   onClick={() => removeAttachment(idx)}
                   title="Remove"
                 >
-                  x
+                  ×
                 </button>
               </div>
             ))}
           </div>
         )}
-        <div className="input-row">
+
+        <div className="flex gap-1.5 md:gap-2 items-end max-w-[1200px] mx-auto">
           <button
-            className="attach-btn"
+            className="bg-neutral-800 text-neutral-400 border border-neutral-700 rounded-md p-2.5 md:p-3 cursor-pointer text-lg md:text-xl transition-colors hover:bg-neutral-700 hover:border-neutral-600 disabled:opacity-50 disabled:cursor-not-allowed h-fit"
             onClick={() => fileInputRef.current?.click()}
             disabled={!isConnected}
             title="Attach files or images"
@@ -287,8 +332,13 @@ function Chat() {
             placeholder="Type a message..."
             rows={3}
             disabled={!isConnected}
+            className="flex-1 bg-neutral-950 border border-neutral-700 rounded-md p-2.5 md:p-3 text-neutral-200 resize-none text-base focus:outline-none focus:border-neutral-500 disabled:opacity-50 disabled:cursor-not-allowed"
           />
-          <button onClick={sendMessage} disabled={(!input.trim() && attachments.length === 0) || !isConnected}>
+          <button
+            onClick={sendMessage}
+            disabled={(!input.trim() && attachments.length === 0) || !isConnected}
+            className="bg-blue-600 text-white border-none rounded-md px-4 md:px-6 py-2.5 md:py-3 cursor-pointer font-semibold text-sm md:text-base transition-colors hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed"
+          >
             Send
           </button>
         </div>

@@ -1,5 +1,4 @@
 import { useState, useEffect } from 'react';
-import './Server.css';
 
 interface ServerStatus {
   uptime: number;
@@ -86,67 +85,72 @@ export default function Server() {
   };
 
   return (
-    <div className="server-page">
-      <div className="page-header">
-        <h2>Server</h2>
+    <div className="flex flex-col pb-8">
+      {/* Header */}
+      <div className="flex items-center gap-3 px-4 py-3 border-b border-neutral-800 sticky top-0 bg-black/95 backdrop-blur z-10">
+        <h2 className="text-lg font-semibold text-white">Server</h2>
       </div>
 
-      <div className="server-content">
+      <div className="p-4 sm:p-6 max-w-[600px] sm:max-w-[700px] mx-auto w-full space-y-4">
         {/* Status Card */}
-        <div className="server-card">
-          <h3 className="server-card-title">Status</h3>
+        <div className="bg-neutral-900 border border-neutral-800 rounded-xl p-5 sm:p-6">
+          <h3 className="text-base font-semibold text-white mb-4">Status</h3>
           {status ? (
-            <div className="server-stats">
-              <div className="server-stat">
-                <span className="stat-label">Status</span>
-                <span className="stat-value stat-online">● Online</span>
+            <div className="flex flex-col gap-3">
+              <div className="flex justify-between items-center">
+                <span className="text-sm text-neutral-500">Status</span>
+                <span className="text-sm text-green-400 font-mono">● Online</span>
               </div>
-              <div className="server-stat">
-                <span className="stat-label">Uptime</span>
-                <span className="stat-value">{formatUptime(status.uptime)}</span>
+              <div className="flex justify-between items-center">
+                <span className="text-sm text-neutral-500">Uptime</span>
+                <span className="text-sm text-neutral-300 font-mono">{formatUptime(status.uptime)}</span>
               </div>
-              <div className="server-stat">
-                <span className="stat-label">PID</span>
-                <span className="stat-value">{status.pid}</span>
+              <div className="flex justify-between items-center">
+                <span className="text-sm text-neutral-500">PID</span>
+                <span className="text-sm text-neutral-300 font-mono">{status.pid}</span>
               </div>
-              <div className="server-stat">
-                <span className="stat-label">Node</span>
-                <span className="stat-value">{status.nodeVersion}</span>
+              <div className="flex justify-between items-center">
+                <span className="text-sm text-neutral-500">Node</span>
+                <span className="text-sm text-neutral-300 font-mono">{status.nodeVersion}</span>
               </div>
-              <div className="server-stat">
-                <span className="stat-label">Memory (RSS)</span>
-                <span className="stat-value">{formatBytes(status.memoryUsage.rss)}</span>
+              <div className="flex justify-between items-center">
+                <span className="text-sm text-neutral-500">Memory (RSS)</span>
+                <span className="text-sm text-neutral-300 font-mono">{formatBytes(status.memoryUsage.rss)}</span>
               </div>
-              <div className="server-stat">
-                <span className="stat-label">Heap Used</span>
-                <span className="stat-value">{formatBytes(status.memoryUsage.heapUsed)} / {formatBytes(status.memoryUsage.heapTotal)}</span>
+              <div className="flex justify-between items-center">
+                <span className="text-sm text-neutral-500">Heap Used</span>
+                <span className="text-sm text-neutral-300 font-mono">{formatBytes(status.memoryUsage.heapUsed)} / {formatBytes(status.memoryUsage.heapTotal)}</span>
               </div>
             </div>
           ) : (
-            <div className="server-stats">
-              <div className="server-stat">
-                <span className="stat-label">Status</span>
-                <span className="stat-value stat-offline">● Offline</span>
+            <div className="flex flex-col gap-3">
+              <div className="flex justify-between items-center">
+                <span className="text-sm text-neutral-500">Status</span>
+                <span className="text-sm text-red-400 font-mono">● Offline</span>
               </div>
             </div>
           )}
         </div>
 
         {/* Restart Card */}
-        <div className="server-card">
-          <h3 className="server-card-title">Restart</h3>
-          <p className="server-card-desc">
+        <div className="bg-neutral-900 border border-neutral-800 rounded-xl p-5 sm:p-6">
+          <h3 className="text-base font-semibold text-white mb-2">Restart</h3>
+          <p className="text-sm text-neutral-500 mb-4 leading-relaxed">
             Restart the Vito server via PM2. The server will be briefly unavailable.
           </p>
 
           {restarting ? (
-            <div className="restart-status">
-              <div className="restart-spinner" />
+            <div className="flex items-center gap-3 p-3.5 bg-blue-950/50 border border-blue-600 rounded-xl text-blue-400 text-sm font-medium">
+              <div className="w-4.5 h-4.5 border-2 border-neutral-700 border-t-blue-400 rounded-full animate-spin shrink-0" />
               <span>Restarting server...</span>
             </div>
           ) : (
             <button
-              className={`restart-btn ${confirmRestart ? 'confirm' : ''}`}
+              className={`w-full p-3.5 rounded-xl text-sm font-semibold cursor-pointer transition-all ${
+                confirmRestart
+                  ? 'bg-red-900 border border-red-400 text-white animate-pulse'
+                  : 'bg-neutral-800 border border-neutral-700 text-red-400 hover:bg-red-950/50 hover:border-red-400'
+              }`}
               onClick={handleRestart}
             >
               {confirmRestart ? 'Are you sure? Click again to confirm' : 'Restart Server'}

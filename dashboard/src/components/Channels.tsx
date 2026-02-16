@@ -1,5 +1,4 @@
 import { useState, useEffect } from 'react';
-import './Channels.css';
 
 interface ChannelConfig {
   enabled: boolean;
@@ -66,7 +65,6 @@ function Channels() {
       });
       const updated = await res.json();
       setConfig({ channels: updated.channels });
-      // Update initial state to match saved state
       const newInitial: Record<string, boolean> = {};
       for (const [name, ch] of Object.entries(updated.channels || {})) {
         newInitial[name] = (ch as ChannelConfig).enabled;
@@ -115,7 +113,7 @@ function Channels() {
   const setNewIdValue = (channelName: string, field: string, value: string) =>
     setNewId({ ...newId, [`${channelName}-${field}`]: value });
 
-  if (!config) return <div className="channels-page">Loading...</div>;
+  if (!config) return <div className="p-4">Loading...</div>;
 
   const channelNames = Object.keys(config.channels);
 
@@ -128,18 +126,21 @@ function Channels() {
   ) => {
     const ids: string[] = config!.channels[channelName]?.[field] || [];
     return (
-      <div className="setting-row chat-ids-row">
-        <label>{label}</label>
-        <div className="chat-ids-section">
-          <div className="chat-ids-list">
+      <div className="flex flex-col gap-2 py-2.5 border-t border-[#1a1a1a]">
+        <label className="text-sm text-[#ccc]">{label}</label>
+        <div className="w-full overflow-x-auto">
+          <div className="flex flex-wrap gap-1.5 mb-2 min-h-[28px]">
             {ids.length === 0 && (
-              <span className="chat-ids-empty">{emptyText}</span>
+              <span className="text-xs text-[#555] italic">{emptyText}</span>
             )}
             {ids.map((id: string) => (
-              <span key={id} className="chat-id-tag">
+              <span
+                key={id}
+                className="inline-flex items-center gap-1.5 bg-[#1a1a2e] border border-[#2a2a4a] text-[#8b8bcc] rounded px-2 py-1 text-sm font-mono"
+              >
                 {id}
                 <button
-                  className="chat-id-remove"
+                  className="bg-transparent border-none text-[#666] cursor-pointer text-base leading-none p-0 ml-1 hover:text-red-500"
                   onClick={() => removeId(channelName, field, id)}
                 >
                   ×
@@ -147,16 +148,17 @@ function Channels() {
               </span>
             ))}
           </div>
-          <div className="chat-id-input-row">
+          <div className="flex gap-2">
             <input
               type="text"
               value={getNewIdValue(channelName, field)}
               onChange={(e) => setNewIdValue(channelName, field, e.target.value)}
               onKeyDown={(e) => e.key === 'Enter' && addId(channelName, field)}
               placeholder={placeholder}
+              className="bg-[#111] border border-[#333] rounded-md px-2.5 py-1.5 text-[#e0e0e0] text-sm font-mono w-40 outline-none transition-colors focus:border-blue-600"
             />
             <button
-              className="chat-id-add-btn"
+              className="bg-[#1e3a5f] text-blue-400 border border-[#2a4a7a] rounded-md px-3 py-1.5 text-sm cursor-pointer transition-all hover:bg-[#244a7a] disabled:opacity-40 disabled:cursor-default"
               onClick={() => addId(channelName, field)}
               disabled={!getNewIdValue(channelName, field).trim()}
             >
@@ -169,61 +171,70 @@ function Channels() {
   };
 
   return (
-    <div className="channels-page">
-      <div className="page-header">
-        <h2>Channels</h2>
-        <button className="header-save-btn" onClick={save} disabled={saving}>
+    <div className="p-4">
+      <div className="flex items-center gap-3 mb-4">
+        <h2 className="text-lg font-semibold text-white m-0">Channels</h2>
+        <button
+          className="ml-auto bg-blue-600 hover:bg-blue-700 text-white px-4 py-1.5 rounded-md text-sm font-medium transition-colors disabled:opacity-50"
+          onClick={save}
+          disabled={saving}
+        >
           {saving ? 'Saving...' : saved ? 'Saved ✓' : 'Save'}
         </button>
       </div>
 
       {enabledChanged && !needsRestart && (
-        <div className="channels-banner channels-banner-warning">
-          <span className="banner-icon">⚠️</span>
-          <span>You've toggled a channel. <strong>Save and restart the server</strong> for changes to take effect.</span>
+        <div className="flex items-center gap-2.5 mb-3 px-4 py-3 rounded-lg text-sm bg-[#2a2000] border border-[#5a4a00] text-[#f0d060]">
+          <span className="text-base flex-shrink-0">⚠️</span>
+          <span>You've toggled a channel. <strong className="font-semibold">Save and restart the server</strong> for changes to take effect.</span>
         </div>
       )}
 
       {needsRestart && (
-        <div className="channels-banner channels-banner-restart">
-          <span className="banner-icon">🔄</span>
-          <span>Channel config saved. <strong>Restart the server</strong> to apply changes.</span>
+        <div className="flex items-center gap-2.5 mb-3 px-4 py-3 rounded-lg text-sm bg-[#1a1a30] border border-[#3a3a6a] text-[#8888dd]">
+          <span className="text-base flex-shrink-0">🔄</span>
+          <span>Channel config saved. <strong className="font-semibold">Restart the server</strong> to apply changes.</span>
         </div>
       )}
 
-      <div className="channels-content">
+      <div className="max-w-[700px] overflow-x-hidden">
         {channelNames.map((name) => {
           const ch = config.channels[name];
           const isTelegram = name === 'telegram';
           const isDiscord = name === 'discord';
 
           return (
-            <section key={name} className="channel-card">
-              <div className="channel-header">
-                <div className="channel-name-row">
-                  <span className="channel-icon">
-                    {CHANNEL_ICONS[name] || '📡'}
-                  </span>
-                  <h3>{name.charAt(0).toUpperCase() + name.slice(1)}</h3>
+            <section key={name} className="bg-[#151515] border border-[#222] rounded-xl p-5 mb-3">
+              <div className="flex items-center justify-between mb-4">
+                <div className="flex items-center gap-2">
+                  <span className="text-xl">{CHANNEL_ICONS[name] || '📡'}</span>
+                  <h3 className="text-base font-semibold text-white">{name.charAt(0).toUpperCase() + name.slice(1)}</h3>
                 </div>
-                <label className="toggle-switch">
+                <label className="relative inline-block w-11 h-6 cursor-pointer">
                   <input
                     type="checkbox"
                     checked={ch.enabled}
                     onChange={(e) => updateChannel(name, 'enabled', e.target.checked)}
+                    className="opacity-0 w-0 h-0 peer"
                   />
-                  <span className="toggle-slider" />
+                  <span className="absolute inset-0 bg-[#333] rounded-full transition-colors peer-checked:bg-blue-800" />
+                  <span className="absolute left-[3px] top-[3px] w-[18px] h-[18px] bg-[#888] rounded-full transition-all peer-checked:translate-x-5 peer-checked:bg-blue-400" />
                 </label>
               </div>
 
-              <div className="channel-settings">
-                <div className="setting-row">
-                  <label>Stream Mode</label>
-                  <div className="stream-mode-group">
+              <div>
+                {/* Stream Mode */}
+                <div className="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-4 py-2.5 border-t border-[#1a1a1a]">
+                  <label className="flex-none sm:w-40 text-sm text-[#ccc]">Stream Mode</label>
+                  <div className="flex rounded-md overflow-hidden border border-[#333] w-full sm:w-auto">
                     {STREAM_MODES.map((mode) => (
                       <button
                         key={mode.value}
-                        className={`stream-mode-btn ${ch.streamMode === mode.value ? 'active' : ''}`}
+                        className={`flex-1 sm:flex-none bg-[#111] border-none px-3 py-1.5 text-sm cursor-pointer transition-all border-r border-[#333] last:border-r-0 ${
+                          ch.streamMode === mode.value
+                            ? 'bg-[#1e3a5f] text-blue-400'
+                            : 'text-[#888] hover:text-[#ccc] hover:bg-[#1a1a1a]'
+                        }`}
                         onClick={() => updateChannel(name, 'streamMode', mode.value)}
                         title={mode.desc}
                       >
@@ -235,13 +246,13 @@ function Channels() {
 
                 {/* Telegram-specific settings */}
                 {isTelegram && (
-                  <div className="setting-row token-note-row">
-                    <label>Bot Token</label>
-                    <div className="token-note">
-                      <span className="token-note-icon">🔑</span>
+                  <div className="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-4 py-2.5 border-t border-[#1a1a1a]">
+                    <label className="flex-none sm:w-40 text-sm text-[#ccc]">Bot Token</label>
+                    <div className="flex items-center gap-2 bg-[#111] border border-[#222] rounded-md px-3 py-2 text-sm text-[#999] overflow-x-auto">
+                      <span className="text-base flex-shrink-0">🔑</span>
                       <span>
-                        Configured via <code>TELEGRAM_BOT_TOKEN</code> in{' '}
-                        <a href="/secrets" className="token-note-link">Secrets</a>.
+                        Configured via <code className="bg-[#1a1a2e] text-[#8b8bcc] px-1.5 py-0.5 rounded text-xs">TELEGRAM_BOT_TOKEN</code> in{' '}
+                        <a href="/secrets" className="text-blue-400 no-underline hover:underline">Secrets</a>.
                         Get one from <strong>@BotFather</strong> on Telegram.
                       </span>
                     </div>
@@ -259,19 +270,19 @@ function Channels() {
 
                 {/* Discord-specific settings */}
                 {isDiscord && (
-                  <div className="setting-row token-note-row">
-                    <label>Bot Token</label>
-                    <div className="token-note">
-                      <span className="token-note-icon">🔑</span>
+                  <div className="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-4 py-2.5 border-t border-[#1a1a1a]">
+                    <label className="flex-none sm:w-40 text-sm text-[#ccc]">Bot Token</label>
+                    <div className="flex items-center gap-2 bg-[#111] border border-[#222] rounded-md px-3 py-2 text-sm text-[#999] overflow-x-auto">
+                      <span className="text-base flex-shrink-0">🔑</span>
                       <span>
-                        Configured via <code>DISCORD_BOT_TOKEN</code> in{' '}
-                        <a href="/secrets" className="token-note-link">Secrets</a>.
+                        Configured via <code className="bg-[#1a1a2e] text-[#8b8bcc] px-1.5 py-0.5 rounded text-xs">DISCORD_BOT_TOKEN</code> in{' '}
+                        <a href="/secrets" className="text-blue-400 no-underline hover:underline">Secrets</a>.
                         Create at{' '}
                         <a
                           href="https://discord.com/developers/applications"
                           target="_blank"
                           rel="noopener noreferrer"
-                          className="token-note-link"
+                          className="text-blue-400 no-underline hover:underline"
                         >
                           Discord Developer Portal
                         </a>.
@@ -281,18 +292,20 @@ function Channels() {
                 )}
 
                 {isDiscord && (
-                  <div className="setting-row">
-                    <label>Require @Mention</label>
-                    <div className="toggle-with-desc">
-                      <label className="toggle-switch">
+                  <div className="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-4 py-2.5 border-t border-[#1a1a1a]">
+                    <label className="flex-none sm:w-40 text-sm text-[#ccc]">Require @Mention</label>
+                    <div className="flex items-center gap-3">
+                      <label className="relative inline-block w-11 h-6 cursor-pointer">
                         <input
                           type="checkbox"
                           checked={ch.requireMention !== false}
                           onChange={(e) => updateChannel(name, 'requireMention', e.target.checked)}
+                          className="opacity-0 w-0 h-0 peer"
                         />
-                        <span className="toggle-slider" />
+                        <span className="absolute inset-0 bg-[#333] rounded-full transition-colors peer-checked:bg-blue-800" />
+                        <span className="absolute left-[3px] top-[3px] w-[18px] h-[18px] bg-[#888] rounded-full transition-all peer-checked:translate-x-5 peer-checked:bg-blue-400" />
                       </label>
-                      <span className="toggle-desc">
+                      <span className="text-sm text-[#888]">
                         {ch.requireMention !== false
                           ? 'Bot only responds when @mentioned in servers'
                           : 'Bot responds to all messages in allowed channels'}

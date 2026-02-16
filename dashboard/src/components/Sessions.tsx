@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
-import { useSearchParams } from 'react-router-dom';
-import ChatView, { parseDbMessage, type ParsedMessage } from './ChatView';
-import './Sessions.css';
+import { useSearchParams, useNavigate } from 'react-router-dom';
+import ChatView, { parseDbMessage, type ParsedMessage, type FilterState } from './ChatView';
+import FilterButton from './FilterButton';
 
 interface Session {
   id: string;
@@ -14,51 +14,43 @@ interface Session {
 
 interface SessionConfig {
   streamMode?: string;
+  harness?: string;
   model?: {
     provider: string;
     name: string;
+  };
+  'pi-coding-agent'?: {
+    model?: { provider: string; name: string };
   };
 }
 
 interface Message {
   id: number;
   session_id: string;
-  role: string;
+  type: string;
   content: string;
   timestamp: number;
   compacted: boolean;
 }
 
-interface ModelOption {
-  id: string;
-}
-
-interface AuthStatus {
-  hasAuth: boolean;
-  authType?: 'apiKey' | 'oauth';
-}
-
-type SortField = 'id' | 'role' | 'timestamp' | 'compacted';
-type SortDirection = 'asc' | 'desc';
-type ViewMode = 'table' | 'chat';
+const MESSAGES_PER_PAGE = 50;
 
 function Sessions() {
   const [searchParams, setSearchParams] = useSearchParams();
+  const navigate = useNavigate();
   const selectedSession = searchParams.get('id');
 
   const [sessions, setSessions] = useState<Session[]>([]);
   const [allMessages, setAllMessages] = useState<Message[]>([]);
-  const [displayedMessages, setDisplayedMessages] = useState<Message[]>([]);
   const [loading, setLoading] = useState(true);
-  const [messageOffset, setMessageOffset] = useState(0);
-  const [sortField, setSortField] = useState<SortField>('timestamp');
-  const [sortDirection, setSortDirection] = useState<SortDirection>('desc');
-  const [expandedMessages, setExpandedMessages] = useState<Set<number>>(new Set());
-  const [viewMode, setViewMode] = useState<ViewMode>('chat');
-  const MESSAGE_PAGE_SIZE = 20;
+  const [loadingMore, setLoadingMore] = useState(false);
+  const [totalMessages, setTotalMessages] = useState(0);
+  const [hasMoreMessages, setHasMoreMessages] = useState(false);
   const [autoRefresh, setAutoRefresh] = useState(true);
   const autoRefreshRef = useRef(autoRefresh);
   autoRefreshRef.current = autoRefresh;
+
+  const [filterState, setFilterState] = useState<FilterState>({ showThoughts: true, showTools: true });
 
   const fetchSessionsSilent = useCallback(async () => {
     try {
@@ -78,34 +70,19 @@ function Sessions() {
     if (!autoRefresh) return;
     const interval = setInterval(() => {
       if (selectedSession) {
-        fetchMessages(selectedSession);
+        fetchMessages(selectedSession, false, filterState);
       } else {
         fetchSessionsSilent();
       }
     }, 5000);
     return () => clearInterval(interval);
-  }, [autoRefresh, selectedSession, fetchSessionsSilent]);
+  }, [autoRefresh, selectedSession, fetchSessionsSilent, filterState]);
 
   useEffect(() => {
     if (selectedSession) {
-      fetchMessages(selectedSession);
+      fetchMessages(selectedSession, false, filterState);
     }
-  }, [selectedSession]);
-
-  useEffect(() => {
-    const sorted = [...allMessages].sort((a, b) => {
-      let aVal: any = a[sortField];
-      let bVal: any = b[sortField];
-      if (sortField === 'compacted') {
-        aVal = a.compacted ? 1 : 0;
-        bVal = b.compacted ? 1 : 0;
-      }
-      if (aVal < bVal) return sortDirection === 'asc' ? -1 : 1;
-      if (aVal > bVal) return sortDirection === 'asc' ? 1 : -1;
-      return 0;
-    });
-    setDisplayedMessages(sorted.slice(0, messageOffset + MESSAGE_PAGE_SIZE));
-  }, [allMessages, sortField, sortDirection, messageOffset]);
+  }, [selectedSession, filterState]);
 
   const fetchSessions = async () => {
     try {
@@ -119,33 +96,52 @@ function Sessions() {
     }
   };
 
-  const fetchMessages = async (sessionId: string) => {
+  const fetchMessages = async (sessionId: string, loadMore = false, filter?: FilterState) => {
     try {
-      const res = await fetch(`/api/sessions/${sessionId}/messages`);
+      if (loadMore) {
+        setLoadingMore(true);
+      }
+      
+      const beforeId = loadMore && allMessages.length > 0 ? allMessages[0].id : undefined;
+      
+      const params = new URLSearchParams();
+      params.set('limit', String(MESSAGES_PER_PAGE));
+      if (beforeId) {
+        params.set('before', String(beforeId));
+      }
+      if (filter) {
+        if (!filter.showThoughts) params.set('hideThoughts', 'true');
+        if (!filter.showTools) params.set('hideTools', 'true');
+      }
+      
+      const res = await fetch(`/api/sessions/${sessionId}/messages?${params}`);
       const data = await res.json();
-      setAllMessages(data);
-      setMessageOffset(0);
+      
+      if (loadMore) {
+        setAllMessages(prev => [...data.messages, ...prev]);
+      } else {
+        setAllMessages(data.messages);
+      }
+      
+      setTotalMessages(data.total);
+      
+      if (loadMore) {
+        setHasMoreMessages(data.messages.length >= MESSAGES_PER_PAGE);
+      } else {
+        setHasMoreMessages(data.messages.length < data.total);
+      }
+      
     } catch (err) {
       console.error('Failed to fetch messages:', err);
+    } finally {
+      setLoadingMore(false);
     }
   };
-
-  const handleSort = (field: SortField) => {
-    if (sortField === field) {
-      setSortDirection(sortDirection === 'asc' ? 'desc' : 'asc');
-    } else {
-      setSortField(field);
-      setSortDirection('desc');
+  
+  const loadEarlierMessages = () => {
+    if (selectedSession && !loadingMore) {
+      fetchMessages(selectedSession, true, filterState);
     }
-    setMessageOffset(0);
-  };
-
-  const loadMoreMessages = () => {
-    setMessageOffset(messageOffset + MESSAGE_PAGE_SIZE);
-  };
-
-  const formatTimestamp = (timestamp: number) => {
-    return new Date(timestamp).toLocaleString();
   };
 
   const formatRelativeTime = (timestamp: number) => {
@@ -159,328 +155,115 @@ function Sessions() {
     return date.toLocaleDateString();
   };
 
-  const parseContent = (content: string) => {
-    try {
-      const parsed = JSON.parse(content);
-      if (parsed.text) return parsed.text;
-      if (typeof parsed === 'string') return parsed;
-      return JSON.stringify(parsed, null, 2);
-    } catch {
-      return content;
-    }
-  };
-
-  const truncateContent = (content: string, maxLength: number = 100) => {
-    if (content.length <= maxLength) return content;
-    return content.substring(0, maxLength) + '...';
-  };
-
-  const toggleMessageExpanded = (messageId: number) => {
-    setExpandedMessages((prev) => {
-      const next = new Set(prev);
-      if (next.has(messageId)) {
-        next.delete(messageId);
-      } else {
-        next.add(messageId);
-      }
-      return next;
-    });
-  };
-
-  const getSortIcon = (field: SortField) => {
-    if (sortField !== field) return '⇅';
-    return sortDirection === 'asc' ? '↑' : '↓';
-  };
-
-  // Session model override state
+  // Load session config to check for overrides (for indicator badge)
   const [sessionConfig, setSessionConfig] = useState<SessionConfig>({});
-  const [providers, setProviders] = useState<string[]>([]);
-  const [authStatus, setAuthStatus] = useState<Record<string, AuthStatus>>({});
-  const [sessionModels, setSessionModels] = useState<ModelOption[]>([]);
-  const [loadingSessionModels, setLoadingSessionModels] = useState(false);
-  const [savingConfig, setSavingConfig] = useState(false);
-  const [configSaved, setConfigSaved] = useState(false);
-  const [showModelOverride, setShowModelOverride] = useState(false);
-
-  // Load providers once
-  useEffect(() => {
-    fetch('/api/models/providers')
-      .then(r => r.json())
-      .then(data => {
-        setProviders(data.providers || []);
-        setAuthStatus(data.authStatus || {});
-      })
-      .catch(err => console.error('Failed to load providers:', err));
-  }, []);
-
-  // Load session config when session changes
+  
   useEffect(() => {
     if (selectedSession) {
       fetch(`/api/sessions/${selectedSession}/config`)
         .then(r => r.json())
-        .then(data => {
-          setSessionConfig(data);
-          setShowModelOverride(!!data.model?.provider);
-          if (data.model?.provider) {
-            loadSessionModels(data.model.provider);
-          }
-        })
+        .then(setSessionConfig)
         .catch(err => console.error('Failed to load session config:', err));
     }
   }, [selectedSession]);
+  
+  // Check if session has any overrides configured
+  const hasOverrides = sessionConfig.streamMode || sessionConfig.harness || sessionConfig.model || sessionConfig['pi-coding-agent'];
 
-  const loadSessionModels = async (provider: string) => {
-    setLoadingSessionModels(true);
-    try {
-      const res = await fetch(`/api/models/${provider}`);
-      const data = await res.json();
-      setSessionModels(data);
-    } catch (err) {
-      setSessionModels([]);
-    }
-    setLoadingSessionModels(false);
-  };
-
-  const saveSessionConfig = async (config: SessionConfig) => {
-    if (!selectedSession) return;
-    setSavingConfig(true);
-    try {
-      const res = await fetch(`/api/sessions/${selectedSession}/config`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(config),
-      });
-      const updated = await res.json();
-      setSessionConfig(updated);
-      setConfigSaved(true);
-      setTimeout(() => setConfigSaved(false), 2000);
-    } catch (err) {
-      console.error('Failed to save session config:', err);
-    }
-    setSavingConfig(false);
-  };
-
-  const handleSessionProviderChange = (provider: string) => {
-    const newConfig = { ...sessionConfig, model: { provider, name: '' } };
-    setSessionConfig(newConfig);
-    loadSessionModels(provider);
-  };
-
-  const handleSessionModelChange = (name: string) => {
-    const newConfig = { ...sessionConfig, model: { ...sessionConfig.model!, name } };
-    setSessionConfig(newConfig);
-    saveSessionConfig(newConfig);
-  };
-
-  const clearModelOverride = () => {
-    const { model, ...rest } = sessionConfig;
-    const newConfig = rest;
-    setSessionConfig(newConfig);
-    setShowModelOverride(false);
-    saveSessionConfig(newConfig);
-  };
-
-  // Only show providers that have API keys or OAuth configured
-  const popularProviders = ['anthropic', 'openai', 'google', 'xai', 'groq', 'mistral', 'openrouter'];
-  const availableProviders = providers.filter(p => authStatus[p]?.hasAuth === true);
-  const sortedProviders = [
-    ...popularProviders.filter(p => availableProviders.includes(p)),
-    ...availableProviders.filter(p => !popularProviders.includes(p)).sort(),
-  ];
-
-  // Parse messages for ChatView
   const parsedMessages: ParsedMessage[] = allMessages.map((msg) =>
-    parseDbMessage({ role: msg.role, content: msg.content, timestamp: msg.timestamp })
+    parseDbMessage({ type: msg.type, content: msg.content, timestamp: msg.timestamp })
   );
 
+  const hasScrolledRef = useRef(false);
+  
+  useEffect(() => {
+    if (allMessages.length > 0 && !hasScrolledRef.current) {
+      hasScrolledRef.current = true;
+      setTimeout(() => {
+        window.scrollTo(0, document.body.scrollHeight);
+      }, 100);
+    }
+  }, [allMessages]);
+
+  useEffect(() => {
+    hasScrolledRef.current = false;
+  }, [selectedSession]);
+
   if (loading) {
-    return <div className="sessions-page">Loading sessions...</div>;
+    return <div className="flex flex-col pb-8 text-neutral-400 p-4">Loading sessions...</div>;
   }
 
   // Detail view
   if (selectedSession) {
     return (
-      <div className="sessions-page session-detail-page">
-        <div className="page-header">
-          <button className="back-link" onClick={() => setSearchParams({})}>‹ Sessions</button>
-          <h2>Messages ({allMessages.length})</h2>
-          <div className="refresh-controls">
-            <div className="view-mode-toggle">
+      <div className="flex flex-col pb-8">
+        {/* Sticky header container - top-[52px] on mobile for the fixed header, top-0 on desktop */}
+        <div className="sticky top-[52px] md:top-0 z-20 bg-neutral-950/95 backdrop-blur">
+          {/* Toolbar */}
+          <div className="flex items-center px-4 py-3 gap-3 border-b border-neutral-800">
+            <button
+              className="bg-transparent border-none text-blue-500 text-2xl cursor-pointer px-2 py-1 leading-none hover:text-blue-400"
+              onClick={() => setSearchParams({})}
+            >
+              ‹
+            </button>
+            <span className="text-sm text-neutral-500 flex-1">{totalMessages} messages</span>
+            <div className="flex items-center gap-2">
+              <FilterButton
+                active={!filterState.showThoughts}
+                onClick={() => setFilterState(prev => ({ ...prev, showThoughts: !prev.showThoughts }))}
+                title={filterState.showThoughts ? 'Hide thoughts' : 'Show thoughts'}
+                emoji="💭"
+              />
+              <FilterButton
+                active={!filterState.showTools}
+                onClick={() => setFilterState(prev => ({ ...prev, showTools: !prev.showTools }))}
+                title={filterState.showTools ? 'Hide tools' : 'Show tools'}
+                emoji="🔧"
+              />
               <button
-                className={`view-mode-btn ${viewMode === 'chat' ? 'active' : ''}`}
-                onClick={() => setViewMode('chat')}
-                title="Chat View"
+                className="w-9 h-9 flex items-center justify-center rounded-md border bg-neutral-900 border-neutral-800 text-neutral-500 hover:bg-neutral-800 hover:border-neutral-700 hover:text-neutral-300 text-base cursor-pointer transition-all active:rotate-180"
+                onClick={() => fetchMessages(selectedSession, false, filterState)}
+                title="Refresh"
               >
-                💬
+                ↻
               </button>
               <button
-                className={`view-mode-btn ${viewMode === 'table' ? 'active' : ''}`}
-                onClick={() => setViewMode('table')}
-                title="Table View"
+                className={`relative w-9 h-9 flex items-center justify-center rounded-md border text-base cursor-pointer transition-all ${
+                  hasOverrides
+                    ? 'bg-blue-950 border-blue-600 text-blue-400'
+                    : 'bg-neutral-900 border-neutral-800 text-neutral-500 hover:bg-neutral-800 hover:border-neutral-700 hover:text-neutral-300'
+                }`}
+                onClick={() => navigate(`/sessions/${selectedSession}/settings`)}
+                title="Session Settings"
               >
-                📋
+                ⚙️
+                {hasOverrides && (
+                  <span className="absolute -top-1 -right-1 w-2.5 h-2.5 bg-blue-500 rounded-full" />
+                )}
               </button>
             </div>
-            <label className="auto-refresh-toggle">
-              <input
-                type="checkbox"
-                checked={autoRefresh}
-                onChange={(e) => setAutoRefresh(e.target.checked)}
-              />
-              Auto
-            </label>
-            <button className="refresh-btn" onClick={() => fetchMessages(selectedSession)} title="Refresh">
-              ↻
-            </button>
           </div>
         </div>
 
-        <div className="session-detail-content">
-          <div className="session-config-bar">
-            <span className="session-id-label">{selectedSession}</span>
-            <div className="session-model-section">
-              {!showModelOverride ? (
-                <button
-                  className="model-override-btn"
-                  onClick={() => setShowModelOverride(true)}
-                >
-                  🤖 Set Model Override
-                </button>
-              ) : (
-                <div className="model-override-controls">
-                  <select
-                    className="session-model-select"
-                    value={sessionConfig.model?.provider || ''}
-                    onChange={(e) => handleSessionProviderChange(e.target.value)}
-                  >
-                    <option value="">Provider...</option>
-                    {sortedProviders.map(p => (
-                      <option key={p} value={p}>{p}</option>
-                    ))}
-                  </select>
-                  {loadingSessionModels ? (
-                    <span className="loading-hint">Loading...</span>
-                  ) : (
-                    <select
-                      className="session-model-select"
-                      value={sessionConfig.model?.name || ''}
-                      onChange={(e) => handleSessionModelChange(e.target.value)}
-                    >
-                      <option value="">Model...</option>
-                      {sessionModels.map(m => (
-                        <option key={m.id} value={m.id}>{m.id}</option>
-                      ))}
-                    </select>
-                  )}
-                  <button
-                    className="clear-override-btn"
-                    onClick={clearModelOverride}
-                    title="Remove model override (use global default)"
-                  >
-                    ✕
-                  </button>
-                  {configSaved && <span className="config-saved-hint">Saved ✓</span>}
-                </div>
-              )}
-              {sessionConfig.model?.provider && sessionConfig.model?.name && (
-                <span className="session-model-badge">
-                  🤖 {sessionConfig.model.provider}/{sessionConfig.model.name}
-                </span>
-              )}
-            </div>
-          </div>
-
+        <div className="p-4 pt-3">
           {allMessages.length > 0 ? (
-            viewMode === 'chat' ? (
-              <div className="session-chat-view">
-                <ChatView
-                  messages={parsedMessages}
-                  autoScroll={false}
-                  showFilters={true}
-                  reversed={true}
-                />
-              </div>
-            ) : (
-              <>
-                <div className="messages-table-actions">
-                  <button
-                    className="expand-all-btn"
-                    onClick={() => {
-                      if (expandedMessages.size > 0) {
-                        setExpandedMessages(new Set());
-                      } else {
-                        setExpandedMessages(new Set(displayedMessages.map((m) => m.id)));
-                      }
-                    }}
-                  >
-                    {expandedMessages.size > 0 ? 'Collapse All' : 'Expand All'}
-                  </button>
-                </div>
-                <div className="messages-table-container">
-                  <table className="messages-table">
-                    <thead>
-                      <tr>
-                        <th onClick={() => handleSort('id')} className="sortable">
-                          ID {getSortIcon('id')}
-                        </th>
-                        <th onClick={() => handleSort('role')} className="sortable">
-                          Role {getSortIcon('role')}
-                        </th>
-                        <th onClick={() => handleSort('timestamp')} className="sortable">
-                          Time {getSortIcon('timestamp')}
-                        </th>
-                        <th>Content</th>
-                        <th onClick={() => handleSort('compacted')} className="sortable">
-                          C {getSortIcon('compacted')}
-                        </th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {displayedMessages.map((msg) => {
-                        const content = parseContent(msg.content);
-                        const isExpanded = expandedMessages.has(msg.id);
-                        return (
-                          <tr key={msg.id} className={`message-row ${msg.role}`}>
-                            <td className="message-id">{msg.id}</td>
-                            <td className="message-role">
-                              <span className={`role-badge ${msg.role}`}>{msg.role}</span>
-                            </td>
-                            <td className="message-timestamp">
-                              {formatTimestamp(msg.timestamp)}
-                            </td>
-                            <td className="message-content-cell">
-                              <div
-                                className={`content-preview expandable ${isExpanded ? 'expanded' : ''}`}
-                                onClick={() => toggleMessageExpanded(msg.id)}
-                              >
-                                {isExpanded ? content : truncateContent(content, 150)}
-                              </div>
-                            </td>
-                            <td className="message-compacted">
-                              {msg.compacted ? (
-                                <span className="compacted-badge">✓</span>
-                              ) : (
-                                <span className="not-compacted">—</span>
-                              )}
-                            </td>
-                          </tr>
-                        );
-                      })}
-                    </tbody>
-                  </table>
-                </div>
-
-                {displayedMessages.length < allMessages.length && (
-                  <div className="load-more-container">
-                    <button className="load-more-btn" onClick={loadMoreMessages}>
-                      Load More ({displayedMessages.length} of {allMessages.length})
-                    </button>
-                  </div>
-                )}
-              </>
-            )
+            <ChatView
+              messages={parsedMessages}
+              autoScroll={false}
+              showFilters={true}
+              reversed={true}
+              hasMoreOnServer={hasMoreMessages}
+              loadingMore={loadingMore}
+              onLoadMore={loadEarlierMessages}
+              totalMessages={totalMessages}
+              static={true}
+              filterState={filterState}
+              onFilterStateChange={setFilterState}
+              serverSideFiltering={true}
+            />
           ) : (
-            <div className="empty-state">No messages in this session</div>
+            <div className="text-center text-neutral-500 py-12">No messages in this session</div>
           )}
         </div>
       </div>
@@ -489,42 +272,66 @@ function Sessions() {
 
   // Session list view
   return (
-    <div className="sessions-page">
-      <div className="page-header">
-        <h2>Sessions ({sessions.length})</h2>
-        <div className="refresh-controls">
-          <label className="auto-refresh-toggle">
+    <div className="flex flex-col pb-8">
+      <div className="flex items-center gap-3 px-4 py-3 border-b border-neutral-800 sticky top-0 bg-black/95 backdrop-blur z-10">
+        <h2 className="text-lg font-semibold text-white">Sessions ({sessions.length})</h2>
+        <div className="flex items-center gap-2 ml-auto">
+          <label className="flex items-center gap-1.5 text-sm text-neutral-500 cursor-pointer select-none">
             <input
               type="checkbox"
               checked={autoRefresh}
               onChange={(e) => setAutoRefresh(e.target.checked)}
+              className="accent-blue-600 cursor-pointer w-3.5 h-3.5"
             />
             Auto
           </label>
-          <button className="refresh-btn" onClick={fetchSessionsSilent} title="Refresh">
+          <button
+            className="w-8 h-8 flex items-center justify-center rounded-md border bg-neutral-900 border-neutral-800 text-neutral-500 hover:bg-neutral-800 hover:border-neutral-700 hover:text-neutral-300 text-lg cursor-pointer transition-all active:rotate-180"
+            onClick={fetchSessionsSilent}
+            title="Refresh"
+          >
             ↻
           </button>
         </div>
       </div>
 
-      <div className="sessions-list">
-        {sessions.map((session) => (
-          <div
-            key={session.id}
-            className="session-item"
-            onClick={() => setSearchParams({ id: session.id })}
-          >
-            <div className="session-header">
-              <span className="session-channel">{session.channel}</span>
-              <span className="session-time">
-                {formatRelativeTime(session.last_active_at)}
-              </span>
+      <div className="px-4 pt-4 space-y-2">
+        {sessions.map((session) => {
+          const config: SessionConfig = JSON.parse(session.config || '{}');
+          const hasConfig = config.streamMode || config.harness || config.model || config['pi-coding-agent'];
+          
+          return (
+            <div
+              key={session.id}
+              className="bg-neutral-900 border border-neutral-800 rounded-xl px-4 py-3 cursor-pointer transition-all hover:bg-neutral-850 hover:border-neutral-700 active:scale-[0.99]"
+              onClick={() => setSearchParams({ id: session.id })}
+            >
+              <div className="flex justify-between items-start mb-1">
+                <span className="font-semibold text-blue-500 capitalize text-sm">{session.channel}</span>
+                <div className="flex items-center gap-2">
+                  <button
+                    className={`w-7 h-7 flex items-center justify-center rounded-md text-sm transition-all ${
+                      hasConfig
+                        ? 'text-blue-400 hover:bg-blue-950'
+                        : 'text-neutral-600 hover:text-neutral-400 hover:bg-neutral-800'
+                    }`}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      navigate(`/sessions/${session.id}/settings`);
+                    }}
+                    title="Session Settings"
+                  >
+                    ⚙️
+                  </button>
+                  <span className="text-xs text-neutral-600">{formatRelativeTime(session.last_active_at)}</span>
+                </div>
+              </div>
+              <div className="text-xs text-neutral-500 font-mono truncate">{session.id}</div>
             </div>
-            <div className="session-target">{session.id}</div>
-          </div>
-        ))}
+          );
+        })}
         {sessions.length === 0 && (
-          <div className="empty-state">No sessions yet</div>
+          <div className="text-center text-neutral-500 py-12">No sessions yet</div>
         )}
       </div>
     </div>

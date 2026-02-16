@@ -1,89 +1,73 @@
 import { useState, useEffect } from 'react';
-import './Settings.css';
+
+// NumberInput that allows clearing the field while typing
+function NumberInput({ 
+  label, value, onChange, min, max, step, hint 
+}: { 
+  label: string; 
+  value: number; 
+  onChange: (val: number) => void; 
+  min?: number; 
+  max?: number; 
+  step?: number;
+  hint?: string;
+}) {
+  const [localValue, setLocalValue] = useState(String(value));
+  
+  useEffect(() => {
+    setLocalValue(String(value));
+  }, [value]);
+
+  const handleBlur = () => {
+    const num = parseInt(localValue);
+    if (isNaN(num) || localValue === '') {
+      setLocalValue(String(value)); // Reset to original
+    } else {
+      onChange(num);
+    }
+  };
+
+  return (
+    <div className="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-4 py-3 border-b border-neutral-900 last:border-b-0">
+      <label className="text-sm text-neutral-400 sm:w-48 sm:shrink-0">{label}</label>
+      <input
+        type="number"
+        value={localValue}
+        onChange={(e) => setLocalValue(e.target.value)}
+        onBlur={handleBlur}
+        min={min}
+        max={max}
+        step={step}
+        className="w-full sm:w-28 bg-neutral-950 border border-neutral-700 rounded-md px-3 py-2 text-neutral-200 text-base sm:text-sm focus:outline-none focus:border-blue-600 transition-colors"
+      />
+      {hint && <span className="text-xs text-neutral-600">{hint}</span>}
+    </div>
+  );
+}
 
 interface Config {
-  model: {
-    provider: string;
-    name: string;
-  };
   memory: {
     currentSessionLimit: number;
     crossSessionLimit: number;
     compactionThreshold: number;
+    compactionPercent?: number;
     includeToolsInCurrentSession?: boolean;
     includeToolsInCrossSession?: boolean;
     showArchivedInCrossSession?: boolean;
   };
 }
 
-interface ModelOption {
-  id: string;
-}
-
-interface ProviderKeyInfo {
-  envVar: string;
-  description: string;
-}
-
-interface AuthStatus {
-  hasAuth: boolean;
-  authType?: 'apiKey' | 'oauth';
-  expiresAt?: number;
-}
-
-interface ProvidersResponse {
-  providers: string[];
-  keyStatus: Record<string, boolean>;
-  keyInfo: Record<string, ProviderKeyInfo>;
-  authStatus?: Record<string, AuthStatus>;
-}
-
 function Settings() {
   const [config, setConfig] = useState<Config | null>(null);
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
-  const [providers, setProviders] = useState<string[]>([]);
-  const [keyStatus, setKeyStatus] = useState<Record<string, boolean>>({});
-  const [keyInfo, setKeyInfo] = useState<Record<string, ProviderKeyInfo>>({});
-  const [authStatus, setAuthStatus] = useState<Record<string, AuthStatus>>({});
-  const [models, setModels] = useState<ModelOption[]>([]);
-  const [loadingModels, setLoadingModels] = useState(false);
 
   useEffect(() => {
-    // Load config and providers in parallel
-    Promise.all([
-      fetch('/api/config').then(r => r.json()),
-      fetch('/api/models/providers').then(r => r.json()) as Promise<ProvidersResponse>,
-    ]).then(([configData, providerData]) => {
-      // Ensure model config exists with defaults
-      const safeConfig = {
-        ...configData,
-        model: configData.model || { provider: '', name: '' },
-      };
-      setConfig(safeConfig);
-      setProviders(providerData.providers);
-      setKeyStatus(providerData.keyStatus || {});
-      setKeyInfo(providerData.keyInfo || {});
-      setAuthStatus(providerData.authStatus || {});
-      // Load models for current provider
-      if (safeConfig.model.provider) {
-        loadModelsForProvider(safeConfig.model.provider);
-      }
-    }).catch(err => console.error('Failed to load:', err));
+    fetch('/api/config')
+      .then(r => r.json())
+      .then(setConfig)
+      .catch(err => console.error('Failed to load:', err));
   }, []);
-
-  const loadModelsForProvider = async (provider: string) => {
-    setLoadingModels(true);
-    try {
-      const res = await fetch(`/api/models/${provider}`);
-      const data = await res.json();
-      setModels(data);
-    } catch (err) {
-      console.error('Failed to load models:', err);
-      setModels([]);
-    }
-    setLoadingModels(false);
-  };
 
   const save = async () => {
     if (!config) return;
@@ -92,10 +76,7 @@ function Settings() {
       const res = await fetch('/api/config', {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          model: config.model,
-          memory: config.memory,
-        }),
+        body: JSON.stringify({ memory: config.memory }),
       });
       const updated = await res.json();
       setConfig(updated);
@@ -107,177 +88,113 @@ function Settings() {
     setSaving(false);
   };
 
-  if (!config) return <div className="settings-page">Loading...</div>;
+  if (!config) return <div className="flex flex-col pb-8 text-neutral-400 p-4">Loading...</div>;
 
   const updateMemory = (key: string, value: number | boolean) => {
     setConfig({ ...config, memory: { ...config.memory, [key]: value } });
   };
 
-  const handleProviderChange = (provider: string) => {
-    setConfig({ ...config, model: { provider, name: '' } });
-    loadModelsForProvider(provider);
-  };
-
-  const handleModelChange = (name: string) => {
-    setConfig({ ...config, model: { ...config.model, name } });
-  };
-
-  // Only show providers that have API keys or OAuth configured
-  const popularProviders = ['anthropic', 'openai', 'google', 'xai', 'groq', 'mistral', 'openrouter'];
-  const availableProviders = providers.filter(p => authStatus[p]?.hasAuth === true);
-  const sortedProviders = [
-    ...popularProviders.filter(p => availableProviders.includes(p)),
-    ...availableProviders.filter(p => !popularProviders.includes(p)).sort(),
-  ];
-
-  // Helper to get auth display text
-  const getAuthDisplay = (provider: string): string => {
-    const status = authStatus[provider];
-    if (!status?.hasAuth) return '';
-    if (status.authType === 'oauth') {
-      return '✓ OAuth';
-    }
-    return `✓ ${keyInfo[provider]?.envVar || 'API Key'}`;
-  };
-
   return (
-    <div className="settings-page">
-      <div className="page-header">
-        <h2>Settings</h2>
-        <button className="header-save-btn" onClick={save} disabled={saving}>
+    <div className="flex flex-col pb-8">
+      {/* Header */}
+      <div className="flex items-center gap-3 px-4 py-3 border-b border-neutral-800 sticky top-0 bg-black/95 backdrop-blur z-10">
+        <h2 className="text-lg font-semibold text-white">Settings</h2>
+        <button
+          className="ml-auto px-4 py-1.5 bg-blue-600 hover:bg-blue-700 disabled:opacity-50 disabled:cursor-default text-white text-sm rounded-md transition-colors shrink-0"
+          onClick={save}
+          disabled={saving}
+        >
           {saving ? 'Saving...' : saved ? 'Saved ✓' : 'Save'}
         </button>
       </div>
 
-      <div className="settings-content">
-        <section className="settings-section">
-          <h3>Global Model</h3>
-          <p className="section-desc">Default model used for all sessions unless overridden.</p>
+      <div className="p-4 max-w-2xl space-y-3">
+        {/* Context Window Section */}
+        <section className="bg-neutral-900 border border-neutral-800 rounded-xl p-5">
+          <h3 className="text-base font-semibold text-white mb-1">Context Window</h3>
+          <p className="text-xs text-neutral-600 mb-4">Controls what goes into the system prompt.</p>
 
-          <div className="setting-row">
-            <label>Provider</label>
-            {sortedProviders.length === 0 ? (
-              <span className="setting-hint no-providers">
-                No API keys configured. Add provider keys in <a href="/secrets">Secrets</a>.
-              </span>
-            ) : (
-              <>
-                <select
-                  className="model-select"
-                  value={config.model.provider}
-                  onChange={(e) => handleProviderChange(e.target.value)}
-                >
-                  <option value="">Select provider...</option>
-                  {sortedProviders.map(p => (
-                    <option key={p} value={p}>{p}</option>
-                  ))}
-                </select>
-                {config.model.provider && authStatus[config.model.provider]?.hasAuth && (
-                  <span className="setting-hint key-hint has-key">
-                    {getAuthDisplay(config.model.provider)}
-                  </span>
-                )}
-              </>
-            )}
-          </div>
-
-          <div className="setting-row">
-            <label>Model</label>
-            {loadingModels ? (
-              <span className="setting-hint">Loading models...</span>
-            ) : (
-              <select
-                className="model-select"
-                value={config.model.name}
-                onChange={(e) => handleModelChange(e.target.value)}
-              >
-                <option value="">Select model...</option>
-                {models.map(m => (
-                  <option key={m.id} value={m.id}>{m.id}</option>
-                ))}
-              </select>
-            )}
-          </div>
-
-          {config.model.provider && config.model.name && (
-            <div className="current-model-badge">
-              🤖 {config.model.provider}/{config.model.name}
-            </div>
-          )}
-        </section>
-
-        <section className="settings-section">
-          <h3>Context Window</h3>
-          <p className="section-desc">Controls what goes into the system prompt.</p>
-
-          <div className="setting-row">
-            <label>Current session messages</label>
+          <div className="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-4 py-3 border-b border-neutral-900">
+            <label className="text-sm text-neutral-400 sm:w-48 sm:shrink-0">Current session messages</label>
             <input
               type="number"
               value={config.memory.currentSessionLimit}
               onChange={(e) => updateMemory('currentSessionLimit', parseInt(e.target.value) || 0)}
               min={0}
+              className="w-full sm:w-28 bg-neutral-950 border border-neutral-700 rounded-md px-3 py-2 text-neutral-200 text-base sm:text-sm focus:outline-none focus:border-blue-600 transition-colors"
             />
-            <span className="setting-hint">Recent messages from the active session</span>
+            <span className="text-xs text-neutral-600">Recent messages from the active session</span>
           </div>
 
-          <div className="setting-row">
-            <label>Include tool calls (current)</label>
+          <div className="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-4 py-3 border-b border-neutral-900">
+            <label className="text-sm text-neutral-400 sm:w-48 sm:shrink-0">Include tool calls (current)</label>
             <input
               type="checkbox"
               checked={config.memory.includeToolsInCurrentSession ?? true}
               onChange={(e) => updateMemory('includeToolsInCurrentSession', e.target.checked)}
+              className="w-5 h-5 accent-blue-600 cursor-pointer"
             />
-            <span className="setting-hint">Show tool calls in session transcript</span>
+            <span className="text-xs text-neutral-600">Show tool calls in session transcript</span>
           </div>
 
-          <div className="setting-row">
-            <label>Cross-session messages</label>
+          <div className="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-4 py-3 border-b border-neutral-900">
+            <label className="text-sm text-neutral-400 sm:w-48 sm:shrink-0">Cross-session messages</label>
             <input
               type="number"
               value={config.memory.crossSessionLimit}
               onChange={(e) => updateMemory('crossSessionLimit', parseInt(e.target.value) || 0)}
               min={0}
+              className="w-full sm:w-28 bg-neutral-950 border border-neutral-700 rounded-md px-3 py-2 text-neutral-200 text-base sm:text-sm focus:outline-none focus:border-blue-600 transition-colors"
             />
-            <span className="setting-hint">Messages per other session (cross-session context)</span>
+            <span className="text-xs text-neutral-600">Messages per other session (cross-session context)</span>
           </div>
 
-          <div className="setting-row">
-            <label>Include tool calls (cross)</label>
+          <div className="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-4 py-3 border-b border-neutral-900">
+            <label className="text-sm text-neutral-400 sm:w-48 sm:shrink-0">Include tool calls (cross)</label>
             <input
               type="checkbox"
               checked={config.memory.includeToolsInCrossSession ?? false}
               onChange={(e) => updateMemory('includeToolsInCrossSession', e.target.checked)}
+              className="w-5 h-5 accent-blue-600 cursor-pointer"
             />
-            <span className="setting-hint">Show tool calls from other sessions</span>
+            <span className="text-xs text-neutral-600">Show tool calls from other sessions</span>
           </div>
 
-          <div className="setting-row">
-            <label>Show archived in cross-session</label>
+          <div className="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-4 py-3">
+            <label className="text-sm text-neutral-400 sm:w-48 sm:shrink-0">Show archived in cross-session</label>
             <input
               type="checkbox"
               checked={config.memory.showArchivedInCrossSession ?? false}
               onChange={(e) => updateMemory('showArchivedInCrossSession', e.target.checked)}
+              className="w-5 h-5 accent-blue-600 cursor-pointer"
             />
-            <span className="setting-hint">Include archived messages from other sessions</span>
+            <span className="text-xs text-neutral-600">Include archived messages from other sessions</span>
           </div>
         </section>
 
-        <section className="settings-section">
-          <h3>Compaction</h3>
-          <p className="section-desc">Summarize old messages into long-term memories.</p>
+        {/* Compaction Section */}
+        <section className="bg-neutral-900 border border-neutral-800 rounded-xl p-5">
+          <h3 className="text-base font-semibold text-white mb-1">Compaction</h3>
+          <p className="text-xs text-neutral-600 mb-4">Summarize old messages into long-term memories.</p>
 
-          <div className="setting-row">
-            <label>Compaction threshold</label>
-            <input
-              type="number"
-              value={config.memory.compactionThreshold}
-              onChange={(e) => updateMemory('compactionThreshold', parseInt(e.target.value) || 0)}
-              min={0}
-              step={50}
-            />
-            <span className="setting-hint">Trigger after this many uncompacted messages</span>
-          </div>
+          <NumberInput
+            label="Compaction threshold"
+            value={config.memory.compactionThreshold}
+            onChange={(val) => updateMemory('compactionThreshold', val)}
+            min={0}
+            step={50}
+            hint="Trigger after this many uncompacted messages"
+          />
+
+          <NumberInput
+            label="Compaction percent"
+            value={config.memory.compactionPercent ?? 50}
+            onChange={(val) => updateMemory('compactionPercent', Math.min(100, Math.max(1, val)))}
+            min={1}
+            max={100}
+            step={5}
+            hint="% of messages to compact (1-100)"
+          />
         </section>
       </div>
     </div>

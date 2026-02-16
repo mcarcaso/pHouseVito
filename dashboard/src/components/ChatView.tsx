@@ -3,7 +3,7 @@ import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 
 interface Attachment {
-  type: 'image' | 'file';
+  type: 'image' | 'file' | 'audio';
   data?: string;
   path?: string;
   url?: string;
@@ -307,13 +307,23 @@ function ChatView({
             {msg.attachments && msg.attachments.length > 0 && (
               <div className="flex gap-3 mb-3 flex-wrap">
                 {msg.attachments.map((att, idx) => (
-                  <div key={idx} className="max-w-[300px]">
+                  <div key={idx} className="max-w-[400px] w-full md:w-auto">
                     {att.type === 'image' ? (
                       <img 
                         src={att.data || att.url} 
                         alt={att.filename || 'Image'} 
                         className="w-full max-w-[300px] h-auto rounded-md block cursor-pointer transition-transform hover:scale-[1.02]" 
                       />
+                    ) : att.type === 'audio' ? (
+                      <div className="bg-neutral-700 border border-neutral-600 rounded-md px-4 py-3 flex items-center gap-3">
+                        <span className="text-xl shrink-0">🎵</span>
+                        <div className="flex flex-col min-w-0">
+                          <span className="text-sm font-semibold text-blue-400 truncate">{att.filename || 'Audio'}</span>
+                          <audio controls className="h-8 mt-2 w-full max-w-[240px]">
+                            <source src={att.url} type={att.mimeType || 'audio/mpeg'} />
+                          </audio>
+                        </div>
+                      </div>
                     ) : (
                       <div className="bg-neutral-700 border border-neutral-600 rounded-md px-4 py-3 text-sm text-neutral-400">
                         {att.filename || 'File'}

@@ -98,11 +98,12 @@ function Chat() {
     for (let i = 0; i < files.length; i++) {
       const file = files[i];
       const isImageFile = file.type.startsWith('image/');
+      const isAudioFile = file.type.startsWith('audio/');
       const reader = new FileReader();
       await new Promise<void>((resolve) => {
         reader.onload = () => {
           newAttachments.push({
-            type: isImageFile ? 'image' : 'file',
+            type: isImageFile ? 'image' : (isAudioFile ? 'audio' : 'file'),
             data: reader.result as string,
             filename: file.name,
             mimeType: file.type,
@@ -191,11 +192,12 @@ function Chat() {
         const file = item.getAsFile();
         if (!file) continue;
         const isImageFile = file.type.startsWith('image/');
+        const isAudioFile = file.type.startsWith('audio/');
         const reader = new FileReader();
         await new Promise<void>((resolve) => {
           reader.onload = () => {
             newAttachments.push({
-              type: isImageFile ? 'image' : 'file',
+              type: isImageFile ? 'image' : (isAudioFile ? 'audio' : 'file'),
               data: reader.result as string,
               filename: file.name || `pasted-${Date.now()}.${file.type.split('/')[1] || 'bin'}`,
               mimeType: file.type,
@@ -275,6 +277,8 @@ function Chat() {
               <div key={idx} className="relative bg-neutral-800 border border-neutral-700 rounded-md p-2 max-w-[150px]">
                 {att.type === 'image' ? (
                   <img src={att.data || att.url} alt={att.filename || 'Preview'} className="w-full h-[100px] object-cover rounded block" />
+                ) : att.type === 'audio' ? (
+                  <div className="p-2 text-sm text-center text-blue-400">🎵 {att.filename}</div>
                 ) : (
                   <div className="p-2 text-sm text-center text-neutral-400">{att.filename}</div>
                 )}

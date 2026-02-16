@@ -210,14 +210,10 @@ function SessionSettings() {
   
   const clearModelOverride = () => {
     const newConfig = { ...config };
-    delete newConfig.model;
-    if (newConfig['pi-coding-agent']) {
-      delete newConfig['pi-coding-agent'].model;
-      if (Object.keys(newConfig['pi-coding-agent']).length === 0) {
-        delete newConfig['pi-coding-agent'];
-      }
-    }
-    setConfig(newConfig);
+    // Set to null so backend removes these keys
+    newConfig.model = null as any;
+    newConfig['pi-coding-agent'] = null as any;
+    setConfig({});  // Clear local state
     saveConfig(newConfig);
   };
   
@@ -396,8 +392,8 @@ function SessionSettings() {
                 <button
                   onClick={() => {
                     const newConfig = { ...config };
-                    delete newConfig['claude-code'];
-                    setConfig(newConfig);
+                    newConfig['claude-code'] = null as any;  // Set to null so backend removes it
+                    setConfig({ ...config, 'claude-code': undefined });
                     saveConfig(newConfig);
                   }}
                   className="text-xs text-red-400 hover:text-red-300 transition-colors"
@@ -488,8 +484,13 @@ function SessionSettings() {
             </p>
             <button
               onClick={() => {
+                // Build object with all current keys set to null so backend removes them
+                const nullConfig: any = {};
+                for (const key of Object.keys(config)) {
+                  nullConfig[key] = null;
+                }
                 setConfig({});
-                saveConfig({});
+                saveConfig(nullConfig);
               }}
               className="px-4 py-2 bg-red-950 hover:bg-red-900 border border-red-800 text-red-300 rounded-md text-sm transition-colors"
             >

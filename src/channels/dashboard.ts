@@ -273,10 +273,25 @@ export class DashboardChannel implements Channel {
         const filePath = path.join(memoriesDir, f);
         const content = readFileSync(filePath, "utf-8");
         const stat = statSync(filePath);
+        
+        // Parse description from YAML frontmatter
+        let description: string | null = null;
+        if (content.startsWith("---")) {
+          const endIndex = content.indexOf("---", 3);
+          if (endIndex !== -1) {
+            const frontmatter = content.slice(3, endIndex);
+            const match = frontmatter.match(/^description:\s*(.+)$/m);
+            if (match) {
+              description = match[1].trim();
+            }
+          }
+        }
+        
         return {
           id: i + 1,
           timestamp: stat.mtimeMs,
           title: f,
+          description,
           content,
         };
       });
@@ -580,10 +595,10 @@ export class DashboardChannel implements Channel {
 
     // HTTP fallback for sending chat messages (when WebSocket is dead)
     this.app.post("/api/chat", (req, res) => {
-      const msg = req.body as DashboardMessage;
+      const msg = req.body as any; // Using any to handle extra fields like attachments
       console.log(`[Dashboard] HTTP chat received: content=${msg.content?.substring(0, 50)}`);
 
-      if (msg.type === "chat" && msg.content && this.eventHandler) {
+      if (msg.type === "chat" && (msg.content || msg.attachments?.length) && this.eventHandler) {
         const sessionId = msg.sessionId || "dashboard:default";
         const parts = sessionId.split(":");
         const target = parts.length > 1 ? parts.slice(1).join(":") : "default";
@@ -595,6 +610,7 @@ export class DashboardChannel implements Channel {
           author: "user",
           timestamp: Date.now(),
           content: msg.content || "",
+          attachments: msg.attachments,
           raw: msg,
         };
         this.eventHandler(event);

@@ -531,6 +531,9 @@ function Traces() {
               <div className="text-neutral-400 text-sm leading-relaxed font-mono">
                 {info.session || log.filename}
               </div>
+              <div className="text-neutral-600 text-xs font-mono mt-1 truncate">
+                {log.filename}
+              </div>
             </div>
           );
         })}

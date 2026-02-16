@@ -248,6 +248,15 @@ export class Queries {
       .run(sessionId);
   }
 
+  /** Mark all messages in a session as compacted */
+  markSessionCompacted(sessionId: string): void {
+    this.db
+      .prepare(
+        "UPDATE messages SET compacted = 1 WHERE session_id = ?"
+      )
+      .run(sessionId);
+  }
+
   // ── Traces ──
 
   insertTrace(trace: Omit<TraceRow, "id">): void {

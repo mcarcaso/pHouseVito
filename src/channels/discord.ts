@@ -116,7 +116,9 @@ export class DiscordChannel implements Channel {
       // Handle attachments
       if (msg.attachments.size > 0) {
         event.attachments = msg.attachments.map((attachment) => ({
-          type: attachment.contentType?.startsWith("image/") ? "image" as const : "file" as const,
+          type: attachment.contentType?.startsWith("image/") ? "image" as const : 
+                attachment.contentType?.startsWith("audio/") ? "audio" as const :
+                "file" as const,
           url: attachment.url,
           mimeType: attachment.contentType || "application/octet-stream",
           filename: attachment.name || "attachment",

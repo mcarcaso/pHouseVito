@@ -228,6 +228,7 @@ export class PiHarness implements Harness {
 
     // Track current message for assembling assistant content
     let currentMessageText = "";
+    let hasEmittedAssistant = false;
 
     // Subscribe to events
     const unsubscribe = piSession.subscribe((event: AgentSessionEvent) => {
@@ -236,6 +237,14 @@ export class PiHarness implements Harness {
 
       // Emit normalized events for business logic
       switch (event.type) {
+        case "message_start":
+          // Reset tracking for new assistant message
+          if (event.message.role === "assistant") {
+            currentMessageText = "";
+            hasEmittedAssistant = false;
+          }
+          break;
+
         case "message_update": {
           const msgEvent = event.assistantMessageEvent;
           if (msgEvent.type === "text_delta") {
@@ -245,12 +254,13 @@ export class PiHarness implements Harness {
         }
 
         case "message_end":
-          if (event.message.role === "assistant" && currentMessageText) {
+          if (event.message.role === "assistant" && currentMessageText && !hasEmittedAssistant) {
             callbacks.onNormalizedEvent({
               kind: "assistant",
               content: currentMessageText,
             });
             currentMessageText = "";
+            hasEmittedAssistant = true;
           }
           break;
 
@@ -277,6 +287,16 @@ export class PiHarness implements Harness {
 
     try {
       await piSession.prompt(userMessage);
+      
+      // Emit final assistant message if we have content and haven't emitted yet
+      // (Pi doesn't always send message_end for assistant messages)
+      if (currentMessageText && !hasEmittedAssistant) {
+        callbacks.onNormalizedEvent({
+          kind: "assistant",
+          content: currentMessageText,
+        });
+        hasEmittedAssistant = true;
+      }
     } catch (err) {
       if (this.aborted) {
         // Aborted — emit an error event but don't throw

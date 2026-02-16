@@ -126,10 +126,66 @@ export class TelegramChannel implements Channel {
         content: ctx.message.caption || "",
         attachments: [
           {
-            type: "file",
+            type: doc.mime_type?.startsWith("audio/") ? "audio" : "file",
             url,
             mimeType: doc.mime_type || "application/octet-stream",
             filename: doc.file_name || "document",
+          },
+        ],
+        raw: ctx,
+      };
+      onEvent(event);
+    });
+
+    // Voice messages
+    this.bot.on("message:voice", async (ctx) => {
+      if (!isAllowed(ctx.chat.id)) return;
+
+      const voice = ctx.message.voice;
+      const file = await ctx.api.getFile(voice.file_id);
+      const url = `https://api.telegram.org/file/bot${this.bot!.token}/${file.file_path}`;
+
+      const event: InboundEvent = {
+        sessionKey: `telegram:${ctx.chat.id}`,
+        channel: "telegram",
+        target: String(ctx.chat.id),
+        author: ctx.from?.username || ctx.from?.first_name || "user",
+        timestamp: Date.now(),
+        content: ctx.message.caption || "",
+        attachments: [
+          {
+            type: "audio",
+            url,
+            mimeType: voice.mime_type || "audio/ogg",
+            filename: "voice_message.ogg",
+          },
+        ],
+        raw: ctx,
+      };
+      onEvent(event);
+    });
+
+    // Audio messages
+    this.bot.on("message:audio", async (ctx) => {
+      if (!isAllowed(ctx.chat.id)) return;
+
+      const audio = ctx.message.audio;
+      const file = await ctx.api.getFile(audio.file_id);
+      const url = `https://api.telegram.org/file/bot${this.bot!.token}/${file.file_path}`;
+
+      const event: InboundEvent = {
+        sessionKey: `telegram:${ctx.chat.id}`,
+        channel: "telegram",
+        target: String(ctx.chat.id),
+        author: ctx.from?.username || ctx.from?.first_name || "user",
+        timestamp: Date.now(),
+        content: ctx.message.caption || "",
+        attachments: [
+          {
+            type: "audio",
+            url,
+            mimeType: audio.mime_type || "audio/mpeg",
+            filename: audio.file_name || "audio.mp3",
           },
         ],
         raw: ctx,

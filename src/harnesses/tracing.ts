@@ -4,10 +4,13 @@
  * Decorator that logs all harness events to a .jsonl trace file.
  */
 
-import { appendFileSync, mkdirSync } from "fs";
+import { appendFileSync, mkdirSync, statSync } from "fs";
 import { dirname, join } from "path";
 import { ProxyHarness } from "./proxy.js";
 import type { Harness, HarnessCallbacks, NormalizedEvent } from "./types.js";
+
+// Max trace file size: 50MB (prevents runaway traces from filling disk)
+const MAX_TRACE_SIZE_BYTES = 50 * 1024 * 1024;
 
 export interface TracingOptions {
   session_id: string;
@@ -26,14 +29,13 @@ type TraceLine =
   | { type: "footer"; duration_ms: number; message_count: number; tool_calls: number; success: boolean; error?: string };
 
 export class TracingHarness extends ProxyHarness {
-  private readonly traceFile: string;
+  private traceFile: string = "";
   private readonly options: TracingOptions;
+  private truncated: boolean = false;
 
   constructor(delegate: Harness, options: TracingOptions) {
     super(delegate);
     this.options = options;
-    const timestamp = new Date().toISOString().replace(/:/g, "-");
-    this.traceFile = join("logs", `trace-${timestamp}.jsonl`);
   }
 
   get tracePath(): string {
@@ -41,6 +43,22 @@ export class TracingHarness extends ProxyHarness {
   }
 
   private writeLine(line: TraceLine): void {
+    // Skip writes if we've already truncated
+    if (this.truncated) return;
+    
+    // Check file size before writing
+    try {
+      const stats = statSync(this.traceFile);
+      if (stats.size > MAX_TRACE_SIZE_BYTES) {
+        appendFileSync(this.traceFile, JSON.stringify({ type: "truncated", reason: `Trace exceeded ${MAX_TRACE_SIZE_BYTES / 1024 / 1024}MB limit` }) + "\n");
+        this.truncated = true;
+        console.warn(`⚠️ Trace file truncated at ${(stats.size / 1024 / 1024).toFixed(1)}MB`);
+        return;
+      }
+    } catch (e) {
+      // File might not exist yet on first write
+    }
+    
     appendFileSync(this.traceFile, JSON.stringify(line) + "\n");
   }
 
@@ -50,6 +68,10 @@ export class TracingHarness extends ProxyHarness {
     callbacks: HarnessCallbacks,
     signal?: AbortSignal
   ): Promise<void> {
+    // Create a fresh trace file for each run
+    const timestamp = new Date().toISOString().replace(/:/g, "-");
+    const suffix = Math.random().toString(36).slice(2, 8); // 6 random chars for uniqueness
+    this.traceFile = join("logs", `trace-${timestamp}-${suffix}.jsonl`);
     mkdirSync(dirname(this.traceFile), { recursive: true });
 
     const startTime = Date.now();

@@ -310,7 +310,7 @@ function Sessions() {
                 <span className="font-semibold text-blue-500 capitalize text-sm">{session.channel}</span>
                 <div className="flex items-center gap-2">
                   <button
-                    className={`w-7 h-7 flex items-center justify-center rounded-md text-sm transition-all ${
+                    className={`relative w-7 h-7 flex items-center justify-center rounded-md text-sm transition-all ${
                       hasConfig
                         ? 'text-blue-400 hover:bg-blue-950'
                         : 'text-neutral-600 hover:text-neutral-400 hover:bg-neutral-800'
@@ -322,6 +322,9 @@ function Sessions() {
                     title="Session Settings"
                   >
                     ⚙️
+                    {hasConfig && (
+                      <span className="absolute -top-0.5 -right-0.5 w-2 h-2 bg-blue-500 rounded-full" />
+                    )}
                   </button>
                   <span className="text-xs text-neutral-600">{formatRelativeTime(session.last_active_at)}</span>
                 </div>

@@ -1,9 +1,12 @@
 import { useState, useEffect } from 'react';
+import ReactMarkdown from 'react-markdown';
+import remarkGfm from 'remark-gfm';
 
 interface Memory {
   id: number;
   timestamp: number;
   title: string;
+  description: string | null;
   content: string;
 }
 
@@ -124,11 +127,23 @@ function Memories() {
                   {new Date(memory.timestamp).toLocaleDateString()}
                 </span>
               </div>
+              {memory.description && (
+                <p className="text-neutral-500 text-sm mt-1 truncate">
+                  {memory.description}
+                </p>
+              )}
               {expandedId === memory.id && (
-                <div className="mt-4 pt-4 border-t border-neutral-800">
-                  <pre className="text-neutral-400 text-sm sm:text-base leading-relaxed whitespace-pre-wrap break-words font-sans">
+                <div className="mt-4 pt-4 border-t border-neutral-800 text-neutral-300 leading-relaxed break-words [word-break:break-word] [&_p]:my-1.5 [&_ul]:my-1.5 [&_ul]:pl-6 [&_ol]:my-1.5 [&_ol]:pl-6 [&_li]:my-0.5 [&_li_p]:m-0 [&_pre]:bg-neutral-700 [&_pre]:p-3 [&_pre]:rounded-md [&_pre]:my-2 [&_pre]:whitespace-pre-wrap [&_pre]:break-words [&_code]:bg-neutral-700 [&_code]:px-1.5 [&_code]:py-0.5 [&_code]:rounded [&_code]:text-[0.9em] [&_code]:break-all [&_pre_code]:bg-transparent [&_pre_code]:p-0 [&_h1]:text-xl [&_h1]:font-bold [&_h1]:my-3 [&_h1]:text-neutral-200 [&_h2]:text-lg [&_h2]:font-semibold [&_h2]:my-2 [&_h2]:text-neutral-200 [&_h3]:text-base [&_h3]:font-semibold [&_h3]:my-2 [&_h3]:text-neutral-200 [&_table]:my-2 [&_table]:w-full [&_table]:border-collapse [&_table]:text-sm [&_th]:bg-neutral-700 [&_th]:px-3 [&_th]:py-2 [&_th]:text-left [&_th]:font-semibold [&_th]:border [&_th]:border-neutral-600 [&_td]:px-3 [&_td]:py-1.5 [&_td]:border [&_td]:border-neutral-600 [&_tr:nth-child(even)]:bg-neutral-800/50 [&_hr]:border-neutral-700 [&_hr]:my-4 [&_strong]:text-neutral-200">
+                  <ReactMarkdown 
+                    remarkPlugins={[remarkGfm]}
+                    components={{
+                      a: ({ node, ...props }) => (
+                        <a {...props} target="_blank" rel="noopener noreferrer" className="text-blue-400 hover:underline" />
+                      ),
+                    }}
+                  >
                     {memory.content}
-                  </pre>
+                  </ReactMarkdown>
                 </div>
               )}
             </div>

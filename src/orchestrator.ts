@@ -1,7 +1,7 @@
 import { CronScheduler } from "./cron/scheduler.js";
 import type { Queries } from "./db/queries.js";
 import { ClaudeCodeHarness, PiHarness, withPersistence, withRelay, withTracing, withTyping, type Harness } from "./harnesses/index.js";
-import { runCompaction, runSessionCompaction, shouldCompact } from "./memory/compaction.js";
+import { shouldCompact, acquireCompactionLock, releaseCompactionLock } from "./memory/compaction.js";
 import { assembleContext, formatContextForPrompt } from "./memory/context.js";
 import { SessionManager } from "./sessions/manager.js";
 import { discoverSkills, formatSkillsForPrompt } from "./skills/discovery.js";
@@ -19,6 +19,76 @@ import type {
   VitoConfig
 } from "./types.js";
 
+
+/**
+ * Build a system prompt for testing/battle scenarios.
+ * Standalone function that doesn't require instantiating the full Orchestrator.
+ * 
+ * Includes: personality, system instructions, skills, channel prompt
+ * Excludes: memory/session context (no cross-session, no current-session)
+ */
+export function buildTestSystemPrompt(
+  soul: string,
+  skillsDir: string,
+  channelPrompt: string = ""
+): string {
+  const parts: string[] = [];
+
+  // Full date with day-of-week at the very top
+  const now = new Date();
+  const dateStr = now.toLocaleDateString("en-US", {
+    weekday: "long",
+    year: "numeric",
+    month: "long",
+    day: "numeric",
+    timeZone: "America/Toronto",
+  });
+  const timeStr = now.toLocaleTimeString("en-US", {
+    hour: "numeric",
+    minute: "2-digit",
+    timeZone: "America/Toronto",
+  });
+  parts.push(`Today is ${dateStr}. Current time: ${timeStr} ET.`);
+
+  if (soul) {
+    parts.push(`<personality>\n${soul}\n</personality>`);
+  }
+
+  parts.push(`<system>
+For system architecture, file structure, restart rules, bash guidelines, and operational knowledge, read SYSTEM.md using the Read tool. Only pull it when you need system-level context.
+
+You can query the SQLite database (user/vito.db) for more message history if needed. Read SYSTEM.md for schema details.
+
+To send/share a file or image inline, output MEDIA:/path/to/file on its own line. The channel will deliver it as an attachment. Don't paste file contents when the user asks you to "send" a file — use MEDIA: instead.
+
+NEVER restart yourself. You don't know what long-running jobs might be in progress. When changes need a restart, say "changes are ready, restart when you're clear" and let the boss decide when.
+
+## Investigation First
+
+When instructions are vague or incomplete, investigate before asking:
+- Check user memories in user/memories/ — they contain context, preferences, and prior intel
+- Check existing files and configs
+- Query the message history if needed
+- Only ask clarifying questions if you've genuinely exhausted available context
+
+Treat unknowns as puzzles to solve, not gaps to fill with questions.
+</system>`);
+
+  // Skills prompt
+  const skills = discoverSkills(skillsDir);
+  const skillsPrompt = formatSkillsForPrompt(skills);
+  if (skillsPrompt) {
+    parts.push(`<skills>\n${skillsPrompt}\n</skills>`);
+  }
+
+  if (channelPrompt) {
+    parts.push(`<channel>\n${channelPrompt}\n</channel>`);
+  }
+
+  // Note: NO <memory> section — that's the whole point of this function
+
+  return parts.join("\n\n");
+}
 
 export class Orchestrator {
   private sessionManager: SessionManager;
@@ -88,6 +158,71 @@ export class Orchestrator {
     const activeModel = config.harnesses?.["pi-coding-agent"]?.model || config.model;
     const modelStr = activeModel ? `${activeModel.provider}/${activeModel.name}` : "default";
     console.log(`[Orchestrator] Config reloaded — model: ${modelStr}`);
+  }
+
+  /**
+   * Build a system prompt for testing/battle scenarios.
+   * Includes: personality, system instructions, skills, channel prompt
+   * Excludes: memory/session context (no cross-session, no current-session)
+   * 
+   * @param channelPrompt - Optional channel-specific instructions (e.g., "You are responding in Telegram...")
+   */
+  buildTestSystemPrompt(channelPrompt: string = ""): string {
+    const parts: string[] = [];
+
+    // Full date with day-of-week at the very top
+    const now = new Date();
+    const dateStr = now.toLocaleDateString("en-US", {
+      weekday: "long",
+      year: "numeric",
+      month: "long",
+      day: "numeric",
+      timeZone: "America/Toronto",
+    });
+    const timeStr = now.toLocaleTimeString("en-US", {
+      hour: "numeric",
+      minute: "2-digit",
+      timeZone: "America/Toronto",
+    });
+    parts.push(`Today is ${dateStr}. Current time: ${timeStr} ET.`);
+
+    if (this.soul) {
+      parts.push(`<personality>\n${this.soul}\n</personality>`);
+    }
+
+    parts.push(`<system>
+For system architecture, file structure, restart rules, bash guidelines, and operational knowledge, read SYSTEM.md using the Read tool. Only pull it when you need system-level context.
+
+You can query the SQLite database (user/vito.db) for more message history if needed. Read SYSTEM.md for schema details.
+
+To send/share a file or image inline, output MEDIA:/path/to/file on its own line. The channel will deliver it as an attachment. Don't paste file contents when the user asks you to "send" a file — use MEDIA: instead.
+
+NEVER restart yourself. You don't know what long-running jobs might be in progress. When changes need a restart, say "changes are ready, restart when you're clear" and let the boss decide when.
+
+## Investigation First
+
+When instructions are vague or incomplete, investigate before asking:
+- Check user memories in user/memories/ — they contain context, preferences, and prior intel
+- Check existing files and configs
+- Query the message history if needed
+- Only ask clarifying questions if you've genuinely exhausted available context
+
+Treat unknowns as puzzles to solve, not gaps to fill with questions.
+</system>`);
+
+    // Skills prompt
+    const skillsPrompt = formatSkillsForPrompt(this.getSkills());
+    if (skillsPrompt) {
+      parts.push(`<skills>\n${skillsPrompt}\n</skills>`);
+    }
+
+    if (channelPrompt) {
+      parts.push(`<channel>\n${channelPrompt}\n</channel>`);
+    }
+
+    // Note: NO <memory> section — that's the whole point of this method
+
+    return parts.join("\n\n");
   }
 
   /** Remove a one-time job from the config file after it completes */
@@ -388,8 +523,10 @@ export class Orchestrator {
 
     // Check if compaction is needed (run in background)
     if (shouldCompact(this.queries, this.config)) {
-      console.log("\nCompaction threshold reached, running memory compaction...");
-      runCompaction(this.queries, this.config, (prompt) => this.runCompactionPrompt(prompt))
+      const percent = this.config.memory.compactionPercent ?? 50;
+      const count = Math.ceil(this.queries.countUncompacted() * (percent / 100));
+      console.log("\nCompaction threshold reached, triggering compaction skill...");
+      this.triggerCompaction(`Compact the oldest ${count} uncompacted messages into long-term memory.`)
         .then(() => {
           console.log("Compaction complete.");
         })
@@ -428,7 +565,9 @@ export class Orchestrator {
       if (uncompacted.length > 0) {
         console.log(`\n[/new] Compacting ${uncompacted.length} un-compacted messages for session ${vitoSession.id}...`);
         
-        await runSessionCompaction(this.queries, vitoSession.id, (prompt) => this.runCompactionPrompt(prompt));
+        await this.triggerCompaction(
+          `Compact all uncompacted messages from session "${vitoSession.id}" into long-term memory.`
+        );
 
         console.log(`[/new] Compaction complete for session ${vitoSession.id}`);
       }
@@ -458,48 +597,101 @@ export class Orchestrator {
   }
 
   /**
-   * Run a compaction prompt through the harness (no tools, simple summarization)
+   * Trigger compaction by sending a synthetic message to the system:compaction session.
+   * This runs compaction like any other task — Pi reads the skill, queries the DB, updates memories.
+   * After completion, marks all system:compaction messages as compacted to prevent loops.
    */
-  private async runCompactionPrompt(prompt: string): Promise<string> {
-    // Create a minimal harness for compaction (no skills needed)
-    const piConfig = this.getDefaultPiConfig();
-    const innerHarness = new PiHarness({
-      model: piConfig.model,
-      // No skillsDir — compaction doesn't need tools
-    });
+  private async triggerCompaction(task: string): Promise<void> {
+    // Acquire lock to prevent concurrent compaction
+    if (!acquireCompactionLock()) {
+      console.log("[Compaction] Already in progress, skipping...");
+      return;
+    }
 
-    // Wrap with tracing so compaction runs are visible in logs/
-    const compactionHarness = withTracing(innerHarness, {
-      session_id: "compaction",
-      channel: "system",
-      target: "memory",
-      model: `${piConfig.model.provider}/${piConfig.model.name}`,
-    });
+    const compactionSession = "system:compaction";
+    const compactionChannel = "system";
+    const compactionTarget = "compaction";
 
-    const systemPrompt = `You are a conversation summarizer. Condense the provided messages while preserving:
-- Key facts and decisions
-- Important context and user preferences
-- Any commitments or action items
+    try {
+      // Create synthetic inbound event for compaction
+      const event: InboundEvent = {
+        sessionKey: compactionSession,
+        channel: compactionChannel,
+        target: compactionTarget,
+        author: "system",
+        content: task,
+        timestamp: Date.now(),
+        raw: { synthetic: true },
+      };
 
-Be concise but comprehensive.`;
+      // Process the compaction message like any other message
+      // (but skip the normal compaction check at the end to avoid recursion)
+      await this.processCompactionMessage(event);
 
-    let response = "";
-    await compactionHarness.run(
-      systemPrompt,
-      prompt,
-      {
-        onInvocation: () => {},
-        onRawEvent: () => {},
-        onNormalizedEvent: (event) => {
-          if (event.kind === "assistant") {
-            response = event.content;
-          }
-        },
-      }
+      // After compaction completes, mark ALL messages in system:compaction as compacted
+      // This includes the task message, all tool calls, and the final response
+      this.queries.markSessionCompacted(compactionSession);
+      console.log(`[Compaction] Marked all system:compaction messages as compacted`);
+    } finally {
+      releaseCompactionLock();
+    }
+  }
+
+  /**
+   * Process a compaction message — like processMessage but without triggering compaction at the end
+   */
+  private async processCompactionMessage(event: InboundEvent): Promise<void> {
+    // Resolve session (creates system:compaction if needed)
+    const vitoSession = this.sessionManager.resolveSession(
+      event.channel,
+      event.target
     );
 
-    console.log(`[Compaction] Trace written to ${compactionHarness.tracePath}`);
-    return response;
+    // Build context (compaction session will have minimal context)
+    const ctx = await assembleContext(
+      this.queries,
+      vitoSession.id,
+      this.config
+    );
+    const contextPrompt = formatContextForPrompt(ctx);
+    const skillsPrompt = formatSkillsForPrompt(this.getSkills());
+
+    // Create harness with full tool access
+    const innerHarness = this.getHarness({});
+    const tracedHarness = withTracing(innerHarness, {
+      session_id: vitoSession.id,
+      channel: event.channel,
+      target: event.target,
+      model: this.getModelString({}),
+    });
+    const persistedHarness = withPersistence(tracedHarness, {
+      queries: this.queries,
+      sessionId: vitoSession.id,
+      channel: event.channel,
+      target: event.target,
+      userContent: event.content,
+      userTimestamp: event.timestamp,
+    });
+    // No relay or typing for system tasks
+    const harness = persistedHarness;
+
+    // Build system prompt with compaction-specific channel prompt
+    const systemPrompt = this.buildSystemPrompt(
+      contextPrompt,
+      skillsPrompt,
+      "## Channel: System\nYou are running a background system task. No user interaction needed — just complete the task.",
+      innerHarness.getCustomInstructions?.() || ""
+    );
+
+    console.log(`[Compaction] Sending task to LLM: ${event.content.substring(0, 100)}...`);
+
+    await harness.run(
+      systemPrompt,
+      event.content,
+      { onRawEvent: () => {}, onNormalizedEvent: () => {} }
+    );
+
+    console.log(`[Compaction] Task complete`);
   }
 
   private buildSystemPrompt(

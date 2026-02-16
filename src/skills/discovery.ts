@@ -1,10 +1,7 @@
 import { readFileSync, existsSync, readdirSync } from "fs";
-import { resolve, dirname } from "path";
-import { fileURLToPath } from "url";
+import { resolve } from "path";
 import matter from "gray-matter";
 import type { SkillMeta } from "../types.js";
-
-const __dirname = dirname(fileURLToPath(import.meta.url));
 
 /**
  * Scan a single skills directory for SKILL.md files and parse their metadata.
@@ -58,7 +55,8 @@ function scanSkillsDirectory(skillsDir: string, isBuiltin: boolean = false): Ski
  * Returns an array of skill metadata (name, description, path, isBuiltin).
  */
 export function discoverSkills(skillsDir: string): SkillMeta[] {
-  const builtinDir = resolve(__dirname, "builtin");
+  // Builtin skills live in src/skills/builtin/ (not in dist/ since they're just markdown)
+  const builtinDir = resolve(process.cwd(), "src/skills/builtin");
   const builtinSkills = scanSkillsDirectory(builtinDir, true);
   const userSkills = scanSkillsDirectory(skillsDir, false);
 
@@ -80,9 +78,16 @@ export function discoverSkills(skillsDir: string): SkillMeta[] {
 export function formatSkillsForPrompt(skills: SkillMeta[]): string {
   if (skills.length === 0) return "";
 
-  const names = skills.map((s) => s.name).join(", ");
+  const skillList = skills
+    .map((s) => {
+      const relativePath = s.isBuiltin
+        ? `src/skills/builtin/${s.name}/SKILL.md`
+        : `user/skills/${s.name}/SKILL.md`;
+      return `- **${s.name}** (${relativePath}) — ${s.description}`;
+    })
+    .join("\n");
 
   return `Skills are installed in user/skills/ and src/skills/builtin/. When the user asks you to do something, check if a skill exists for it before trying to do it yourself. Skills have a SKILL.md that tells you exactly how to use them — always read it first.
 
-Available: ${names}`;
+${skillList}`;
 }

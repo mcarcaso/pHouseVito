@@ -25,6 +25,7 @@
     "dotenv": "^17.3.1",
     "execa": "^9.6.1",
     "express": "^5.2.1",
+    "googleapis": "^171.4.0",
     "grammy": "^1.40.0",
     "gray-matter": "^4.0.3",
     "node-cron": "^4.2.1",
@@ -39,6 +40,6 @@
     "@types/node": "^22.0.0",
     "@types/ws": "^8.18.1",
     "tsx": "^4.0.0",
-    "typescript": "^5.7.0"
+    "typescript": "^5.9.3"
   }
 }

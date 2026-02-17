@@ -116,10 +116,8 @@ export class DashboardChannel implements Channel {
       if (updates.memory) Object.assign(this.config.memory, updates.memory);
       if (updates.channels) {
         for (const [name, channelUpdate] of Object.entries(updates.channels)) {
-          if (!this.config.channels[name]) {
-            this.config.channels[name] = { enabled: true };
-          }
-          Object.assign(this.config.channels[name], channelUpdate);
+          // Replace channel config entirely (allows removal of nested keys like settings)
+          this.config.channels[name] = channelUpdate as any;
         }
       }
       if (updates.harnesses) {

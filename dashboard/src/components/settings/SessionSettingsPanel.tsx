@@ -214,27 +214,25 @@ export default function SessionSettingsPanel({ config, onSave, initialSessionId 
           {loading ? (
             <span className="text-xs text-neutral-500">Loading sessions...</span>
           ) : (
-            <div className="max-h-64 overflow-y-auto space-y-1">
+            <div className="max-h-64 overflow-y-auto space-y-2">
               {sessions
                 .filter((s) => !sessionIds.includes(s.id))
                 .map((s) => (
                   <button
                     key={s.id}
                     onClick={() => addSessionOverride(s.id)}
-                    className="w-full text-left flex items-center justify-between px-3 py-2 rounded-md hover:bg-neutral-800 transition-colors"
+                    className="w-full text-left px-3 py-3 rounded-lg hover:bg-neutral-800 transition-colors border border-transparent hover:border-neutral-700"
                   >
-                    <div className="flex items-center gap-2 min-w-0">
-                      <span className="text-blue-400 text-xs capitalize shrink-0">{s.channel}</span>
-                      {s.alias ? (
-                        <>
-                          <span className="text-neutral-200 text-sm font-medium truncate">{s.alias}</span>
-                          <span className="text-neutral-600 text-xs font-mono truncate">{s.id}</span>
-                        </>
-                      ) : (
-                        <span className="text-neutral-300 text-sm font-mono truncate">{s.id}</span>
-                      )}
+                    <div className="flex items-center justify-between mb-1">
+                      <span className="text-blue-400 text-xs font-medium uppercase tracking-wide">{s.channel}</span>
+                      <span className="text-xs text-neutral-600">{formatRelativeTime(s.last_active_at)}</span>
                     </div>
-                    <span className="text-xs text-neutral-600 shrink-0 ml-2">{formatRelativeTime(s.last_active_at)}</span>
+                    <div className="text-neutral-200 text-sm font-medium">
+                      {s.alias || s.id.split(':')[1] || s.id}
+                    </div>
+                    {s.alias && (
+                      <div className="text-neutral-500 text-xs font-mono mt-0.5">{s.id}</div>
+                    )}
                   </button>
                 ))}
               {sessions.filter((s) => !sessionIds.includes(s.id)).length === 0 && (
@@ -267,33 +265,40 @@ export default function SessionSettingsPanel({ config, onSave, initialSessionId 
         return (
           <div key={sessionId} className="bg-[#151515] border border-neutral-800 rounded-xl overflow-hidden">
             <button
-              className="w-full flex items-center justify-between p-4 text-left hover:bg-neutral-800/30 transition-colors"
+              className="w-full p-4 text-left hover:bg-neutral-800/30 transition-colors"
               onClick={() => setExpandedSession(isExpanded ? null : sessionId)}
             >
-              <div className="flex items-center gap-3 min-w-0">
-                <span className="text-blue-400 text-xs capitalize shrink-0">
+              {/* Top row: channel badge + metadata */}
+              <div className="flex items-center justify-between mb-2">
+                <span className="text-blue-400 text-xs font-medium uppercase tracking-wide">
                   {getChannelFromSessionId(sessionId)}
                 </span>
-                {session?.alias ? (
-                  <>
-                    <span className="text-neutral-200 text-sm font-medium truncate">{session.alias}</span>
-                    <span className="text-neutral-600 text-xs font-mono truncate hidden sm:inline">{sessionId}</span>
-                  </>
-                ) : (
-                  <span className="text-neutral-300 text-sm font-mono truncate">{sessionId}</span>
-                )}
-                {overrideCount > 0 && (
-                  <span className="text-xs bg-blue-900/40 text-blue-400 px-2 py-0.5 rounded-full shrink-0">
-                    {overrideCount} override{overrideCount !== 1 ? 's' : ''}
+                <div className="flex items-center gap-3">
+                  {overrideCount > 0 && (
+                    <span className="text-xs bg-blue-900/40 text-blue-400 px-2 py-0.5 rounded-full">
+                      {overrideCount} override{overrideCount !== 1 ? 's' : ''}
+                    </span>
+                  )}
+                  {session && (
+                    <span className="text-xs text-neutral-600">{formatRelativeTime(session.last_active_at)}</span>
+                  )}
+                  <span className={`text-neutral-500 transition-transform ${isExpanded ? 'rotate-180' : ''}`}>
+                    ▼
                   </span>
-                )}
-                {session && (
-                  <span className="text-xs text-neutral-600 shrink-0">{formatRelativeTime(session.last_active_at)}</span>
-                )}
+                </div>
               </div>
-              <span className={`text-neutral-500 transition-transform shrink-0 ${isExpanded ? 'rotate-180' : ''}`}>
-                ▼
-              </span>
+              
+              {/* Main content: alias name prominently displayed */}
+              <div className="text-neutral-200 text-base font-medium">
+                {session?.alias || sessionId.split(':')[1] || sessionId}
+              </div>
+              
+              {/* Bottom row: full session ID (only if alias exists) */}
+              {session?.alias && (
+                <div className="text-neutral-500 text-xs font-mono mt-1">
+                  {sessionId}
+                </div>
+              )}
             </button>
 
             {isExpanded && renderSessionOverrides(sessionId)}

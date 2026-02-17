@@ -375,53 +375,29 @@ function Sessions() {
         </div>
       </div>
 
-      <div className="px-4 pt-4 space-y-2">
+      <div className="px-4 pt-4 space-y-3">
         {sessions.map((session) => {
           const config: SessionConfig = JSON.parse(session.config || '{}');
           const hasConfig = config.streamMode || config.harness || config.model || config['pi-coding-agent'];
           const isEditingThis = editingAlias === session.id;
 
+          // Parse session ID for better display
+          const [channelPart, targetPart] = session.id.split(':');
+          const displayTarget = targetPart?.length > 16 
+            ? `${targetPart.slice(0, 8)}...${targetPart.slice(-6)}`
+            : targetPart;
+
           return (
             <div
               key={session.id}
-              className="bg-neutral-900 border border-neutral-800 rounded-xl px-4 py-3 cursor-pointer transition-all hover:bg-neutral-850 hover:border-neutral-700 active:scale-[0.99]"
+              className="bg-neutral-900 border border-neutral-800 rounded-xl p-4 cursor-pointer transition-all hover:bg-neutral-850 hover:border-neutral-700 active:scale-[0.99]"
               onClick={() => !isEditingThis && setSearchParams({ id: session.id })}
             >
-              <div className="flex justify-between items-start mb-1">
-                <div className="flex items-center gap-2 min-w-0 flex-1">
-                  <span className="font-semibold text-blue-500 capitalize text-sm shrink-0">{session.channel}</span>
-                  {isEditingThis ? (
-                    <input
-                      ref={aliasInputRef}
-                      type="text"
-                      value={aliasInput}
-                      onChange={e => setAliasInput(e.target.value)}
-                      onKeyDown={e => {
-                        if (e.key === 'Enter') saveAlias(session.id);
-                        if (e.key === 'Escape') cancelEditingAlias();
-                      }}
-                      onBlur={() => saveAlias(session.id)}
-                      onClick={e => e.stopPropagation()}
-                      placeholder="Session alias..."
-                      className="bg-neutral-950 border border-neutral-700 rounded-md px-2 py-0.5 text-sm text-neutral-200 focus:outline-none focus:border-blue-600 transition-colors flex-1 min-w-0"
-                      autoFocus
-                    />
-                  ) : (
-                    <>
-                      {session.alias && (
-                        <span className="text-sm text-neutral-200 font-medium truncate">{session.alias}</span>
-                      )}
-                      <button
-                        className="text-neutral-600 hover:text-neutral-400 text-xs transition-colors shrink-0"
-                        onClick={(e) => startEditingAlias(session.id, session.alias, e)}
-                        title="Rename session"
-                      >
-                        ✏️
-                      </button>
-                    </>
-                  )}
-                </div>
-                <div className="flex items-center gap-2 shrink-0">
+              {/* Top row: Channel badge + timestamp + settings */}
+              <div className="flex items-center justify-between mb-2">
+                <span className="font-semibold text-blue-500 capitalize text-sm">{session.channel}</span>
+                <div className="flex items-center gap-2">
+                  <span className="text-xs text-neutral-500">{formatRelativeTime(session.last_active_at)}</span>
                   <button
                     className={`relative w-7 h-7 flex items-center justify-center rounded-md text-sm transition-all ${
                       hasConfig
@@ -439,10 +415,56 @@ function Sessions() {
                       <span className="absolute -top-0.5 -right-0.5 w-2 h-2 bg-blue-500 rounded-full" />
                     )}
                   </button>
-                  <span className="text-xs text-neutral-600">{formatRelativeTime(session.last_active_at)}</span>
                 </div>
               </div>
-              <div className="text-xs text-neutral-500 font-mono truncate">{session.id}</div>
+
+              {/* Main content: Alias or session ID */}
+              <div className="mb-2">
+                {isEditingThis ? (
+                  <input
+                    ref={aliasInputRef}
+                    type="text"
+                    value={aliasInput}
+                    onChange={e => setAliasInput(e.target.value)}
+                    onKeyDown={e => {
+                      if (e.key === 'Enter') saveAlias(session.id);
+                      if (e.key === 'Escape') cancelEditingAlias();
+                    }}
+                    onBlur={() => saveAlias(session.id)}
+                    onClick={e => e.stopPropagation()}
+                    placeholder="Session alias..."
+                    className="bg-neutral-950 border border-neutral-700 rounded-md px-3 py-1.5 text-base text-neutral-200 focus:outline-none focus:border-blue-600 transition-colors w-full"
+                    autoFocus
+                  />
+                ) : (
+                  <div className="flex items-center gap-2">
+                    <span className="text-base text-neutral-100 font-medium">
+                      {session.alias || displayTarget || session.id}
+                    </span>
+                    <button
+                      className="text-neutral-600 hover:text-neutral-400 text-sm transition-colors"
+                      onClick={(e) => startEditingAlias(session.id, session.alias, e)}
+                      title="Rename session"
+                    >
+                      ✏️
+                    </button>
+                  </div>
+                )}
+              </div>
+
+              {/* Session ID - shown when there's an alias */}
+              {session.alias && (
+                <div className="text-xs text-neutral-500 font-mono">
+                  {channelPart}:{displayTarget}
+                </div>
+              )}
+              
+              {/* Full ID on separate line if no alias - show it more prominently */}
+              {!session.alias && targetPart && (
+                <div className="text-xs text-neutral-600 font-mono">
+                  {targetPart}
+                </div>
+              )}
             </div>
           );
         })}

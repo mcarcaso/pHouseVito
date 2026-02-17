@@ -730,6 +730,198 @@ export class DashboardChannel implements Channel {
       }
     });
 
+    // Restart an app
+    this.app.post("/api/apps/:name/restart", async (req, res) => {
+      const { name } = req.params;
+      try {
+        const pm2Name = `app-${name}`;
+        execSync(`npx pm2 restart ${pm2Name}`, {
+          timeout: 30000,
+          encoding: "utf-8",
+          env: { ...process.env, PATH: process.env.PATH + ":/usr/local/bin:/opt/homebrew/bin" },
+        });
+        res.json({ success: true, message: `Restarted ${name}` });
+      } catch (e: any) {
+        res.status(500).json({ error: e.message });
+      }
+    });
+
+    // Stop an app
+    this.app.post("/api/apps/:name/stop", async (req, res) => {
+      const { name } = req.params;
+      try {
+        const pm2Name = `app-${name}`;
+        execSync(`npx pm2 stop ${pm2Name}`, {
+          timeout: 30000,
+          encoding: "utf-8",
+          env: { ...process.env, PATH: process.env.PATH + ":/usr/local/bin:/opt/homebrew/bin" },
+        });
+        res.json({ success: true, message: `Stopped ${name}` });
+      } catch (e: any) {
+        res.status(500).json({ error: e.message });
+      }
+    });
+
+    // Start a stopped app
+    this.app.post("/api/apps/:name/start", async (req, res) => {
+      const { name } = req.params;
+      try {
+        const pm2Name = `app-${name}`;
+        execSync(`npx pm2 start ${pm2Name}`, {
+          timeout: 30000,
+          encoding: "utf-8",
+          env: { ...process.env, PATH: process.env.PATH + ":/usr/local/bin:/opt/homebrew/bin" },
+        });
+        res.json({ success: true, message: `Started ${name}` });
+      } catch (e: any) {
+        res.status(500).json({ error: e.message });
+      }
+    });
+
+    // Delete an app completely
+    this.app.delete("/api/apps/:name", async (req, res) => {
+      const { name } = req.params;
+      try {
+        const appsDir = path.join(__dirname, "../../user/apps");
+        const appDir = path.join(appsDir, name);
+        const pm2Name = `app-${name}`;
+
+        // Stop and delete from PM2
+        try {
+          execSync(`npx pm2 delete ${pm2Name}`, {
+            timeout: 30000,
+            encoding: "utf-8",
+            env: { ...process.env, PATH: process.env.PATH + ":/usr/local/bin:/opt/homebrew/bin" },
+          });
+        } catch (e) {
+          // Might not exist in PM2, that's fine
+        }
+
+        // Remove Cloudflare tunnel entry
+        const cfConfigPath = path.join(process.env.HOME || "", ".cloudflared", "config.yml");
+        if (existsSync(cfConfigPath)) {
+          let cfConfig = readFileSync(cfConfigPath, "utf-8");
+          const appUrl = `${name}.theworstproductions.com`;
+          // Remove the ingress entry for this app
+          const lines = cfConfig.split("\n");
+          const filteredLines: string[] = [];
+          let skipNext = false;
+          for (let i = 0; i < lines.length; i++) {
+            const line = lines[i];
+            if (line.includes(`hostname: ${appUrl}`)) {
+              // Skip this line and the next (service line)
+              skipNext = true;
+              continue;
+            }
+            if (skipNext && line.trim().startsWith("service:")) {
+              skipNext = false;
+              continue;
+            }
+            skipNext = false;
+            filteredLines.push(line);
+          }
+          writeFileSync(cfConfigPath, filteredLines.join("\n"), "utf-8");
+
+          // Restart cloudflared tunnel
+          try {
+            execSync("pkill -HUP cloudflared || true", { encoding: "utf-8" });
+          } catch (e) {
+            // Might fail, that's ok
+          }
+        }
+
+        // Delete app directory
+        if (existsSync(appDir)) {
+          execSync(`rm -rf "${appDir}"`, { encoding: "utf-8" });
+        }
+
+        res.json({ success: true, message: `Deleted ${name}` });
+      } catch (e: any) {
+        res.status(500).json({ error: e.message });
+      }
+    });
+
+    // Get app files
+    this.app.get("/api/apps/:name/files", async (req, res) => {
+      const { name } = req.params;
+      try {
+        const appsDir = path.join(__dirname, "../../user/apps");
+        const appDir = path.join(appsDir, name);
+
+        if (!existsSync(appDir)) {
+          res.status(404).json({ error: "App not found" });
+          return;
+        }
+
+        const walkDir = (dir: string, prefix = ""): { path: string; size: number; isDir: boolean }[] => {
+          const entries = readdirSync(dir, { withFileTypes: true });
+          const files: { path: string; size: number; isDir: boolean }[] = [];
+          
+          for (const entry of entries) {
+            const fullPath = path.join(dir, entry.name);
+            const relativePath = prefix ? `${prefix}/${entry.name}` : entry.name;
+            
+            // Skip node_modules and hidden files (except .vito-app.json)
+            if (entry.name === "node_modules" || (entry.name.startsWith(".") && entry.name !== ".vito-app.json")) {
+              continue;
+            }
+            
+            if (entry.isDirectory()) {
+              files.push({ path: relativePath, size: 0, isDir: true });
+              files.push(...walkDir(fullPath, relativePath));
+            } else {
+              const stats = statSync(fullPath);
+              files.push({ path: relativePath, size: stats.size, isDir: false });
+            }
+          }
+          return files;
+        };
+
+        const files = walkDir(appDir);
+        res.json(files);
+      } catch (e: any) {
+        res.status(500).json({ error: e.message });
+      }
+    });
+
+    // Get a specific file content
+    this.app.get("/api/apps/:name/files/*", async (req, res) => {
+      const { name } = req.params;
+      const filePath = req.params[0] || "";
+      try {
+        const appsDir = path.join(__dirname, "../../user/apps");
+        const fullPath = path.join(appsDir, name, filePath);
+
+        // Security: ensure we're still within the app directory
+        if (!fullPath.startsWith(path.join(appsDir, name))) {
+          res.status(403).json({ error: "Access denied" });
+          return;
+        }
+
+        if (!existsSync(fullPath)) {
+          res.status(404).json({ error: "File not found" });
+          return;
+        }
+
+        const stats = statSync(fullPath);
+        if (stats.isDirectory()) {
+          res.status(400).json({ error: "Cannot read directory" });
+          return;
+        }
+
+        // Limit file size to 1MB
+        if (stats.size > 1024 * 1024) {
+          res.status(413).json({ error: "File too large" });
+          return;
+        }
+
+        const content = readFileSync(fullPath, "utf-8");
+        res.json({ content, size: stats.size });
+      } catch (e: any) {
+        res.status(500).json({ error: e.message });
+      }
+    });
+
     // ── Logs ──
 
     this.app.get("/api/logs", (req, res) => {

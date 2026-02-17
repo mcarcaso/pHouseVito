@@ -8,8 +8,8 @@ A web-based interface for managing and interacting with Vito.
 - 📋 **Sessions** - Browse all conversation sessions and their message history
 - 🧠 **Memories** - View and search long-term memories
 - 🛠️ **Skills** - Browse installed skills
-- ⏰ **Jobs** - View scheduled cron jobs (coming soon)
-- 🔒 **Secrets** - Manage API keys and credentials (coming soon)
+- ⏰ **Jobs** - View and manage scheduled cron jobs
+- ⚙️ **Settings** - Configure harness, channels, and per-session overrides
 
 ## Development
 

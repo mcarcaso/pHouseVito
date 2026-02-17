@@ -1,4 +1,4 @@
-# Vito 3.0
+# Vito
 
 A personal AI agent framework with persistent memory, extensible skills, and multi-channel support.
 
@@ -13,7 +13,14 @@ A personal AI agent framework with persistent memory, extensible skills, and mul
 ### 📡 Multi-Channel Support
 - **CLI** - Terminal-based chat interface
 - **Dashboard** - Web-based UI with real-time updates
-- Extensible channel system for adding Discord, Telegram, etc.
+- **Discord** - Bot integration with guild/channel filtering
+- **Telegram** - Bot integration with chat ID filtering
+
+### 🔌 Harness System
+- **Pluggable AI backends** - Swap between different AI providers
+- **claude-code** - Claude Code SDK harness (Anthropic)
+- **pi-coding-agent** - Pi Coding Agent harness (supports OpenAI, Anthropic, Google, OpenRouter)
+- **Per-session overrides** - Use different models for different conversations
 
 ### 🎯 Skills System
 - Markdown-based skill definitions
@@ -25,8 +32,8 @@ A personal AI agent framework with persistent memory, extensible skills, and mul
 - 📋 Browse all sessions and message history
 - 🧠 View and search long-term memories
 - 🛠️ Manage skills
-- ⏰ View scheduled jobs (coming soon)
-- 🔒 Manage secrets (coming soon)
+- ⏰ Scheduled cron jobs
+- ⚙️ Settings management (harness, channels, per-session overrides)
 
 ## Quick Start
 
@@ -39,8 +46,8 @@ A personal AI agent framework with persistent memory, extensible skills, and mul
 
 ```bash
 # Clone the repo
-git clone https://github.com/your-repo/vito3.0.git
-cd vito3.0
+git clone https://github.com/mcarcaso/pHouseVito.git
+cd pHouseVito
 
 # Install dependencies
 npm install
@@ -75,6 +82,7 @@ user/
 ├── secrets.json             # API keys and tokens
 ├── vito.config.json         # Model, memory, and channel settings
 ├── ecosystem.config.cjs     # PM2 process manager config
+├── vito.db                  # SQLite database (auto-created)
 ├── memories/                # Long-term memory docs (auto-managed)
 ├── skills/                  # Your custom skills
 │   └── example/             # Example skill template
@@ -90,21 +98,24 @@ Edit `user/SOUL.md` to define your agent's personality. This is how you make Vit
 ## Project Structure
 
 ```
-vito3.0/
+pHouseVito/
 ├── src/                       # Core application code
 │   ├── channels/              # Channel adapters (Dashboard, Telegram, Discord)
 │   ├── db/                    # SQLite schema and queries
+│   ├── harnesses/             # AI backend harnesses (claude-code, pi-coding-agent)
 │   ├── memory/                # Memory management and compaction
 │   ├── sessions/              # Session management
 │   ├── skills/                # Builtin skill discovery and loading
 │   └── orchestrator.ts        # Core message flow
 ├── dashboard/                 # React-based web UI
+├── data/                      # Runtime data (attachments, etc.) — gitignored
 ├── user.example/              # Template — copy to user/ to get started
 └── user/                      # Your data, config, and customizations (gitignored)
     ├── SOUL.md                # Agent personality
     ├── secrets.json           # API keys
     ├── vito.config.json       # Configuration
     ├── ecosystem.config.cjs   # PM2 config
+    ├── vito.db                # SQLite database
     ├── memories/              # Long-term memory docs
     ├── skills/                # Custom skills
     ├── apps/                  # Deployed web apps
@@ -130,7 +141,7 @@ Type your messages and press Enter. Type `/quit` to exit.
    - Chat with Vito
    - Browse sessions and message history
    - View long-term memories
-   - Manage skills
+   - Manage skills and jobs
 
 ### Adding Skills
 
@@ -177,6 +188,30 @@ npm run build:dashboard
 
 ## Architecture Highlights
 
+### Harness System
+
+Harnesses are pluggable AI backends that handle the actual LLM interaction. Currently supported:
+
+- **claude-code** - Uses the Claude Code SDK. Supports Sonnet and Opus models with configurable permission mode.
+- **pi-coding-agent** - Uses the Pi Coding Agent SDK. Supports multiple providers (OpenAI, Anthropic, Google, OpenRouter) with thinking levels.
+
+Configure your default harness in `user/vito.config.json`:
+```json
+{
+  "settings": {
+    "harness": "claude-code"
+  },
+  "harnesses": {
+    "claude-code": {
+      "model": "sonnet",
+      "permissionMode": "bypassPermissions"
+    }
+  }
+}
+```
+
+Override per-session via the Dashboard Settings page.
+
 ### Memory Flow
 
 1. Messages are stored in SQLite (append-only log)
@@ -198,7 +233,7 @@ Channels are adapters that convert between platform-specific formats and Vito's 
 
 ### Dashboard Architecture
 
-- **Backend**: Express server with WebSocket support
+- **Backend**: Express server with WebSocket support (port 3030)
 - **Frontend**: React + TypeScript + Vite
 - **Communication**: REST API for data queries, WebSocket for real-time chat
 - **Styling**: Custom CSS with dark theme
@@ -209,6 +244,8 @@ Channels are adapters that convert between platform-specific formats and Vito's 
 - [x] Telegram channel adapter
 - [x] Cron job system for scheduled tasks
 - [x] Secrets management UI
+- [x] Harness system with multiple AI backends
+- [x] Per-session harness/model overrides
 - [ ] Memory visualization
 - [ ] Export/backup tools
 - [ ] Multi-user support (optional)

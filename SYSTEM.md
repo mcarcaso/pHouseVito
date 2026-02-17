@@ -31,8 +31,28 @@ All user-specific, non-versioned data lives here:
 - **Dashboard:** `dashboard/` (Vite React app)
 
 ## Services & Ports
-- **WebSocket server:** `localhost:3000`
-- **Dashboard dev server:** `localhost:5173`
+- **Dashboard + WebSocket:** `localhost:3030` (production)
+- **Dashboard dev server:** `localhost:5173` (Vite hot-reload)
+
+## Harnesses
+
+Harnesses are pluggable AI backends in `src/harnesses/`. Each harness implements message handling with a specific AI SDK:
+
+- **claude-code** (`src/harnesses/claude-code/`) - Claude Code SDK. Models: `sonnet`, `opus`. Permission mode: `bypassPermissions`, `default`.
+- **pi-coding-agent** (`src/harnesses/pi-coding-agent/`) - Pi Coding Agent SDK. Providers: `anthropic`, `openai`, `google`, `openrouter`. Thinking levels: `off`, `minimal`, `low`, `medium`, `high`, `max`.
+
+Configure in `user/vito.config.json`:
+```json
+{
+  "settings": { "harness": "claude-code" },
+  "harnesses": {
+    "claude-code": { "model": "sonnet", "permissionMode": "bypassPermissions" },
+    "pi-coding-agent": { "model": { "provider": "anthropic", "name": "claude-sonnet-4-6" }, "thinkingLevel": "off" }
+  }
+}
+```
+
+Sessions can override harness settings via the Dashboard Settings page (Settings → Sessions → Override).
 
 ## Key Patterns
 

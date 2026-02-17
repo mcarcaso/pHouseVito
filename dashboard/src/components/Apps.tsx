@@ -282,25 +282,24 @@ export default function Apps() {
                       ) : (
                         <div className="flex flex-col sm:flex-row gap-4">
                           {/* File list */}
-                          <div className="sm:w-48 shrink-0">
-                            <div className="flex flex-col gap-0.5 max-h-64 overflow-y-auto">
+                          <div className="sm:w-56 shrink-0">
+                            <div className="flex flex-col gap-1 max-h-64 overflow-y-auto">
                               {appFiles[app.name]
                                 .filter(f => !f.isDir)
                                 .map(file => (
                                   <button
                                     key={file.path}
                                     onClick={() => fetchFileContent(app.name, file.path)}
-                                    className={`text-left px-2 py-1 rounded text-sm truncate transition-colors ${
+                                    className={`text-left px-2 py-2 rounded text-sm transition-colors ${
                                       selectedFile?.app === app.name && selectedFile?.path === file.path
                                         ? 'bg-blue-600 text-white'
-                                        : 'text-neutral-400 hover:bg-neutral-800 hover:text-white'
+                                        : 'text-neutral-300 hover:bg-neutral-800 hover:text-white'
                                     }`}
                                   >
-                                    <span className="opacity-50 mr-1">
-                                      {file.path.includes('/') ? '└ ' : ''}
-                                    </span>
-                                    {file.path.split('/').pop()}
-                                    <span className="text-xs opacity-50 ml-1">({formatBytes(file.size)})</span>
+                                    <div className="font-medium">{file.path.split('/').pop()}</div>
+                                    {file.path.includes('/') && (
+                                      <div className="text-xs opacity-50">{file.path.split('/').slice(0, -1).join('/')}/</div>
+                                    )}
                                   </button>
                                 ))}
                             </div>

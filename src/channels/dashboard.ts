@@ -885,9 +885,9 @@ export class DashboardChannel implements Channel {
     });
 
     // Get a specific file content
-    this.app.get("/api/apps/:name/files/*", async (req, res) => {
+    this.app.get("/api/apps/:name/files/*filepath", async (req, res) => {
       const { name } = req.params;
-      const filePath = req.params[0] || "";
+      const filePath = req.params.filepath.join("/");
       try {
         const appsDir = path.join(__dirname, "../../user/apps");
         const fullPath = path.join(appsDir, name, filePath);

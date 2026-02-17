@@ -1,11 +1,29 @@
 import { useState, useEffect } from 'react';
 import type { VitoConfig } from '../../utils/settingsResolution';
-import SettingRow, { renderSelect, renderSegmented, renderNumberInput } from './SettingRow';
+import { renderSelect, renderSegmented, renderNumberInput, renderSliderToggle } from './SettingRow';
 import HarnessConfigEditor from './HarnessConfigEditor';
 
 interface GlobalSettingsProps {
   config: VitoConfig;
   onSave: (updates: Partial<VitoConfig>) => Promise<void>;
+}
+
+// Toggle row with title+description on left, toggle on right
+function ToggleRow({ title, description, value, onChange }: {
+  title: string;
+  description: string;
+  value: boolean;
+  onChange: (val: boolean) => void;
+}) {
+  return (
+    <div className="flex items-center justify-between gap-4 py-3 border-b border-neutral-800/50 last:border-b-0">
+      <div className="flex flex-col">
+        <span className="text-sm text-neutral-200">{title}</span>
+        <span className="text-xs text-neutral-500">{description}</span>
+      </div>
+      {renderSliderToggle(value, onChange)}
+    </div>
+  );
 }
 
 const STREAM_MODES = [
@@ -66,7 +84,7 @@ function NumberInput({
 
 export default function GlobalSettings({ config, onSave }: GlobalSettingsProps) {
   const settings = config.settings || {};
-  const memory = config.memory || { compactionThreshold: 200 };
+  const compaction = config.compaction || { threshold: 200 };
 
   const updateSetting = async (field: string, value: any) => {
     const newSettings = { ...settings };
@@ -79,8 +97,8 @@ export default function GlobalSettings({ config, onSave }: GlobalSettingsProps) 
     await onSave({ settings: newSettings });
   };
 
-  const updateMemory = async (key: string, value: number | boolean) => {
-    await onSave({ memory: { ...memory, [key]: value } });
+  const updateCompaction = async (key: string, value: number) => {
+    await onSave({ compaction: { ...compaction, [key]: value } });
   };
 
   return (
@@ -100,25 +118,94 @@ export default function GlobalSettings({ config, onSave }: GlobalSettingsProps) 
           {renderSegmented(settings.streamMode || 'stream', (val) => updateSetting('streamMode', val), STREAM_MODES)}
         </div>
 
+      </section>
+
+      {/* ── Current Session Context ── */}
+      <section className="bg-neutral-900 border border-neutral-800 rounded-xl p-5">
+        <h3 className="text-base font-semibold text-white mb-1">Current Session Context</h3>
+        <p className="text-xs text-neutral-600 mb-4">What to include from the active session's history.</p>
+
         <div className="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-4 py-3 border-b border-neutral-800/50">
-          <label className="text-sm text-neutral-400 sm:w-48 sm:shrink-0">Current Session Limit</label>
+          <label className="text-sm text-neutral-400 sm:w-48 sm:shrink-0">Num Messages</label>
           {renderNumberInput(
-            settings.memory?.currentSessionLimit ?? 100,
-            (val) => updateSetting('memory.currentSessionLimit', val),
+            settings.currentContext?.limit ?? 100,
+            (val) => updateSetting('currentContext.limit', val),
             { min: 0 }
           )}
-          <span className="text-xs text-neutral-600">Recent messages in context</span>
+          <span className="text-xs text-neutral-600">Recent messages to include</span>
         </div>
 
-        <div className="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-4 py-3">
-          <label className="text-sm text-neutral-400 sm:w-48 sm:shrink-0">Cross-Session Limit</label>
+        <ToggleRow
+          title="Thoughts"
+          description="Include thinking/reasoning steps"
+          value={settings.currentContext?.includeThoughts ?? true}
+          onChange={(val) => updateSetting('currentContext.includeThoughts', val)}
+        />
+
+        <ToggleRow
+          title="Tools"
+          description="Include tool calls and results"
+          value={settings.currentContext?.includeTools ?? true}
+          onChange={(val) => updateSetting('currentContext.includeTools', val)}
+        />
+
+        <ToggleRow
+          title="Archived"
+          description="Include archived messages"
+          value={settings.currentContext?.includeArchived ?? false}
+          onChange={(val) => updateSetting('currentContext.includeArchived', val)}
+        />
+
+        <ToggleRow
+          title="Compacted"
+          description="Include already-compacted messages"
+          value={settings.currentContext?.includeCompacted ?? false}
+          onChange={(val) => updateSetting('currentContext.includeCompacted', val)}
+        />
+      </section>
+
+      {/* ── Cross-Session Context ── */}
+      <section className="bg-neutral-900 border border-neutral-800 rounded-xl p-5">
+        <h3 className="text-base font-semibold text-white mb-1">Cross-Session Context</h3>
+        <p className="text-xs text-neutral-600 mb-4">What to include from other sessions.</p>
+
+        <div className="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-4 py-3 border-b border-neutral-800/50">
+          <label className="text-sm text-neutral-400 sm:w-48 sm:shrink-0">Num Messages</label>
           {renderNumberInput(
-            settings.memory?.crossSessionLimit ?? 5,
-            (val) => updateSetting('memory.crossSessionLimit', val),
+            settings.crossContext?.limit ?? 5,
+            (val) => updateSetting('crossContext.limit', val),
             { min: 0 }
           )}
           <span className="text-xs text-neutral-600">Messages per other session</span>
         </div>
+
+        <ToggleRow
+          title="Thoughts"
+          description="Include thinking/reasoning steps"
+          value={settings.crossContext?.includeThoughts ?? false}
+          onChange={(val) => updateSetting('crossContext.includeThoughts', val)}
+        />
+
+        <ToggleRow
+          title="Tools"
+          description="Include tool calls and results"
+          value={settings.crossContext?.includeTools ?? false}
+          onChange={(val) => updateSetting('crossContext.includeTools', val)}
+        />
+
+        <ToggleRow
+          title="Archived"
+          description="Include archived messages"
+          value={settings.crossContext?.includeArchived ?? false}
+          onChange={(val) => updateSetting('crossContext.includeArchived', val)}
+        />
+
+        <ToggleRow
+          title="Compacted"
+          description="Include already-compacted messages"
+          value={settings.crossContext?.includeCompacted ?? false}
+          onChange={(val) => updateSetting('crossContext.includeCompacted', val)}
+        />
       </section>
 
       {/* ── Harness Configurations ── */}
@@ -130,50 +217,15 @@ export default function GlobalSettings({ config, onSave }: GlobalSettingsProps) 
         <HarnessConfigEditor config={config} onSave={onSave} />
       </section>
 
-      {/* ── Memory & Compaction ── */}
+      {/* ── Compaction ── */}
       <section className="bg-neutral-900 border border-neutral-800 rounded-xl p-5">
-        <h3 className="text-base font-semibold text-white mb-1">Memory & Compaction</h3>
-        <p className="text-xs text-neutral-600 mb-4">Global-only settings (these don't cascade to channels/sessions).</p>
+        <h3 className="text-base font-semibold text-white mb-1">Compaction</h3>
+        <p className="text-xs text-neutral-600 mb-4">When to compress old messages into long-term memory.</p>
 
-        {/* Context toggles */}
-        <div className="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-4 py-3 border-b border-neutral-800/50">
-          <label className="text-sm text-neutral-400 sm:w-48 sm:shrink-0">Include tool calls (current)</label>
-          <input
-            type="checkbox"
-            checked={memory.includeToolsInCurrentSession ?? true}
-            onChange={(e) => updateMemory('includeToolsInCurrentSession', e.target.checked)}
-            className="w-5 h-5 accent-blue-600 cursor-pointer"
-          />
-          <span className="text-xs text-neutral-600">Show tool calls in session transcript</span>
-        </div>
-
-        <div className="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-4 py-3 border-b border-neutral-800/50">
-          <label className="text-sm text-neutral-400 sm:w-48 sm:shrink-0">Include tool calls (cross)</label>
-          <input
-            type="checkbox"
-            checked={memory.includeToolsInCrossSession ?? false}
-            onChange={(e) => updateMemory('includeToolsInCrossSession', e.target.checked)}
-            className="w-5 h-5 accent-blue-600 cursor-pointer"
-          />
-          <span className="text-xs text-neutral-600">Show tool calls from other sessions</span>
-        </div>
-
-        <div className="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-4 py-3 border-b border-neutral-800/50">
-          <label className="text-sm text-neutral-400 sm:w-48 sm:shrink-0">Show archived in cross-session</label>
-          <input
-            type="checkbox"
-            checked={memory.showArchivedInCrossSession ?? false}
-            onChange={(e) => updateMemory('showArchivedInCrossSession', e.target.checked)}
-            className="w-5 h-5 accent-blue-600 cursor-pointer"
-          />
-          <span className="text-xs text-neutral-600">Include archived messages from other sessions</span>
-        </div>
-
-        {/* Compaction */}
         <NumberInput
           label="Compaction threshold"
-          value={memory.compactionThreshold}
-          onChange={(val) => updateMemory('compactionThreshold', val)}
+          value={compaction.threshold}
+          onChange={(val) => updateCompaction('threshold', val)}
           min={0}
           step={50}
           hint="Trigger after this many uncompacted messages"
@@ -181,8 +233,8 @@ export default function GlobalSettings({ config, onSave }: GlobalSettingsProps) 
 
         <NumberInput
           label="Compaction percent"
-          value={memory.compactionPercent ?? 50}
-          onChange={(val) => updateMemory('compactionPercent', Math.min(100, Math.max(1, val)))}
+          value={compaction.percent ?? 50}
+          onChange={(val) => updateCompaction('percent', Math.min(100, Math.max(1, val)))}
           min={1}
           max={100}
           step={5}

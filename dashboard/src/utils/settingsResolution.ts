@@ -3,13 +3,27 @@
  * Mirrors src/settings.ts logic for the dashboard UI.
  */
 
+export interface ContextSettings {
+  limit?: number;
+  includeThoughts?: boolean;
+  includeTools?: boolean;
+  includeArchived?: boolean;
+  includeCompacted?: boolean;
+}
+
+export interface ResolvedContextSettings {
+  limit: number;
+  includeThoughts: boolean;
+  includeTools: boolean;
+  includeArchived: boolean;
+  includeCompacted: boolean;
+}
+
 export interface Settings {
   harness?: string;
   streamMode?: 'stream' | 'bundled' | 'final';
-  memory?: {
-    currentSessionLimit?: number;
-    crossSessionLimit?: number;
-  };
+  currentContext?: ContextSettings;
+  crossContext?: ContextSettings;
   'pi-coding-agent'?: {
     model?: { provider: string; name: string };
     thinkingLevel?: 'off' | 'low' | 'medium' | 'high';
@@ -25,10 +39,8 @@ export interface Settings {
 export interface ResolvedSettings {
   harness: string;
   streamMode: 'stream' | 'bundled' | 'final';
-  memory: {
-    currentSessionLimit: number;
-    crossSessionLimit: number;
-  };
+  currentContext: ResolvedContextSettings;
+  crossContext: ResolvedContextSettings;
   'pi-coding-agent'?: Settings['pi-coding-agent'];
   'claude-code'?: Settings['claude-code'];
 }
@@ -46,12 +58,9 @@ export interface VitoConfig {
       allowedTools?: string[];
     };
   };
-  memory: {
-    compactionThreshold: number;
-    compactionPercent?: number;
-    includeToolsInCurrentSession?: boolean;
-    includeToolsInCrossSession?: boolean;
-    showArchivedInCrossSession?: boolean;
+  compaction: {
+    threshold: number;
+    percent?: number;
   };
   channels: Record<string, ChannelConfig>;
   sessions?: Record<string, Settings>;
@@ -68,13 +77,27 @@ export interface ChannelConfig {
   [key: string]: any;
 }
 
+const DEFAULT_CURRENT_CONTEXT: ResolvedContextSettings = {
+  limit: 100,
+  includeThoughts: true,
+  includeTools: true,
+  includeArchived: false,
+  includeCompacted: false,
+};
+
+const DEFAULT_CROSS_CONTEXT: ResolvedContextSettings = {
+  limit: 5,
+  includeThoughts: false,
+  includeTools: false,
+  includeArchived: false,
+  includeCompacted: false,
+};
+
 const DEFAULTS: ResolvedSettings = {
   harness: 'claude-code',
   streamMode: 'stream',
-  memory: {
-    currentSessionLimit: 100,
-    crossSessionLimit: 5,
-  },
+  currentContext: DEFAULT_CURRENT_CONTEXT,
+  crossContext: DEFAULT_CROSS_CONTEXT,
 };
 
 /** Deep merge two Settings objects. Later values win. */
@@ -83,8 +106,11 @@ function mergeSettings(base: Settings, override: Settings): Settings {
 
   if (override.harness !== undefined) result.harness = override.harness;
   if (override.streamMode !== undefined) result.streamMode = override.streamMode;
-  if (override.memory !== undefined) {
-    result.memory = { ...base.memory, ...override.memory };
+  if (override.currentContext !== undefined) {
+    result.currentContext = { ...base.currentContext, ...override.currentContext };
+  }
+  if (override.crossContext !== undefined) {
+    result.crossContext = { ...base.crossContext, ...override.crossContext };
   }
   if (override['pi-coding-agent'] !== undefined) {
     result['pi-coding-agent'] = { ...base['pi-coding-agent'], ...override['pi-coding-agent'] };
@@ -131,9 +157,19 @@ export function getEffectiveSettings(
   return {
     harness: settings.harness || DEFAULTS.harness,
     streamMode: settings.streamMode || DEFAULTS.streamMode,
-    memory: {
-      currentSessionLimit: settings.memory?.currentSessionLimit ?? DEFAULTS.memory.currentSessionLimit,
-      crossSessionLimit: settings.memory?.crossSessionLimit ?? DEFAULTS.memory.crossSessionLimit,
+    currentContext: {
+      limit: settings.currentContext?.limit ?? DEFAULT_CURRENT_CONTEXT.limit,
+      includeThoughts: settings.currentContext?.includeThoughts ?? DEFAULT_CURRENT_CONTEXT.includeThoughts,
+      includeTools: settings.currentContext?.includeTools ?? DEFAULT_CURRENT_CONTEXT.includeTools,
+      includeArchived: settings.currentContext?.includeArchived ?? DEFAULT_CURRENT_CONTEXT.includeArchived,
+      includeCompacted: settings.currentContext?.includeCompacted ?? DEFAULT_CURRENT_CONTEXT.includeCompacted,
+    },
+    crossContext: {
+      limit: settings.crossContext?.limit ?? DEFAULT_CROSS_CONTEXT.limit,
+      includeThoughts: settings.crossContext?.includeThoughts ?? DEFAULT_CROSS_CONTEXT.includeThoughts,
+      includeTools: settings.crossContext?.includeTools ?? DEFAULT_CROSS_CONTEXT.includeTools,
+      includeArchived: settings.crossContext?.includeArchived ?? DEFAULT_CROSS_CONTEXT.includeArchived,
+      includeCompacted: settings.crossContext?.includeCompacted ?? DEFAULT_CROSS_CONTEXT.includeCompacted,
     },
     'pi-coding-agent': settings['pi-coding-agent'],
     'claude-code': settings['claude-code'],
@@ -174,7 +210,7 @@ export function getInheritSource(
   return { value: defaultVal, source: 'default' };
 }
 
-/** Get a nested value from an object using dot notation (e.g., "memory.currentSessionLimit") */
+/** Get a nested value from an object using dot notation (e.g., "currentContext.limit") */
 function getNestedValue(obj: any, path: string): any {
   if (!obj) return undefined;
   const parts = path.split('.');
@@ -190,6 +226,16 @@ function getNestedValue(obj: any, path: string): any {
 export const CASCADING_FIELDS = [
   { key: 'harness', label: 'Harness', type: 'select' as const },
   { key: 'streamMode', label: 'Stream Mode', type: 'select' as const },
-  { key: 'memory.currentSessionLimit', label: 'Current Session Limit', type: 'number' as const },
-  { key: 'memory.crossSessionLimit', label: 'Cross Session Limit', type: 'number' as const },
+  // Current context settings
+  { key: 'currentContext.limit', label: 'Current: Num Messages', type: 'number' as const },
+  { key: 'currentContext.includeThoughts', label: 'Current: Thoughts', type: 'boolean' as const },
+  { key: 'currentContext.includeTools', label: 'Current: Tools', type: 'boolean' as const },
+  { key: 'currentContext.includeArchived', label: 'Current: Archived', type: 'boolean' as const },
+  { key: 'currentContext.includeCompacted', label: 'Current: Compacted', type: 'boolean' as const },
+  // Cross context settings
+  { key: 'crossContext.limit', label: 'Cross: Num Messages', type: 'number' as const },
+  { key: 'crossContext.includeThoughts', label: 'Cross: Thoughts', type: 'boolean' as const },
+  { key: 'crossContext.includeTools', label: 'Cross: Tools', type: 'boolean' as const },
+  { key: 'crossContext.includeArchived', label: 'Cross: Archived', type: 'boolean' as const },
+  { key: 'crossContext.includeCompacted', label: 'Cross: Compacted', type: 'boolean' as const },
 ] as const;

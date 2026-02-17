@@ -7,10 +7,17 @@ interface CronJob {
   session: string;
   prompt: string;
   oneTime?: boolean;
+  sendCondition?: string;
+}
+
+interface Session {
+  id: string;
+  alias: string | null;
 }
 
 export default function Jobs() {
   const [jobs, setJobs] = useState<CronJob[]>([]);
+  const [sessions, setSessions] = useState<Session[]>([]);
   const [showForm, setShowForm] = useState(false);
   const [formData, setFormData] = useState<CronJob>({
     name: "",
@@ -19,16 +26,43 @@ export default function Jobs() {
     session: "dashboard:default",
     prompt: "",
     oneTime: false,
+    sendCondition: "",
   });
+  const [editingCondition, setEditingCondition] = useState<string | null>(null);
+  const [conditionValue, setConditionValue] = useState("");
 
   useEffect(() => {
     fetchJobs();
+    fetchSessions();
   }, []);
 
   const fetchJobs = async () => {
     const res = await fetch("/api/cron/jobs");
     const data = await res.json();
     setJobs(data);
+  };
+
+  const fetchSessions = async () => {
+    const res = await fetch("/api/sessions");
+    const data = await res.json();
+    setSessions(data);
+  };
+
+  const getSessionDisplay = (sessionId: string) => {
+    const session = sessions.find(s => s.id === sessionId);
+    if (session?.alias) {
+      return session.alias;
+    }
+    // If no alias, try to show a cleaner version (channel:target -> just target if recognizable)
+    const parts = sessionId.split(':');
+    if (parts.length === 2) {
+      const [channel, target] = parts;
+      // For system sessions, just show the target
+      if (channel === 'system') return target;
+      // For others, show channel badge + target
+      return sessionId;
+    }
+    return sessionId;
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -60,6 +94,37 @@ export default function Jobs() {
     if (!confirm(`Delete job "${name}"?`)) return;
     const res = await fetch(`/api/cron/jobs/${name}`, { method: "DELETE" });
     if (res.ok) await fetchJobs();
+  };
+
+  const handleTrigger = async (name: string) => {
+    if (!confirm(`Run job "${name}" now?`)) return;
+    const res = await fetch(`/api/cron/jobs/${name}/trigger`, { method: "POST" });
+    if (res.ok) {
+      alert(`Job "${name}" triggered!`);
+    } else {
+      const error = await res.json();
+      alert(`Error: ${error.error}`);
+    }
+  };
+
+  const handleUpdateCondition = async (name: string, sendCondition: string) => {
+    const res = await fetch(`/api/cron/jobs/${name}`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ sendCondition }),
+    });
+    if (res.ok) {
+      await fetchJobs();
+      setEditingCondition(null);
+    } else {
+      const error = await res.json();
+      alert(`Error: ${error.error}`);
+    }
+  };
+
+  const startEditingCondition = (job: CronJob) => {
+    setEditingCondition(job.name);
+    setConditionValue(job.sendCondition || "");
   };
 
   return (
@@ -147,6 +212,19 @@ export default function Jobs() {
               />
             </div>
 
+            {/* Send Condition */}
+            <div className="flex flex-col gap-1">
+              <label className="text-xs text-neutral-500 font-medium">Send Condition (optional)</label>
+              <input
+                type="text"
+                value={formData.sendCondition || ""}
+                onChange={(e) => setFormData({ ...formData, sendCondition: e.target.value })}
+                placeholder="Only send if X is down 5% or more"
+                className="px-3 py-2 bg-neutral-950 border border-neutral-700 rounded-md text-neutral-200 text-sm sm:text-base focus:outline-none focus:border-blue-600 transition-colors"
+              />
+              <span className="text-xs text-neutral-600">If set, response only sent when condition is met (AI will respond NO_REPLY otherwise)</span>
+            </div>
+
             {/* One-time checkbox */}
             <label className="flex items-center gap-2 cursor-pointer text-sm text-neutral-200">
               <input
@@ -193,12 +271,20 @@ export default function Jobs() {
                       </span>
                     )}
                   </div>
-                  <button
-                    onClick={() => handleDelete(job.name)}
-                    className="w-full sm:w-auto px-3 py-1.5 text-red-500 border border-red-900/50 hover:bg-red-950/50 hover:border-red-600 rounded text-sm transition-colors"
-                  >
-                    Delete
-                  </button>
+                  <div className="flex gap-2 w-full sm:w-auto">
+                    <button
+                      onClick={() => handleTrigger(job.name)}
+                      className="flex-1 sm:flex-none px-3 py-1.5 text-green-500 border border-green-900/50 hover:bg-green-950/50 hover:border-green-600 rounded text-sm transition-colors"
+                    >
+                      ▶ Run Now
+                    </button>
+                    <button
+                      onClick={() => handleDelete(job.name)}
+                      className="flex-1 sm:flex-none px-3 py-1.5 text-red-500 border border-red-900/50 hover:bg-red-950/50 hover:border-red-600 rounded text-sm transition-colors"
+                    >
+                      Delete
+                    </button>
+                  </div>
                 </div>
 
                 {/* Job Details - Desktop: grid, Mobile: stack */}
@@ -213,7 +299,12 @@ export default function Jobs() {
                   </div>
                   <div className="flex flex-col gap-0.5">
                     <span className="text-[11px] text-neutral-500 font-medium uppercase tracking-wide">Session</span>
-                    <span className="text-sm text-neutral-300 truncate">{job.session}</span>
+                    <div className="flex flex-col gap-0.5">
+                      <span className="text-sm text-neutral-300">{getSessionDisplay(job.session)}</span>
+                      {sessions.find(s => s.id === job.session)?.alias && (
+                        <span className="text-xs text-neutral-500 font-mono truncate">{job.session}</span>
+                      )}
+                    </div>
                   </div>
                 </div>
 
@@ -223,6 +314,57 @@ export default function Jobs() {
                   <pre className="bg-neutral-950 p-3 rounded-md text-sm text-neutral-300 font-mono whitespace-pre-wrap break-words">
                     {job.prompt}
                   </pre>
+                </div>
+
+                {/* Send Condition */}
+                <div className="flex flex-col gap-1 mt-3">
+                  <span className="text-[11px] text-neutral-500 font-medium uppercase tracking-wide">Send Condition</span>
+                  {editingCondition === job.name ? (
+                    <div className="flex gap-2">
+                      <input
+                        type="text"
+                        value={conditionValue}
+                        onChange={(e) => setConditionValue(e.target.value)}
+                        placeholder="Only send if condition is met..."
+                        className="flex-1 px-3 py-2 bg-neutral-950 border border-neutral-700 rounded-md text-neutral-200 text-sm focus:outline-none focus:border-blue-600 transition-colors"
+                        autoFocus
+                        onKeyDown={(e) => {
+                          if (e.key === "Enter") handleUpdateCondition(job.name, conditionValue);
+                          if (e.key === "Escape") setEditingCondition(null);
+                        }}
+                      />
+                      <button
+                        onClick={() => handleUpdateCondition(job.name, conditionValue)}
+                        className="px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white text-sm rounded transition-colors"
+                      >
+                        Save
+                      </button>
+                      <button
+                        onClick={() => setEditingCondition(null)}
+                        className="px-3 py-1.5 text-neutral-400 hover:text-neutral-200 text-sm transition-colors"
+                      >
+                        Cancel
+                      </button>
+                    </div>
+                  ) : (
+                    <div 
+                      className="flex items-center gap-2 cursor-pointer group"
+                      onClick={() => startEditingCondition(job)}
+                    >
+                      {job.sendCondition ? (
+                        <span className="px-3 py-2 bg-amber-950/30 border border-amber-700/30 rounded-md text-sm text-amber-200 flex-1">
+                          {job.sendCondition}
+                        </span>
+                      ) : (
+                        <span className="px-3 py-2 text-neutral-600 text-sm italic">
+                          No condition (always send)
+                        </span>
+                      )}
+                      <span className="text-neutral-600 group-hover:text-neutral-400 text-sm transition-colors">
+                        ✏️ Edit
+                      </span>
+                    </div>
+                  )}
                 </div>
               </div>
             ))}

@@ -5,21 +5,36 @@
  *   Global (config.settings) → Channel (config.channels[name].settings) → Session (config.sessions[key])
  */
 
-import type { ResolvedSettings, Settings, VitoConfig } from "./types.js";
+import type { ResolvedSettings, ResolvedContextSettings, Settings, VitoConfig } from "./types.js";
+
+/** Default context settings */
+const DEFAULT_CURRENT_CONTEXT: ResolvedContextSettings = {
+  limit: 100,
+  includeThoughts: true,
+  includeTools: true,
+  includeArchived: false,
+  includeCompacted: false,
+};
+
+const DEFAULT_CROSS_CONTEXT: ResolvedContextSettings = {
+  limit: 5,
+  includeThoughts: false,
+  includeTools: false,
+  includeArchived: false,
+  includeCompacted: false,
+};
 
 /** Default settings when nothing is specified */
 const DEFAULTS: ResolvedSettings = {
   harness: "claude-code",
   streamMode: "stream",
-  memory: {
-    currentSessionLimit: 100,
-    crossSessionLimit: 5,
-  },
+  currentContext: DEFAULT_CURRENT_CONTEXT,
+  crossContext: DEFAULT_CROSS_CONTEXT,
 };
 
 /**
  * Deep merge two Settings objects. Later values win.
- * Only merges the `memory` object deeply; other fields are replaced.
+ * Merges context objects deeply; other fields are replaced.
  */
 function mergeSettings(base: Settings, override: Settings): Settings {
   const result: Settings = { ...base };
@@ -30,8 +45,11 @@ function mergeSettings(base: Settings, override: Settings): Settings {
   if (override.streamMode !== undefined) {
     result.streamMode = override.streamMode;
   }
-  if (override.memory !== undefined) {
-    result.memory = { ...base.memory, ...override.memory };
+  if (override.currentContext !== undefined) {
+    result.currentContext = { ...base.currentContext, ...override.currentContext };
+  }
+  if (override.crossContext !== undefined) {
+    result.crossContext = { ...base.crossContext, ...override.crossContext };
   }
   if (override["pi-coding-agent"] !== undefined) {
     result["pi-coding-agent"] = { ...base["pi-coding-agent"], ...override["pi-coding-agent"] };
@@ -49,7 +67,7 @@ function mergeSettings(base: Settings, override: Settings): Settings {
  * 
  * @param config - Full Vito config
  * @param channelName - Channel name (e.g., "telegram", "discord", "dashboard")
- * @param sessionKey - Full session key (e.g., "telegram:5473044160")
+ * @param sessionKey - Full session key (e.g., "telegram:123456789")
  * @returns Fully resolved settings with all defaults filled in
  */
 export function getEffectiveSettings(
@@ -81,9 +99,19 @@ export function getEffectiveSettings(
   return {
     harness: settings.harness || DEFAULTS.harness,
     streamMode: settings.streamMode || DEFAULTS.streamMode,
-    memory: {
-      currentSessionLimit: settings.memory?.currentSessionLimit ?? DEFAULTS.memory.currentSessionLimit,
-      crossSessionLimit: settings.memory?.crossSessionLimit ?? DEFAULTS.memory.crossSessionLimit,
+    currentContext: {
+      limit: settings.currentContext?.limit ?? DEFAULT_CURRENT_CONTEXT.limit,
+      includeThoughts: settings.currentContext?.includeThoughts ?? DEFAULT_CURRENT_CONTEXT.includeThoughts,
+      includeTools: settings.currentContext?.includeTools ?? DEFAULT_CURRENT_CONTEXT.includeTools,
+      includeArchived: settings.currentContext?.includeArchived ?? DEFAULT_CURRENT_CONTEXT.includeArchived,
+      includeCompacted: settings.currentContext?.includeCompacted ?? DEFAULT_CURRENT_CONTEXT.includeCompacted,
+    },
+    crossContext: {
+      limit: settings.crossContext?.limit ?? DEFAULT_CROSS_CONTEXT.limit,
+      includeThoughts: settings.crossContext?.includeThoughts ?? DEFAULT_CROSS_CONTEXT.includeThoughts,
+      includeTools: settings.crossContext?.includeTools ?? DEFAULT_CROSS_CONTEXT.includeTools,
+      includeArchived: settings.crossContext?.includeArchived ?? DEFAULT_CROSS_CONTEXT.includeArchived,
+      includeCompacted: settings.crossContext?.includeCompacted ?? DEFAULT_CROSS_CONTEXT.includeCompacted,
     },
     "pi-coding-agent": settings["pi-coding-agent"],
     "claude-code": settings["claude-code"],

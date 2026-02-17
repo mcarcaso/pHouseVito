@@ -79,15 +79,38 @@ export class Queries {
 
   /**
    * Get recent messages for the CURRENT session context.
-   * Shows everything that's not archived (compacted or not).
+   * Filtered by context settings (tools, thoughts, archived, compacted).
    */
-  getRecentMessages(sessionId: string, limit: number, includeTools = true): MessageRow[] {
-    const toolFilter = includeTools ? "" : " AND type NOT IN ('tool_start', 'tool_end')";
+  getRecentMessages(
+    sessionId: string,
+    limit: number,
+    includeTools = true,
+    includeThoughts = true,
+    includeArchived = false,
+    includeCompacted = false
+  ): MessageRow[] {
+    const filters: string[] = ["session_id = ?"];
+    
+    if (!includeTools) {
+      filters.push("type NOT IN ('tool_start', 'tool_end')");
+    }
+    if (!includeThoughts) {
+      filters.push("type != 'thought'");
+    }
+    if (!includeArchived) {
+      filters.push("archived = 0");
+    }
+    if (!includeCompacted) {
+      filters.push("compacted = 0");
+    }
+    
+    const whereClause = filters.join(" AND ");
+    
     return this.db
       .prepare(
         `SELECT * FROM (
            SELECT * FROM messages
-           WHERE session_id = ? AND archived = 0${toolFilter}
+           WHERE ${whereClause}
            ORDER BY timestamp DESC
            LIMIT ?
          ) ORDER BY timestamp ASC`
@@ -186,19 +209,32 @@ export class Queries {
 
   /**
    * Get last N messages per OTHER session for cross-session context.
-   * Ignores compaction status, but excludes archived.
+   * Filtered by context settings (tools, thoughts, archived, compacted).
    */
   getCrossSessionMessagesPerSession(
     excludeSessionId: string,
     perSessionLimit: number,
-    includeTools = false
+    includeTools = false,
+    includeThoughts = false,
+    includeArchived = false,
+    includeCompacted = false
   ): MessageRow[] {
-    const toolFilter = includeTools ? "" : " AND type NOT IN ('tool_start', 'tool_end')";
-    // Get distinct other sessions that have non-archived messages
+    const buildFilters = (prefix: string = "") => {
+      const filters: string[] = [];
+      if (!includeTools) filters.push(`${prefix}type NOT IN ('tool_start', 'tool_end')`);
+      if (!includeThoughts) filters.push(`${prefix}type != 'thought'`);
+      if (!includeArchived) filters.push(`${prefix}archived = 0`);
+      if (!includeCompacted) filters.push(`${prefix}compacted = 0`);
+      return filters.length > 0 ? " AND " + filters.join(" AND ") : "";
+    };
+    
+    const filterClause = buildFilters();
+    
+    // Get distinct other sessions that have qualifying messages
     const sessions = this.db
       .prepare(
         `SELECT DISTINCT session_id FROM messages
-         WHERE session_id != ? AND archived = 0${toolFilter}
+         WHERE session_id != ?${filterClause}
          ORDER BY (SELECT MAX(timestamp) FROM messages m2 WHERE m2.session_id = messages.session_id) DESC`
       )
       .all(excludeSessionId) as Array<{ session_id: string }>;
@@ -209,7 +245,7 @@ export class Queries {
         .prepare(
           `SELECT * FROM (
              SELECT * FROM messages
-             WHERE session_id = ? AND archived = 0${toolFilter}
+             WHERE session_id = ?${filterClause}
              ORDER BY timestamp DESC
              LIMIT ?
            ) ORDER BY timestamp ASC`

@@ -13,7 +13,7 @@ export function shouldCompact(queries: Queries, config: VitoConfig): boolean {
   if (isCompacting) return false;
   
   const count = queries.countUncompacted();
-  return count > config.memory.compactionThreshold;
+  return count > config.compaction.threshold;
 }
 
 /**

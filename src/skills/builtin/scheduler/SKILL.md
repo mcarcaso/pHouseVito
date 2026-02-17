@@ -15,6 +15,7 @@ Create a new cron job (one-time or recurring).
 - `prompt` (string, required): The AI prompt to execute when job triggers
 - `session` (string, optional): Session ID to send response to (default: "dashboard")
 - `oneTime` (boolean, optional): If true, job auto-deletes after running (default: false)
+- `sendCondition` (string, optional): Condition that must be met for the response to be sent. If the AI determines the condition is NOT met, it responds with NO_REPLY and the message is suppressed.
 
 **Returns:** Confirmation message with job details
 

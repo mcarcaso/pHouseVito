@@ -48,6 +48,7 @@ export class DashboardChannel implements Channel {
     scheduleJob: (job: any) => void;
     removeJob: (name: string) => boolean;
     getActiveJobs: () => string[];
+    triggerJob: (name: string) => Promise<boolean>;
   };
   private discordChannel?: {
     registerSlashCommands: () => Promise<{ success: boolean; count: number; error?: string }>;
@@ -76,6 +77,7 @@ export class DashboardChannel implements Channel {
     scheduleJob: (job: any) => void;
     removeJob: (name: string) => boolean;
     getActiveJobs: () => string[];
+    triggerJob: (name: string) => Promise<boolean>;
   }) {
     this.cronManager = manager;
   }
@@ -113,7 +115,7 @@ export class DashboardChannel implements Channel {
         }
         Object.assign(this.config.settings, updates.settings);
       }
-      if (updates.memory) Object.assign(this.config.memory, updates.memory);
+      if (updates.compaction) Object.assign(this.config.compaction, updates.compaction);
       if (updates.channels) {
         for (const [name, channelUpdate] of Object.entries(updates.channels)) {
           // Replace channel config entirely (allows removal of nested keys like settings)
@@ -140,7 +142,7 @@ export class DashboardChannel implements Channel {
     // Compaction status endpoint
     this.app.get("/api/compaction/status", (req, res) => {
       const uncompactedCount = this.queries.countUncompacted();
-      const threshold = this.config.memory.compactionThreshold;
+      const threshold = this.config.compaction.threshold;
       res.json({
         uncompactedCount,
         threshold,
@@ -396,6 +398,44 @@ export class DashboardChannel implements Channel {
       res.json(job);
     });
 
+    this.app.put("/api/cron/jobs/:name", (req, res) => {
+      const name = req.params.name;
+      const index = this.config.cron.jobs.findIndex((j: any) => j.name === name);
+      
+      if (index === -1) {
+        res.status(404).json({ error: "Job not found" });
+        return;
+      }
+      
+      const updates = req.body;
+      const existingJob = this.config.cron.jobs[index];
+      
+      // Update job fields (preserve name, allow updating other fields)
+      const updatedJob = {
+        ...existingJob,
+        ...updates,
+        name, // Ensure name can't be changed
+      };
+      
+      // Clean up undefined sendCondition (remove if empty string)
+      if (updatedJob.sendCondition === '' || updatedJob.sendCondition === null) {
+        delete updatedJob.sendCondition;
+      }
+      
+      this.config.cron.jobs[index] = updatedJob;
+      
+      // Save to disk
+      this.saveConfig();
+      
+      // Reload in scheduler (remove and re-add)
+      if (this.cronManager) {
+        this.cronManager.removeJob(name);
+        this.cronManager.scheduleJob(updatedJob);
+      }
+      
+      res.json(updatedJob);
+    });
+
     this.app.delete("/api/cron/jobs/:name", (req, res) => {
       const name = req.params.name;
       const index = this.config.cron.jobs.findIndex((j: any) => j.name === name);
@@ -417,6 +457,23 @@ export class DashboardChannel implements Channel {
       }
       
       res.json({ success: true });
+    });
+
+    this.app.post("/api/cron/jobs/:name/trigger", async (req, res) => {
+      const name = req.params.name;
+      
+      if (!this.cronManager) {
+        res.status(500).json({ error: "Scheduler not available" });
+        return;
+      }
+
+      const success = await this.cronManager.triggerJob(name);
+      if (!success) {
+        res.status(404).json({ error: "Job not found" });
+        return;
+      }
+
+      res.json({ success: true, message: `Job '${name}' triggered` });
     });
 
     // Discord slash command registration

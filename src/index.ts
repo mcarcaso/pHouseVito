@@ -57,6 +57,7 @@ async function main() {
     scheduleJob: (job) => orchestrator.getCronScheduler().scheduleJob(job),
     removeJob: (name) => orchestrator.getCronScheduler().removeJob(name),
     getActiveJobs: () => orchestrator.getCronScheduler().getActiveJobs(),
+    triggerJob: (name) => orchestrator.getCronScheduler().triggerJob(name),
   });
   orchestrator.registerChannel(dashboard);
 

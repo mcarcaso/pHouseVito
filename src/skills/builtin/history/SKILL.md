@@ -22,7 +22,7 @@ Use this skill when:
 | Column | Type | Description |
 |--------|------|-------------|
 | id | INTEGER | Auto-increment primary key |
-| session_id | TEXT | e.g. `dashboard:default`, `telegram:5473044160` |
+| session_id | TEXT | e.g. `dashboard:default`, `telegram:123456789` |
 | channel | TEXT | `dashboard` or `telegram` |
 | channel_target | TEXT | `default` or telegram chat ID |
 | timestamp | INTEGER | Unix epoch in **milliseconds** |

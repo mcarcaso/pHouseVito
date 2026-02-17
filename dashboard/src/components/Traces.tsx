@@ -88,7 +88,7 @@ function Traces() {
   const [loading, setLoading] = useState(true);
   const [autoRefresh, setAutoRefresh] = useState(true);
   const [expandedSections, setExpandedSections] = useState<Set<string>>(new Set());
-  const [showRaw, setShowRaw] = useState(true); // Show raw events by default
+  const [showRaw, setShowRaw] = useState(false); // Hide raw events by default
 
   const fetchLogs = useCallback(async () => {
     try {

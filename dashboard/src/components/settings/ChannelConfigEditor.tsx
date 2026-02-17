@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import type { ChannelConfig, VitoConfig, Settings } from '../../utils/settingsResolution';
 import { getEffectiveSettings } from '../../utils/settingsResolution';
-import SettingRow, { renderSelect, renderSegmented, renderNumberInput } from './SettingRow';
+import SettingRow, { renderSelect, renderSegmented, renderNumberInput, renderToggle } from './SettingRow';
 
 interface ChannelConfigEditorProps {
   name: string;
@@ -289,26 +289,122 @@ export default function ChannelConfigEditor({ name, channelConfig, config, onSav
               renderInput={(val, onChange) => renderSegmented(val, onChange, STREAM_MODES)}
             />
 
+            {/* Current Session Context */}
+            <div className="mt-4 mb-2">
+              <span className="text-xs font-semibold text-neutral-500 uppercase tracking-wide">Current Session Context</span>
+            </div>
+
             <SettingRow
-              label="Session Limit"
-              hint="Messages in current session context"
-              inheritedValue={globalResolved.memory.currentSessionLimit}
+              label="Num Messages"
+              inheritedValue={globalResolved.currentContext.limit}
               inheritedFrom="global"
-              overrideValue={channelSettings.memory?.currentSessionLimit}
-              onOverride={(val) => updateChannelSetting('memory.currentSessionLimit', val)}
-              onReset={() => resetChannelSetting('memory.currentSessionLimit')}
+              overrideValue={channelSettings.currentContext?.limit}
+              onOverride={(val) => updateChannelSetting('currentContext.limit', val)}
+              onReset={() => resetChannelSetting('currentContext.limit')}
               renderInput={(val, onChange) => renderNumberInput(val, onChange, { min: 0 })}
             />
 
             <SettingRow
-              label="Cross-Session Limit"
-              hint="Messages per other session"
-              inheritedValue={globalResolved.memory.crossSessionLimit}
+              label="Thoughts"
+              inheritedValue={globalResolved.currentContext.includeThoughts}
               inheritedFrom="global"
-              overrideValue={channelSettings.memory?.crossSessionLimit}
-              onOverride={(val) => updateChannelSetting('memory.crossSessionLimit', val)}
-              onReset={() => resetChannelSetting('memory.crossSessionLimit')}
+              overrideValue={channelSettings.currentContext?.includeThoughts}
+              onOverride={(val) => updateChannelSetting('currentContext.includeThoughts', val)}
+              onReset={() => resetChannelSetting('currentContext.includeThoughts')}
+              renderInput={(val, onChange) => renderToggle(val, onChange)}
+              formatValue={(v) => v ? 'On' : 'Off'}
+            />
+
+            <SettingRow
+              label="Tools"
+              inheritedValue={globalResolved.currentContext.includeTools}
+              inheritedFrom="global"
+              overrideValue={channelSettings.currentContext?.includeTools}
+              onOverride={(val) => updateChannelSetting('currentContext.includeTools', val)}
+              onReset={() => resetChannelSetting('currentContext.includeTools')}
+              renderInput={(val, onChange) => renderToggle(val, onChange)}
+              formatValue={(v) => v ? 'On' : 'Off'}
+            />
+
+            <SettingRow
+              label="Archived"
+              inheritedValue={globalResolved.currentContext.includeArchived}
+              inheritedFrom="global"
+              overrideValue={channelSettings.currentContext?.includeArchived}
+              onOverride={(val) => updateChannelSetting('currentContext.includeArchived', val)}
+              onReset={() => resetChannelSetting('currentContext.includeArchived')}
+              renderInput={(val, onChange) => renderToggle(val, onChange)}
+              formatValue={(v) => v ? 'On' : 'Off'}
+            />
+
+            <SettingRow
+              label="Compacted"
+              inheritedValue={globalResolved.currentContext.includeCompacted}
+              inheritedFrom="global"
+              overrideValue={channelSettings.currentContext?.includeCompacted}
+              onOverride={(val) => updateChannelSetting('currentContext.includeCompacted', val)}
+              onReset={() => resetChannelSetting('currentContext.includeCompacted')}
+              renderInput={(val, onChange) => renderToggle(val, onChange)}
+              formatValue={(v) => v ? 'On' : 'Off'}
+            />
+
+            {/* Cross-Session Context */}
+            <div className="mt-4 mb-2">
+              <span className="text-xs font-semibold text-neutral-500 uppercase tracking-wide">Cross-Session Context</span>
+            </div>
+
+            <SettingRow
+              label="Num Messages"
+              inheritedValue={globalResolved.crossContext.limit}
+              inheritedFrom="global"
+              overrideValue={channelSettings.crossContext?.limit}
+              onOverride={(val) => updateChannelSetting('crossContext.limit', val)}
+              onReset={() => resetChannelSetting('crossContext.limit')}
               renderInput={(val, onChange) => renderNumberInput(val, onChange, { min: 0 })}
+            />
+
+            <SettingRow
+              label="Thoughts"
+              inheritedValue={globalResolved.crossContext.includeThoughts}
+              inheritedFrom="global"
+              overrideValue={channelSettings.crossContext?.includeThoughts}
+              onOverride={(val) => updateChannelSetting('crossContext.includeThoughts', val)}
+              onReset={() => resetChannelSetting('crossContext.includeThoughts')}
+              renderInput={(val, onChange) => renderToggle(val, onChange)}
+              formatValue={(v) => v ? 'On' : 'Off'}
+            />
+
+            <SettingRow
+              label="Tools"
+              inheritedValue={globalResolved.crossContext.includeTools}
+              inheritedFrom="global"
+              overrideValue={channelSettings.crossContext?.includeTools}
+              onOverride={(val) => updateChannelSetting('crossContext.includeTools', val)}
+              onReset={() => resetChannelSetting('crossContext.includeTools')}
+              renderInput={(val, onChange) => renderToggle(val, onChange)}
+              formatValue={(v) => v ? 'On' : 'Off'}
+            />
+
+            <SettingRow
+              label="Archived"
+              inheritedValue={globalResolved.crossContext.includeArchived}
+              inheritedFrom="global"
+              overrideValue={channelSettings.crossContext?.includeArchived}
+              onOverride={(val) => updateChannelSetting('crossContext.includeArchived', val)}
+              onReset={() => resetChannelSetting('crossContext.includeArchived')}
+              renderInput={(val, onChange) => renderToggle(val, onChange)}
+              formatValue={(v) => v ? 'On' : 'Off'}
+            />
+
+            <SettingRow
+              label="Compacted"
+              inheritedValue={globalResolved.crossContext.includeCompacted}
+              inheritedFrom="global"
+              overrideValue={channelSettings.crossContext?.includeCompacted}
+              onOverride={(val) => updateChannelSetting('crossContext.includeCompacted', val)}
+              onReset={() => resetChannelSetting('crossContext.includeCompacted')}
+              renderInput={(val, onChange) => renderToggle(val, onChange)}
+              formatValue={(v) => v ? 'On' : 'Off'}
             />
           </div>
         </div>

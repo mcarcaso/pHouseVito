@@ -144,3 +144,45 @@ export function renderSegmented(
     </div>
   );
 }
+
+export function renderToggle(value: boolean, onChange: (val: boolean) => void) {
+  return (
+    <div className="flex rounded-md overflow-hidden border border-neutral-700 shrink-0">
+      <button
+        className={`px-3 py-1.5 text-xs transition-colors border-r border-neutral-700 whitespace-nowrap ${
+          value
+            ? 'bg-blue-950 text-blue-400'
+            : 'bg-neutral-900 text-neutral-500 hover:text-neutral-300 hover:bg-neutral-800'
+        }`}
+        onClick={() => onChange(true)}
+      >
+        On
+      </button>
+      <button
+        className={`px-3 py-1.5 text-xs transition-colors whitespace-nowrap ${
+          !value
+            ? 'bg-blue-950 text-blue-400'
+            : 'bg-neutral-900 text-neutral-500 hover:text-neutral-300 hover:bg-neutral-800'
+        }`}
+        onClick={() => onChange(false)}
+      >
+        Off
+      </button>
+    </div>
+  );
+}
+
+export function renderSliderToggle(value: boolean, onChange: (val: boolean) => void) {
+  return (
+    <label className="relative inline-block w-11 h-6 cursor-pointer shrink-0">
+      <input
+        type="checkbox"
+        checked={value}
+        onChange={(e) => onChange(e.target.checked)}
+        className="opacity-0 w-0 h-0 peer"
+      />
+      <span className="absolute inset-0 bg-neutral-700 rounded-full transition-colors peer-checked:bg-blue-800" />
+      <span className="absolute left-[3px] top-[3px] w-[18px] h-[18px] bg-neutral-400 rounded-full transition-all peer-checked:translate-x-5 peer-checked:bg-blue-400" />
+    </label>
+  );
+}

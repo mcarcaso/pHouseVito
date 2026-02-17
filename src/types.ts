@@ -98,25 +98,48 @@ export interface ClaudeCodeHarnessConfig {
 // This is the cascading settings type: Global → Channel → Session
 // Each level can override any setting. More specific wins.
 
+/** Context window settings for current or cross-session */
+export interface ContextSettings {
+  /** Number of messages to include */
+  limit?: number;
+  /** Include thought messages */
+  includeThoughts?: boolean;
+  /** Include tool_start/tool_end messages */
+  includeTools?: boolean;
+  /** Include archived messages */
+  includeArchived?: boolean;
+  /** Include compacted messages */
+  includeCompacted?: boolean;
+}
+
 export interface Settings {
   /** Which harness to use */
   harness?: string;
   /** How to deliver responses: stream (real-time), bundled (chunks), final (single message) */
   streamMode?: StreamMode;
-  /** Memory/context settings */
-  memory?: {
-    currentSessionLimit?: number;
-    crossSessionLimit?: number;
-  };
+  /** Current session context settings */
+  currentContext?: ContextSettings;
+  /** Cross-session context settings */
+  crossContext?: ContextSettings;
   /** Pi Coding Agent harness overrides */
   "pi-coding-agent"?: Partial<PiHarnessConfig>;
   /** Claude Code CLI harness overrides */
   "claude-code"?: Partial<ClaudeCodeHarnessConfig>;
 }
 
+/** Resolved context settings with all fields required */
+export interface ResolvedContextSettings {
+  limit: number;
+  includeThoughts: boolean;
+  includeTools: boolean;
+  includeArchived: boolean;
+  includeCompacted: boolean;
+}
+
 /** Deep merge helper type for settings resolution */
 export type ResolvedSettings = Required<Pick<Settings, "harness" | "streamMode">> & {
-  memory: Required<NonNullable<Settings["memory"]>>;
+  currentContext: ResolvedContextSettings;
+  crossContext: ResolvedContextSettings;
   "pi-coding-agent"?: Partial<PiHarnessConfig>;
   "claude-code"?: Partial<ClaudeCodeHarnessConfig>;
 };
@@ -129,17 +152,14 @@ export interface VitoConfig {
     "pi-coding-agent"?: PiHarnessConfig;
     "claude-code"?: ClaudeCodeHarnessConfig;
   };
-  /** Global memory settings (compaction, tools inclusion, etc.) */
-  memory: {
-    compactionThreshold: number;
-    compactionPercent?: number; // Percentage of messages to compact (default: 50)
-    includeToolsInCurrentSession?: boolean;
-    includeToolsInCrossSession?: boolean;
-    showArchivedInCrossSession?: boolean;
+  /** Compaction settings (not cascading — global only) */
+  compaction: {
+    threshold: number;
+    percent?: number; // Percentage of messages to compact (default: 50)
   };
   /** Per-channel configuration */
   channels: Record<string, ChannelConfig>;
-  /** Per-session overrides (keyed by session ID, e.g., "telegram:5473044160") */
+  /** Per-session overrides (keyed by session ID, e.g., "telegram:123456789") */
   sessions?: Record<string, Settings>;
   /** Cron job configuration */
   cron: {
@@ -162,6 +182,7 @@ export interface CronJobConfig {
   session: string;
   prompt: string;
   oneTime?: boolean; // If true, job will be removed from config after firing
+  sendCondition?: string; // If set, response is only sent if condition is met (must NOT contain "NO_REPLY")
 }
 
 // ── DB row types ──

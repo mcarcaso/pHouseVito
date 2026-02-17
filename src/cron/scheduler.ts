@@ -40,6 +40,12 @@ export class CronScheduler {
     const channelName = sessionParts[0] || "cron";
     const targetName = sessionParts.slice(1).join(":") || "default";
     
+    // If sendCondition is set, modify the prompt to include the instruction
+    let prompt = job.prompt;
+    if (job.sendCondition) {
+      prompt = `${job.prompt}\n\nIMPORTANT: After your analysis, if the following condition is NOT met, respond with exactly 'NO_REPLY' and nothing else. Condition: ${job.sendCondition}`;
+    }
+    
     // Create an InboundEvent from the cron job
     const event: InboundEvent = {
       sessionKey: job.session,
@@ -47,8 +53,11 @@ export class CronScheduler {
       target: targetName,
       author: "system",
       timestamp: Date.now(),
-      content: job.prompt,
-      raw: { cronJob: job.name },
+      content: prompt,
+      raw: { 
+        cronJob: job.name,
+        sendCondition: job.sendCondition || null,
+      },
     };
 
     try {
@@ -160,6 +169,19 @@ export class CronScheduler {
   /** Get all active job names */
   getActiveJobs(): string[] {
     return Array.from(this.tasks.keys());
+  }
+
+  /** Manually trigger a job by name */
+  async triggerJob(name: string): Promise<boolean> {
+    const job = this.jobConfigs.get(name);
+    if (!job) {
+      console.log(`[Cron] Cannot trigger job '${name}' — not found`);
+      return false;
+    }
+
+    console.log(`[Cron] Manually triggering job: ${name}`);
+    await this.executeJob(job);
+    return true;
   }
 
   /** Reload jobs - remove old ones, add new ones, update changed ones */

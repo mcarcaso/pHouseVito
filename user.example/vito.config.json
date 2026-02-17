@@ -1,28 +1,42 @@
 {
-  "model": {
-    "provider": "anthropic",
-    "name": "claude-sonnet-4-5"
+  "settings": {
+    "harness": "claude-code",
+    "streamMode": "stream",
+    "currentContext": {
+      "limit": 100,
+      "includeThoughts": true,
+      "includeTools": true,
+      "includeArchived": false,
+      "includeCompacted": false
+    },
+    "crossContext": {
+      "limit": 5,
+      "includeThoughts": false,
+      "includeTools": false,
+      "includeArchived": false,
+      "includeCompacted": false
+    }
   },
-  "memory": {
-    "currentSessionLimit": 50,
-    "crossSessionLimit": 5,
-    "compactionThreshold": 200,
-    "includeToolsInCurrentSession": false,
-    "showArchivedInCrossSession": false
+  "harnesses": {
+    "claude-code": {
+      "model": "sonnet",
+      "permissionMode": "bypassPermissions"
+    }
+  },
+  "compaction": {
+    "threshold": 200,
+    "percent": 50
   },
   "channels": {
     "dashboard": {
-      "enabled": true,
-      "streamMode": "stream"
+      "enabled": true
     },
     "telegram": {
       "enabled": false,
-      "streamMode": "bundled",
       "allowedChatIds": []
     },
     "discord": {
       "enabled": false,
-      "streamMode": "stream",
       "allowedGuildIds": [],
       "allowedChannelIds": [],
       "requireMention": false

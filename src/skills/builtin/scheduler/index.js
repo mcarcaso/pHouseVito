@@ -16,23 +16,31 @@ export const skill = {
           schedule: { type: 'string', description: 'Cron schedule expression (e.g., "0 9 * * *" for 9 AM daily, or ISO date for one-time)' },
           prompt: { type: 'string', description: 'AI prompt to execute when the job fires' },
           session: { type: 'string', description: 'Session to route the response to (format: "channel:target")', default: 'dashboard:default' },
-          oneTime: { type: 'boolean', description: 'If true, job runs once and is deleted', default: false }
+          oneTime: { type: 'boolean', description: 'If true, job runs once and is deleted', default: false },
+          sendCondition: { type: 'string', description: 'Condition that must be met for the response to be sent (e.g., "Only send if temperature is below 10°C"). If not met, response is suppressed.' }
         },
         required: ['name', 'schedule', 'prompt']
       },
-      async execute({ name, schedule, prompt, session = 'dashboard:default', oneTime = false }) {
+      async execute({ name, schedule, prompt, session = 'dashboard:default', oneTime = false, sendCondition }) {
         if (!name || !schedule || !prompt) {
           throw new Error('Missing required parameters: name, schedule, and prompt are required');
         }
 
         try {
-          const response = await axios.post(API_URL, {
+          const jobData = {
             name,
             schedule,
             prompt,
             session,
             oneTime
-          });
+          };
+          
+          // Only include sendCondition if it's provided
+          if (sendCondition) {
+            jobData.sendCondition = sendCondition;
+          }
+          
+          const response = await axios.post(API_URL, jobData);
 
           const jobType = oneTime ? 'one-time job' : 'recurring job';
           return `✓ Scheduled ${jobType} "${name}" - will execute: ${prompt}`;

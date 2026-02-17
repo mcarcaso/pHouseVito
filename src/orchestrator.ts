@@ -1,6 +1,7 @@
 import { CronScheduler } from "./cron/scheduler.js";
 import type { Queries } from "./db/queries.js";
 import { ClaudeCodeHarness, PiHarness, withPersistence, withRelay, withTracing, withTyping, type Harness } from "./harnesses/index.js";
+import { withNoReplyCheck } from "./harness/decorators/index.js";
 import { shouldCompact, acquireCompactionLock, releaseCompactionLock } from "./memory/compaction.js";
 import { assembleContext, formatContextForPrompt } from "./memory/context.js";
 import { SessionManager } from "./sessions/manager.js";
@@ -14,8 +15,10 @@ import type {
   Channel,
   CronJobConfig,
   InboundEvent,
+  OutputHandler,
   ResolvedSettings,
   SkillMeta,
+  StreamMode,
   VitoConfig
 } from "./types.js";
 
@@ -437,7 +440,7 @@ Treat unknowns as puzzles to solve, not gaps to fill with questions.
     // 3. Get effective settings with cascade: Global → Channel → Session
     const sessionKey = `${event.channel}:${event.target}`;
     const effectiveSettings = getEffectiveSettings(this.config, event.channel, sessionKey);
-    console.log(`[Orchestrator] Effective settings for ${sessionKey}: harness=${effectiveSettings.harness}, streamMode=${effectiveSettings.streamMode}, memory=${JSON.stringify(effectiveSettings.memory)}`);
+    console.log(`[Orchestrator] Effective settings for ${sessionKey}: harness=${effectiveSettings.harness}, streamMode=${effectiveSettings.streamMode}, currentContext.limit=${effectiveSettings.currentContext.limit}, crossContext.limit=${effectiveSettings.crossContext.limit}`);
 
     // 4. Build fresh context (uses effective settings for memory limits)
     const ctx = await assembleContext(
@@ -450,10 +453,22 @@ Treat unknowns as puzzles to solve, not gaps to fill with questions.
     const skillsPrompt = formatSkillsForPrompt(this.getSkills());
 
     // 5. Set up output handler and message tracking
-    const handler = channel ? channel.createHandler(event) : null;
+    const baseHandler = channel ? channel.createHandler(event) : null;
+    
+    // Check if this is a cron job with sendCondition
+    const sendCondition = event.raw?.sendCondition as string | null;
+    
+    // If sendCondition is set, wrap handler with NO_REPLY check and force streamMode to 'final'
+    let handler = baseHandler;
+    let streamMode = effectiveSettings.streamMode;
+    if (sendCondition) {
+      handler = withNoReplyCheck(baseHandler);
+      streamMode = 'final';
+      console.log(`[Orchestrator] sendCondition detected, wrapping handler with NO_REPLY check, forcing streamMode=final`);
+    }
 
     // Create harness for this request (respects cascaded settings)
-    // Build decorator chain: relay → persistence → tracing → inner harness
+    // Build decorator chain: harness → tracing → persistence → relay
     const innerHarness = this.getHarness(effectiveSettings);
     const tracedHarness = withTracing(innerHarness, {
       session_id: vitoSession.id,
@@ -469,9 +484,10 @@ Treat unknowns as puzzles to solve, not gaps to fill with questions.
       userContent,
       userTimestamp: event.timestamp,
     });
-    const streamMode = effectiveSettings.streamMode;
+    const relayHarness = withRelay(persistedHarness, { handler, streamMode });
+    
     console.log(`[Orchestrator] Stream mode for ${event.channel}: ${streamMode}`);
-    const harness = withTyping(withRelay(persistedHarness, { handler, streamMode }), handler);
+    const harness = withTyping(relayHarness, handler);
 
     // Build system prompt with harness-specific custom instructions
     const systemPrompt = this.buildSystemPrompt(
@@ -526,7 +542,7 @@ Treat unknowns as puzzles to solve, not gaps to fill with questions.
 
     // Check if compaction is needed (run in background)
     if (shouldCompact(this.queries, this.config)) {
-      const percent = this.config.memory.compactionPercent ?? 50;
+      const percent = this.config.compaction.percent ?? 50;
       const count = Math.ceil(this.queries.countUncompacted() * (percent / 100));
       console.log("\nCompaction threshold reached, triggering compaction skill...");
       this.triggerCompaction(`Compact the oldest ${count} uncompacted messages into long-term memory.`)

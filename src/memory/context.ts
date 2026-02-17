@@ -11,22 +11,14 @@ export interface AssembledContext {
   currentSessionBlock: string;
 }
 
-export interface ContextOptions {
-  /** From resolved settings cascade */
-  currentSessionLimit: number;
-  crossSessionLimit: number;
-  /** From global config.memory */
-  includeToolsInCurrentSession?: boolean;
-  includeToolsInCrossSession?: boolean;
-  showArchivedInCrossSession?: boolean;
-}
+// ContextOptions interface removed — now using ResolvedSettings directly
 
 /**
  * Build the 3-layer context for a given session.
  *
  * 1. Memory titles — lightweight list of .md files, read on demand with Read tool
- * 2. Cross-session — last N messages per other session (excludes archived)
- * 3. Current session — recent messages from this session
+ * 2. Cross-session — last N messages per other session (filtered by settings)
+ * 3. Current session — recent messages from this session (filtered by settings)
  */
 export async function assembleContext(
   queries: Queries,
@@ -34,18 +26,21 @@ export async function assembleContext(
   config: VitoConfig,
   effectiveSettings?: ResolvedSettings
 ): Promise<AssembledContext> {
-  // Use effective settings if provided, otherwise fall back to legacy config.memory
-  const currentSessionLimit = effectiveSettings?.memory.currentSessionLimit ?? 
-    (config.settings?.memory?.currentSessionLimit ?? 100);
-  const crossSessionLimit = effectiveSettings?.memory.crossSessionLimit ??
-    (config.settings?.memory?.crossSessionLimit ?? 5);
-  
-  // These are still global-only settings (not cascaded)
-  const {
-    includeToolsInCurrentSession = true,
-    includeToolsInCrossSession = false,
-    showArchivedInCrossSession = false,
-  } = config.memory;
+  // Use effective settings, with sensible defaults
+  const currentContext = effectiveSettings?.currentContext ?? {
+    limit: 100,
+    includeThoughts: true,
+    includeTools: true,
+    includeArchived: false,
+    includeCompacted: false,
+  };
+  const crossContext = effectiveSettings?.crossContext ?? {
+    limit: 5,
+    includeThoughts: false,
+    includeTools: false,
+    includeArchived: false,
+    includeCompacted: false,
+  };
 
   // 1. Long-term memories — just file titles from user/memories/
   const memoriesBlock = buildMemoriesTitlesBlock();
@@ -53,19 +48,25 @@ export async function assembleContext(
   // Load session aliases for human-readable display
   const aliases = queries.getSessionAliases();
 
-  // 2. Cross-session messages — last N per session, exclude archived
+  // 2. Cross-session messages — last N per session, filtered by settings
   const crossSessionMessages = queries.getCrossSessionMessagesPerSession(
     sessionId,
-    crossSessionLimit,
-    includeToolsInCrossSession
+    crossContext.limit,
+    crossContext.includeTools,
+    crossContext.includeThoughts,
+    crossContext.includeArchived,
+    crossContext.includeCompacted
   );
   const crossSessionBlock = formatCrossSessionMessages(crossSessionMessages, aliases);
 
-  // 3. Current session messages (everything not archived, compacted or not)
+  // 3. Current session messages (filtered by settings)
   const currentSessionMessages = queries.getRecentMessages(
     sessionId,
-    currentSessionLimit,
-    includeToolsInCurrentSession
+    currentContext.limit,
+    currentContext.includeTools,
+    currentContext.includeThoughts,
+    currentContext.includeArchived,
+    currentContext.includeCompacted
   );
   const currentSessionBlock = formatCurrentSessionMessages(
     currentSessionMessages,

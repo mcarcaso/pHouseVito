@@ -184,7 +184,10 @@ function formatCrossSessionMessages(messages: MessageRow[], aliases?: Record<str
     for (const msg of msgs) {
       const time = formatTimestamp(msg.timestamp);
       const text = extractMessageText(msg.content);
-      parts.push(`[${time}] ${typeToRole(msg.type)}: ${text}`);
+      // Include author for user messages if available
+      const role = typeToRole(msg.type);
+      const authorPrefix = (msg.type === "user" && msg.author) ? `${msg.author}: ` : "";
+      parts.push(`[${time}] ${role}: ${authorPrefix}${text}`);
     }
   }
 
@@ -203,7 +206,10 @@ function formatCurrentSessionMessages(messages: MessageRow[], sessionId: string,
         return formatToolMessage(msg.content, time, msg.type);
       }
       const text = extractMessageText(msg.content);
-      return `[${time}] ${typeToRole(msg.type)}: ${text}`;
+      const role = typeToRole(msg.type);
+      // Include author for user messages if available
+      const authorPrefix = (msg.type === "user" && msg.author) ? `${msg.author}: ` : "";
+      return `[${time}] ${role}: ${authorPrefix}${text}`;
     })
     .join("\n");
   
@@ -233,11 +239,25 @@ function formatToolMessage(raw: string, time: string, type: string): string {
 
 function formatTimestamp(ts: number): string {
   const d = new Date(ts);
-  return d.toLocaleTimeString("en-US", {
+  const now = new Date();
+  const isToday = d.toDateString() === now.toDateString();
+  
+  const time = d.toLocaleTimeString("en-US", {
     hour: "2-digit",
     minute: "2-digit",
     hour12: false,
   });
+  
+  if (isToday) {
+    return time;
+  }
+  
+  // Include date for messages not from today
+  const date = d.toLocaleDateString("en-US", {
+    month: "short",
+    day: "numeric",
+  });
+  return `${date} ${time}`;
 }
 
 function formatTimeAgo(ts: number): string {

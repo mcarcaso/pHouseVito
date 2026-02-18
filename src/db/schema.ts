@@ -162,5 +162,11 @@ export function createDatabase(dbPath: string): Database.Database {
     db.exec("ALTER TABLE sessions ADD COLUMN alias TEXT DEFAULT NULL");
   }
 
+  // Migration: Add author column to messages table (for tracking who sent each message)
+  const msgColsForAuthor = db.pragma("table_info(messages)") as Array<{ name: string }>;
+  if (!msgColsForAuthor.some((c) => c.name === "author")) {
+    db.exec("ALTER TABLE messages ADD COLUMN author TEXT DEFAULT NULL");
+  }
+
   return db;
 }

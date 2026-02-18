@@ -33,6 +33,8 @@ export default function ChannelConfigEditor({ name, channelConfig, config, onSav
   const [needsRestart, setNeedsRestart] = useState(false);
   const [registeringCommands, setRegisteringCommands] = useState(false);
   const [commandsResult, setCommandsResult] = useState<{ success: boolean; message: string } | null>(null);
+  const [autoAliasing, setAutoAliasing] = useState(false);
+  const [aliasResult, setAliasResult] = useState<{ success: boolean; message: string } | null>(null);
 
   const isTelegram = name === 'telegram';
   const isDiscord = name === 'discord';
@@ -258,6 +260,40 @@ export default function ChannelConfigEditor({ name, channelConfig, config, onSav
                   )}
                 </div>
                 <span className="text-xs text-neutral-600">Only needed once (or when commands change).</span>
+              </div>
+            )}
+            {isDiscord && (
+              <div className="flex flex-col gap-2 py-2.5 border-b border-neutral-800/50">
+                <label className="text-sm text-neutral-300">Auto-Generate Aliases</label>
+                <div className="flex items-center gap-3">
+                  <button
+                    className="bg-purple-950/40 text-purple-400 border border-purple-800/40 rounded-md px-3 py-1.5 text-sm cursor-pointer hover:bg-purple-900/40 disabled:opacity-40"
+                    disabled={autoAliasing}
+                    onClick={async () => {
+                      setAutoAliasing(true);
+                      setAliasResult(null);
+                      try {
+                        const res = await fetch('/api/discord/auto-alias', { method: 'POST' });
+                        const data = await res.json();
+                        setAliasResult(data.success
+                          ? { success: true, message: `Updated ${data.updated} session(s)${data.failed > 0 ? `, ${data.failed} failed` : ''}` }
+                          : { success: false, message: data.error || 'Failed' });
+                      } catch (err: any) {
+                        setAliasResult({ success: false, message: err.message });
+                      }
+                      setAutoAliasing(false);
+                      setTimeout(() => setAliasResult(null), 5000);
+                    }}
+                  >
+                    {autoAliasing ? 'Generating...' : 'Set Default Aliases'}
+                  </button>
+                  {aliasResult && (
+                    <span className={`text-sm ${aliasResult.success ? 'text-purple-400' : 'text-red-400'}`}>
+                      {aliasResult.success ? '\u2713' : '\u2717'} {aliasResult.message}
+                    </span>
+                  )}
+                </div>
+                <span className="text-xs text-neutral-600">Sets "Server / Channel" as alias for sessions without one.</span>
               </div>
             )}
             {isDiscord && renderIdList('allowedGuildIds', 'Allowed Server IDs', 'No server IDs — all servers allowed', 'Server (Guild) ID')}

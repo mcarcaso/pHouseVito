@@ -156,6 +156,7 @@ export interface VitoConfig {
   compaction: {
     threshold: number;
     percent?: number; // Percentage of messages to compact (default: 50)
+    messageTypes?: MsgType[]; // Which message types to count (default: ["user", "assistant"])
   };
   /** Per-channel configuration */
   channels: Record<string, ChannelConfig>;
@@ -207,6 +208,7 @@ export interface MessageRow {
   content: string; // JSON string
   compacted: number; // 0 or 1
   archived: number; // 0 or 1
+  author: string | null; // username/tag of the sender (for user messages)
 }
 
 // SessionConfig is now just Settings — keeping the alias for backward compat

@@ -63,8 +63,8 @@ export class Queries {
   insertMessage(msg: Omit<MessageRow, "id">): number {
     const result = this.db
       .prepare(
-        `INSERT INTO messages (session_id, channel, channel_target, timestamp, type, content, compacted, archived)
-         VALUES (@session_id, @channel, @channel_target, @timestamp, @type, @content, @compacted, @archived)`
+        `INSERT INTO messages (session_id, channel, channel_target, timestamp, type, content, compacted, archived, author)
+         VALUES (@session_id, @channel, @channel_target, @timestamp, @type, @content, @compacted, @archived, @author)`
       )
       .run(msg);
     return result.lastInsertRowid as number;
@@ -275,10 +275,15 @@ export class Queries {
   }
 
   /** Count un-compacted messages */
-  countUncompacted(): number {
+  countUncompacted(messageTypes?: string[]): number {
+    // Default to user + assistant only (the actual conversation)
+    const types = messageTypes && messageTypes.length > 0 
+      ? messageTypes 
+      : ["user", "assistant"];
+    const placeholders = types.map(() => "?").join(",");
     const row = this.db
-      .prepare("SELECT COUNT(*) as count FROM messages WHERE compacted = 0")
-      .get() as { count: number };
+      .prepare(`SELECT COUNT(*) as count FROM messages WHERE compacted = 0 AND type IN (${placeholders})`)
+      .get(...types) as { count: number };
     return row.count;
   }
 

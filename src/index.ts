@@ -70,6 +70,7 @@ async function main() {
   orchestrator.registerChannel(discord);
   dashboard.setDiscordChannel({
     registerSlashCommands: () => discord.registerSlashCommands(),
+    getChannelInfo: (channelId: string) => discord.getChannelInfo(channelId),
   });
 
   // Start channels

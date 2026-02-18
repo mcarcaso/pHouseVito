@@ -127,7 +127,7 @@ export function renderSegmented(
   options: { value: string; label: string }[]
 ) {
   return (
-    <div className="flex rounded-md overflow-hidden border border-neutral-700 shrink-0">
+    <div className="inline-flex rounded-md overflow-hidden border border-neutral-700 shrink-0 w-fit">
       {options.map((opt) => (
         <button
           key={opt.value}

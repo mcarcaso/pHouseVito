@@ -37,6 +37,14 @@ const HARNESS_OPTIONS = [
   { value: 'pi-coding-agent', label: 'Pi Coding Agent' },
 ];
 
+const MESSAGE_TYPES = [
+  { value: 'user', label: 'User' },
+  { value: 'assistant', label: 'Final' },
+  { value: 'thought', label: 'Thoughts' },
+  { value: 'tool_start', label: 'Tool Start' },
+  { value: 'tool_end', label: 'Tool End' },
+];
+
 // NumberInput that allows clearing the field while typing (borrowed from old Settings.tsx)
 function NumberInput({
   label, value, onChange, min, max, step, hint,
@@ -240,6 +248,40 @@ export default function GlobalSettings({ config, onSave }: GlobalSettingsProps) 
           step={5}
           hint="% of messages to compact (1-100)"
         />
+
+        <div className="py-3 border-t border-neutral-800/50 mt-2">
+          <label className="text-sm text-neutral-400 mb-2 block">Message Types to Count</label>
+          <p className="text-xs text-neutral-600 mb-3">Which message types contribute to the uncompacted count</p>
+          <div className="flex flex-wrap gap-2">
+            {MESSAGE_TYPES.map(({ value, label }) => {
+              const currentTypes = compaction.messageTypes || ['user', 'assistant'];
+              const isSelected = currentTypes.includes(value);
+              return (
+                <button
+                  key={value}
+                  onClick={() => {
+                    let newTypes: string[];
+                    if (isSelected) {
+                      // Don't allow deselecting all
+                      newTypes = currentTypes.filter(t => t !== value);
+                      if (newTypes.length === 0) return;
+                    } else {
+                      newTypes = [...currentTypes, value];
+                    }
+                    updateCompaction('messageTypes', newTypes as any);
+                  }}
+                  className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-all ${
+                    isSelected
+                      ? 'bg-blue-600 text-white'
+                      : 'bg-neutral-800 text-neutral-400 hover:bg-neutral-700'
+                  }`}
+                >
+                  {label}
+                </button>
+              );
+            })}
+          </div>
+        </div>
       </section>
     </div>
   );

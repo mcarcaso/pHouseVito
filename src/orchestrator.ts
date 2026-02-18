@@ -483,6 +483,7 @@ Treat unknowns as puzzles to solve, not gaps to fill with questions.
       target: event.target,
       userContent,
       userTimestamp: event.timestamp,
+      author: event.author,
     });
     const relayHarness = withRelay(persistedHarness, { handler, streamMode });
     
@@ -502,8 +503,15 @@ Treat unknowns as puzzles to solve, not gaps to fill with questions.
     const activeEntry = { abort: abortController, aborted: false };
     this.activeRequests.set(sessionKey, activeEntry);
 
-    // Build user message (include attachment file paths if any)
+    // Build user message (include sender name and attachment file paths if any)
     let promptText = event.content || "";
+    
+    // Prepend sender name if available (so Claude knows who is talking)
+    const senderName = event.author;
+    if (senderName && senderName !== "user" && senderName !== "system") {
+      promptText = `[${senderName}]: ${promptText}`;
+    }
+    
     if (event.attachments?.length) {
       const refs = event.attachments
         .map((a) => {
@@ -543,7 +551,8 @@ Treat unknowns as puzzles to solve, not gaps to fill with questions.
     // Check if compaction is needed (run in background)
     if (shouldCompact(this.queries, this.config)) {
       const percent = this.config.compaction.percent ?? 50;
-      const count = Math.ceil(this.queries.countUncompacted() * (percent / 100));
+      const messageTypes = this.config.compaction.messageTypes;
+      const count = Math.ceil(this.queries.countUncompacted(messageTypes) * (percent / 100));
       console.log("\nCompaction threshold reached, triggering compaction skill...");
       this.triggerCompaction(`Compact the oldest ${count} uncompacted messages into long-term memory.`)
         .then(() => {
@@ -696,6 +705,7 @@ Treat unknowns as puzzles to solve, not gaps to fill with questions.
       target: event.target,
       userContent: event.content,
       userTimestamp: event.timestamp,
+      author: event.author,
     });
     // No relay or typing for system tasks
     const harness = persistedHarness;

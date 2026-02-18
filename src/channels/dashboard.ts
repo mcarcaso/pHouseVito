@@ -52,6 +52,7 @@ export class DashboardChannel implements Channel {
   };
   private discordChannel?: {
     registerSlashCommands: () => Promise<{ success: boolean; count: number; error?: string }>;
+    getChannelInfo: (channelId: string) => Promise<{ name: string; guildName?: string } | null>;
   };
 
   constructor(private db: any, private queries: any, private config: any) {
@@ -84,6 +85,7 @@ export class DashboardChannel implements Channel {
 
   setDiscordChannel(discord: {
     registerSlashCommands: () => Promise<{ success: boolean; count: number; error?: string }>;
+    getChannelInfo: (channelId: string) => Promise<{ name: string; guildName?: string } | null>;
   }) {
     this.discordChannel = discord;
   }
@@ -141,11 +143,13 @@ export class DashboardChannel implements Channel {
 
     // Compaction status endpoint
     this.app.get("/api/compaction/status", (req, res) => {
-      const uncompactedCount = this.queries.countUncompacted();
+      const messageTypes = this.config.compaction.messageTypes;
+      const uncompactedCount = this.queries.countUncompacted(messageTypes);
       const threshold = this.config.compaction.threshold;
       res.json({
         uncompactedCount,
         threshold,
+        messageTypes: messageTypes || ["user", "assistant"], // Return current filter for UI
         progress: Math.min(uncompactedCount / threshold, 1),
         willTrigger: uncompactedCount > threshold
       });
@@ -485,6 +489,49 @@ export class DashboardChannel implements Channel {
       try {
         const result = await this.discordChannel.registerSlashCommands();
         res.json(result);
+      } catch (err: any) {
+        res.status(500).json({ success: false, error: err.message });
+      }
+    });
+
+    // Auto-generate aliases for Discord sessions that don't have one
+    this.app.post("/api/discord/auto-alias", async (req, res) => {
+      if (!this.discordChannel) {
+        res.status(400).json({ success: false, error: "Discord channel not configured" });
+        return;
+      }
+      try {
+        // Get all Discord sessions without aliases
+        const sessions = this.queries.getAllSessions().filter(
+          (s: any) => s.channel === "discord" && !s.alias
+        );
+        
+        const updated: string[] = [];
+        const failed: string[] = [];
+        
+        for (const session of sessions) {
+          const channelId = session.channel_target;
+          const info = await this.discordChannel.getChannelInfo(channelId);
+          
+          if (info) {
+            // Format alias: "guild-name / channel-name" or just the name for DMs
+            const alias = info.guildName 
+              ? `${info.guildName} / ${info.name}`
+              : info.name;
+            
+            this.queries.updateSessionAlias(session.id, alias);
+            updated.push(session.id);
+          } else {
+            failed.push(session.id);
+          }
+        }
+        
+        res.json({ 
+          success: true, 
+          updated: updated.length, 
+          failed: failed.length,
+          sessions: { updated, failed }
+        });
       } catch (err: any) {
         res.status(500).json({ success: false, error: err.message });
       }
@@ -989,6 +1036,15 @@ export class DashboardChannel implements Channel {
           return;
         }
         
+        // Build a map of session_id → alias for quick lookup
+        const sessions = this.queries.getAllSessions();
+        const aliasMap = new Map<string, string>();
+        for (const s of sessions) {
+          if (s.alias) {
+            aliasMap.set(s.id, s.alias);
+          }
+        }
+        
         // Support both old .log and new .jsonl formats
         const files = readdirSync(logsDir)
           .filter(f => (f.startsWith("request-") && f.endsWith(".log")) ||
@@ -1000,6 +1056,7 @@ export class DashboardChannel implements Channel {
 
             // Read only the first 4KB for preview (avoids reading multi-MB trace files)
             let preview = "";
+            let sessionId = "";
             const readSize = Math.min(stats.size, 4096);
             const buf = Buffer.alloc(readSize);
             const fd = openSync(filePath, "r");
@@ -1012,6 +1069,7 @@ export class DashboardChannel implements Channel {
               try {
                 const firstLine = head.split("\n")[0];
                 const header = JSON.parse(firstLine);
+                sessionId = header.session_id || "";
                 preview = `Session: ${header.session_id}\nChannel: ${header.channel}\nModel: ${header.model}`;
               } catch {
                 preview = head.split("\n").slice(0, 3).join("\n");
@@ -1026,6 +1084,8 @@ export class DashboardChannel implements Channel {
               size: stats.size,
               preview,
               format: isJsonl ? "jsonl" : "text",
+              sessionId,
+              alias: sessionId ? aliasMap.get(sessionId) || null : null,
             };
           })
           .sort((a, b) => b.timestamp - a.timestamp); // Newest first

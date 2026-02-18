@@ -63,6 +63,8 @@ interface LogFile {
   size: number;
   preview: string;
   format?: "jsonl" | "text";
+  sessionId?: string;
+  alias?: string | null;
 }
 
 interface LogDetailJsonl {
@@ -528,12 +530,14 @@ function Traces() {
                   ✕
                 </button>
               </div>
-              <div className="text-neutral-400 text-sm leading-relaxed font-mono">
-                {info.session || log.filename}
+              <div className="text-neutral-300 text-sm leading-relaxed">
+                {log.alias || info.session || log.filename}
               </div>
-              <div className="text-neutral-600 text-xs font-mono mt-1 truncate">
-                {log.filename}
-              </div>
+              {log.alias && info.session && (
+                <div className="text-neutral-600 text-xs font-mono mt-1 truncate">
+                  {info.session}
+                </div>
+              )}
             </div>
           );
         })}

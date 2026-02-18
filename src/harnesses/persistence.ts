@@ -22,6 +22,8 @@ export interface PersistenceOptions {
   /** Structured user content to store in DB (may differ from the prompt text) */
   userContent: unknown;
   userTimestamp: number;
+  /** Author/sender name (username, tag, etc.) for user messages */
+  author?: string;
 }
 
 export class PersistenceHarness extends ProxyHarness {
@@ -31,6 +33,7 @@ export class PersistenceHarness extends ProxyHarness {
   private readonly target: string;
   private readonly userContent: unknown;
   private readonly userTimestamp: number;
+  private readonly author: string | null;
   private assistantMessageIds: number[] = [];
 
   constructor(delegate: Harness, opts: PersistenceOptions) {
@@ -41,9 +44,10 @@ export class PersistenceHarness extends ProxyHarness {
     this.target = opts.target;
     this.userContent = opts.userContent;
     this.userTimestamp = opts.userTimestamp;
+    this.author = opts.author ?? null;
   }
 
-  private insertMsg(type: MsgType, content: unknown, timestamp = Date.now()): number {
+  private insertMsg(type: MsgType, content: unknown, timestamp = Date.now(), author: string | null = null): number {
     return this.queries.insertMessage({
       session_id: this.sessionId,
       channel: this.channel,
@@ -53,6 +57,7 @@ export class PersistenceHarness extends ProxyHarness {
       content: JSON.stringify(content),
       compacted: 0,
       archived: 0,
+      author,
     });
   }
 
@@ -64,8 +69,8 @@ export class PersistenceHarness extends ProxyHarness {
   ): Promise<void> {
     this.assistantMessageIds = [];
 
-    // Store user message before delegating
-    this.insertMsg("user", this.userContent, this.userTimestamp);
+    // Store user message before delegating (with author)
+    this.insertMsg("user", this.userContent, this.userTimestamp, this.author);
 
     const persistCallbacks: HarnessCallbacks = {
       onInvocation: callbacks.onInvocation,

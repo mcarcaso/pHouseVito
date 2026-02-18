@@ -12,7 +12,7 @@ export function shouldCompact(queries: Queries, config: VitoConfig): boolean {
   // Don't trigger if already compacting
   if (isCompacting) return false;
   
-  const count = queries.countUncompacted();
+  const count = queries.countUncompacted(config.compaction.messageTypes);
   return count > config.compaction.threshold;
 }
 

@@ -165,6 +165,40 @@ export class DiscordChannel implements Channel {
   }
 
   /**
+   * Get channel info (name, guild name) for a Discord channel ID.
+   * Used for auto-generating session aliases.
+   */
+  async getChannelInfo(channelId: string): Promise<{ name: string; guildName?: string } | null> {
+    if (!this.client) return null;
+    try {
+      const channel = await this.client.channels.fetch(channelId);
+      if (!channel) return null;
+      
+      if (channel.isDMBased()) {
+        // For DMs, try to get the recipient's username
+        if ('recipient' in channel && channel.recipient) {
+          return { name: `DM: ${channel.recipient.username}` };
+        }
+        return { name: 'DM' };
+      }
+      
+      // For guild channels
+      if ('name' in channel && 'guild' in channel) {
+        const guildChannel = channel as TextChannel;
+        return {
+          name: guildChannel.name,
+          guildName: guildChannel.guild?.name
+        };
+      }
+      
+      return null;
+    } catch (err) {
+      console.error(`[Discord] Failed to fetch channel ${channelId}:`, err);
+      return null;
+    }
+  }
+
+  /**
    * Register slash commands with the Discord API.
    * Call once (or when commands change). Commands persist until removed.
    */

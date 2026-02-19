@@ -211,7 +211,7 @@ export class TelegramChannel implements Channel {
       "## Channel: Telegram",
       "You are responding in a Telegram chat. Keep responses concise and conversational.",
       "Avoid very long messages — Telegram is a chat app, not a document viewer.",
-      "Use plain text formatting (Telegram's markdown is limited).",
+      "Use plain unformatted text with emojis. No markdown.",
     ].join("\n");
   }
 }

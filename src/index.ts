@@ -78,6 +78,11 @@ async function main() {
 
   console.log("\nVito is ready. Dashboard at http://localhost:3030\n");
 
+  // Heartbeat log every 30 minutes to detect silent cron failures
+  setInterval(() => {
+    console.log(`[Heartbeat] Vito alive @ ${new Date().toLocaleString()}`);
+  }, 30 * 60 * 1000); // 30 minutes
+
   // Watch config file for changes (hot-reload cron jobs)
   const configPath = resolve(USER_DIR, "vito.config.json");
   let reloadTimeout: NodeJS.Timeout | null = null;

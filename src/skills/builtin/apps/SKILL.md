@@ -51,6 +51,41 @@ Use this skill when you need to:
 - For React-style apps, use self-contained approaches (CDN imports, single-file bundles)
 - The server MUST listen on the port passed via `--port` flag
 - Keep app names short, lowercase, URL-friendly (letters, numbers, hyphens)
+- **No caching by default** — add a `serve.json` file to disable caching:
+  ```json
+  {
+    "headers": [
+      { "source": "**/*", "headers": [{ "key": "Cache-Control", "value": "no-cache, no-store, must-revalidate" }] }
+    ]
+  }
+  ```
+  This ensures updates are live immediately without waiting for Cloudflare cache to expire.
+
+**App Icons:**
+If you have access to an image generation skill (like `gemini-image`), generate icons for the app:
+
+1. **Generate the icon** after the app is created (so you have a directory to save to):
+   ```bash
+   ~/vito3.0/user/skills/gemini-image/generate.py "your icon description" -o ~/vito3.0/user/apps/<name>/icon-180.png
+   ```
+
+2. **Resize for both sizes** using sips:
+   ```bash
+   cd ~/vito3.0/user/apps/<name>
+   sips -z 180 180 icon-180.png  # resize to 180x180 for iOS
+   cp icon-180.png icon-full.png && sips -z 32 32 icon-full.png --out icon-32.png && rm icon-full.png
+   ```
+
+3. **Add meta tags to the HTML** (in the `<head>`):
+   ```html
+   <link rel="icon" type="image/png" href="icon-32.png">
+   <link rel="apple-touch-icon" href="icon-180.png">
+   <meta name="apple-mobile-web-app-capable" content="yes">
+   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+   <meta name="apple-mobile-web-app-title" content="App Name">
+   ```
+
+**Important:** Use unique filenames like `icon-180.png` and `icon-32.png` instead of generic names like `apple-touch-icon.png` or `favicon.png`. Cloudflare aggressively caches these common filenames, and if they get cached with wrong content-type (e.g., from SPA mode routing), you'll be stuck waiting hours for cache to expire.
 
 ## Tools
 

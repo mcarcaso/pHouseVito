@@ -7,6 +7,7 @@ import { assembleContext, formatContextForPrompt } from "./memory/context.js";
 import { SessionManager } from "./sessions/manager.js";
 import { getEffectiveSettings } from "./settings.js";
 import { discoverSkills, formatSkillsForPrompt } from "./skills/discovery.js";
+import { buildSystemBlock, getDateTimeString } from "./system-instructions.js";
 
 import { randomBytes } from "crypto";
 import { mkdirSync, writeFileSync } from "fs";
@@ -37,50 +38,14 @@ export function buildTestSystemPrompt(
 ): string {
   const parts: string[] = [];
 
-  // Full date with day-of-week at the very top
-  const now = new Date();
-  const dateStr = now.toLocaleDateString("en-US", {
-    weekday: "long",
-    year: "numeric",
-    month: "long",
-    day: "numeric",
-    timeZone: "America/Toronto",
-  });
-  const timeStr = now.toLocaleTimeString("en-US", {
-    hour: "numeric",
-    minute: "2-digit",
-    timeZone: "America/Toronto",
-  });
-  parts.push(`Today is ${dateStr}. Current time: ${timeStr} ET.`);
+  parts.push(getDateTimeString());
 
   if (soul) {
     parts.push(`<personality>\n${soul}\n</personality>`);
   }
 
-  parts.push(`<system>
-For system architecture, file structure, restart rules, bash guidelines, and operational knowledge, read SYSTEM.md using the Read tool. Only pull it when you need system-level context.
-
-You can query the SQLite database (user/vito.db) for more message history if needed. Read SYSTEM.md for schema details.
-
-To send/share a file or image inline, output MEDIA:/path/to/file on its own line. The channel will deliver it as an attachment. Don't paste file contents when the user asks you to "send" a file — use MEDIA: instead.
-
-NEVER restart yourself. You don't know what long-running jobs might be in progress. When changes need a restart, say "changes are ready, restart when you're clear" and let the boss decide when.
-
-## Cardinal Rules
-
-- **Never improvise facts.** If uncertain about something, verify it first. Don't guess and present it as truth.
-- **When debugging something unexpected**, search the message DB for related context before assuming it's a bug. Grab surrounding messages to understand the full picture.
-
-## Investigation First
-
-When instructions are vague or incomplete, investigate before asking:
-- Check user memories in user/memories/ — they contain context, preferences, and prior intel
-- Check existing files and configs
-- Query the message history if needed
-- Only ask clarifying questions if you've genuinely exhausted available context
-
-Treat unknowns as puzzles to solve, not gaps to fill with questions.
-</system>`);
+  // No commands in test prompts (no /new etc.)
+  parts.push(buildSystemBlock(false));
 
   // Skills prompt
   const skills = discoverSkills(skillsDir);
@@ -177,50 +142,14 @@ export class Orchestrator {
   buildTestSystemPrompt(channelPrompt: string = ""): string {
     const parts: string[] = [];
 
-    // Full date with day-of-week at the very top
-    const now = new Date();
-    const dateStr = now.toLocaleDateString("en-US", {
-      weekday: "long",
-      year: "numeric",
-      month: "long",
-      day: "numeric",
-      timeZone: "America/Toronto",
-    });
-    const timeStr = now.toLocaleTimeString("en-US", {
-      hour: "numeric",
-      minute: "2-digit",
-      timeZone: "America/Toronto",
-    });
-    parts.push(`Today is ${dateStr}. Current time: ${timeStr} ET.`);
+    parts.push(getDateTimeString());
 
     if (this.soul) {
       parts.push(`<personality>\n${this.soul}\n</personality>`);
     }
 
-    parts.push(`<system>
-For system architecture, file structure, restart rules, bash guidelines, and operational knowledge, read SYSTEM.md using the Read tool. Only pull it when you need system-level context.
-
-You can query the SQLite database (user/vito.db) for more message history if needed. Read SYSTEM.md for schema details.
-
-To send/share a file or image inline, output MEDIA:/path/to/file on its own line. The channel will deliver it as an attachment. Don't paste file contents when the user asks you to "send" a file — use MEDIA: instead.
-
-NEVER restart yourself. You don't know what long-running jobs might be in progress. When changes need a restart, say "changes are ready, restart when you're clear" and let the boss decide when.
-
-## Cardinal Rules
-
-- **Never improvise facts.** If uncertain about something, verify it first. Don't guess and present it as truth.
-- **When debugging something unexpected**, search the message DB for related context before assuming it's a bug. Grab surrounding messages to understand the full picture.
-
-## Investigation First
-
-When instructions are vague or incomplete, investigate before asking:
-- Check user memories in user/memories/ — they contain context, preferences, and prior intel
-- Check existing files and configs
-- Query the message history if needed
-- Only ask clarifying questions if you've genuinely exhausted available context
-
-Treat unknowns as puzzles to solve, not gaps to fill with questions.
-</system>`);
+    // No commands in test prompts (no /new etc.)
+    parts.push(buildSystemBlock(false));
 
     // Skills prompt
     const skillsPrompt = formatSkillsForPrompt(this.getSkills());
@@ -747,53 +676,14 @@ Treat unknowns as puzzles to solve, not gaps to fill with questions.
   ): string {
     const parts: string[] = [];
 
-    // Full date with day-of-week at the very top — every harness, every channel
-    const now = new Date();
-    const dateStr = now.toLocaleDateString("en-US", {
-      weekday: "long",
-      year: "numeric",
-      month: "long",
-      day: "numeric",
-      timeZone: "America/Toronto",
-    });
-    const timeStr = now.toLocaleTimeString("en-US", {
-      hour: "numeric",
-      minute: "2-digit",
-      timeZone: "America/Toronto",
-    });
-    parts.push(`Today is ${dateStr}. Current time: ${timeStr} ET.`);
+    parts.push(getDateTimeString());
 
     if (this.soul) {
       parts.push(`<personality>\n${this.soul}\n</personality>`);
     }
 
-    // Point to SYSTEM.md instead of injecting it — keep prompt lean
-    parts.push(`<system>
-For system architecture, file structure, restart rules, bash guidelines, and operational knowledge, read SYSTEM.md using the Read tool. Only pull it when you need system-level context.
-
-You can query the SQLite database (user/vito.db) for more message history if needed. Read SYSTEM.md for schema details.
-
-To send/share a file or image inline, output MEDIA:/path/to/file on its own line. The channel will deliver it as an attachment. Don't paste file contents when the user asks you to "send" a file — use MEDIA: instead.
-
-NEVER restart yourself. You don't know what long-running jobs might be in progress. When changes need a restart, say "changes are ready, restart when you're clear" and let the boss decide when.
-
-Available commands: /new (compact + archive session)
-
-## Cardinal Rules
-
-- **Never improvise facts.** If uncertain about something, verify it first. Don't guess and present it as truth.
-- **When debugging something unexpected**, search the message DB for related context before assuming it's a bug. Grab surrounding messages to understand the full picture.
-
-## Investigation First
-
-When instructions are vague or incomplete, investigate before asking:
-- Check user memories in user/memories/ — they contain context, preferences, and prior intel
-- Check existing files and configs
-- Query the message history if needed
-- Only ask clarifying questions if you've genuinely exhausted available context
-
-Treat unknowns as puzzles to solve, not gaps to fill with questions.
-</system>`);
+    // Include commands for interactive sessions
+    parts.push(buildSystemBlock(true));
 
     if (skillsPrompt) {
       parts.push(`<skills>\n${skillsPrompt}\n</skills>`);

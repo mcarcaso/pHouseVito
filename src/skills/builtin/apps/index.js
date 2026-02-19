@@ -126,8 +126,8 @@ function startAppServer(appName, port, appDir) {
       stdio: 'pipe',
     });
   } else {
-    // Static site — use npx serve
-    execSync(`npx pm2 start npx --name "${pm2Name}" -- serve -s "${appDir}" -l ${port} --no-clipboard`, {
+    // Static site — use npx serve (no SPA mode)
+    execSync(`npx pm2 start npx --name "${pm2Name}" -- serve "${appDir}" -l ${port} --no-clipboard`, {
       stdio: 'pipe',
     });
   }

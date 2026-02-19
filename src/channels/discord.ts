@@ -138,11 +138,11 @@ export class DiscordChannel implements Channel {
         return;
       }
 
+      const target = interaction.guild ? interaction.channelId : interaction.user.id;
+
       if (interaction.commandName === "new") {
         // Defer the reply since compaction can take a while
         await interaction.deferReply();
-
-        const target = interaction.guild ? interaction.channelId : interaction.user.id;
 
         const event: InboundEvent = {
           sessionKey: `discord:${target}`,
@@ -155,6 +155,24 @@ export class DiscordChannel implements Channel {
         };
 
         console.log(`[Discord] ⚡ Slash command /new from ${interaction.user.tag}`);
+        onEvent(event);
+      }
+
+      if (interaction.commandName === "stop") {
+        // Defer so we can respond after orchestrator handles it
+        await interaction.deferReply();
+
+        const event: InboundEvent = {
+          sessionKey: `discord:${target}`,
+          channel: "discord",
+          target: target,
+          author: interaction.user.tag,
+          timestamp: Date.now(),
+          content: "/stop",
+          raw: interaction,
+        };
+
+        console.log(`[Discord] ⚡ Slash command /stop from ${interaction.user.tag}`);
         onEvent(event);
       }
     });
@@ -216,6 +234,9 @@ export class DiscordChannel implements Channel {
       new SlashCommandBuilder()
         .setName("new")
         .setDescription("Start a fresh conversation — compacts and archives the current session"),
+      new SlashCommandBuilder()
+        .setName("stop")
+        .setDescription("Stop current request and clear any queued messages"),
     ];
 
     const rest = new REST({ version: "10" }).setToken(token);

@@ -22,7 +22,7 @@ NEVER restart yourself. You don't know what long-running jobs might be in progre
 /**
  * Available slash commands (only shown in interactive sessions, not tests)
  */
-export const COMMANDS_SECTION = `Available commands: /new (compact + archive session)`;
+export const COMMANDS_SECTION = `Available commands: /new (compact + archive session), /stop (abort current request + clear queue)`;
 
 /**
  * Cardinal rules that must always be followed

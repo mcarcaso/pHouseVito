@@ -286,14 +286,13 @@ export class Orchestrator {
     channel: Channel | null
   ): Promise<void> {
     const sessionKey = `${event.channel}:${event.target}`;
-    console.log(`[handleInbound] ⚡ Received event from ${sessionKey}`);
-    
-    // If there's an active request for this key, abort it (interrupt)
-    const active = this.activeRequests.get(sessionKey);
-    if (active && !active.aborted) {
-      console.log(`[handleInbound] ⛔ Aborting active request for ${sessionKey}`);
-      active.aborted = true;
-      active.abort.abort();
+    console.log(`[handleInbound] ⚡ Received event from ${sessionKey}, content: "${event.content?.slice(0, 50)}"`);
+
+    // PRIORITY: /stop command bypasses queue entirely — handle immediately
+    if (channel && event.content?.trim() === '/stop') {
+      console.log(`[handleInbound] 🛑 /stop command detected — bypassing queue`);
+      await this.handleStopCommand(event, channel);
+      return;
     }
 
     // Get or create the per-session queue
@@ -302,13 +301,7 @@ export class Orchestrator {
     }
     const queue = this.sessionQueues.get(sessionKey)!;
 
-    // Clear any previously queued messages for this session (user changed their mind)
-    if (queue.length > 0) {
-      console.log(`[handleInbound] Cleared ${queue.length} queued messages for ${sessionKey}`);
-      queue.length = 0;
-    }
-
-    // Queue message
+    // Queue message (no interrupt, no clearing - messages wait their turn)
     queue.push({ event, channel });
     const isAlreadyProcessing = this.sessionProcessing.has(sessionKey);
     console.log(`[handleInbound] Message queued for ${sessionKey}. Queue length: ${queue.length}, processing: ${isAlreadyProcessing}`);
@@ -348,6 +341,12 @@ export class Orchestrator {
     event: InboundEvent,
     channel: Channel | null
   ): Promise<void> {
+    // Check for /stop command - clear queue and abort current request
+    if (channel && event.content?.trim() === '/stop') {
+      await this.handleStopCommand(event, channel);
+      return;
+    }
+
     // Check for /new command (only for non-cron messages)
     if (channel && event.content?.trim() === '/new') {
       await this.handleNewCommand(event, channel);
@@ -472,11 +471,7 @@ export class Orchestrator {
       );
       console.log(`[Orchestrator] LLM response complete`);
     } catch (err) {
-      if (activeEntry.aborted) {
-        console.log(`[Orchestrator] ⛔ Session ${sessionKey} aborted by user`);
-      } else {
-        console.error(`[Orchestrator] Error during LLM call: ${err instanceof Error ? err.message : err}`);
-      }
+      console.error(`[Orchestrator] Error during LLM call: ${err instanceof Error ? err.message : err}`);
       return;
     } finally {
       this.activeRequests.delete(sessionKey);
@@ -501,6 +496,58 @@ export class Orchestrator {
           console.error("Compaction failed:", err);
         });
     }
+  }
+
+  private async handleStopCommand(
+    event: InboundEvent,
+    channel: Channel
+  ): Promise<void> {
+    const sessionKey = `${event.channel}:${event.target}`;
+    console.log(`[/stop] 🛑 handleStopCommand called for ${sessionKey}`);
+    
+    const handler = channel.createHandler(event);
+    console.log(`[/stop] Handler created`);
+
+    // Clear the queue for this session
+    const queue = this.sessionQueues.get(sessionKey);
+    const queuedCount = queue?.length || 0;
+    console.log(`[/stop] Queue for ${sessionKey}: ${queuedCount} messages`);
+    if (queue) {
+      queue.length = 0;
+    }
+
+    // Abort any active request for this session
+    const active = this.activeRequests.get(sessionKey);
+    let aborted = false;
+    console.log(`[/stop] Active request exists: ${!!active}, already aborted: ${active?.aborted}`);
+    if (active && !active.aborted) {
+      active.aborted = true;
+      active.abort.abort();
+      aborted = true;
+      console.log(`[/stop] Aborted active request`);
+    }
+
+    // Send confirmation
+    const parts: string[] = [];
+    if (aborted) {
+      parts.push("⛔ Stopped current request");
+    }
+    if (queuedCount > 0) {
+      parts.push(`🗑️ Cleared ${queuedCount} queued message${queuedCount > 1 ? 's' : ''}`);
+    }
+    
+    const message = parts.length === 0 
+      ? "✅ Nothing to stop — all clear, boss."
+      : parts.join('\n');
+    
+    console.log(`[/stop] Sending response: "${message}"`);
+    await handler.relay(message);
+
+    // Flush the buffer so the message actually gets sent (important for slash commands)
+    console.log(`[/stop] Flushing buffer (stopTyping)`);
+    await handler.stopTyping?.();
+
+    console.log(`[/stop] ✅ Complete. Session ${sessionKey}: aborted=${aborted}, cleared=${queuedCount}`);
   }
 
   private async handleNewCommand(

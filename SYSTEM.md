@@ -152,7 +152,7 @@ tail -f file.log
 npm start
 
 # ✅ GOOD - Use flags to prevent streaming
-pm2 logs --lines 50 --nostream
+pm2 logs vito-server --lines 50 --nostream   # Service name is vito-server, NOT vito!
 tail -n 50 file.log
 timeout 10 npm test
 ```
@@ -164,3 +164,11 @@ The Bash tool supports an optional `timeout` parameter (in seconds):
 - **Example:** Use `timeout: 30` for most commands, `timeout: 60` for builds/tests
 
 **Rule of Thumb:** If a command might take more than 5 seconds or could stream indefinitely, **always add a timeout parameter**.
+
+### PM2 Quick Reference:
+The main Vito service is named `vito-server` (NOT `vito`):
+```bash
+pm2 logs vito-server --lines 50 --nostream  # View recent logs
+pm2 restart vito-server                      # Restart (but let the boss do this!)
+pm2 status                                   # Check all services
+```

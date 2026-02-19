@@ -76,11 +76,26 @@ Sessions can override harness settings via the Dashboard Settings page (Settings
 - One-time jobs: `oneTime: true` flag auto-deletes from config after firing
 
 ### Skills
-- Structure: `user/skills/<name>/` with `SKILL.md` and `index.js`
+
+#### Using Skills
+- Structure: `user/skills/<name>/` with `SKILL.md` and script files
 - Return simple output (no MEDIA: prefix or markdown formatting)
 - Dashboard uses ReactMarkdown for rendering skill output
 - **Always read `SKILL.md` first** — it documents the exact command to run, input format, and output structure. Script names vary (run.js, generate.py, edit.sh, etc.) — never guess.
 - Treat skills as self-documenting. If you need to use a skill, navigate to `user/skills/<name>/SKILL.md` and follow its instructions exactly.
+
+#### Creating Skills
+When you build a new skill:
+1. Create `user/skills/<name>/` folder
+2. **ALWAYS create `SKILL.md`** — without it, the skill won't be discoverable
+3. SKILL.md must include:
+   - Frontmatter with `name` and `description`
+   - What the skill does
+   - How to invoke it (exact commands/examples)
+   - Required parameters
+4. Add the script files (index.js, run.py, etc.)
+
+**No SKILL.md = skill doesn't exist.** It won't show up in the dashboard or be usable.
 
 ### Sessions
 - Format: `channelName:targetName` (e.g., `"dashboard:default"`)

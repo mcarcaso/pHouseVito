@@ -60,6 +60,9 @@ function mergeSettings(base: Settings, override: Settings): Settings {
   if (override.requireMention !== undefined) {
     result.requireMention = override.requireMention;
   }
+  if (override.traceMessageUpdates !== undefined) {
+    result.traceMessageUpdates = override.traceMessageUpdates;
+  }
 
   return result;
 }
@@ -117,6 +120,7 @@ export function getEffectiveSettings(
       includeCompacted: settings.crossContext?.includeCompacted ?? DEFAULT_CROSS_CONTEXT.includeCompacted,
     },
     requireMention: settings.requireMention,
+    traceMessageUpdates: settings.traceMessageUpdates ?? false,
     "pi-coding-agent": settings["pi-coding-agent"],
     "claude-code": settings["claude-code"],
   };

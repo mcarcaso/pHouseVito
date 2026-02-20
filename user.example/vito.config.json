@@ -2,6 +2,7 @@
   "settings": {
     "harness": "claude-code",
     "streamMode": "stream",
+    "traceMessageUpdates": false,
     "currentContext": {
       "limit": 100,
       "includeThoughts": true,

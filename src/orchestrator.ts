@@ -398,7 +398,7 @@ export class Orchestrator {
     }
 
     // 3. Log effective settings (already computed above for requireMention check)
-    console.log(`[Orchestrator] Effective settings for ${sessionKey}: harness=${effectiveSettings.harness}, streamMode=${effectiveSettings.streamMode}, currentContext.limit=${effectiveSettings.currentContext.limit}, crossContext.limit=${effectiveSettings.crossContext.limit}`);
+    console.log(`[Orchestrator] Effective settings for ${sessionKey}: harness=${effectiveSettings.harness}, streamMode=${effectiveSettings.streamMode}, traceMessageUpdates=${effectiveSettings.traceMessageUpdates}, currentContext.limit=${effectiveSettings.currentContext.limit}, crossContext.limit=${effectiveSettings.crossContext.limit}`);
 
     // 4. Build fresh context (uses effective settings for memory limits)
     const ctx = await assembleContext(
@@ -433,6 +433,7 @@ export class Orchestrator {
       channel: event.channel,
       target: event.target,
       model: this.getModelString(effectiveSettings),
+      traceMessageUpdates: effectiveSettings.traceMessageUpdates ?? false,
     });
     const persistedHarness = withPersistence(tracedHarness, {
       queries: this.queries,
@@ -703,6 +704,7 @@ export class Orchestrator {
       channel: event.channel,
       target: event.target,
       model: this.getModelString(effectiveSettings),
+      traceMessageUpdates: effectiveSettings.traceMessageUpdates ?? false,
     });
     const persistedHarness = withPersistence(tracedHarness, {
       queries: this.queries,

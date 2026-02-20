@@ -228,7 +228,9 @@ export class PiHarness implements Harness {
 
     // Track current message for assembling assistant content
     let currentMessageText = "";
-    let hasEmittedAssistant = false;
+    let currentThinkingText = "";
+    let hasEmittedAssistantText = false;
+    let hasEmittedThought = false;
 
     // Subscribe to events
     const unsubscribe = piSession.subscribe((event: AgentSessionEvent) => {
@@ -241,7 +243,9 @@ export class PiHarness implements Harness {
           // Reset tracking for new assistant message
           if (event.message.role === "assistant") {
             currentMessageText = "";
-            hasEmittedAssistant = false;
+            currentThinkingText = "";
+            hasEmittedAssistantText = false;
+            hasEmittedThought = false;
           }
           break;
 
@@ -250,17 +254,42 @@ export class PiHarness implements Harness {
           if (msgEvent.type === "text_delta") {
             currentMessageText += msgEvent.delta;
           }
+          // Intentionally ignore thinking_delta here to avoid noisy deltas.
+          // We only capture thinking from message_end content blocks.
           break;
         }
 
         case "message_end":
-          if (event.message.role === "assistant" && currentMessageText && !hasEmittedAssistant) {
-            callbacks.onNormalizedEvent({
-              kind: "assistant",
-              content: currentMessageText,
-            });
-            currentMessageText = "";
-            hasEmittedAssistant = true;
+          if (event.message.role === "assistant") {
+            // Fallback: some providers only include thinking/text in message_end content
+            if ((!currentThinkingText || !currentMessageText) && Array.isArray((event.message as any)?.content)) {
+              for (const block of (event.message as any).content) {
+                if (!currentThinkingText && block?.type === "thinking" && typeof block.thinking === "string") {
+                  currentThinkingText = block.thinking;
+                }
+                if (!currentMessageText && block?.type === "text" && typeof block.text === "string") {
+                  currentMessageText = block.text;
+                }
+              }
+            }
+
+            if (currentThinkingText && !hasEmittedThought) {
+              callbacks.onNormalizedEvent({
+                kind: "assistant",
+                content: currentThinkingText,
+              });
+              currentThinkingText = "";
+              hasEmittedThought = true;
+            }
+
+            if (currentMessageText && !hasEmittedAssistantText) {
+              callbacks.onNormalizedEvent({
+                kind: "assistant",
+                content: currentMessageText,
+              });
+              currentMessageText = "";
+              hasEmittedAssistantText = true;
+            }
           }
           break;
 
@@ -288,14 +317,21 @@ export class PiHarness implements Harness {
     try {
       await piSession.prompt(userMessage);
       
-      // Emit final assistant message if we have content and haven't emitted yet
+      // Emit final assistant/thought if we have content and haven't emitted yet
       // (Pi doesn't always send message_end for assistant messages)
-      if (currentMessageText && !hasEmittedAssistant) {
+      if (currentThinkingText && !hasEmittedThought) {
+        callbacks.onNormalizedEvent({
+          kind: "assistant",
+          content: currentThinkingText,
+        });
+        hasEmittedThought = true;
+      }
+      if (currentMessageText && !hasEmittedAssistantText) {
         callbacks.onNormalizedEvent({
           kind: "assistant",
           content: currentMessageText,
         });
-        hasEmittedAssistant = true;
+        hasEmittedAssistantText = true;
       }
     } catch (err) {
       if (this.aborted) {

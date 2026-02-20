@@ -357,6 +357,18 @@ export default function SessionSettingsPanel({ config, onSave, initialSessionId 
             formatValue={(v) => v ? 'On' : 'Off'}
           />
 
+          <SettingRow
+            label="Trace Message Updates"
+            hint="Log raw message_update events in traces (noisy)"
+            inheritedValue={inherited.traceMessageUpdates ?? false}
+            inheritedFrom={inheritFrom}
+            overrideValue={overrides.traceMessageUpdates}
+            onOverride={(val) => updateSessionSetting(sessionId, 'traceMessageUpdates', val)}
+            onReset={() => resetSessionSetting(sessionId, 'traceMessageUpdates')}
+            renderInput={(val, onChange) => renderToggle(val, onChange)}
+            formatValue={(v) => v ? 'On' : 'Off'}
+          />
+
           {/* Current Session Context */}
           <div className="mt-4 mb-2">
             <span className="text-xs font-semibold text-neutral-500 uppercase tracking-wide">Current Session Context</span>

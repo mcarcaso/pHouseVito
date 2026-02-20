@@ -25,6 +25,7 @@ export interface Settings {
   currentContext?: ContextSettings;
   crossContext?: ContextSettings;
   requireMention?: boolean;
+  traceMessageUpdates?: boolean;
   'pi-coding-agent'?: {
     model?: { provider: string; name: string };
     thinkingLevel?: 'off' | 'low' | 'medium' | 'high';
@@ -43,6 +44,7 @@ export interface ResolvedSettings {
   currentContext: ResolvedContextSettings;
   crossContext: ResolvedContextSettings;
   requireMention?: boolean;
+  traceMessageUpdates?: boolean;
   'pi-coding-agent'?: Settings['pi-coding-agent'];
   'claude-code'?: Settings['claude-code'];
 }
@@ -125,6 +127,9 @@ function mergeSettings(base: Settings, override: Settings): Settings {
   if (override.requireMention !== undefined) {
     result.requireMention = override.requireMention;
   }
+  if (override.traceMessageUpdates !== undefined) {
+    result.traceMessageUpdates = override.traceMessageUpdates;
+  }
 
   return result;
 }
@@ -179,6 +184,7 @@ export function getEffectiveSettings(
       includeCompacted: settings.crossContext?.includeCompacted ?? DEFAULT_CROSS_CONTEXT.includeCompacted,
     },
     requireMention: settings.requireMention,
+    traceMessageUpdates: settings.traceMessageUpdates ?? false,
     'pi-coding-agent': settings['pi-coding-agent'],
     'claude-code': settings['claude-code'],
   };
@@ -240,6 +246,7 @@ export const CASCADING_FIELDS = [
   { key: 'currentContext.includeTools', label: 'Current: Tools', type: 'boolean' as const },
   { key: 'currentContext.includeArchived', label: 'Current: Archived', type: 'boolean' as const },
   { key: 'currentContext.includeCompacted', label: 'Current: Compacted', type: 'boolean' as const },
+  { key: 'traceMessageUpdates', label: 'Trace Message Updates', type: 'boolean' as const },
   // Cross context settings
   { key: 'crossContext.limit', label: 'Cross: Num Messages', type: 'number' as const },
   { key: 'crossContext.includeThoughts', label: 'Cross: Thoughts', type: 'boolean' as const },

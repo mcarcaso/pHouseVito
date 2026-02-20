@@ -17,6 +17,7 @@ export interface TracingOptions {
   channel: string;
   target: string;
   model: string;
+  traceMessageUpdates?: boolean;
 }
 
 type TraceLine =
@@ -31,11 +32,13 @@ type TraceLine =
 export class TracingHarness extends ProxyHarness {
   private traceFile: string = "";
   private readonly options: TracingOptions;
+  private readonly traceMessageUpdates: boolean;
   private truncated: boolean = false;
 
   constructor(delegate: Harness, options: TracingOptions) {
     super(delegate);
     this.options = options;
+    this.traceMessageUpdates = options.traceMessageUpdates ?? false;
   }
 
   get tracePath(): string {
@@ -60,6 +63,12 @@ export class TracingHarness extends ProxyHarness {
     }
     
     appendFileSync(this.traceFile, JSON.stringify(line) + "\n");
+  }
+
+  private isMessageUpdateEvent(event: unknown): boolean {
+    if (!event || typeof event !== "object") return false;
+    const type = (event as { type?: unknown }).type;
+    return type === "message_update";
   }
 
   async run(
@@ -99,7 +108,9 @@ export class TracingHarness extends ProxyHarness {
       },
 
       onRawEvent: (event: unknown) => {
-        this.writeLine({ type: "raw_event", ts: Date.now() - startTime, event });
+        if (this.traceMessageUpdates || !this.isMessageUpdateEvent(event)) {
+          this.writeLine({ type: "raw_event", ts: Date.now() - startTime, event });
+        }
         callbacks.onRawEvent(event);
       },
 

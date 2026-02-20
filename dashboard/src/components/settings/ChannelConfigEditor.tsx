@@ -320,6 +320,18 @@ export default function ChannelConfigEditor({ name, channelConfig, config, onSav
               formatValue={(v) => v ? 'On' : 'Off'}
             />
 
+            <SettingRow
+              label="Trace Message Updates"
+              hint="Log raw message_update events in traces (noisy)"
+              inheritedValue={globalResolved.traceMessageUpdates ?? false}
+              inheritedFrom="global"
+              overrideValue={channelSettings.traceMessageUpdates}
+              onOverride={(val) => updateChannelSetting('traceMessageUpdates', val)}
+              onReset={() => resetChannelSetting('traceMessageUpdates')}
+              renderInput={(val, onChange) => renderToggle(val, onChange)}
+              formatValue={(v) => v ? 'On' : 'Off'}
+            />
+
             {/* Current Session Context */}
             <div className="mt-4 mb-2">
               <span className="text-xs font-semibold text-neutral-500 uppercase tracking-wide">Current Session Context</span>

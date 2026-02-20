@@ -50,6 +50,7 @@ export interface TraceUserMessage {
 /**
  * RawEvent - raw harness event, logged exactly as received
  * One line per event from the harness
+ * Note: message_update events are omitted by default (configurable)
  */
 export interface TraceRawEvent {
   type: "raw_event";

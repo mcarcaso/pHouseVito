@@ -380,10 +380,12 @@ function Traces() {
       return (
         <div 
           key={key} 
-          className="px-4 py-2 cursor-pointer hover:bg-neutral-800/30"
-          onClick={() => toggleSection(key)}
+          className="px-4 py-2 hover:bg-neutral-800/30"
         >
-          <div className="flex items-center gap-2">
+          <div
+            className="flex items-center gap-2 cursor-pointer select-none"
+            onClick={() => toggleSection(key)}
+          >
             <span className="text-xs text-neutral-600 font-mono w-16">{formatMs(e.ts)}</span>
             <span className={`text-xs px-2 py-0.5 rounded font-mono ${isRaw ? 'bg-neutral-700 text-neutral-400' : 'bg-blue-900/50 text-blue-400'}`}>
               {isRaw ? 'raw' : 'norm'}

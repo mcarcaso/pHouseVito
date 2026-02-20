@@ -771,9 +771,19 @@ export class DashboardChannel implements Channel {
 
     // Server restart endpoint
     this.app.post("/api/server/restart", (req, res) => {
-      res.json({ ok: true, message: "Restarting server..." });
-      // Give the response time to flush, then restart via PM2
+      res.json({ ok: true, message: "Rebuilding dashboard and restarting server..." });
+      // Give the response time to flush, then rebuild dashboard + restart via PM2
       setTimeout(() => {
+        try {
+          execSync("npm run build:dashboard", {
+            stdio: "ignore",
+            timeout: 120000,
+            env: { ...process.env, PATH: process.env.PATH + ":/usr/local/bin:/opt/homebrew/bin" },
+          });
+        } catch (e) {
+          // If build fails, still attempt restart
+        }
+
         try {
           execSync("npx pm2 restart vito-server", {
             stdio: "ignore",

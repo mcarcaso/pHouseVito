@@ -156,6 +156,13 @@ export default function GlobalSettings({ config, onSave }: GlobalSettingsProps) 
           onChange={(val) => updateSetting('requireMention', val)}
         />
 
+        <ToggleRow
+          title="Trace Message Updates"
+          description="Log raw message_update events in traces (noisy)"
+          value={settings.traceMessageUpdates ?? false}
+          onChange={(val) => updateSetting('traceMessageUpdates', val)}
+        />
+
       </section>
 
       {/* ── Current Session Context ── */}

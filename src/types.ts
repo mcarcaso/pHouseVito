@@ -125,6 +125,8 @@ export interface Settings {
   crossContext?: ContextSettings;
   /** Require @mention to respond (Discord/Telegram) — still logs all messages */
   requireMention?: boolean;
+  /** Log message_update raw events to trace files (noisy). Default false */
+  traceMessageUpdates?: boolean;
   /** Pi Coding Agent harness overrides */
   "pi-coding-agent"?: Partial<PiHarnessConfig>;
   /** Claude Code CLI harness overrides */
@@ -145,6 +147,7 @@ export type ResolvedSettings = Required<Pick<Settings, "harness" | "streamMode">
   currentContext: ResolvedContextSettings;
   crossContext: ResolvedContextSettings;
   requireMention?: boolean;
+  traceMessageUpdates?: boolean;
   "pi-coding-agent"?: Partial<PiHarnessConfig>;
   "claude-code"?: Partial<ClaudeCodeHarnessConfig>;
 };

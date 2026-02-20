@@ -34,7 +34,8 @@ import type {
 export function buildTestSystemPrompt(
   soul: string,
   skillsDir: string,
-  channelPrompt: string = ""
+  channelPrompt: string = "",
+  botName: string = "Vito"
 ): string {
   const parts: string[] = [];
 
@@ -45,7 +46,7 @@ export function buildTestSystemPrompt(
   }
 
   // No commands in test prompts (no /new etc.)
-  parts.push(buildSystemBlock(false));
+  parts.push(buildSystemBlock(false, botName));
 
   // Skills prompt
   const skills = discoverSkills(skillsDir);
@@ -149,7 +150,7 @@ export class Orchestrator {
     }
 
     // No commands in test prompts (no /new etc.)
-    parts.push(buildSystemBlock(false));
+    parts.push(buildSystemBlock(false, this.config.bot?.name || "Vito"));
 
     // Skills prompt
     const skillsPrompt = formatSkillsForPrompt(this.getSkills());
@@ -752,7 +753,7 @@ export class Orchestrator {
     }
 
     // Include commands for interactive sessions
-    parts.push(buildSystemBlock(true));
+    parts.push(buildSystemBlock(true, this.config.bot?.name || "Vito"));
 
     if (skillsPrompt) {
       parts.push(`<skills>\n${skillsPrompt}\n</skills>`);

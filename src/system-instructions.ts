@@ -13,6 +13,8 @@
  */
 export const CORE_INSTRUCTIONS = `For system architecture, file structure, restart rules, bash guidelines, and operational knowledge, read SYSTEM.md using the Read tool. Only pull it when you need system-level context.
 
+**PM2 logs must use --nostream (never use streaming logs).**
+
 You can query the SQLite database (user/vito.db) for more message history if needed. Read SYSTEM.md for schema details.
 
 To send/share a file or image inline, output MEDIA:/path/to/file on its own line. The channel will deliver it as an attachment. Don't paste file contents when the user asks you to "send" a file — use MEDIA: instead.
@@ -50,8 +52,12 @@ Treat unknowns as puzzles to solve, not gaps to fill with questions.`;
  * 
  * @param includeCommands - Whether to include slash commands (false for tests/battles)
  */
-export function buildSystemBlock(includeCommands: boolean = true): string {
-  const parts = [CORE_INSTRUCTIONS];
+export function buildSystemBlock(includeCommands: boolean = true, botName: string = "Vito"): string {
+  const parts = [
+    `Your name is ${botName}.`,
+    `If the user message is only your name (e.g., "@${botName}"), interpret it as a follow-up to the previous user message.`,
+    CORE_INSTRUCTIONS,
+  ];
   
   if (includeCommands) {
     parts.push(COMMANDS_SECTION);

@@ -57,7 +57,8 @@ export async function assembleContext(
     crossContext.includeArchived,
     crossContext.includeCompacted
   );
-  const crossSessionBlock = formatCrossSessionMessages(crossSessionMessages, aliases);
+  const assistantLabel = config.bot?.name ? `@${config.bot.name}` : "assistant";
+  const crossSessionBlock = formatCrossSessionMessages(crossSessionMessages, aliases, assistantLabel);
 
   // 3. Current session messages (filtered by settings)
   const currentSessionMessages = queries.getRecentMessages(
@@ -71,7 +72,8 @@ export async function assembleContext(
   const currentSessionBlock = formatCurrentSessionMessages(
     currentSessionMessages,
     sessionId,
-    aliases[sessionId]
+    aliases[sessionId],
+    assistantLabel
   );
 
   return { memoriesBlock, crossSessionBlock, currentSessionBlock };
@@ -151,18 +153,18 @@ function extractMessageText(raw: string): string {
 }
 
 /** Map internal type to display role for context */
-function typeToRole(type: string): string {
+function typeToRole(type: string, assistantLabel: string): string {
   switch (type) {
     case "user": return "user";
-    case "thought": return "assistant";
-    case "assistant": return "assistant";
+    case "thought": return assistantLabel;
+    case "assistant": return assistantLabel;
     case "tool_start": return "tool";
     case "tool_end": return "tool";
     default: return type;
   }
 }
 
-function formatCrossSessionMessages(messages: MessageRow[], aliases?: Record<string, string>): string {
+function formatCrossSessionMessages(messages: MessageRow[], aliases: Record<string, string> | undefined, assistantLabel: string): string {
   if (messages.length === 0) return "";
 
   // Group by session
@@ -185,7 +187,7 @@ function formatCrossSessionMessages(messages: MessageRow[], aliases?: Record<str
       const time = formatTimestamp(msg.timestamp);
       const text = extractMessageText(msg.content);
       // Include author for user messages if available
-      const role = typeToRole(msg.type);
+      const role = typeToRole(msg.type, assistantLabel);
       const authorPrefix = (msg.type === "user" && msg.author) ? `${msg.author}: ` : "";
       parts.push(`[${time}] ${role}: ${authorPrefix}${text}`);
     }
@@ -194,7 +196,7 @@ function formatCrossSessionMessages(messages: MessageRow[], aliases?: Record<str
   return parts.join("\n");
 }
 
-function formatCurrentSessionMessages(messages: MessageRow[], sessionId: string, alias?: string): string {
+function formatCurrentSessionMessages(messages: MessageRow[], sessionId: string, alias: string | undefined, assistantLabel: string): string {
   if (messages.length === 0) return "";
 
   const displayName = alias || sessionId;
@@ -206,7 +208,7 @@ function formatCurrentSessionMessages(messages: MessageRow[], sessionId: string,
         return formatToolMessage(msg.content, time, msg.type);
       }
       const text = extractMessageText(msg.content);
-      const role = typeToRole(msg.type);
+      const role = typeToRole(msg.type, assistantLabel);
       // Include author for user messages if available
       const authorPrefix = (msg.type === "user" && msg.author) ? `${msg.author}: ` : "";
       return `[${time}] ${role}: ${authorPrefix}${text}`;

@@ -771,6 +771,9 @@ export class DashboardChannel implements Channel {
 
     // Server restart endpoint
     this.app.post("/api/server/restart", (req, res) => {
+      const clientIp = (req.headers["x-forwarded-for"] as string) || req.socket.remoteAddress;
+      const ua = req.headers["user-agent"] || "unknown";
+      console.log(`[Dashboard] Server restart requested from ${clientIp} ua=${ua}`);
       res.json({ ok: true, message: "Rebuilding dashboard and restarting server..." });
       // Give the response time to flush, then rebuild dashboard + restart via PM2
       setTimeout(() => {
@@ -865,6 +868,9 @@ export class DashboardChannel implements Channel {
     // Restart an app
     this.app.post("/api/apps/:name/restart", async (req, res) => {
       const { name } = req.params;
+      const clientIp = (req.headers["x-forwarded-for"] as string) || req.socket.remoteAddress;
+      const ua = req.headers["user-agent"] || "unknown";
+      console.log(`[Dashboard] App restart requested: ${name} from ${clientIp} ua=${ua}`);
       try {
         const pm2Name = `app-${name}`;
         execSync(`npx pm2 restart ${pm2Name}`, {
@@ -881,6 +887,9 @@ export class DashboardChannel implements Channel {
     // Stop an app
     this.app.post("/api/apps/:name/stop", async (req, res) => {
       const { name } = req.params;
+      const clientIp = (req.headers["x-forwarded-for"] as string) || req.socket.remoteAddress;
+      const ua = req.headers["user-agent"] || "unknown";
+      console.log(`[Dashboard] App stop requested: ${name} from ${clientIp} ua=${ua}`);
       try {
         const pm2Name = `app-${name}`;
         execSync(`npx pm2 stop ${pm2Name}`, {
@@ -897,6 +906,9 @@ export class DashboardChannel implements Channel {
     // Start a stopped app
     this.app.post("/api/apps/:name/start", async (req, res) => {
       const { name } = req.params;
+      const clientIp = (req.headers["x-forwarded-for"] as string) || req.socket.remoteAddress;
+      const ua = req.headers["user-agent"] || "unknown";
+      console.log(`[Dashboard] App start requested: ${name} from ${clientIp} ua=${ua}`);
       try {
         const pm2Name = `app-${name}`;
         execSync(`npx pm2 start ${pm2Name}`, {

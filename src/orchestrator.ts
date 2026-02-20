@@ -375,9 +375,29 @@ export class Orchestrator {
         }
       : event.content;
 
-    // 3. Get effective settings with cascade: Global → Channel → Session
+    // 2.5. Check if we should respond based on requireMention setting
     const sessionKey = `${event.channel}:${event.target}`;
     const effectiveSettings = getEffectiveSettings(this.config, event.channel, sessionKey);
+    const requireMention = effectiveSettings.requireMention !== false; // default true
+    const hasMention = event.hasMention !== false; // default true if not set (backward compat)
+    
+    if (requireMention && !hasMention) {
+      console.log(`[Orchestrator] requireMention=true but hasMention=false, storing message without AI response`);
+      this.queries.insertMessage({
+        session_id: vitoSession.id,
+        channel: event.channel,
+        channel_target: event.target,
+        timestamp: event.timestamp,
+        type: "user",
+        content: JSON.stringify(userContent),
+        compacted: 0,
+        archived: 0,
+        author: event.author ?? null,
+      });
+      return;
+    }
+
+    // 3. Log effective settings (already computed above for requireMention check)
     console.log(`[Orchestrator] Effective settings for ${sessionKey}: harness=${effectiveSettings.harness}, streamMode=${effectiveSettings.streamMode}, currentContext.limit=${effectiveSettings.currentContext.limit}, crossContext.limit=${effectiveSettings.crossContext.limit}`);
 
     // 4. Build fresh context (uses effective settings for memory limits)

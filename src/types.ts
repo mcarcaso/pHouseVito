@@ -31,6 +31,8 @@ export interface InboundEvent {
   attachments?: Attachment[];
   replyTo?: string;
   raw: any;
+  /** Whether the bot was @mentioned in this message (channels set this, orchestrator decides what to do) */
+  hasMention?: boolean;
 }
 
 export interface Attachment {
@@ -121,6 +123,8 @@ export interface Settings {
   currentContext?: ContextSettings;
   /** Cross-session context settings */
   crossContext?: ContextSettings;
+  /** Require @mention to respond (Discord/Telegram) — still logs all messages */
+  requireMention?: boolean;
   /** Pi Coding Agent harness overrides */
   "pi-coding-agent"?: Partial<PiHarnessConfig>;
   /** Claude Code CLI harness overrides */
@@ -140,11 +144,16 @@ export interface ResolvedContextSettings {
 export type ResolvedSettings = Required<Pick<Settings, "harness" | "streamMode">> & {
   currentContext: ResolvedContextSettings;
   crossContext: ResolvedContextSettings;
+  requireMention?: boolean;
   "pi-coding-agent"?: Partial<PiHarnessConfig>;
   "claude-code"?: Partial<ClaudeCodeHarnessConfig>;
 };
 
 export interface VitoConfig {
+  /** Bot identity — used for @mention normalization across channels */
+  bot?: {
+    name: string;  // e.g., "Vito" — @mentions get normalized to @{name}
+  };
   /** Global default settings — baseline for all channels and sessions */
   settings: Settings;
   /** Global harness configurations (full configs, not overrides) */

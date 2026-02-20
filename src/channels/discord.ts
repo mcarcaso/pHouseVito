@@ -6,6 +6,7 @@ import type {
   InboundEvent,
   OutputHandler,
   OutboundMessage,
+  VitoConfig,
 } from "../types.js";
 
 const DISCORD_MAX_LENGTH = 2000;
@@ -20,9 +21,9 @@ export class DiscordChannel implements Channel {
   };
 
   private client: Client | null = null;
-  private config: any;
+  private config: VitoConfig;
 
-  constructor(config: any) {
+  constructor(config: VitoConfig) {
     this.config = config;
   }
 
@@ -84,33 +85,63 @@ export class DiscordChannel implements Channel {
     this.client.on("messageCreate", async (msg) => {
       // Ignore bot's own messages
       if (msg.author.bot) return;
-      // In guilds, check if mention is required
-      const requireMention = this.config.channels?.discord?.requireMention !== false;
-      if (msg.guild && requireMention && !msg.mentions.has(this.client!.user!.id)) return;
 
-      console.log(`[Discord] 📨 Received message from ${msg.author.tag} in ${msg.guild?.name || 'DM'}`);
+      // Build session key early so we can check per-session settings
+      const target = msg.guild ? msg.channel.id : msg.author.id;
+      const sessionKey = `discord:${target}`;
+
+      // Check if bot was mentioned (Discord handles this via msg.mentions)
+      const isMentioned = msg.mentions.has(this.client!.user!.id);
+      // DMs are always considered "mentioned" since they're direct
+      const hasMention = !msg.guild || isMentioned;
+
+      console.log(`[Discord] 📨 Received message from ${msg.author.tag} in ${msg.guild?.name || 'DM'}${hasMention ? '' : ' (no @mention)'}`);
 
       if (!isAllowed(msg)) {
         console.log(`[Discord] ❌ Message not allowed — guild/channel not whitelisted`);
         return;
       }
 
-      // Strip the bot mention from the message content
-      const content = msg.content
-        .replace(new RegExp(`<@!?${this.client!.user!.id}>`, "g"), "")
-        .trim();
-
-      // Build session key: use channel ID for threads/channels, user ID for DMs
-      const target = msg.guild ? msg.channel.id : msg.author.id;
+      // Normalize all @mentions to readable names
+      const botName = this.config.bot?.name || "Vito";
+      let content = msg.content;
+      
+      // Replace bot mention with bot name (e.g., <@123456> → @Vito)
+      content = content.replace(new RegExp(`<@!?${this.client!.user!.id}>`, "g"), `@${botName}`);
+      
+      // Replace other user mentions with their display names (e.g., <@677139888222502922> → @Ian)
+      msg.mentions.users.forEach((user) => {
+        if (user.id !== this.client!.user!.id) {
+          // Get display name from the guild member if available, otherwise username
+          const member = msg.guild?.members.cache.get(user.id);
+          const displayName = member?.displayName || user.displayName || user.username;
+          content = content.replace(new RegExp(`<@!?${user.id}>`, "g"), `@${displayName}`);
+        }
+      });
+      
+      // Replace role mentions with role names (e.g., <@&123456> → @Moderators)
+      msg.mentions.roles.forEach((role) => {
+        content = content.replace(new RegExp(`<@&${role.id}>`, "g"), `@${role.name}`);
+      });
+      
+      // Replace channel mentions with channel names (e.g., <#123456> → #general)
+      msg.mentions.channels.forEach((channel) => {
+        if ('name' in channel) {
+          content = content.replace(new RegExp(`<#${channel.id}>`, "g"), `#${channel.name}`);
+        }
+      });
+      
+      content = content.trim();
 
       const event: InboundEvent = {
-        sessionKey: `discord:${target}`,
+        sessionKey,
         channel: "discord",
         target: target,
         author: msg.author.tag,
         timestamp: Date.now(),
         content,
         raw: msg,
+        hasMention,  // Channel reports whether bot was mentioned; orchestrator decides what to do
       };
 
       // Handle attachments

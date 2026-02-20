@@ -24,6 +24,7 @@ export interface Settings {
   streamMode?: 'stream' | 'bundled' | 'final';
   currentContext?: ContextSettings;
   crossContext?: ContextSettings;
+  requireMention?: boolean;
   'pi-coding-agent'?: {
     model?: { provider: string; name: string };
     thinkingLevel?: 'off' | 'low' | 'medium' | 'high';
@@ -41,11 +42,15 @@ export interface ResolvedSettings {
   streamMode: 'stream' | 'bundled' | 'final';
   currentContext: ResolvedContextSettings;
   crossContext: ResolvedContextSettings;
+  requireMention?: boolean;
   'pi-coding-agent'?: Settings['pi-coding-agent'];
   'claude-code'?: Settings['claude-code'];
 }
 
 export interface VitoConfig {
+  bot?: {
+    name: string;  // e.g., "Vito" — @mentions get normalized to @{name}
+  };
   settings: Settings;
   harnesses: {
     'pi-coding-agent'?: {
@@ -73,7 +78,6 @@ export interface ChannelConfig {
   allowedChatIds?: string[];
   allowedGuildIds?: string[];
   allowedChannelIds?: string[];
-  requireMention?: boolean;
   [key: string]: any;
 }
 
@@ -117,6 +121,9 @@ function mergeSettings(base: Settings, override: Settings): Settings {
   }
   if (override['claude-code'] !== undefined) {
     result['claude-code'] = { ...base['claude-code'], ...override['claude-code'] };
+  }
+  if (override.requireMention !== undefined) {
+    result.requireMention = override.requireMention;
   }
 
   return result;
@@ -171,6 +178,7 @@ export function getEffectiveSettings(
       includeArchived: settings.crossContext?.includeArchived ?? DEFAULT_CROSS_CONTEXT.includeArchived,
       includeCompacted: settings.crossContext?.includeCompacted ?? DEFAULT_CROSS_CONTEXT.includeCompacted,
     },
+    requireMention: settings.requireMention,
     'pi-coding-agent': settings['pi-coding-agent'],
     'claude-code': settings['claude-code'],
   };

@@ -346,6 +346,17 @@ export default function SessionSettingsPanel({ config, onSave, initialSessionId 
             renderInput={(val, onChange) => renderSegmented(val, onChange, STREAM_MODES)}
           />
 
+          <SettingRow
+            label="Require @Mention"
+            inheritedValue={inherited.requireMention !== false}
+            inheritedFrom={inheritFrom}
+            overrideValue={overrides.requireMention}
+            onOverride={(val) => updateSessionSetting(sessionId, 'requireMention', val)}
+            onReset={() => resetSessionSetting(sessionId, 'requireMention')}
+            renderInput={(val, onChange) => renderToggle(val, onChange)}
+            formatValue={(v) => v ? 'On' : 'Off'}
+          />
+
           {/* Current Session Context */}
           <div className="mt-4 mb-2">
             <span className="text-xs font-semibold text-neutral-500 uppercase tracking-wide">Current Session Context</span>

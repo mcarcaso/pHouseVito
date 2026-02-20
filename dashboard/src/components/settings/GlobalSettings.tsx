@@ -93,6 +93,7 @@ function NumberInput({
 export default function GlobalSettings({ config, onSave }: GlobalSettingsProps) {
   const settings = config.settings || {};
   const compaction = config.compaction || { threshold: 200 };
+  const botName = config.bot?.name || 'Vito';
 
   const updateSetting = async (field: string, value: any) => {
     const newSettings = { ...settings };
@@ -109,8 +110,30 @@ export default function GlobalSettings({ config, onSave }: GlobalSettingsProps) 
     await onSave({ compaction: { ...compaction, [key]: value } });
   };
 
+  const updateBotName = async (name: string) => {
+    await onSave({ bot: { name } });
+  };
+
   return (
     <div className="space-y-4">
+      {/* ── Bot Identity ── */}
+      <section className="bg-neutral-900 border border-neutral-800 rounded-xl p-5">
+        <h3 className="text-base font-semibold text-white mb-1">Bot Identity</h3>
+        <p className="text-xs text-neutral-600 mb-4">Name used for @mention normalization across all channels.</p>
+
+        <div className="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-4 py-3">
+          <label className="text-sm text-neutral-400 sm:w-48 sm:shrink-0">Bot Name</label>
+          <input
+            type="text"
+            value={botName}
+            onChange={(e) => updateBotName(e.target.value)}
+            placeholder="Vito"
+            className="w-full sm:w-48 bg-neutral-950 border border-neutral-700 rounded-md px-3 py-2 text-neutral-200 text-sm focus:outline-none focus:border-blue-600 transition-colors"
+          />
+          <span className="text-xs text-neutral-600">@mentions become @{botName}</span>
+        </div>
+      </section>
+
       {/* ── Default Settings ── */}
       <section className="bg-neutral-900 border border-neutral-800 rounded-xl p-5">
         <h3 className="text-base font-semibold text-white mb-1">Default Settings</h3>
@@ -125,6 +148,13 @@ export default function GlobalSettings({ config, onSave }: GlobalSettingsProps) 
           <label className="text-sm text-neutral-400 sm:w-48 sm:shrink-0">Stream Mode</label>
           {renderSegmented(settings.streamMode || 'stream', (val) => updateSetting('streamMode', val), STREAM_MODES)}
         </div>
+
+        <ToggleRow
+          title="Require @Mention"
+          description="Only respond when @mentioned (Discord/Telegram guild channels)"
+          value={settings.requireMention !== false}
+          onChange={(val) => updateSetting('requireMention', val)}
+        />
 
       </section>
 

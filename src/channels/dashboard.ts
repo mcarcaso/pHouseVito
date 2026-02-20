@@ -760,6 +760,7 @@ export class DashboardChannel implements Channel {
           content: msg.content || "",
           attachments: msg.attachments,
           raw: msg,
+          hasMention: true,  // Dashboard is always direct conversation
         };
         this.eventHandler(event);
         res.json({ ok: true });

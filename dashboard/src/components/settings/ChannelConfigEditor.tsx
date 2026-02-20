@@ -211,23 +211,7 @@ export default function ChannelConfigEditor({ name, channelConfig, config, onSav
                 </div>
               </div>
             )}
-            {isDiscord && (
-              <div className="flex items-center justify-between py-2.5 border-b border-neutral-800/50">
-                <span className="text-sm text-neutral-300">Require @Mention</span>
-                <div className="flex items-center gap-3">
-                  <label className="relative inline-block w-11 h-6 cursor-pointer">
-                    <input
-                      type="checkbox"
-                      checked={channelConfig.requireMention !== false}
-                      onChange={(e) => updateChannelField('requireMention', e.target.checked)}
-                      className="opacity-0 w-0 h-0 peer"
-                    />
-                    <span className="absolute inset-0 bg-neutral-700 rounded-full transition-colors peer-checked:bg-blue-800" />
-                    <span className="absolute left-[3px] top-[3px] w-[18px] h-[18px] bg-neutral-400 rounded-full transition-all peer-checked:translate-x-5 peer-checked:bg-blue-400" />
-                  </label>
-                </div>
-              </div>
-            )}
+
             {isDiscord && (
               <div className="flex flex-col gap-2 py-2.5 border-b border-neutral-800/50">
                 <label className="text-sm text-neutral-300">Slash Commands</label>
@@ -323,6 +307,17 @@ export default function ChannelConfigEditor({ name, channelConfig, config, onSav
               onOverride={(val) => updateChannelSetting('streamMode', val)}
               onReset={() => resetChannelSetting('streamMode')}
               renderInput={(val, onChange) => renderSegmented(val, onChange, STREAM_MODES)}
+            />
+
+            <SettingRow
+              label="Require @Mention"
+              inheritedValue={globalResolved.requireMention !== false}
+              inheritedFrom="global"
+              overrideValue={channelSettings.requireMention}
+              onOverride={(val) => updateChannelSetting('requireMention', val)}
+              onReset={() => resetChannelSetting('requireMention')}
+              renderInput={(val, onChange) => renderToggle(val, onChange)}
+              formatValue={(v) => v ? 'On' : 'Off'}
             />
 
             {/* Current Session Context */}

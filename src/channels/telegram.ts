@@ -68,18 +68,51 @@ export class TelegramChannel implements Channel {
         return;
       }
 
+      // Check if bot was mentioned
+      // Private chats are always "mentioned" (direct conversation)
+      // Groups: check for @botname in the text
+      const isPrivate = ctx.chat.type === "private";
+      const botUsername = this.bot!.botInfo.username;
+      const isMentionedInText = !!(botUsername && ctx.message.text.toLowerCase().includes(`@${botUsername.toLowerCase()}`));
+      const hasMention = isPrivate || isMentionedInText;
+
+      // Normalize bot @mention to @BotName (e.g., @vitobot87 → @Vito)
+      const botName = this.config.bot?.name || "Vito";
+      let content = ctx.message.text;
+      if (botUsername) {
+        content = content.replace(new RegExp(`@${botUsername}`, "gi"), `@${botName}`);
+      }
+
       const event: InboundEvent = {
         sessionKey: `telegram:${ctx.chat.id}`,
         channel: "telegram",
         target: String(ctx.chat.id),
         author: ctx.from?.username || ctx.from?.first_name || "user",
         timestamp: Date.now(),
-        content: ctx.message.text,
+        content,
         raw: ctx,
+        hasMention,
       };
-      console.log(`[Telegram] ✅ Firing onEvent for chat ${ctx.chat.id}`);
+      console.log(`[Telegram] ✅ Firing onEvent for chat ${ctx.chat.id}${hasMention ? '' : ' (no @mention)'}`);
       onEvent(event);
     });
+
+    // Helper to detect @mention in captions/text for groups
+    const checkMention = (chatType: string, text?: string): boolean => {
+      if (chatType === "private") return true;
+      const botUsername = this.bot!.botInfo.username;
+      return !!(botUsername && text?.toLowerCase().includes(`@${botUsername.toLowerCase()}`));
+    };
+
+    // Helper to normalize @botusername → @BotName in text
+    const normalizeContent = (text: string): string => {
+      const botUsername = this.bot!.botInfo.username;
+      const botName = this.config.bot?.name || "Vito";
+      if (botUsername) {
+        return text.replace(new RegExp(`@${botUsername}`, "gi"), `@${botName}`);
+      }
+      return text;
+    };
 
     // Photo messages
     this.bot.on("message:photo", async (ctx) => {
@@ -88,6 +121,7 @@ export class TelegramChannel implements Channel {
       const photo = ctx.message.photo[ctx.message.photo.length - 1]; // largest
       const file = await ctx.api.getFile(photo.file_id);
       const url = `https://api.telegram.org/file/bot${this.bot!.token}/${file.file_path}`;
+      const hasMention = checkMention(ctx.chat.type, ctx.message.caption);
 
       const event: InboundEvent = {
         sessionKey: `telegram:${ctx.chat.id}`,
@@ -95,7 +129,8 @@ export class TelegramChannel implements Channel {
         target: String(ctx.chat.id),
         author: ctx.from?.username || ctx.from?.first_name || "user",
         timestamp: Date.now(),
-        content: ctx.message.caption || "",
+        content: normalizeContent(ctx.message.caption || ""),
+        hasMention,
         attachments: [
           {
             type: "image",
@@ -116,6 +151,7 @@ export class TelegramChannel implements Channel {
       const doc = ctx.message.document;
       const file = await ctx.api.getFile(doc.file_id);
       const url = `https://api.telegram.org/file/bot${this.bot!.token}/${file.file_path}`;
+      const hasMention = checkMention(ctx.chat.type, ctx.message.caption);
 
       const event: InboundEvent = {
         sessionKey: `telegram:${ctx.chat.id}`,
@@ -123,7 +159,8 @@ export class TelegramChannel implements Channel {
         target: String(ctx.chat.id),
         author: ctx.from?.username || ctx.from?.first_name || "user",
         timestamp: Date.now(),
-        content: ctx.message.caption || "",
+        content: normalizeContent(ctx.message.caption || ""),
+        hasMention,
         attachments: [
           {
             type: doc.mime_type?.startsWith("audio/") ? "audio" : "file",
@@ -144,6 +181,8 @@ export class TelegramChannel implements Channel {
       const voice = ctx.message.voice;
       const file = await ctx.api.getFile(voice.file_id);
       const url = `https://api.telegram.org/file/bot${this.bot!.token}/${file.file_path}`;
+      // Voice messages don't have captions, treat as hasMention in private chats
+      const hasMention = ctx.chat.type === "private";
 
       const event: InboundEvent = {
         sessionKey: `telegram:${ctx.chat.id}`,
@@ -151,7 +190,8 @@ export class TelegramChannel implements Channel {
         target: String(ctx.chat.id),
         author: ctx.from?.username || ctx.from?.first_name || "user",
         timestamp: Date.now(),
-        content: ctx.message.caption || "",
+        content: normalizeContent(ctx.message.caption || ""),
+        hasMention,
         attachments: [
           {
             type: "audio",
@@ -172,6 +212,8 @@ export class TelegramChannel implements Channel {
       const audio = ctx.message.audio;
       const file = await ctx.api.getFile(audio.file_id);
       const url = `https://api.telegram.org/file/bot${this.bot!.token}/${file.file_path}`;
+      // Audio files can have captions
+      const hasMention = checkMention(ctx.chat.type, ctx.message.caption);
 
       const event: InboundEvent = {
         sessionKey: `telegram:${ctx.chat.id}`,
@@ -179,7 +221,8 @@ export class TelegramChannel implements Channel {
         target: String(ctx.chat.id),
         author: ctx.from?.username || ctx.from?.first_name || "user",
         timestamp: Date.now(),
-        content: ctx.message.caption || "",
+        content: normalizeContent(ctx.message.caption || ""),
+        hasMention,
         attachments: [
           {
             type: "audio",

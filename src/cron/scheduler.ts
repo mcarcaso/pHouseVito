@@ -171,6 +171,24 @@ export class CronScheduler {
     return Array.from(this.tasks.keys());
   }
 
+  /** Check health of all scheduled tasks */
+  checkHealth(): { name: string; isStarted: boolean; isStopped: boolean; nextRun: Date | null }[] {
+    const results: { name: string; isStarted: boolean; isStopped: boolean; nextRun: Date | null }[] = [];
+    for (const [name, task] of this.tasks) {
+      try {
+        // Access internal runner state if available
+        const runner = (task as any).runner;
+        const isStarted = runner?.isStarted?.() ?? null;
+        const isStopped = runner?.isStopped?.() ?? null;
+        const nextRun = runner?.nextRun?.() ?? null;
+        results.push({ name, isStarted, isStopped, nextRun });
+      } catch (err) {
+        results.push({ name, isStarted: false, isStopped: true, nextRun: null });
+      }
+    }
+    return results;
+  }
+
   /** Manually trigger a job by name */
   async triggerJob(name: string): Promise<boolean> {
     const job = this.jobConfigs.get(name);

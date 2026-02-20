@@ -30,6 +30,8 @@ export default function Jobs() {
   });
   const [editingCondition, setEditingCondition] = useState<string | null>(null);
   const [conditionValue, setConditionValue] = useState("");
+  const [healthData, setHealthData] = useState<any>(null);
+  const [showHealth, setShowHealth] = useState(false);
 
   useEffect(() => {
     fetchJobs();
@@ -127,20 +129,56 @@ export default function Jobs() {
     setConditionValue(job.sendCondition || "");
   };
 
+  const checkHealth = async () => {
+    try {
+      const res = await fetch("/api/cron/health");
+      const data = await res.json();
+      setHealthData(data);
+      setShowHealth(true);
+    } catch (err) {
+      setHealthData({ error: "Failed to fetch health data" });
+      setShowHealth(true);
+    }
+  };
+
   return (
     <div className="flex flex-col pb-8">
       {/* Header */}
       <div className="flex items-center gap-3 px-4 py-3 border-b border-neutral-800 sticky top-0 bg-black/95 backdrop-blur z-10">
         <h2 className="text-lg font-semibold text-white">Jobs ({jobs.length})</h2>
         <button
+          onClick={checkHealth}
+          className="ml-auto px-3 py-1.5 bg-neutral-700 hover:bg-neutral-600 text-white text-sm rounded-md transition-colors shrink-0"
+        >
+          🩺 Health
+        </button>
+        <button
           onClick={() => setShowForm(!showForm)}
-          className="ml-auto px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white text-sm rounded-md transition-colors shrink-0"
+          className="px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white text-sm rounded-md transition-colors shrink-0"
         >
           {showForm ? "Cancel" : "+ New"}
         </button>
       </div>
 
       <div className="p-4 space-y-4">
+        {/* Health Panel */}
+        {showHealth && healthData && (
+          <div className="bg-neutral-900 border border-neutral-800 rounded-xl p-4">
+            <div className="flex items-center justify-between mb-3">
+              <h3 className="text-sm font-medium text-neutral-300">🩺 Cron Health Check</h3>
+              <button
+                onClick={() => setShowHealth(false)}
+                className="text-neutral-500 hover:text-neutral-300 text-sm"
+              >
+                ✕ Close
+              </button>
+            </div>
+            <pre className="bg-neutral-950 p-3 rounded-md text-xs text-neutral-300 font-mono whitespace-pre-wrap overflow-x-auto">
+              {JSON.stringify(healthData, null, 2)}
+            </pre>
+          </div>
+        )}
+
         {/* Create Form */}
         {showForm && (
           <form

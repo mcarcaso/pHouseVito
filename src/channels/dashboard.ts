@@ -49,6 +49,7 @@ export class DashboardChannel implements Channel {
     removeJob: (name: string) => boolean;
     getActiveJobs: () => string[];
     triggerJob: (name: string) => Promise<boolean>;
+    checkHealth: () => { name: string; isStarted: boolean; isStopped: boolean; nextRun: Date | null }[];
   };
   private discordChannel?: {
     registerSlashCommands: () => Promise<{ success: boolean; count: number; error?: string }>;
@@ -79,6 +80,7 @@ export class DashboardChannel implements Channel {
     removeJob: (name: string) => boolean;
     getActiveJobs: () => string[];
     triggerJob: (name: string) => Promise<boolean>;
+    checkHealth: () => { name: string; isStarted: boolean; isStopped: boolean; nextRun: Date | null }[];
   }) {
     this.cronManager = manager;
   }
@@ -478,6 +480,21 @@ export class DashboardChannel implements Channel {
       }
 
       res.json({ success: true, message: `Job '${name}' triggered` });
+    });
+
+    this.app.get("/api/cron/health", (req, res) => {
+      if (!this.cronManager) {
+        res.status(500).json({ error: "Scheduler not available" });
+        return;
+      }
+      const health = this.cronManager.checkHealth();
+      const summary = {
+        total: health.length,
+        running: health.filter(h => h.isStarted && !h.isStopped).length,
+        stopped: health.filter(h => h.isStopped).length,
+        unknown: health.filter(h => h.isStarted === null).length,
+      };
+      res.json({ summary, jobs: health });
     });
 
     // Discord slash command registration

@@ -1,51 +1,60 @@
-import cron from "node-cron";
+import { parseCronExpression } from "cron-schedule";
+import { IntervalBasedCronScheduler } from "cron-schedule/schedulers/interval-based.js";
 import type { CronJobConfig, InboundEvent } from "../types.js";
 
 export class CronScheduler {
-  private tasks = new Map<string, cron.ScheduledTask>();
-  private timeouts = new Map<string, ReturnType<typeof setTimeout>>();
+  private scheduler: IntervalBasedCronScheduler;
+  private taskIds = new Map<string, number>(); // job name -> scheduler task id
+  private timeouts = new Map<string, ReturnType<typeof setTimeout>>(); // for ISO date one-time jobs
   private jobConfigs = new Map<string, CronJobConfig>();
 
   constructor(
     private onJob: (event: InboundEvent, channelName: string | null) => Promise<void>,
     private onJobComplete?: (jobName: string) => Promise<void>
-  ) {}
+  ) {
+    // Interval-based: checks every 60 seconds for due jobs
+    // This is the reliable approach — no single setTimeout that can get lost
+    this.scheduler = new IntervalBasedCronScheduler(60 * 1000);
+  }
 
   /** Start all jobs from config */
   start(jobs: CronJobConfig[]): void {
     for (const job of jobs) {
       this.scheduleJob(job);
     }
-    console.log(`Cron scheduler started with ${jobs.length} job(s)`);
+    console.log(`[Cron] Scheduler started with ${jobs.length} job(s) — interval-based (cron-schedule)`);
   }
 
   /** Stop all running jobs */
   stop(): void {
-    for (const [name, task] of this.tasks) {
-      task.stop();
+    for (const [name, taskId] of this.taskIds) {
+      this.scheduler.unregisterTask(taskId);
       console.log(`Stopped cron job: ${name}`);
     }
+    this.scheduler.stop();
+
     for (const [name, timeout] of this.timeouts) {
       clearTimeout(timeout);
       console.log(`Stopped one-time job: ${name}`);
     }
-    this.tasks.clear();
+
+    this.taskIds.clear();
     this.timeouts.clear();
   }
 
-  /** Execute a job (shared by cron and setTimeout) */
+  /** Execute a job */
   private async executeJob(job: CronJobConfig): Promise<void> {
     // Extract channel and target from session (e.g., "dashboard:default" -> channel="dashboard", target="default")
     const sessionParts = job.session.split(":");
     const channelName = sessionParts[0] || "cron";
     const targetName = sessionParts.slice(1).join(":") || "default";
-    
+
     // If sendCondition is set, modify the prompt to include the instruction
     let prompt = job.prompt;
     if (job.sendCondition) {
       prompt = `${job.prompt}\n\nIMPORTANT: After your analysis, if the following condition is NOT met, respond with exactly 'NO_REPLY' and nothing else. Condition: ${job.sendCondition}`;
     }
-    
+
     // Create an InboundEvent from the cron job
     const event: InboundEvent = {
       sessionKey: job.session,
@@ -54,7 +63,7 @@ export class CronScheduler {
       author: "system",
       timestamp: Date.now(),
       content: prompt,
-      raw: { 
+      raw: {
         cronJob: job.name,
         sendCondition: job.sendCondition || null,
       },
@@ -69,13 +78,12 @@ export class CronScheduler {
 
   /** Check if a string is an ISO date */
   private isISODate(str: string): boolean {
-    // Match ISO 8601 format: 2026-02-15T08:00:00-05:00 or 2026-02-15T13:00:00Z
     return /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}/.test(str);
   }
 
   /** Schedule a single job */
   scheduleJob(job: CronJobConfig): void {
-    if (this.tasks.has(job.name) || this.timeouts.has(job.name)) {
+    if (this.taskIds.has(job.name) || this.timeouts.has(job.name)) {
       console.warn(`Cron job already exists: ${job.name}`);
       return;
     }
@@ -96,11 +104,11 @@ export class CronScheduler {
       const timeout = setTimeout(async () => {
         console.log(`[Cron] Triggering one-time job: ${job.name}`);
         await this.executeJob(job);
-        
+
         // Clean up
         this.timeouts.delete(job.name);
         this.jobConfigs.delete(job.name);
-        
+
         // Notify the orchestrator to remove it from config file
         if (this.onJobComplete) {
           await this.onJobComplete(job.name);
@@ -112,23 +120,28 @@ export class CronScheduler {
       return;
     }
 
-    if (!cron.validate(job.schedule)) {
-      console.error(`Invalid cron schedule for job ${job.name}: ${job.schedule}`);
+    // Parse the cron expression
+    let cron;
+    try {
+      cron = parseCronExpression(job.schedule);
+    } catch (err) {
+      console.error(`Invalid cron schedule for job ${job.name}: ${job.schedule}`, err);
       return;
     }
 
-    const task = cron.schedule(
-      job.schedule,
+    // Register with the interval-based scheduler
+    const taskId = this.scheduler.registerTask(
+      cron,
       async () => {
         console.log(`[Cron] Triggering job: ${job.name}${job.oneTime ? " (one-time)" : ""}`);
         await this.executeJob(job);
-        
+
         // If this is a one-time job, remove it after successful execution
         if (job.oneTime) {
           console.log(`[Cron] One-time job completed: ${job.name}, removing...`);
           this.removeJob(job.name);
           this.jobConfigs.delete(job.name);
-          
+
           // Notify the orchestrator to remove it from config file
           if (this.onJobComplete) {
             await this.onJobComplete(job.name);
@@ -136,31 +149,34 @@ export class CronScheduler {
         }
       },
       {
-        timezone: job.timezone || "America/New_York",
+        isOneTimeTask: job.oneTime || false,
+        errorHandler: (err) => {
+          console.error(`[Cron] Error in job ${job.name}:`, err);
+        },
       }
     );
 
-    this.tasks.set(job.name, task);
+    this.taskIds.set(job.name, taskId);
     this.jobConfigs.set(job.name, job);
     console.log(`Scheduled cron job: ${job.name} (${job.schedule})${job.oneTime ? " [ONE-TIME]" : ""}`);
   }
 
   /** Remove a job by name */
   removeJob(name: string): boolean {
-    const task = this.tasks.get(name);
+    const taskId = this.taskIds.get(name);
     const timeout = this.timeouts.get(name);
-    
-    if (!task && !timeout) return false;
 
-    if (task) {
-      task.stop();
-      this.tasks.delete(name);
+    if (taskId === undefined && !timeout) return false;
+
+    if (taskId !== undefined) {
+      this.scheduler.unregisterTask(taskId);
+      this.taskIds.delete(name);
     }
     if (timeout) {
       clearTimeout(timeout);
       this.timeouts.delete(name);
     }
-    
+
     this.jobConfigs.delete(name);
     console.log(`Removed cron job: ${name}`);
     return true;
@@ -168,24 +184,34 @@ export class CronScheduler {
 
   /** Get all active job names */
   getActiveJobs(): string[] {
-    return Array.from(this.tasks.keys());
+    return [...this.taskIds.keys(), ...this.timeouts.keys()];
   }
 
   /** Check health of all scheduled tasks */
-  checkHealth(): { name: string; isStarted: boolean; isStopped: boolean; nextRun: Date | null }[] {
-    const results: { name: string; isStarted: boolean; isStopped: boolean; nextRun: Date | null }[] = [];
-    for (const [name, task] of this.tasks) {
-      try {
-        // Access internal runner state if available
-        const runner = (task as any).runner;
-        const isStarted = runner?.isStarted?.() ?? null;
-        const isStopped = runner?.isStopped?.() ?? null;
-        const nextRun = runner?.nextRun?.() ?? null;
-        results.push({ name, isStarted, isStopped, nextRun });
-      } catch (err) {
-        results.push({ name, isStarted: false, isStopped: true, nextRun: null });
+  checkHealth(): { name: string; isActive: boolean; nextRun: Date | null }[] {
+    const results: { name: string; isActive: boolean; nextRun: Date | null }[] = [];
+    
+    for (const [name] of this.taskIds) {
+      const job = this.jobConfigs.get(name);
+      let nextRun: Date | null = null;
+      if (job) {
+        try {
+          const cron = parseCronExpression(job.schedule);
+          nextRun = cron.getNextDate();
+        } catch { /* ignore */ }
       }
+      results.push({ name, isActive: true, nextRun });
     }
+
+    for (const [name] of this.timeouts) {
+      const job = this.jobConfigs.get(name);
+      let nextRun: Date | null = null;
+      if (job && this.isISODate(job.schedule)) {
+        nextRun = new Date(job.schedule);
+      }
+      results.push({ name, isActive: true, nextRun });
+    }
+
     return results;
   }
 
@@ -205,7 +231,7 @@ export class CronScheduler {
   /** Reload jobs - remove old ones, add new ones, update changed ones */
   reload(jobs: CronJobConfig[]): void {
     const newJobNames = new Set(jobs.map((j) => j.name));
-    const currentJobNames = new Set([...this.tasks.keys(), ...this.timeouts.keys()]);
+    const currentJobNames = new Set([...this.taskIds.keys(), ...this.timeouts.keys()]);
 
     // Remove jobs that no longer exist in config
     for (const name of currentJobNames) {
@@ -216,7 +242,7 @@ export class CronScheduler {
 
     // Add or update jobs
     for (const job of jobs) {
-      const existingTask = this.tasks.has(job.name) || this.timeouts.has(job.name);
+      const existingTask = this.taskIds.has(job.name) || this.timeouts.has(job.name);
       if (existingTask) {
         // Stop and reschedule if it exists (in case schedule/prompt changed)
         this.removeJob(job.name);

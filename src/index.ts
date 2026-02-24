@@ -53,6 +53,7 @@ async function main() {
   // Register Dashboard channel (starts web server)
   const dashboard = new DashboardChannel(db, queries, config);
   dashboard.setSkillsGetter(() => orchestrator.getSkills());
+  dashboard.setAskHandler((opts) => orchestrator.ask(opts));
   dashboard.setCronManager({
     scheduleJob: (job) => orchestrator.getCronScheduler().scheduleJob(job),
     removeJob: (name) => orchestrator.getCronScheduler().removeJob(name),
@@ -79,28 +80,12 @@ async function main() {
 
   console.log("\nVito is ready. Dashboard at http://localhost:3030\n");
 
-  // Heartbeat log every 30 minutes to detect silent cron failures
+  // Heartbeat log every 30 minutes
   setInterval(() => {
     console.log(`[Heartbeat] Vito alive @ ${new Date().toLocaleString()}`);
-    // Check cron job health
     const cronHealth = orchestrator.getCronScheduler().checkHealth();
-    const stoppedJobs = cronHealth.filter(j => j.isStopped);
-    if (stoppedJobs.length > 0) {
-      console.error(`[Heartbeat] ⚠️ STOPPED CRON JOBS DETECTED: ${stoppedJobs.map(j => j.name).join(", ")}`);
-    }
-    console.log(`[Heartbeat] Cron jobs: ${cronHealth.length} total, ${cronHealth.filter(j => j.isStarted).length} running, ${stoppedJobs.length} stopped`);
+    console.log(`[Heartbeat] Cron jobs: ${cronHealth.length} active`);
   }, 30 * 60 * 1000); // 30 minutes
-
-  // DEBUG: Check cron health every 5 minutes for now
-  setInterval(() => {
-    const cronHealth = orchestrator.getCronScheduler().checkHealth();
-    const stoppedJobs = cronHealth.filter(j => j.isStopped);
-    if (stoppedJobs.length > 0) {
-      console.error(`[CronHealth] ⚠️ STOPPED: ${stoppedJobs.map(j => j.name).join(", ")}`);
-    } else {
-      console.log(`[CronHealth] All ${cronHealth.length} jobs running OK`);
-    }
-  }, 5 * 60 * 1000); // 5 minutes
 
   // Watch config file for changes (hot-reload cron jobs)
   const configPath = resolve(USER_DIR, "vito.config.json");

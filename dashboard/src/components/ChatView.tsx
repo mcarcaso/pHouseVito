@@ -17,6 +17,7 @@ interface DbMessage {
   content: string;
   timestamp: number;
   compacted?: boolean;
+  author?: string | null;
 }
 
 interface ParsedMessage {
@@ -30,6 +31,7 @@ interface ParsedMessage {
   toolResult?: any;
   isError?: boolean;
   isThought?: boolean;
+  author?: string | null;
 }
 
 function truncate(s: string, max: number): string {
@@ -69,7 +71,7 @@ export function parseDbMessage(msg: DbMessage): ParsedMessage {
     }
 
     if (typeof parsed === 'string') {
-      return { role, content: parsed, timestamp: msg.timestamp, isThought };
+      return { role, content: parsed, timestamp: msg.timestamp, isThought, author: msg.author };
     }
 
     const attachments = parsed.attachments?.map((a: any) => ({
@@ -82,9 +84,10 @@ export function parseDbMessage(msg: DbMessage): ParsedMessage {
       timestamp: msg.timestamp,
       attachments,
       isThought,
+      author: msg.author,
     };
   } catch {
-    return { role: typeToRole(msg.type), content: msg.content, timestamp: msg.timestamp, isThought: msg.type === 'thought' };
+    return { role: typeToRole(msg.type), content: msg.content, timestamp: msg.timestamp, isThought: msg.type === 'thought', author: msg.author };
   }
 }
 
@@ -289,6 +292,7 @@ function ChatView({
         );
       } else {
         const isUser = msg.role === 'user';
+        const roleLabel = isUser && msg.author ? msg.author : msg.role;
         elements.push(
           <div 
             key={`${msg.role}-${msg.timestamp}-${i}`} 
@@ -299,7 +303,7 @@ function ChatView({
             }`}
           >
             <div className="flex justify-between mb-2 text-sm opacity-70">
-              <span className="font-semibold capitalize">{msg.role}</span>
+              <span className="font-semibold capitalize">{roleLabel}</span>
               <span className="text-xs">
                 {new Date(msg.timestamp).toLocaleTimeString()}
               </span>

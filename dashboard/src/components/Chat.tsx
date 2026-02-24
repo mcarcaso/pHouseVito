@@ -46,7 +46,12 @@ function Chat() {
         // Handle both old format (array) and new format ({messages, total})
         const rawMessages = Array.isArray(data) ? data : data.messages;
         if (Array.isArray(rawMessages)) {
-          const messages = rawMessages.map(parseDbMessage);
+          const messages = rawMessages.map((msg) => parseDbMessage({
+            type: msg.type,
+            content: msg.content,
+            timestamp: msg.timestamp,
+            author: msg.author,
+          }));
 
           let latestAssistantTs: number | null = null;
           for (let i = messages.length - 1; i >= 0; i--) {

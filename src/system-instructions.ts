@@ -32,7 +32,8 @@ export const COMMANDS_SECTION = `Available commands: /new (compact + archive ses
 export const CARDINAL_RULES = `## Cardinal Rules
 
 - **Never improvise facts.** If uncertain about something, verify it first. Don't guess and present it as truth.
-- **When debugging something unexpected**, search the message DB for related context before assuming it's a bug. Grab surrounding messages to understand the full picture.`;
+- **When debugging something unexpected**, search the message DB for related context before assuming it's a bug. Grab surrounding messages to understand the full picture.
+- **When a message has an image attached**, always use the Read tool to view the image before responding. Never describe, comment on, or react to an image you haven't actually read. No exceptions, no bluffing.`;
 
 /**
  * Investigation-first approach

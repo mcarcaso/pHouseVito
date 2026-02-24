@@ -419,7 +419,8 @@ class DiscordOutputHandler implements OutputHandler {
     this.buffer = "";
 
     // Split message at MEDIA: markers and send in order: text, attachment, text, attachment, etc.
-    const mediaRegex = /MEDIA:(\/[^\s\n`*"<>|]+)/g;
+    // Accept both absolute (/Users/...) and relative (user/...) paths
+    const mediaRegex = /MEDIA:([^\s\n`*"<>|]+)/g;
     const parts: Array<{ type: "text"; content: string } | { type: "media"; path: string }> = [];
 
     let lastIndex = 0;
@@ -430,8 +431,13 @@ class DiscordOutputHandler implements OutputHandler {
       if (before) {
         parts.push({ type: "text", content: before });
       }
+      // Resolve relative paths to absolute using project root
+      let mediaPath = match[1];
+      if (!path.isAbsolute(mediaPath)) {
+        mediaPath = path.resolve(process.cwd(), mediaPath);
+      }
       // Add the media
-      parts.push({ type: "media", path: match[1] });
+      parts.push({ type: "media", path: mediaPath });
       lastIndex = match.index + match[0].length;
     }
     // Add remaining text after last match

@@ -32,6 +32,7 @@ interface Message {
   content: string;
   timestamp: number;
   compacted: boolean;
+  author?: string | null;
 }
 
 const MESSAGES_PER_PAGE = 50;
@@ -215,7 +216,7 @@ function Sessions() {
   const hasOverrides = sessionConfig.streamMode || sessionConfig.harness || sessionConfig.model || sessionConfig['pi-coding-agent'];
 
   const parsedMessages: ParsedMessage[] = allMessages.map((msg) =>
-    parseDbMessage({ type: msg.type, content: msg.content, timestamp: msg.timestamp })
+    parseDbMessage({ type: msg.type, content: msg.content, timestamp: msg.timestamp, author: msg.author })
   );
 
   const hasScrolledRef = useRef(false);

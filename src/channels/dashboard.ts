@@ -49,12 +49,18 @@ export class DashboardChannel implements Channel {
     removeJob: (name: string) => boolean;
     getActiveJobs: () => string[];
     triggerJob: (name: string) => Promise<boolean>;
-    checkHealth: () => { name: string; isStarted: boolean; isStopped: boolean; nextRun: Date | null }[];
+    checkHealth: () => { name: string; isActive: boolean; nextRun: Date | null }[];
   };
   private discordChannel?: {
     registerSlashCommands: () => Promise<{ success: boolean; count: number; error?: string }>;
     getChannelInfo: (channelId: string) => Promise<{ name: string; guildName?: string } | null>;
   };
+  private askHandler?: (options: {
+    question: string;
+    session?: string;
+    author?: string;
+    channelPrompt?: string;
+  }) => Promise<string>;
 
   constructor(private db: any, private queries: any, private config: any) {
     this.setupExpress();
@@ -80,7 +86,7 @@ export class DashboardChannel implements Channel {
     removeJob: (name: string) => boolean;
     getActiveJobs: () => string[];
     triggerJob: (name: string) => Promise<boolean>;
-    checkHealth: () => { name: string; isStarted: boolean; isStopped: boolean; nextRun: Date | null }[];
+    checkHealth: () => { name: string; isActive: boolean; nextRun: Date | null }[];
   }) {
     this.cronManager = manager;
   }
@@ -90,6 +96,15 @@ export class DashboardChannel implements Channel {
     getChannelInfo: (channelId: string) => Promise<{ name: string; guildName?: string } | null>;
   }) {
     this.discordChannel = discord;
+  }
+
+  setAskHandler(handler: (options: {
+    question: string;
+    session?: string;
+    author?: string;
+    channelPrompt?: string;
+  }) => Promise<string>) {
+    this.askHandler = handler;
   }
 
   reloadConfig(config: any) {
@@ -490,9 +505,7 @@ export class DashboardChannel implements Channel {
       const health = this.cronManager.checkHealth();
       const summary = {
         total: health.length,
-        running: health.filter(h => h.isStarted && !h.isStopped).length,
-        stopped: health.filter(h => h.isStopped).length,
-        unknown: health.filter(h => h.isStarted === null).length,
+        active: health.filter(h => h.isActive).length,
       };
       res.json({ summary, jobs: health });
     });
@@ -739,6 +752,52 @@ export class DashboardChannel implements Channel {
         filename: filename || `${id}.${ext}`,
         mimeType,
       });
+    });
+
+    // ── Public Ask API ──
+    // External integrations (Bland.ai phone, webhooks, etc.) call this to get a Vito response.
+    // Routes through the full orchestrator pipeline: system prompt, memories, skills, tools.
+    this.app.post("/api/ask", async (req, res) => {
+      // Authenticate with Bearer token from secrets
+      const secrets = readSecrets();
+      const apiKey = secrets["VITO_ASK_API_KEY"];
+      if (apiKey) {
+        const authHeader = req.headers.authorization || "";
+        const token = authHeader.startsWith("Bearer ") ? authHeader.slice(7) : authHeader;
+        if (token !== apiKey) {
+          res.status(401).json({ error: "Unauthorized — invalid or missing API key" });
+          return;
+        }
+      }
+
+      if (!this.askHandler) {
+        res.status(503).json({ error: "Ask handler not configured" });
+        return;
+      }
+
+      const { question, session, author, channelPrompt } = req.body;
+      if (!question || typeof question !== "string") {
+        res.status(400).json({ error: "Missing or invalid 'question' field" });
+        return;
+      }
+
+      const start = Date.now();
+      console.log(`[Dashboard] /api/ask request: session=${session || "api:default"} question="${question.slice(0, 80)}"`);
+
+      try {
+        const answer = await this.askHandler({
+          question,
+          session: session || undefined,
+          author: author || undefined,
+          channelPrompt: channelPrompt || undefined,
+        });
+        const elapsed = Date.now() - start;
+        console.log(`[Dashboard] /api/ask response (${elapsed}ms): "${answer.slice(0, 100)}"`);
+        res.json({ answer, elapsed });
+      } catch (err: any) {
+        console.error(`[Dashboard] /api/ask error:`, err);
+        res.status(500).json({ error: "Failed to process question", answer: "I hit a snag. Try again." });
+      }
     });
 
     // HTTP fallback for sending chat messages (when WebSocket is dead)

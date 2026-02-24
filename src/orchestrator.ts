@@ -134,6 +134,139 @@ export class Orchestrator {
   }
 
   /**
+   * Public API: Ask Vito a question and get a text response.
+   * Routes through the full orchestrator pipeline (system prompt, memories, skills, harness)
+   * but captures the response instead of sending it to a channel.
+   * 
+   * Used by external integrations (Bland.ai phone, future Slack/webhooks, etc.)
+   */
+  async ask(options: {
+    question: string;
+    session?: string;      // e.g. "api:bland-mike" — defaults to "api:default"
+    author?: string;       // who's asking — defaults to "api"
+    channelPrompt?: string; // custom channel instructions (e.g. "keep it brief for phone")
+  }): Promise<string> {
+    const {
+      question,
+      session = "api:default",
+      author = "api",
+      channelPrompt = "",
+    } = options;
+
+    const parts = session.split(":");
+    const channel = parts[0] || "api";
+    const target = parts.length > 1 ? parts.slice(1).join(":") : "default";
+
+    // Create synthetic inbound event
+    const event: InboundEvent = {
+      sessionKey: session,
+      channel,
+      target,
+      author,
+      content: question,
+      timestamp: Date.now(),
+      raw: { synthetic: true, source: "api-ask" },
+      hasMention: true,
+    };
+
+    // Process through the full pipeline, but capture output via collector
+    const response = await this.processMessageWithCollector(event, channelPrompt);
+    return response;
+  }
+
+  /**
+   * Process a message through the full pipeline and return the response text.
+   * Like processMessage but uses a collector OutputHandler instead of a channel handler.
+   */
+  private async processMessageWithCollector(
+    event: InboundEvent,
+    channelPrompt: string = ""
+  ): Promise<string> {
+    // 1. Resolve/create session
+    const vitoSession = this.sessionManager.resolveSession(event.channel, event.target);
+    const sessionKey = `${event.channel}:${event.target}`;
+    const effectiveSettings = getEffectiveSettings(this.config, event.channel, sessionKey);
+
+    // 2. Build context
+    const ctx = await assembleContext(this.queries, vitoSession.id, this.config, effectiveSettings);
+    const contextPrompt = formatContextForPrompt(ctx);
+    const skillsPrompt = formatSkillsForPrompt(this.getSkills());
+
+    // 3. Collector handler — captures all assistant messages
+    const collectedMessages: string[] = [];
+    const collectorHandler: OutputHandler = {
+      async relay(msg: string) { collectedMessages.push(msg); },
+      async relayEvent() {},
+      async startTyping() {},
+      async stopTyping() {},
+      async endMessage() {},
+    };
+
+    // 4. Build harness chain (same as processMessage but with collector)
+    const innerHarness = this.getHarness(effectiveSettings);
+    const tracedHarness = withTracing(innerHarness, {
+      session_id: vitoSession.id,
+      channel: event.channel,
+      target: event.target,
+      model: this.getModelString(effectiveSettings),
+      traceMessageUpdates: effectiveSettings.traceMessageUpdates ?? false,
+    });
+    const persistedHarness = withPersistence(tracedHarness, {
+      queries: this.queries,
+      sessionId: vitoSession.id,
+      channel: event.channel,
+      target: event.target,
+      userContent: event.content,
+      userTimestamp: event.timestamp,
+      author: event.author,
+    });
+    // Force "final" mode — we only want the last response
+    const relayHarness = withRelay(persistedHarness, {
+      handler: collectorHandler,
+      streamMode: "final",
+    });
+    const harness = relayHarness; // No typing decorator needed for API
+
+    // 5. Build system prompt (use channel prompt if provided, otherwise generic API prompt)
+    const effectiveChannelPrompt = channelPrompt || 
+      "## Channel: API\nYou are responding to a programmatic API request. Keep responses concise and direct.";
+    const systemPrompt = this.buildSystemPrompt(
+      contextPrompt,
+      skillsPrompt,
+      effectiveChannelPrompt,
+      innerHarness.getCustomInstructions?.() || ""
+    );
+
+    // 6. Build user message with author
+    let promptText = event.content || "";
+    const senderName = event.author;
+    if (senderName && senderName !== "user" && senderName !== "system" && senderName !== "api") {
+      promptText = `[${senderName}]: ${promptText}`;
+    }
+
+    console.log(`[Orchestrator.ask] Processing question for ${sessionKey}: "${promptText.slice(0, 80)}..."`);
+
+    try {
+      await harness.run(
+        systemPrompt,
+        promptText,
+        { onRawEvent: () => {}, onNormalizedEvent: () => {} }
+      );
+    } catch (err) {
+      console.error(`[Orchestrator.ask] Error: ${err instanceof Error ? err.message : err}`);
+      return "I hit a snag trying to think about that. Try asking again.";
+    }
+
+    // Return the last collected message (final response)
+    const response = collectedMessages.length > 0
+      ? collectedMessages[collectedMessages.length - 1]
+      : "I couldn't come up with an answer for that one.";
+
+    console.log(`[Orchestrator.ask] Response: "${response.slice(0, 100)}..."`);
+    return response;
+  }
+
+  /**
    * Build a system prompt for testing/battle scenarios.
    * Includes: personality, system instructions, skills, channel prompt
    * Excludes: memory/session context (no cross-session, no current-session)

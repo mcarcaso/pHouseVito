@@ -186,14 +186,21 @@ npm run build
 npm run build:dashboard
 ```
 
-## Architecture Highlights
+## Architecture
+
+### Core Runtime
+
+- **Orchestrator** — Central brain that routes inbound messages to the harness and outbound responses to channels.
+- **Per-session queue** — Messages are queued per session so work completes in order without interruption. Cross-session work runs in parallel.
+- **Streaming pipeline** — Raw events are emitted in real-time while normalized events are stored in the DB.
+- **Thought promotion** — Harness emits thoughts; the last “thought” is promoted to the final assistant message.
 
 ### Harness System
 
 Harnesses are pluggable AI backends that handle the actual LLM interaction. Currently supported:
 
-- **claude-code** - Uses the Claude Code SDK. Supports Sonnet and Opus models with configurable permission mode.
-- **pi-coding-agent** - Uses the Pi Coding Agent SDK. Supports multiple providers (OpenAI, Anthropic, Google, OpenRouter) with thinking levels.
+- **claude-code** — Uses the Claude Code SDK. Supports Sonnet and Opus models with configurable permission mode.
+- **pi-coding-agent** — Uses the Pi Coding Agent SDK. Supports multiple providers (OpenAI, Anthropic, Google, OpenRouter) with thinking levels.
 
 Configure your default harness in `user/vito.config.json`:
 ```json
@@ -212,20 +219,48 @@ Configure your default harness in `user/vito.config.json`:
 
 Override per-session via the Dashboard Settings page.
 
+### Harness Decorators
+
+Runtime behaviors are layered via decorators:
+- `withTracing()` — JSONL trace logging
+- `withPersistence()` — SQLite message storage
+- `withRelay()` — Streaming to channels
+- `withTyping()` — Typing indicators
+- `withNoReplyCheck()` — Drops responses containing `NO_REPLY`
+
+### System Instructions
+
+System instructions are centralized in `src/system-instructions.ts`, including:
+- **Core instructions** (tools, MEDIA protocol, restart rules)
+- **Commands block** (`/new` only for interactive sessions)
+- **Cardinal rules** (verify facts, investigate before assuming)
+- **Investigation-first behavior**
+
 ### Memory Flow
 
 1. Messages are stored in SQLite (append-only log)
 2. Context is assembled from:
-   - Long-term memories (semantic search via embeddings)
+   - Long-term memories (LLM-managed files)
    - Cross-session short-term (recent messages from other sessions)
    - Current session short-term (recent messages from this session)
-3. When un-compacted messages exceed threshold, LLM reviews and updates memories
+3. When un-compacted messages exceed threshold, compaction runs and updates memory docs
 4. Processed messages are marked as compacted but never deleted
+
+### Compaction System
+
+Compaction is implemented as a **skill** and runs via the `system:compaction` session:
+- Orchestrator triggers a synthetic message when threshold is exceeded or `/new` is used
+- The compaction skill reads SQLite + memory files, then rewrites memory docs
+- Orchestrator marks compaction session messages as compacted after completion
+
+### Multimodal Handling
+
+- **Images**: stored as `[Attached image: /path]` tags and converted by the harness to pixel data
+- **Audio**: not wired by default; requires explicit transcription
 
 ### Channel System
 
 Channels are adapters that convert between platform-specific formats and Vito's internal message format. Each channel implements:
-
 - `start()` / `stop()` - Lifecycle
 - `listen()` - Receive inbound messages
 - `createHandler()` - Send outbound messages
@@ -237,6 +272,72 @@ Channels are adapters that convert between platform-specific formats and Vito's 
 - **Frontend**: React + TypeScript + Vite
 - **Communication**: REST API for data queries, WebSocket for real-time chat
 - **Styling**: Custom CSS with dark theme
+
+### Cron + Scheduler
+
+- **node-cron** schedules recurring jobs
+- Jobs live in `user/vito.config.json` and hot-reload on config change
+- `NO_REPLY` message marker suppresses replies when `sendCondition` isn’t met
+- Health check endpoint at `/api/cron/health` exposes runner state
+
+### Bot Identity + Mentions
+
+- `bot.name` in `user/vito.config.json` defines Vito’s display name
+- Channels normalize @mentions to `@{bot.name}` for clean storage
+- `requireMention` can be overridden per session/channel in the settings cascade
+
+### Session Aliases
+
+- Sessions can have user-defined aliases stored in the DB
+- Dashboard shows alias as primary name with raw session id beneath
+- Alias editing is inline in the Sessions view
+
+## Lessons Learned
+
+### File Operations
+- **Check file size before reading** (use `ls -la` or `wc -l`)
+- **Send .txt for iOS** — Mike can’t open `.ts`/`.js` on iOS
+
+### Build & Deploy
+- **Always rebuild after source changes** — `npm run build` if changes aren’t working
+- **Dashboard needs devDeps** — use `NODE_ENV=development npm install` in dashboard dir
+- **Cloudflare caches 404s** — use cache-busting params or wait for expiry
+- **Icon caching** — avoid common names like `favicon.png`, use unique filenames
+- **Disable caching by default** — use `serve.json` with no-cache headers
+- **Don’t use SPA mode** for static sites (`serve -s` breaks static files)
+
+### PM2 & Processes
+- **Use `npx pm2`** — not bare `pm2`
+- **Service name is `vito-server`** — not `vito`
+- **Always use `--nostream`** for logs
+- **Watch for orphan processes** — avoid rogue `node server.js &`
+
+### React
+- **Hooks must be before any returns**
+- **Number inputs need local string state**
+- **localStorage can corrupt** — wrap JSON.parse in try/catch
+- **Defensive object access** — handle empty objects in inherited configs
+
+### API & Config Patterns
+- **PUT endpoints do shallow merge** — `{}` doesn’t delete keys
+- **Send `null` to remove config keys**
+- **Nested object replacement** — replace, don’t merge
+
+### Unicode in JSX
+- `\u25BC` in JSX renders literally — use `▼` or `{"\u25BC"}`
+
+### Hallucination Risk
+- **Don’t assume image content** — look first
+- **Verify personal details** — no sloppy memory recall
+
+### Debugging & Investigation
+- **Never restart yourself** — tell the user “changes are ready”
+- **Search the message DB first** when something looks off
+
+### Browser Cookie Extraction
+- **Safari cookies are binary** — use `browser_cookie3` or parse manually
+- **Playwright sessions are isolated** — must inject cookies
+- **Pattern**: login in browser → extract cookies → load into Playwright
 
 ## Roadmap
 

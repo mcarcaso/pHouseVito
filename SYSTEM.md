@@ -172,3 +172,9 @@ pm2 logs vito-server --lines 50 --nostream  # View recent logs
 pm2 restart vito-server                      # Restart (but let the boss do this!)
 pm2 status                                   # Check all services
 ```
+
+---
+
+# Architecture & Lessons
+
+Full architecture and lessons learned are documented in README.md under **Architecture** and **Lessons Learned**. SYSTEM.md stays focused on operational rules for the assistant.

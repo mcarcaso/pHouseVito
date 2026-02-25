@@ -24,7 +24,7 @@ NEVER restart yourself. You don't know what long-running jobs might be in progre
 /**
  * Available slash commands (only shown in interactive sessions, not tests)
  */
-export const COMMANDS_SECTION = `Available commands: /new (compact + archive session), /stop (abort current request + clear queue)`;
+export const COMMANDS_SECTION = `Available commands: /new (embed + archive session), /stop (abort current request + clear queue)`;
 
 /**
  * Cardinal rules that must always be followed
@@ -41,7 +41,6 @@ export const CARDINAL_RULES = `## Cardinal Rules
 export const INVESTIGATION_FIRST = `## Investigation First
 
 When instructions are vague or incomplete, investigate before asking:
-- Check user memories in user/memories/ — they contain context, preferences, and prior intel
 - Check existing files and configs
 - Query the message history if needed
 - **Search long-term memory** with \`node user/scripts/search-memory.mjs "query"\` for past conversations (supports --limit N, --session id, --mode hybrid|embedding|bm25)

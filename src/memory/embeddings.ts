@@ -170,7 +170,11 @@ interface ChunkCandidate {
  *   - After all messages, emit the remaining buffer if it's >= MIN_CHUNK_CHARS (2K)
  *   - Leftover messages under MIN are left dangling for next time
  */
-function produceCompleteChunks(messages: RawMessage[], existingChunkCount: Map<string, number>): ChunkCandidate[] {
+function produceCompleteChunks(
+  messages: RawMessage[],
+  existingChunkCount: Map<string, number>,
+  forceEmitRemainder = false
+): ChunkCandidate[] {
   if (messages.length === 0) return [];
 
   // Group by day
@@ -218,8 +222,8 @@ function produceCompleteChunks(messages: RawMessage[], existingChunkCount: Map<s
     }
 
     // Emit remaining buffer if it meets the MIN threshold.
-    // If under MIN, leave dangling — picked up next time.
-    if (currentMessages.length > 0 && currentLength >= MIN_CHUNK_CHARS) {
+    // If under MIN, leave dangling — picked up next time (unless forced).
+    if (currentMessages.length > 0 && (currentLength >= MIN_CHUNK_CHARS || forceEmitRemainder)) {
       chunks.push({
         text: currentLines.join("").trimEnd(),
         messages: [...currentMessages],
@@ -301,13 +305,21 @@ export interface EmbeddingResult {
   duration_ms: number;
 }
 
+export interface EmbedOptions {
+  /** Force emitting a final chunk even if below MIN_CHUNK_CHARS */
+  force?: boolean;
+}
+
 /**
  * Check if a session has enough unembedded messages to form a chunk,
  * and if so, embed them. Called after every assistant message.
  * 
  * Returns a result object for trace reporting.
  */
-export async function maybeEmbedNewChunks(sessionId: string): Promise<EmbeddingResult> {
+export async function maybeEmbedNewChunks(
+  sessionId: string,
+  options: EmbedOptions = {}
+): Promise<EmbeddingResult> {
   const start = Date.now();
 
   // Global lock — if another embedding is running, skip
@@ -317,7 +329,7 @@ export async function maybeEmbedNewChunks(sessionId: string): Promise<EmbeddingR
   isRunning = true;
 
   try {
-    return await _doEmbedding(sessionId, start);
+    return await _doEmbedding(sessionId, start, options);
   } catch (err) {
     console.error(`[Embeddings] Error during incremental embedding for ${sessionId}:`, err);
     return { skipped: `error: ${err instanceof Error ? err.message : String(err)}`, chunks_created: 0, chunks: [], unembedded_messages: 0, unembedded_chars: 0, duration_ms: Date.now() - start };
@@ -326,7 +338,11 @@ export async function maybeEmbedNewChunks(sessionId: string): Promise<EmbeddingR
   }
 }
 
-async function _doEmbedding(sessionId: string, start: number): Promise<EmbeddingResult> {
+async function _doEmbedding(
+  sessionId: string,
+  start: number,
+  options: EmbedOptions
+): Promise<EmbeddingResult> {
   const db = getEmbeddingsDB();
 
   // Find the highest message ID we've already embedded for this session
@@ -362,7 +378,7 @@ async function _doEmbedding(sessionId: string, start: number): Promise<Embedding
   // Add approximate header size per day
   totalChars += 30; // "Tue Feb 25 2026\n" etc.
 
-  if (totalChars < MIN_CHUNK_CHARS) {
+  if (!options.force && totalChars < MIN_CHUNK_CHARS) {
     // Not enough to form a full chunk yet — bail
     return { skipped: "below_threshold", chunks_created: 0, chunks: [], unembedded_messages: unembeddedMessages.length, unembedded_chars: totalChars, duration_ms: Date.now() - start };
   }
@@ -377,7 +393,7 @@ async function _doEmbedding(sessionId: string, start: number): Promise<Embedding
   }
 
   // Produce complete chunks (only those that fill the threshold)
-  const chunks = produceCompleteChunks(unembeddedMessages, existingCounts);
+  const chunks = produceCompleteChunks(unembeddedMessages, existingCounts, options.force === true);
 
   if (chunks.length === 0) {
     return { skipped: "no_complete_chunks", chunks_created: 0, chunks: [], unembedded_messages: unembeddedMessages.length, unembedded_chars: totalChars, duration_ms: Date.now() - start };

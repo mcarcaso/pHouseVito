@@ -722,20 +722,7 @@ export class Orchestrator {
       console.error(`[Profile] Failed to prepare messages for profile update:`, err);
     }
 
-    // Check if compaction is needed (run in background)
-    if (shouldCompact(this.queries, this.config)) {
-      const percent = this.config.compaction.percent ?? 50;
-      const messageTypes = this.config.compaction.messageTypes;
-      const count = Math.ceil(this.queries.countUncompacted(messageTypes) * (percent / 100));
-      console.log("\nCompaction threshold reached, triggering compaction skill...");
-      this.triggerCompaction(`Compact the oldest ${count} uncompacted messages into long-term memory.`)
-        .then(() => {
-          console.log("Compaction complete.");
-        })
-        .catch((err) => {
-          console.error("Compaction failed:", err);
-        });
-    }
+    // Compaction disabled (manual only)
   }
 
   private async handleStopCommand(
@@ -813,30 +800,30 @@ export class Orchestrator {
     await handler.startTyping?.();
 
     try {
-      // Step 1: Compact any un-compacted messages in this session
-      const uncompacted = this.queries.getUncompactedMessagesForSession(vitoSession.id);
-      
-      if (uncompacted.length > 0) {
-        console.log(`\n[/new] Compacting ${uncompacted.length} un-compacted messages for session ${vitoSession.id}...`);
-        
-        await this.triggerCompaction(
-          `Compact all uncompacted messages from session "${vitoSession.id}" into long-term memory.`
-        );
-
-        console.log(`[/new] Compaction complete for session ${vitoSession.id}`);
+      // Step 1: Force embeddings for any remaining unembedded messages
+      console.log(`\n[/new] Forcing embeddings for session ${vitoSession.id}...`);
+      const embResult = await maybeEmbedNewChunks(vitoSession.id, { force: true });
+      if (embResult?.skipped) {
+        console.log(`[/new] Embeddings skipped: ${embResult.skipped}`);
+      } else {
+        console.log(`[/new] Embeddings complete: ${embResult.chunks_created} chunk(s)`);
       }
 
-      // Step 2: Archive ALL messages in this session (compacted and newly-compacted)
+      // Step 2: Archive ALL messages in this session
       this.queries.markSessionArchived(vitoSession.id);
       console.log(`[/new] All messages archived for session ${vitoSession.id}`);
 
       await handler.stopTyping?.();
+      const embedLine = embResult?.skipped
+        ? `Embeddings: ${embResult.skipped.replace(/_/g, " ")}.\n`
+        : `Embedded ${embResult?.chunks_created ?? 0} chunk(s).\n`;
+
       await handler.relay(
-        `✅ **Fresh start!**\n\n${uncompacted.length > 0 ? `Compacted ${uncompacted.length} message(s) into long-term memory. ` : ""}All messages archived. Same session, clean slate.\n\nReady for a new conversation! 🚀`
+        `✅ **Fresh start!**\n\n${embedLine}All messages archived. Same session, clean slate.\n\nReady for a new conversation! 🚀`
       );
     } catch (err) {
       await handler.stopTyping?.();
-      console.error("[/new] Compaction/archive failed:", err);
+      console.error("[/new] Embedding/archive failed:", err);
       await handler.relay(
         "❌ Sorry, something went wrong. Please try again."
       );

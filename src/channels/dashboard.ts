@@ -1390,10 +1390,23 @@ export class DashboardChannel implements Channel {
                 preview = head.split("\n").slice(0, 3).join("\n");
               }
 
-              // Detect embedding_result anywhere in the file (for list badge)
+              // Detect embedding_result with actual chunks (for list badge)
               try {
                 const content = readFileSync(filePath, "utf-8");
-                hasEmbedding = content.includes('"type":"embedding_result"');
+                const lines = content.split("\n");
+                hasEmbedding = false;
+                for (const line of lines) {
+                  if (!line.includes('"type":"embedding_result"')) continue;
+                  try {
+                    const obj = JSON.parse(line);
+                    if (obj.type === "embedding_result" && typeof obj.chunks_created === "number" && obj.chunks_created > 0) {
+                      hasEmbedding = true;
+                      break;
+                    }
+                  } catch {
+                    // ignore parse errors
+                  }
+                }
               } catch {
                 hasEmbedding = false;
               }

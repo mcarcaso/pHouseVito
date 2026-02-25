@@ -43,7 +43,7 @@ export async function assembleContext(
   };
 
   // 1. Long-term memories — just file titles from user/memories/
-  const memoriesBlock = buildMemoriesTitlesBlock();
+  const memoriesBlock = "";
 
   // Load session aliases for human-readable display
   const aliases = queries.getSessionAliases();
@@ -82,10 +82,6 @@ export async function assembleContext(
 /** Build the full system prompt addition from assembled context */
 export function formatContextForPrompt(ctx: AssembledContext): string {
   const parts: string[] = [];
-
-  if (ctx.memoriesBlock) {
-    parts.push(`<memories>\n${ctx.memoriesBlock}\n</memories>`);
-  }
 
   if (ctx.crossSessionBlock) {
     parts.push(`<cross-session>\n${ctx.crossSessionBlock}\n</cross-session>`);

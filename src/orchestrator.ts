@@ -6,6 +6,7 @@ import { shouldCompact, acquireCompactionLock, releaseCompactionLock } from "./m
 import { assembleContext, formatContextForPrompt } from "./memory/context.js";
 import { maybeEmbedNewChunks } from "./memory/embeddings.js";
 import { loadProfileForPrompt, maybeUpdateProfile } from "./memory/profile.js";
+import { autoSearchForContext } from "./memory/search.js";
 import { SessionManager } from "./sessions/manager.js";
 import { getEffectiveSettings } from "./settings.js";
 import { discoverSkills, formatSkillsForPrompt } from "./skills/discovery.js";
@@ -546,6 +547,18 @@ export class Orchestrator {
     const contextPrompt = formatContextForPrompt(ctx);
     const skillsPrompt = formatSkillsForPrompt(this.getSkills());
 
+    // 4.5. Auto-search embeddings for relevant historical context
+    let recalledMemories = "";
+    try {
+      const rawQuery = event.content?.trim() || "";
+      recalledMemories = await autoSearchForContext(rawQuery);
+      if (recalledMemories) {
+        console.log(`[Search] Auto-search found relevant memories for: "${rawQuery.slice(0, 60)}..."`);
+      }
+    } catch (err) {
+      console.error(`[Search] Auto-search failed:`, err);
+    }
+
     // 5. Set up output handler and message tracking
     const baseHandler = channel ? channel.createHandler(event) : null;
     
@@ -590,7 +603,8 @@ export class Orchestrator {
       contextPrompt,
       skillsPrompt,
       channel?.getCustomPrompt?.() || "",
-      innerHarness.getCustomInstructions?.() || ""
+      innerHarness.getCustomInstructions?.() || "",
+      recalledMemories
     );
 
     // Set up abort controller for this request
@@ -905,7 +919,8 @@ export class Orchestrator {
     contextPrompt: string,
     skillsPrompt: string,
     channelPrompt: string,
-    harnessInstructions: string = ""
+    harnessInstructions: string = "",
+    recalledMemories: string = ""
   ): string {
     const parts: string[] = [];
 
@@ -939,6 +954,10 @@ export class Orchestrator {
 
     if (contextPrompt) {
       parts.push(`<memory>\n${contextPrompt}\n</memory>`);
+    }
+
+    if (recalledMemories) {
+      parts.push(`<recalled-memories>\nThese are historical conversation chunks retrieved from long-term memory via semantic search. They may contain relevant context for the current conversation.\n\n${recalledMemories}\n</recalled-memories>`);
     }
 
     return parts.join("\n\n");

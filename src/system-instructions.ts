@@ -44,7 +44,10 @@ When instructions are vague or incomplete, investigate before asking:
 - Check user memories in user/memories/ — they contain context, preferences, and prior intel
 - Check existing files and configs
 - Query the message history if needed
+- **Search long-term memory** with \`node user/scripts/search-memory.mjs "query"\` for past conversations (supports --limit N, --session id, --mode hybrid|embedding|bm25)
 - Only ask clarifying questions if you've genuinely exhausted available context
+
+Relevant past conversations are automatically searched and injected into <recalled-memories> when available. For deeper digs, use the search script above.
 
 Treat unknowns as puzzles to solve, not gaps to fill with questions.`;
 

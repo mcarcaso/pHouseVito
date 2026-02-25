@@ -80,6 +80,28 @@ export interface TraceNormalizedEvent {
 }
 
 /**
+ * MemorySearch - auto-search results from the embeddings pipeline
+ */
+export interface TraceMemorySearch {
+  type: "memory_search";
+  query: string;
+  duration_ms: number;
+  results_found: number;
+  results_injected: number;
+  results: {
+    id: number;
+    session_id: string;
+    day: string;
+    context: string | null;
+    rrf_score: number;
+    embedding_score: number;
+    bm25_score: number;
+    text_preview: string;       // First 200 chars of chunk text
+  }[];
+  skipped?: string;             // Reason if search was skipped (e.g., "too short", "skip pattern")
+}
+
+/**
  * Footer - duration, counts, success/error summary
  */
 export interface TraceFooter {
@@ -101,4 +123,5 @@ export type TraceLine =
   | TraceUserMessage
   | TraceRawEvent
   | TraceNormalizedEvent
+  | TraceMemorySearch
   | TraceFooter;

@@ -13,6 +13,8 @@ import { execSync } from "child_process";
 import { fileURLToPath } from "url";
 import crypto from "crypto";
 import { readSecrets, writeSecrets, loadSecrets, getSecretsForDashboard, SYSTEM_KEYS, PROVIDER_API_KEYS, getProviderKeyStatus, getProviderAuthStatus } from "../secrets.js";
+import Database from "better-sqlite3";
+import OpenAI from "openai";
 import { getProviders, getModels } from "@mariozechner/pi-ai";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -633,6 +635,219 @@ export class DashboardChannel implements Channel {
       const { content } = req.body;
       writeFileSync(systemPath, content, "utf-8");
       res.json({ content });
+    });
+
+    // ── Memory API ──
+
+    // User profile JSON
+    this.app.get("/api/memory/profile", (req, res) => {
+      const profilePath = path.join(process.cwd(), "user", "profile.json");
+      if (!existsSync(profilePath)) {
+        res.json(null);
+        return;
+      }
+      try {
+        const profile = JSON.parse(readFileSync(profilePath, "utf-8"));
+        res.json(profile);
+      } catch (err: any) {
+        res.status(500).json({ error: err.message });
+      }
+    });
+
+    // Embeddings stats
+    this.app.get("/api/memory/embeddings/stats", (req, res) => {
+      const dbPath = path.join(process.cwd(), "user", "embeddings.db");
+      if (!existsSync(dbPath)) {
+        res.json({ totalChunks: 0, totalSessions: 0, totalDays: 0, oldestDay: null, newestDay: null, sessions: [] });
+        return;
+      }
+      try {
+        const db = new Database(dbPath, { readonly: true });
+        
+        const totals = db.prepare(`
+          SELECT COUNT(*) as totalChunks,
+                 COUNT(DISTINCT session_id) as totalSessions,
+                 COUNT(DISTINCT day) as totalDays,
+                 MIN(day) as oldestDay,
+                 MAX(day) as newestDay
+          FROM chunks
+        `).get() as any;
+
+        // Get session aliases from vito.db
+        const aliasMap = new Map<string, string>();
+        const sessions = this.queries.getAllSessions();
+        for (const s of sessions) {
+          if (s.alias) aliasMap.set(s.id, s.alias);
+        }
+
+        const sessionRows = db.prepare(`
+          SELECT session_id, COUNT(*) as count, MIN(day) as first_day, MAX(day) as last_day
+          FROM chunks
+          GROUP BY session_id
+          ORDER BY count DESC
+        `).all();
+
+        db.close();
+
+        res.json({
+          ...totals,
+          sessions: sessionRows.map((s: any) => ({
+            ...s,
+            alias: aliasMap.get(s.session_id) || null,
+          })),
+        });
+      } catch (err: any) {
+        res.status(500).json({ error: err.message });
+      }
+    });
+
+    // Embeddings search (hybrid)
+    this.app.get("/api/memory/embeddings/search", async (req, res) => {
+      const query = req.query.q as string;
+      const mode = (req.query.mode as string) || "hybrid";
+      const limit = parseInt(req.query.limit as string) || 10;
+
+      if (!query) {
+        res.status(400).json({ error: "Missing query parameter 'q'" });
+        return;
+      }
+
+      const dbPath = path.join(process.cwd(), "user", "embeddings.db");
+      if (!existsSync(dbPath)) {
+        res.json({ query, mode, duration_ms: 0, results: [] });
+        return;
+      }
+
+      const start = Date.now();
+
+      try {
+        const secretsPath = path.join(process.cwd(), "user", "secrets.json");
+        const secrets = JSON.parse(readFileSync(secretsPath, "utf-8"));
+        const openai = new OpenAI({ apiKey: secrets.OPENAI_API_KEY });
+
+        const db = new Database(dbPath, { readonly: true });
+
+        // Load all chunks + embeddings
+        const rows = db.prepare(`
+          SELECT c.id, c.session_id, c.day, c.chunk_index, c.text, c.context, c.msg_count,
+                 e.vector
+          FROM chunks c
+          JOIN embeddings e ON e.chunk_id = c.id
+        `).all();
+
+        // ── Embedding search ──
+        let embeddingResults: { id: number; score: number }[] = [];
+        if (mode === "hybrid" || mode === "embedding") {
+          const embResponse = await openai.embeddings.create({
+            model: "text-embedding-3-small",
+            input: query,
+          });
+          const queryVector = new Float32Array(embResponse.data[0].embedding);
+
+          embeddingResults = rows.map((row: any) => {
+            const vector = new Float32Array(row.vector.buffer, row.vector.byteOffset, row.vector.byteLength / 4);
+            // Cosine similarity
+            let dot = 0, normA = 0, normB = 0;
+            for (let i = 0; i < queryVector.length; i++) {
+              dot += queryVector[i] * vector[i];
+              normA += queryVector[i] * queryVector[i];
+              normB += vector[i] * vector[i];
+            }
+            const similarity = dot / (Math.sqrt(normA) * Math.sqrt(normB) || 1);
+            return { id: row.id, score: similarity };
+          });
+          embeddingResults.sort((a, b) => b.score - a.score);
+          embeddingResults = embeddingResults.slice(0, Math.max(limit * 4, 20));
+        }
+
+        // ── BM25 search (FTS5) ──
+        let bm25Results: { id: number; score: number }[] = [];
+        if (mode === "hybrid" || mode === "bm25") {
+          const ftsQuery = query
+            .replace(/[^\w\s'-]/g, "")
+            .split(/\s+/)
+            .filter((t: string) => t.length > 1)
+            .map((t: string) => `"${t}"`)
+            .join(" OR ");
+
+          if (ftsQuery) {
+            try {
+              const ftsRows = db.prepare(`
+                SELECT rowid as id, rank * -1 as score
+                FROM chunks_fts
+                WHERE chunks_fts MATCH ?
+                ORDER BY rank
+                LIMIT ?
+              `).all(ftsQuery, Math.max(limit * 4, 20));
+              bm25Results = ftsRows.map((r: any) => ({ id: r.id, score: r.score }));
+            } catch {
+              // FTS query might fail on weird syntax — graceful fallback
+            }
+          }
+        }
+
+        // ── Reciprocal Rank Fusion ──
+        const k = 60;
+        const scoreMap = new Map<number, { rrfScore: number; embeddingScore: number; bm25Score: number }>();
+
+        for (let i = 0; i < embeddingResults.length; i++) {
+          const r = embeddingResults[i];
+          const existing = scoreMap.get(r.id) || { rrfScore: 0, embeddingScore: 0, bm25Score: 0 };
+          existing.embeddingScore = r.score;
+          existing.rrfScore += 0.5 / (k + i + 1);
+          scoreMap.set(r.id, existing);
+        }
+        for (let i = 0; i < bm25Results.length; i++) {
+          const r = bm25Results[i];
+          const existing = scoreMap.get(r.id) || { rrfScore: 0, embeddingScore: 0, bm25Score: 0 };
+          existing.bm25Score = r.score;
+          existing.rrfScore += 0.5 / (k + i + 1);
+          scoreMap.set(r.id, existing);
+        }
+
+        // For single mode, just use raw scores
+        if (mode === "embedding") {
+          for (const [id, scores] of scoreMap) {
+            scores.rrfScore = scores.embeddingScore;
+          }
+        } else if (mode === "bm25") {
+          for (const [id, scores] of scoreMap) {
+            scores.rrfScore = scores.bm25Score;
+          }
+        }
+
+        // Sort by RRF score
+        const sorted = Array.from(scoreMap.entries())
+          .sort((a, b) => b[1].rrfScore - a[1].rrfScore)
+          .slice(0, limit);
+
+        // Build chunk lookup
+        const chunkMap = new Map<number, any>();
+        for (const row of rows) chunkMap.set((row as any).id, row);
+
+        const results = sorted.map(([id, scores]) => {
+          const chunk = chunkMap.get(id);
+          if (!chunk) return null;
+          return {
+            id: chunk.id,
+            session_id: chunk.session_id,
+            day: chunk.day,
+            chunk_index: chunk.chunk_index,
+            text: chunk.text,
+            context: chunk.context,
+            msg_count: chunk.msg_count,
+            ...scores,
+          };
+        }).filter(Boolean);
+
+        db.close();
+
+        const duration_ms = Date.now() - start;
+        res.json({ query, mode, duration_ms, results });
+      } catch (err: any) {
+        console.error("[Dashboard] Embeddings search error:", err);
+        res.status(500).json({ error: err.message });
+      }
     });
 
     // Serve files from any filesystem path with proper MIME types

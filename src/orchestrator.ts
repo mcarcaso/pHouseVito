@@ -6,7 +6,7 @@ import { shouldCompact, acquireCompactionLock, releaseCompactionLock } from "./m
 import { assembleContext, formatContextForPrompt } from "./memory/context.js";
 import { maybeEmbedNewChunks } from "./memory/embeddings.js";
 import { loadProfileForPrompt, maybeUpdateProfile } from "./memory/profile.js";
-import { autoSearchForContext } from "./memory/search.js";
+import { autoSearchForContext, type AutoSearchResult } from "./memory/search.js";
 import { SessionManager } from "./sessions/manager.js";
 import { getEffectiveSettings } from "./settings.js";
 import { discoverSkills, formatSkillsForPrompt } from "./skills/discovery.js";
@@ -549,11 +549,16 @@ export class Orchestrator {
 
     // 4.5. Auto-search embeddings for relevant historical context
     let recalledMemories = "";
+    let memorySearchTrace: AutoSearchResult["trace"] | null = null;
     try {
       const rawQuery = event.content?.trim() || "";
-      recalledMemories = await autoSearchForContext(rawQuery);
+      const searchResult = await autoSearchForContext(rawQuery);
+      recalledMemories = searchResult.text;
+      memorySearchTrace = searchResult.trace;
       if (recalledMemories) {
-        console.log(`[Search] Auto-search found relevant memories for: "${rawQuery.slice(0, 60)}..."`);
+        console.log(`[Search] Auto-search found ${searchResult.trace.results_injected} relevant memories in ${searchResult.trace.duration_ms}ms for: "${rawQuery.slice(0, 60)}..."`);
+      } else if (searchResult.trace.skipped) {
+        console.log(`[Search] Auto-search skipped: ${searchResult.trace.skipped}`);
       }
     } catch (err) {
       console.error(`[Search] Auto-search failed:`, err);
@@ -584,6 +589,20 @@ export class Orchestrator {
       model: this.getModelString(effectiveSettings),
       traceMessageUpdates: effectiveSettings.traceMessageUpdates ?? false,
     });
+
+    // Inject memory search trace data (queued for writing when trace file is created)
+    if (memorySearchTrace) {
+      tracedHarness.writePreRunLine({
+        type: "memory_search",
+        query: memorySearchTrace.query,
+        duration_ms: memorySearchTrace.duration_ms,
+        results_found: memorySearchTrace.results_found,
+        results_injected: memorySearchTrace.results_injected,
+        results: memorySearchTrace.results,
+        skipped: memorySearchTrace.skipped,
+      });
+    }
+
     const persistedHarness = withPersistence(tracedHarness, {
       queries: this.queries,
       sessionId: vitoSession.id,

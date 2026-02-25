@@ -2,7 +2,7 @@ import { useState, useRef, useEffect } from 'react';
 import { Routes, Route, NavLink, Navigate, useLocation } from 'react-router-dom';
 import Chat from './components/Chat';
 import Sessions from './components/Sessions';
-import Memories from './components/Memories';
+import Memory from './components/Memory';
 import Skills from './components/Skills';
 import Secrets from './components/Secrets';
 import Jobs from './components/Jobs';
@@ -38,7 +38,7 @@ function App() {
     const path = location.pathname;
     if (path === '/chat' || path === '/') return 'Chat';
     if (path.startsWith('/sessions')) return 'Sessions';
-    if (path.startsWith('/memories')) return 'Memories';
+    if (path.startsWith('/memory')) return 'Memory';
     if (path.startsWith('/skills')) return 'Skills';
     if (path.startsWith('/jobs')) return 'Jobs';
     if (path.startsWith('/settings')) return 'Settings';
@@ -71,9 +71,9 @@ function App() {
         <span className="w-6 text-center text-base">📡</span>
         Sessions
       </NavLink>
-      <NavLink to="/memories" className={navItemClass}>
+      <NavLink to="/memory" className={navItemClass}>
         <span className="w-6 text-center text-base">🧠</span>
-        Memories
+        Memory
       </NavLink>
       <NavLink to="/skills" className={navItemClass}>
         <span className="w-6 text-center text-base">🛠️</span>
@@ -166,7 +166,7 @@ function App() {
           <Route path="/chat" element={<Chat />} />
           <Route path="/sessions" element={<Sessions />} />
           <Route path="/settings" element={<UnifiedSettings />} />
-          <Route path="/memories" element={<Memories />} />
+          <Route path="/memory" element={<Memory />} />
           <Route path="/skills" element={<Skills />} />
           <Route path="/jobs" element={<Jobs />} />
           <Route path="/secrets" element={<Secrets />} />
@@ -177,6 +177,7 @@ function App() {
           {/* Redirects for old routes */}
           <Route path="/channels" element={<Navigate to="/settings?tab=channels" replace />} />
           <Route path="/harnesses" element={<Navigate to="/settings" replace />} />
+          <Route path="/memories" element={<Navigate to="/memory" replace />} />
           <Route path="/sessions/:id/settings" element={<SessionSettingsRedirect />} />
           <Route path="*" element={<Navigate to="/chat" replace />} />
         </Routes>

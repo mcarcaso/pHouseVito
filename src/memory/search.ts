@@ -241,40 +241,79 @@ export async function searchMemory(
 
 // ── Auto-Search ────────────────────────────────────────────
 
+export interface AutoSearchResult {
+  /** Formatted text to inject into system prompt (empty string if nothing relevant) */
+  text: string;
+  /** Trace data for the search step */
+  trace: {
+    query: string;
+    duration_ms: number;
+    results_found: number;
+    results_injected: number;
+    results: {
+      id: number;
+      session_id: string;
+      day: string;
+      context: string | null;
+      rrf_score: number;
+      embedding_score: number;
+      bm25_score: number;
+      text_preview: string;
+    }[];
+    skipped?: string;
+  };
+}
+
 /**
  * Lightweight auto-search that runs before every response.
  * Embeds the user's message, searches the memory, and returns
- * formatted text to inject into the system prompt.
+ * formatted text to inject into the system prompt + trace data.
  * 
- * Returns empty string if:
+ * Returns empty text if:
  * - No embeddings exist yet
  * - Nothing scores above the threshold
  * - The query is too short/generic to be useful
  * 
  * Cost: ~200ms (one embedding call + SQLite queries)
  */
-export async function autoSearchForContext(userMessage: string): Promise<string> {
-  // Skip searches for very short/generic messages
+export async function autoSearchForContext(userMessage: string): Promise<AutoSearchResult> {
+  const startTime = Date.now();
   const trimmed = userMessage.trim();
-  if (trimmed.length < 10) return "";
 
-  // Skip common non-search-worthy messages
-  const skipPatterns = [
-    /^(hey|hi|hello|yo|sup|what'?s up|gm|good morning|good night)/i,
-    /^(yes|no|yeah|nah|ok|okay|sure|thanks|ty|thx|lol|lmao|haha)/i,
-    /^(\/\w+)/,  // slash commands
-  ];
-  for (const pattern of skipPatterns) {
-    if (pattern.test(trimmed)) return "";
-  }
+  const makeResult = (text: string, results: AutoSearchResult["trace"]["results"], resultsFound: number, skipped?: string): AutoSearchResult => ({
+    text,
+    trace: {
+      query: trimmed,
+      duration_ms: Date.now() - startTime,
+      results_found: resultsFound,
+      results_injected: results.filter(r => text.length > 0).length,
+      results,
+      skipped,
+    },
+  });
+
+  // Only skip if truly empty
+  if (trimmed.length === 0) return makeResult("", [], 0, "empty query");
 
   try {
     const results = await searchMemory(trimmed, { limit: AUTO_SEARCH_LIMIT });
-    if (results.length === 0) return "";
+    
+    const traceResults = results.map(r => ({
+      id: r.id,
+      session_id: r.sessionId,
+      day: r.day,
+      context: r.context,
+      rrf_score: r.rrfScore,
+      embedding_score: r.embeddingScore,
+      bm25_score: r.bm25Score,
+      text_preview: r.text.slice(0, 200),
+    }));
+
+    if (results.length === 0) return makeResult("", traceResults, 0);
 
     // Filter by RRF threshold — only include genuinely relevant results
     const relevant = results.filter((r) => r.rrfScore >= AUTO_SEARCH_RRF_THRESHOLD);
-    if (relevant.length === 0) return "";
+    if (relevant.length === 0) return makeResult("", traceResults, results.length);
 
     // Format as recalled memories block
     const chunks = relevant.map((r, i) => {
@@ -283,9 +322,29 @@ export async function autoSearchForContext(userMessage: string): Promise<string>
       return [header, contextLine, r.text].filter(Boolean).join("\n");
     });
 
-    return chunks.join("\n\n---\n\n");
+    const injectedResults = relevant.map(r => ({
+      id: r.id,
+      session_id: r.sessionId,
+      day: r.day,
+      context: r.context,
+      rrf_score: r.rrfScore,
+      embedding_score: r.embeddingScore,
+      bm25_score: r.bm25Score,
+      text_preview: r.text.slice(0, 200),
+    }));
+
+    return {
+      text: chunks.join("\n\n---\n\n"),
+      trace: {
+        query: trimmed,
+        duration_ms: Date.now() - startTime,
+        results_found: results.length,
+        results_injected: relevant.length,
+        results: traceResults,
+      },
+    };
   } catch (err) {
     console.error("[Search] Auto-search failed:", err);
-    return "";
+    return makeResult("", [], 0, `error: ${err instanceof Error ? err.message : String(err)}`);
   }
 }

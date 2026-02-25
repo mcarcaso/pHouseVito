@@ -27,6 +27,7 @@ type TraceLine =
   | { type: "user_message"; content: string }
   | { type: "raw_event"; ts: number; event: unknown }
   | { type: "normalized_event"; ts: number; event: NormalizedEvent }
+  | { type: "memory_search"; query: string; duration_ms: number; results_found: number; results_injected: number; results: unknown[]; skipped?: string }
   | { type: "footer"; duration_ms: number; message_count: number; tool_calls: number; success: boolean; error?: string };
 
 export class TracingHarness extends ProxyHarness {
@@ -41,8 +42,19 @@ export class TracingHarness extends ProxyHarness {
     this.traceMessageUpdates = options.traceMessageUpdates ?? false;
   }
 
+  private pendingLines: TraceLine[] = [];
+
   get tracePath(): string {
     return this.traceFile;
+  }
+
+  /**
+   * Queue a trace line to be written before the run starts.
+   * Used for pre-run context like memory search results that happen
+   * before the trace file is created.
+   */
+  writePreRunLine(line: TraceLine): void {
+    this.pendingLines.push(line);
   }
 
   private writeLine(line: TraceLine): void {
@@ -100,6 +112,12 @@ export class TracingHarness extends ProxyHarness {
 
     this.writeLine({ type: "prompt", content: systemPrompt, length: systemPrompt.length });
     this.writeLine({ type: "user_message", content: userMessage });
+
+    // Flush any pre-run lines (e.g., memory search results)
+    for (const line of this.pendingLines) {
+      this.writeLine(line);
+    }
+    this.pendingLines = [];
 
     const tracingCallbacks: HarnessCallbacks = {
       onInvocation: (cliCommand: string) => {

@@ -46,6 +46,25 @@ interface TraceNormalizedEvent {
   event: unknown;
 }
 
+interface TraceMemorySearch {
+  type: "memory_search";
+  query: string;
+  duration_ms: number;
+  results_found: number;
+  results_injected: number;
+  results: {
+    id: number;
+    session_id: string;
+    day: string;
+    context: string | null;
+    rrf_score: number;
+    embedding_score: number;
+    bm25_score: number;
+    text_preview: string;
+  }[];
+  skipped?: string;
+}
+
 interface TraceFooter {
   type: "footer";
   duration_ms: number;
@@ -55,7 +74,7 @@ interface TraceFooter {
   error?: string;
 }
 
-type TraceLine = TraceHeader | TraceInvocation | TracePrompt | TraceUserMessage | TraceRawEvent | TraceNormalizedEvent | TraceFooter;
+type TraceLine = TraceHeader | TraceInvocation | TracePrompt | TraceUserMessage | TraceRawEvent | TraceNormalizedEvent | TraceMemorySearch | TraceFooter;
 
 interface LogFile {
   filename: string;
@@ -202,6 +221,7 @@ function Traces() {
     const invocation = detail.lines.find(l => l.type === "invocation") as TraceInvocation | undefined;
     const prompt = detail.lines.find(l => l.type === "prompt") as TracePrompt | undefined;
     const userMessage = detail.lines.find(l => l.type === "user_message") as TraceUserMessage | undefined;
+    const memorySearch = detail.lines.find(l => l.type === "memory_search") as TraceMemorySearch | undefined;
     const footer = detail.lines.find(l => l.type === "footer") as TraceFooter | undefined;
     
     // Get all events (raw + normalized) and filter based on toggle
@@ -282,6 +302,71 @@ function Traces() {
                     📎 {a.type}: {a.path}
                   </span>
                 ))}
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* Memory Search */}
+        {memorySearch && (
+          <div className="bg-neutral-900 border border-neutral-800 rounded-lg overflow-hidden">
+            <button
+              className="w-full px-4 py-2 flex items-center justify-between text-left bg-neutral-800/50 hover:bg-neutral-800 transition-colors"
+              onClick={() => toggleSection('memory-search')}
+            >
+              <span className="text-sm font-medium text-neutral-300 flex items-center gap-2">
+                🧠 Memory Search
+                {memorySearch.skipped ? (
+                  <span className="text-neutral-500 font-normal text-xs">skipped — {memorySearch.skipped}</span>
+                ) : (
+                  <>
+                    <span className="text-neutral-500 font-normal text-xs">
+                      {memorySearch.results_injected}/{memorySearch.results_found} injected
+                    </span>
+                    <span className="text-neutral-600 font-normal text-xs">
+                      ({formatMs(memorySearch.duration_ms)})
+                    </span>
+                  </>
+                )}
+              </span>
+              <span className="text-neutral-500">{expandedSections.has('memory-search') ? '−' : '+'}</span>
+            </button>
+            {expandedSections.has('memory-search') && (
+              <div className="p-4 space-y-3">
+                <div className="text-xs text-neutral-500">
+                  Query: <span className="text-neutral-300 font-mono">"{memorySearch.query}"</span>
+                </div>
+                {memorySearch.results.length > 0 ? (
+                  <div className="space-y-2">
+                    {memorySearch.results.map((r, i) => (
+                      <div
+                        key={r.id}
+                        className={`rounded-lg p-3 border ${i < memorySearch.results_injected ? 'bg-emerald-950/20 border-emerald-900/40' : 'bg-neutral-800/30 border-neutral-700/30'}`}
+                      >
+                        <div className="flex items-center gap-2 flex-wrap mb-1.5">
+                          <span className={`text-xs px-1.5 py-0.5 rounded font-mono ${i < memorySearch.results_injected ? 'bg-emerald-900/40 text-emerald-400' : 'bg-neutral-700/50 text-neutral-500'}`}>
+                            #{i + 1}
+                          </span>
+                          <span className="text-xs text-neutral-400 font-mono">{r.day}</span>
+                          <span className="text-xs text-neutral-600 font-mono truncate">{r.session_id}</span>
+                          <div className="ml-auto flex items-center gap-2">
+                            <span className="text-xs text-neutral-600" title="RRF Score">RRF: <span className="text-neutral-400">{r.rrf_score.toFixed(4)}</span></span>
+                            <span className="text-xs text-neutral-600" title="Embedding Score">EMB: <span className="text-neutral-400">{r.embedding_score.toFixed(3)}</span></span>
+                            <span className="text-xs text-neutral-600" title="BM25 Score">BM25: <span className="text-neutral-400">{r.bm25_score.toFixed(2)}</span></span>
+                          </div>
+                        </div>
+                        {r.context && (
+                          <div className="text-xs text-violet-400/70 mb-1 italic">{r.context}</div>
+                        )}
+                        <div className="text-xs text-neutral-400 font-mono whitespace-pre-wrap break-words">
+                          {r.text_preview}{r.text_preview.length >= 200 ? '…' : ''}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <div className="text-xs text-neutral-600 italic">No results returned</div>
+                )}
               </div>
             )}
           </div>

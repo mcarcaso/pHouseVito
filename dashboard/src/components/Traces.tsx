@@ -65,6 +65,34 @@ interface TraceMemorySearch {
   skipped?: string;
 }
 
+interface TraceEmbeddingResult {
+  type: "embedding_result";
+  skipped?: string;
+  chunks_created: number;
+  chunks: {
+    day: string;
+    chunk_index: number;
+    msg_count: number;
+    char_count: number;
+    context: string;
+  }[];
+  unembedded_messages: number;
+  unembedded_chars: number;
+  duration_ms: number;
+}
+
+interface TraceProfileUpdate {
+  type: "profile_update";
+  skipped?: string;
+  updates_applied: number;
+  updates: {
+    path: string;
+    action: string;
+    value: unknown;
+  }[];
+  duration_ms: number;
+}
+
 interface TraceFooter {
   type: "footer";
   duration_ms: number;
@@ -74,7 +102,7 @@ interface TraceFooter {
   error?: string;
 }
 
-type TraceLine = TraceHeader | TraceInvocation | TracePrompt | TraceUserMessage | TraceRawEvent | TraceNormalizedEvent | TraceMemorySearch | TraceFooter;
+type TraceLine = TraceHeader | TraceInvocation | TracePrompt | TraceUserMessage | TraceRawEvent | TraceNormalizedEvent | TraceMemorySearch | TraceEmbeddingResult | TraceProfileUpdate | TraceFooter;
 
 interface LogFile {
   filename: string;
@@ -84,6 +112,7 @@ interface LogFile {
   format?: "jsonl" | "text";
   sessionId?: string;
   alias?: string | null;
+  hasEmbedding?: boolean;
 }
 
 interface LogDetailJsonl {
@@ -222,6 +251,8 @@ function Traces() {
     const prompt = detail.lines.find(l => l.type === "prompt") as TracePrompt | undefined;
     const userMessage = detail.lines.find(l => l.type === "user_message") as TraceUserMessage | undefined;
     const memorySearch = detail.lines.find(l => l.type === "memory_search") as TraceMemorySearch | undefined;
+    const embeddingResult = detail.lines.find(l => l.type === "embedding_result") as TraceEmbeddingResult | undefined;
+    const profileUpdate = detail.lines.find(l => l.type === "profile_update") as TraceProfileUpdate | undefined;
     const footer = detail.lines.find(l => l.type === "footer") as TraceFooter | undefined;
     
     // Get all events (raw + normalized) and filter based on toggle
@@ -366,6 +397,63 @@ function Traces() {
                   </div>
                 ) : (
                   <div className="text-xs text-neutral-600 italic">No results returned</div>
+                )}
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* Embeddings */}
+        {embeddingResult && (
+          <div className="bg-neutral-900 border border-neutral-800 rounded-lg overflow-hidden">
+            <button
+              className="w-full px-4 py-2 flex items-center justify-between text-left bg-neutral-800/50 hover:bg-neutral-800 transition-colors"
+              onClick={() => toggleSection('embedding-result')}
+            >
+              <span className="text-sm font-medium text-neutral-300 flex items-center gap-2">
+                🧬 Embedding Result
+                {embeddingResult.skipped ? (
+                  <span className="text-neutral-500 font-normal text-xs">skipped — {embeddingResult.skipped}</span>
+                ) : (
+                  <>
+                    <span className="text-neutral-500 font-normal text-xs">
+                      {embeddingResult.chunks_created} chunk{embeddingResult.chunks_created === 1 ? '' : 's'}
+                    </span>
+                    <span className="text-neutral-600 font-normal text-xs">
+                      ({formatMs(embeddingResult.duration_ms)})
+                    </span>
+                  </>
+                )}
+              </span>
+              <span className="text-neutral-500">{expandedSections.has('embedding-result') ? '−' : '+'}</span>
+            </button>
+            {expandedSections.has('embedding-result') && (
+              <div className="p-4 space-y-3">
+                <div className="text-xs text-neutral-500">
+                  Unembedded buffer: <span className="text-neutral-300 font-mono">{embeddingResult.unembedded_messages} msgs</span>
+                  <span className="text-neutral-600"> • </span>
+                  <span className="text-neutral-300 font-mono">{embeddingResult.unembedded_chars} chars</span>
+                </div>
+                {embeddingResult.chunks.length > 0 ? (
+                  <div className="space-y-2">
+                    {embeddingResult.chunks.map((c, i) => (
+                      <div key={`${c.day}-${c.chunk_index}-${i}`} className="rounded-lg p-3 border bg-neutral-800/30 border-neutral-700/30">
+                        <div className="flex items-center gap-2 flex-wrap mb-1.5">
+                          <span className="text-xs px-1.5 py-0.5 rounded font-mono bg-neutral-700/50 text-neutral-300">
+                            #{c.chunk_index}
+                          </span>
+                          <span className="text-xs text-neutral-400 font-mono">{c.day}</span>
+                          <div className="ml-auto flex items-center gap-2">
+                            <span className="text-xs text-neutral-600">msgs: <span className="text-neutral-300">{c.msg_count}</span></span>
+                            <span className="text-xs text-neutral-600">chars: <span className="text-neutral-300">{c.char_count}</span></span>
+                          </div>
+                        </div>
+                        <div className="text-xs text-violet-400/70 italic">{c.context}</div>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <div className="text-xs text-neutral-600 italic">No chunks created</div>
                 )}
               </div>
             )}
@@ -601,6 +689,11 @@ function Traces() {
                 {isJsonl && (
                   <span className="text-blue-400 bg-blue-500/10 px-2 py-0.5 rounded text-xs">
                     JSONL
+                  </span>
+                )}
+                {log.hasEmbedding && (
+                  <span className="text-emerald-400 bg-emerald-500/10 px-2 py-0.5 rounded text-xs">
+                    Embedding
                   </span>
                 )}
                 <span className="text-neutral-600 text-xs">

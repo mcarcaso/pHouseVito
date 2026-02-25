@@ -28,6 +28,8 @@ type TraceLine =
   | { type: "raw_event"; ts: number; event: unknown }
   | { type: "normalized_event"; ts: number; event: NormalizedEvent }
   | { type: "memory_search"; query: string; duration_ms: number; results_found: number; results_injected: number; results: unknown[]; skipped?: string }
+  | { type: "embedding_result"; skipped?: string; chunks_created: number; chunks: unknown[]; unembedded_messages: number; unembedded_chars: number; duration_ms: number }
+  | { type: "profile_update"; skipped?: string; updates_applied: number; updates: unknown[]; duration_ms: number }
   | { type: "footer"; duration_ms: number; message_count: number; tool_calls: number; success: boolean; error?: string };
 
 export class TracingHarness extends ProxyHarness {
@@ -55,6 +57,16 @@ export class TracingHarness extends ProxyHarness {
    */
   writePreRunLine(line: TraceLine): void {
     this.pendingLines.push(line);
+  }
+
+  /**
+   * Write a trace line after the run has completed (after footer).
+   * Used for background tasks like embeddings and profile updates
+   * that fire after the main LLM response.
+   */
+  writePostRunLine(line: TraceLine): void {
+    if (!this.traceFile) return; // No trace file created yet (shouldn't happen)
+    this.writeLine(line);
   }
 
   private writeLine(line: TraceLine): void {

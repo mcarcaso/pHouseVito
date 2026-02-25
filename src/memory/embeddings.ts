@@ -2,9 +2,14 @@
  * INCREMENTAL EMBEDDINGS
  * 
  * Fires after every assistant message. Checks if there are enough
- * unembedded messages in the session to form a chunk (≥8K chars).
- * If so, chunks them, generates a contextual sentence, embeds,
- * and stores in embeddings.db.
+ * unembedded messages in the session to form a chunk (≥2K chars).
+ * If so, chunks them (2-4K per chunk), generates a contextual sentence,
+ * embeds, and stores in embeddings.db.
+ * 
+ * Chunking strategy:
+ * - MIN_CHUNK_CHARS (2K): minimum buffer size before emitting a chunk
+ * - MAX_CHUNK_CHARS (4K): hard cap — if adding a message would exceed this, emit first
+ * - Typical chunk: 2-4K chars (~5-15 messages), topically focused
  * 
  * - Global lock ensures only one embedding job runs at a time
  * - Fire-and-forget — never blocks the response
@@ -21,7 +26,8 @@ import { join, resolve } from "path";
 const ROOT = resolve(process.cwd());
 const VITO_DB_PATH = join(ROOT, "user", "vito.db");
 const EMBEDDINGS_DB_PATH = join(ROOT, "user", "embeddings.db");
-const MAX_CHUNK_CHARS = 8000;
+const MIN_CHUNK_CHARS = 2000;  // Start chunking when buffer hits this
+const MAX_CHUNK_CHARS = 4000;  // Hard cap per chunk
 const ASSISTANT_LABEL = "@Vito";
 const EMBEDDING_MODEL = "text-embedding-3-small";
 const CONTEXTUAL_MODEL = "gpt-4o-mini";
@@ -159,9 +165,10 @@ interface ChunkCandidate {
 
 /**
  * Given a list of messages (already sorted by timestamp), produce chunks.
- * Groups by day, then splits at the 8K char boundary.
- * Only returns COMPLETE chunks (≥8K chars). Leftover messages are ignored
- * and will be included next time.
+ * Groups by day, then splits using MIN/MAX char thresholds:
+ *   - If adding a message would exceed MAX_CHUNK_CHARS (4K), emit the current buffer
+ *   - After all messages, emit the remaining buffer if it's >= MIN_CHUNK_CHARS (2K)
+ *   - Leftover messages under MIN are left dangling for next time
  */
 function produceCompleteChunks(messages: RawMessage[], existingChunkCount: Map<string, number>): ChunkCandidate[] {
   if (messages.length === 0) return [];
@@ -190,8 +197,8 @@ function produceCompleteChunks(messages: RawMessage[], existingChunkCount: Map<s
     for (const msg of dayMessages) {
       const line = formatMessageLine(msg) + "\n";
 
+      // If adding this message would exceed MAX and we have content, emit first
       if (currentLength + line.length > MAX_CHUNK_CHARS && currentMessages.length > 0) {
-        // This chunk is full — emit it
         chunks.push({
           text: currentLines.join("").trimEnd(),
           messages: [...currentMessages],
@@ -210,10 +217,16 @@ function produceCompleteChunks(messages: RawMessage[], existingChunkCount: Map<s
       currentMessages.push(msg);
     }
 
-    // The remaining messages in currentMessages are UNDER the 8K limit.
-    // We do NOT emit them — they'll be picked up next time when more
-    // messages push them over the threshold.
-    // (Intentionally left as "dangling" per the design discussion)
+    // Emit remaining buffer if it meets the MIN threshold.
+    // If under MIN, leave dangling — picked up next time.
+    if (currentMessages.length > 0 && currentLength >= MIN_CHUNK_CHARS) {
+      chunks.push({
+        text: currentLines.join("").trimEnd(),
+        messages: [...currentMessages],
+        day,
+        chunkIndex: chunkIndex++,
+      });
+    }
   }
 
   // Update the counts for next time
@@ -265,29 +278,55 @@ async function embedText(text: string): Promise<Float32Array> {
 
 // ── Main Entry Point ───────────────────────────────────────
 
+// ── Result type for trace reporting ────────────────────────
+
+export interface EmbeddingResult {
+  /** Whether embedding was skipped and why */
+  skipped?: string;
+  /** Number of chunks created this run */
+  chunks_created: number;
+  /** Details of each chunk created */
+  chunks: Array<{
+    day: string;
+    chunk_index: number;
+    msg_count: number;
+    char_count: number;
+    context: string;
+  }>;
+  /** How many unembedded messages were in the buffer */
+  unembedded_messages: number;
+  /** Total chars of unembedded messages */
+  unembedded_chars: number;
+  /** Duration in ms */
+  duration_ms: number;
+}
+
 /**
  * Check if a session has enough unembedded messages to form a chunk,
  * and if so, embed them. Called after every assistant message.
  * 
- * This is fire-and-forget — errors are logged but never thrown.
+ * Returns a result object for trace reporting.
  */
-export async function maybeEmbedNewChunks(sessionId: string): Promise<void> {
+export async function maybeEmbedNewChunks(sessionId: string): Promise<EmbeddingResult> {
+  const start = Date.now();
+
   // Global lock — if another embedding is running, skip
   if (isRunning) {
-    return;
+    return { skipped: "lock_held", chunks_created: 0, chunks: [], unembedded_messages: 0, unembedded_chars: 0, duration_ms: Date.now() - start };
   }
   isRunning = true;
 
   try {
-    await _doEmbedding(sessionId);
+    return await _doEmbedding(sessionId, start);
   } catch (err) {
     console.error(`[Embeddings] Error during incremental embedding for ${sessionId}:`, err);
+    return { skipped: `error: ${err instanceof Error ? err.message : String(err)}`, chunks_created: 0, chunks: [], unembedded_messages: 0, unembedded_chars: 0, duration_ms: Date.now() - start };
   } finally {
     isRunning = false;
   }
 }
 
-async function _doEmbedding(sessionId: string): Promise<void> {
+async function _doEmbedding(sessionId: string, start: number): Promise<EmbeddingResult> {
   const db = getEmbeddingsDB();
 
   // Find the highest message ID we've already embedded for this session
@@ -312,7 +351,7 @@ async function _doEmbedding(sessionId: string): Promise<void> {
   vitoDB.close();
 
   if (unembeddedMessages.length === 0) {
-    return;
+    return { skipped: "no_unembedded_messages", chunks_created: 0, chunks: [], unembedded_messages: 0, unembedded_chars: 0, duration_ms: Date.now() - start };
   }
 
   // Check total formatted size — quick bail if under threshold
@@ -323,9 +362,9 @@ async function _doEmbedding(sessionId: string): Promise<void> {
   // Add approximate header size per day
   totalChars += 30; // "Tue Feb 25 2026\n" etc.
 
-  if (totalChars < MAX_CHUNK_CHARS) {
+  if (totalChars < MIN_CHUNK_CHARS) {
     // Not enough to form a full chunk yet — bail
-    return;
+    return { skipped: "below_threshold", chunks_created: 0, chunks: [], unembedded_messages: unembeddedMessages.length, unembedded_chars: totalChars, duration_ms: Date.now() - start };
   }
 
   // Get existing chunk counts per day for this session (to set chunk_index correctly)
@@ -337,14 +376,15 @@ async function _doEmbedding(sessionId: string): Promise<void> {
     existingCounts.set(row.day, row.next_idx);
   }
 
-  // Produce complete chunks (only those that fill 8K)
+  // Produce complete chunks (only those that fill the threshold)
   const chunks = produceCompleteChunks(unembeddedMessages, existingCounts);
 
   if (chunks.length === 0) {
-    return;
+    return { skipped: "no_complete_chunks", chunks_created: 0, chunks: [], unembedded_messages: unembeddedMessages.length, unembedded_chars: totalChars, duration_ms: Date.now() - start };
   }
 
   console.log(`[Embeddings] Processing ${chunks.length} new chunk(s) for session ${sessionId}`);
+  const createdChunks: EmbeddingResult["chunks"] = [];
 
   // Prepared statements
   const insertChunk = db.prepare(`
@@ -399,10 +439,26 @@ async function _doEmbedding(sessionId: string): Promise<void> {
       const buffer = Buffer.from(vector.buffer);
       insertEmbedding.run(chunkId, buffer);
 
+      createdChunks.push({
+        day: chunk.day,
+        chunk_index: chunk.chunkIndex,
+        msg_count: chunk.messages.length,
+        char_count: chunk.text.length,
+        context,
+      });
+
       console.log(`[Embeddings] ✅ Chunk #${chunk.chunkIndex} for ${chunk.day} — ${chunk.messages.length} msgs, ${chunk.text.length} chars`);
     } catch (err) {
       console.error(`[Embeddings] ❌ Failed to embed chunk for ${chunk.day}#${chunk.chunkIndex}:`, err);
       // Continue with next chunk — don't let one failure block the rest
     }
   }
+
+  return {
+    chunks_created: createdChunks.length,
+    chunks: createdChunks,
+    unembedded_messages: unembeddedMessages.length,
+    unembedded_chars: totalChars,
+    duration_ms: Date.now() - start,
+  };
 }

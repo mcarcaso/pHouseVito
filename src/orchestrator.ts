@@ -672,12 +672,24 @@ export class Orchestrator {
       this.notifyResponseComplete(channel);
     }
 
-    // Fire-and-forget: check if we should embed new chunks for this session
-    maybeEmbedNewChunks(vitoSession.id).catch((err) => {
+    // Background: check if we should embed new chunks for this session
+    maybeEmbedNewChunks(vitoSession.id).then((embResult) => {
+      if (embResult) {
+        tracedHarness.writePostRunLine({
+          type: "embedding_result",
+          skipped: embResult.skipped,
+          chunks_created: embResult.chunks_created,
+          chunks: embResult.chunks,
+          unembedded_messages: embResult.unembedded_messages,
+          unembedded_chars: embResult.unembedded_chars,
+          duration_ms: embResult.duration_ms,
+        });
+      }
+    }).catch((err) => {
       console.error(`[Embeddings] Background embedding failed:`, err);
     });
 
-    // Fire-and-forget: check if the conversation revealed profile-worthy facts
+    // Background: check if the conversation revealed profile-worthy facts
     try {
       const recentMsgs = this.queries.getRecentMessages(vitoSession.id, 6, false, false, false, false);
       const profileMessages = recentMsgs
@@ -693,7 +705,17 @@ export class Orchestrator {
           })();
           return { role: m.type as "user" | "assistant", text };
         });
-      maybeUpdateProfile(profileMessages).catch((err) => {
+      maybeUpdateProfile(profileMessages).then((profResult) => {
+        if (profResult) {
+          tracedHarness.writePostRunLine({
+            type: "profile_update",
+            skipped: profResult.skipped,
+            updates_applied: profResult.updates_applied,
+            updates: profResult.updates,
+            duration_ms: profResult.duration_ms,
+          });
+        }
+      }).catch((err) => {
         console.error(`[Profile] Background profile update failed:`, err);
       });
     } catch (err) {

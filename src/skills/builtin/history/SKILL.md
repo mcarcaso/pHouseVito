@@ -1,20 +1,23 @@
 ---
-name: history
-description: Search and retrieve old conversation transcripts from the message database
+name: keyword-history-search
+description: Search and retrieve exact messages from the conversation database using SQL queries — timestamps, keywords, sessions, counts
 ---
 
-# History / Transcript Retrieval
+# Keyword History Search
 
-Search and retrieve past conversations from the SQLite database (`user/vito.db`).
+Direct SQL queries against the messages database (`user/vito.db`). Use this for **precise, exact** lookups — not fuzzy meaning-based recall.
 
 ## When to Use
 
 Use this skill when:
-- The user asks "what did we talk about [time period]?"
-- You need to find a past conversation about a specific topic
-- The user references something from a previous session
-- You need to look up old decisions, code changes, or discussions
-- Cross-session context and long-term memories aren't enough
+- You need messages from a **specific date or time range**
+- You need an **exact keyword or phrase** match
+- You need to **count** messages, sessions, or activity
+- You need to **browse a full session** transcript chronologically
+- You need to **look up a specific session ID** or channel
+- You need **structured data** (aggregations, groupings, date breakdowns)
+
+**Don't use this for:** "What did we talk about regarding X?" — that's `semantic-history-search`.
 
 ## Database Schema
 
@@ -23,8 +26,8 @@ Use this skill when:
 |--------|------|-------------|
 | id | INTEGER | Auto-increment primary key |
 | session_id | TEXT | e.g. `dashboard:default`, `telegram:123456789` |
-| channel | TEXT | `dashboard` or `telegram` |
-| channel_target | TEXT | `default` or telegram chat ID |
+| channel | TEXT | `dashboard`, `telegram`, or `discord` |
+| channel_target | TEXT | `default`, telegram chat ID, or discord channel ID |
 | timestamp | INTEGER | Unix epoch in **milliseconds** |
 | role | TEXT | `user`, `assistant`, `system`, or `tool` |
 | content | JSON | Message content (JSON string — use `json_extract` or just cast) |
@@ -35,7 +38,7 @@ Use this skill when:
 | Column | Type | Description |
 |--------|------|-------------|
 | id | TEXT | Session ID (e.g. `dashboard:default`) |
-| channel | TEXT | `dashboard` or `telegram` |
+| channel | TEXT | `dashboard`, `telegram`, or `discord` |
 | channel_target | TEXT | Target identifier |
 | created_at | INTEGER | Unix epoch ms |
 | last_active_at | INTEGER | Unix epoch ms |
@@ -98,7 +101,6 @@ ORDER BY day DESC;
 ```
 
 ### Find conversations about a topic (with surrounding context)
-First find matching message IDs, then grab nearby messages:
 ```sql
 -- Step 1: Find matching messages
 SELECT id, session_id, timestamp
@@ -115,9 +117,8 @@ WHERE session_id = 'SESSION_ID_HERE'
 ORDER BY timestamp ASC;
 ```
 
-## How to Execute Queries
+## How to Execute
 
-Use the Bash tool with sqlite3:
 ```bash
 sqlite3 user/vito.db "YOUR QUERY HERE"
 ```
@@ -135,9 +136,7 @@ EOF
 
 - **Timestamps are in milliseconds** — divide by 1000 for unix seconds
 - Use `datetime(timestamp/1000, 'unixepoch', 'localtime')` for readable times
-- **content is a JSON string** — for user/assistant messages it's typically just a quoted string. For tool calls it's a JSON array.
-- Filter `role IN ('user', 'assistant')` to skip tool calls/system messages (unless specifically needed)
+- **content is a JSON string** — for user/assistant messages it's typically just a quoted string
+- Filter `role IN ('user', 'assistant')` to skip tool calls/system messages
 - Use `substr(content, 1, 200)` for previews to avoid dumping huge messages
-- **Don't dump entire conversations raw** — summarize what you find for the user
-- When presenting results, give a concise summary with key points, not a wall of text
-- If a search returns too many results, narrow by date range or session
+- **Summarize results** for the user — don't dump raw SQL output

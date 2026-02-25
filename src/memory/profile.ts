@@ -214,24 +214,33 @@ interface ConversationMessage {
  * Fire-and-forget — errors are logged but never thrown.
  * Called after every assistant message, same as maybeEmbedNewChunks.
  */
-export async function maybeUpdateProfile(recentMessages: ConversationMessage[]): Promise<void> {
-  if (isUpdating) return;
+export interface ProfileUpdateResult {
+  skipped?: string;
+  updates_applied: number;
+  updates: Array<{ path: string; action: string; value: any }>;
+  duration_ms: number;
+}
+
+export async function maybeUpdateProfile(recentMessages: ConversationMessage[]): Promise<ProfileUpdateResult> {
+  const start = Date.now();
+  if (isUpdating) return { skipped: "lock_held", updates_applied: 0, updates: [], duration_ms: Date.now() - start };
   isUpdating = true;
 
   try {
-    await _doProfileUpdate(recentMessages);
+    return await _doProfileUpdate(recentMessages, start);
   } catch (err) {
     console.error("[Profile] Error during passive update:", err);
+    return { skipped: `error: ${err instanceof Error ? err.message : String(err)}`, updates_applied: 0, updates: [], duration_ms: Date.now() - start };
   } finally {
     isUpdating = false;
   }
 }
 
-async function _doProfileUpdate(recentMessages: ConversationMessage[]): Promise<void> {
-  if (recentMessages.length === 0) return;
+async function _doProfileUpdate(recentMessages: ConversationMessage[], start: number): Promise<ProfileUpdateResult> {
+  if (recentMessages.length === 0) return { skipped: "no_messages", updates_applied: 0, updates: [], duration_ms: Date.now() - start };
 
   const profile = loadProfileJSON();
-  if (!profile) return; // No profile to update
+  if (!profile) return { skipped: "no_profile", updates_applied: 0, updates: [], duration_ms: Date.now() - start };
 
   // Format recent messages for the extraction prompt
   const conversationText = recentMessages
@@ -280,26 +289,28 @@ Rules:
   });
 
   const content = response.choices[0].message.content;
-  if (!content) return;
+  if (!content) return { skipped: "empty_llm_response", updates_applied: 0, updates: [], duration_ms: Date.now() - start };
 
   let result: { updates: Array<{ path: string; action: string; value: any }> };
   try {
     result = JSON.parse(content);
   } catch {
     console.error("[Profile] Failed to parse LLM response:", content);
-    return;
+    return { skipped: "parse_error", updates_applied: 0, updates: [], duration_ms: Date.now() - start };
   }
 
-  if (!result.updates || result.updates.length === 0) return;
+  if (!result.updates || result.updates.length === 0) return { skipped: "no_updates_found", updates_applied: 0, updates: [], duration_ms: Date.now() - start };
 
   console.log(`[Profile] Applying ${result.updates.length} update(s)...`);
 
   // Apply updates surgically
   let modified = JSON.parse(JSON.stringify(profile)); // deep clone
+  const appliedUpdates: ProfileUpdateResult["updates"] = [];
 
   for (const update of result.updates) {
     try {
       modified = applyUpdate(modified, update.path, update.action, update.value);
+      appliedUpdates.push(update);
       console.log(`[Profile] ✅ ${update.action} ${update.path} = ${JSON.stringify(update.value).slice(0, 100)}`);
     } catch (err) {
       console.error(`[Profile] ❌ Failed to apply update ${update.path}:`, err);
@@ -310,6 +321,8 @@ Rules:
   if (saveProfile(modified)) {
     console.log(`[Profile] Profile updated and saved.`);
   }
+
+  return { updates_applied: appliedUpdates.length, updates: appliedUpdates, duration_ms: Date.now() - start };
 }
 
 // ── Surgical Update Logic ──────────────────────────────────

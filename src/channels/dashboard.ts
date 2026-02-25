@@ -1371,6 +1371,7 @@ export class DashboardChannel implements Channel {
             // Read only the first 4KB for preview (avoids reading multi-MB trace files)
             let preview = "";
             let sessionId = "";
+            let hasEmbedding = false;
             const readSize = Math.min(stats.size, 4096);
             const buf = Buffer.alloc(readSize);
             const fd = openSync(filePath, "r");
@@ -1388,6 +1389,14 @@ export class DashboardChannel implements Channel {
               } catch {
                 preview = head.split("\n").slice(0, 3).join("\n");
               }
+
+              // Detect embedding_result anywhere in the file (for list badge)
+              try {
+                const content = readFileSync(filePath, "utf-8");
+                hasEmbedding = content.includes('"type":"embedding_result"');
+              } catch {
+                hasEmbedding = false;
+              }
             } else {
               preview = head.split("\n").slice(0, 8).join("\n");
             }
@@ -1400,6 +1409,7 @@ export class DashboardChannel implements Channel {
               format: isJsonl ? "jsonl" : "text",
               sessionId,
               alias: sessionId ? aliasMap.get(sessionId) || null : null,
+              hasEmbedding,
             };
           })
           .sort((a, b) => b.timestamp - a.timestamp); // Newest first

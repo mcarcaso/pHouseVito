@@ -177,16 +177,19 @@ function formatCrossSessionMessages(messages: MessageRow[], aliases: Record<stri
 
   const parts: string[] = [];
   for (const [sessionId, msgs] of grouped) {
-    const lastActive = msgs[msgs.length - 1].timestamp;
-    const ago = formatTimeAgo(lastActive);
-    const channelInfo = msgs[0].channel || "unknown";
     const displayName = aliases?.[sessionId] || sessionId;
 
-    parts.push(`[Session: ${displayName} — last active ${ago}]`);
+    if (parts.length > 0) parts.push(""); // blank line between sessions
+    parts.push(`[Session: ${displayName}]`);
+    let currentDay = "";
     for (const msg of msgs) {
-      const time = formatTimestamp(msg.timestamp);
+      const dayHeader = formatDateHeader(msg.timestamp);
+      if (dayHeader !== currentDay) {
+        currentDay = dayHeader;
+        parts.push(dayHeader);
+      }
+      const time = formatTime(msg.timestamp);
       const text = extractMessageText(msg.content);
-      // Include author for user messages if available
       const role = typeToRole(msg.type, assistantLabel);
       const authorPrefix = (msg.type === "user" && msg.author) ? `${msg.author}: ` : "";
       parts.push(`[${time}] ${role}: ${authorPrefix}${text}`);
@@ -201,21 +204,26 @@ function formatCurrentSessionMessages(messages: MessageRow[], sessionId: string,
 
   const displayName = alias || sessionId;
   const header = `[Session: ${displayName}]`;
-  const body = messages
-    .map((msg) => {
-      const time = formatTimestamp(msg.timestamp);
-      if (msg.type === "tool_start" || msg.type === "tool_end") {
-        return formatToolMessage(msg.content, time, msg.type);
-      }
+  const lines: string[] = [];
+  let currentDay = "";
+  for (const msg of messages) {
+    const dayHeader = formatDateHeader(msg.timestamp);
+    if (dayHeader !== currentDay) {
+      currentDay = dayHeader;
+      lines.push(dayHeader);
+    }
+    const time = formatTime(msg.timestamp);
+    if (msg.type === "tool_start" || msg.type === "tool_end") {
+      lines.push(formatToolMessage(msg.content, time, msg.type));
+    } else {
       const text = extractMessageText(msg.content);
       const role = typeToRole(msg.type, assistantLabel);
-      // Include author for user messages if available
       const authorPrefix = (msg.type === "user" && msg.author) ? `${msg.author}: ` : "";
-      return `[${time}] ${role}: ${authorPrefix}${text}`;
-    })
-    .join("\n");
+      lines.push(`[${time}] ${role}: ${authorPrefix}${text}`);
+    }
+  }
   
-  return `${header}\n${body}`;
+  return `${header}\n${lines.join("\n")}`;
 }
 
 function formatToolMessage(raw: string, time: string, type: string): string {
@@ -239,35 +247,22 @@ function formatToolMessage(raw: string, time: string, type: string): string {
   }
 }
 
-function formatTimestamp(ts: number): string {
+/** Format a date header for day grouping — e.g. "Tue Feb 24 2026" */
+function formatDateHeader(ts: number): string {
   const d = new Date(ts);
-  const now = new Date();
-  const isToday = d.toDateString() === now.toDateString();
-  
-  const time = d.toLocaleTimeString("en-US", {
-    hour: "2-digit",
-    minute: "2-digit",
-    hour12: false,
-  });
-  
-  if (isToday) {
-    return time;
-  }
-  
-  // Include date for messages not from today
-  const date = d.toLocaleDateString("en-US", {
-    month: "short",
-    day: "numeric",
-  });
-  return `${date} ${time}`;
+  const days = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+  const months = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+  return `${days[d.getDay()]} ${months[d.getMonth()]} ${d.getDate()} ${d.getFullYear()}`;
 }
 
-function formatTimeAgo(ts: number): string {
-  const diff = Date.now() - ts;
-  const minutes = Math.floor(diff / 60000);
-  if (minutes < 60) return `${minutes}m ago`;
-  const hours = Math.floor(minutes / 60);
-  if (hours < 24) return `${hours}h ago`;
-  const days = Math.floor(hours / 24);
-  return `${days}d ago`;
+/** Format just the time portion — e.g. "4:41 PM" */
+function formatTime(ts: number): string {
+  const d = new Date(ts);
+  return d.toLocaleTimeString("en-US", {
+    hour: "numeric",
+    minute: "2-digit",
+    hour12: true,
+  });
 }
+
+

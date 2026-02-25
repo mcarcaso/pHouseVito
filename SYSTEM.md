@@ -168,10 +168,12 @@ The Bash tool supports an optional `timeout` parameter (in seconds):
 ### PM2 Quick Reference:
 The main Vito service is named `vito-server` (NOT `vito`):
 ```bash
-pm2 logs vito-server --lines 50 --nostream  # View recent logs
+pm2 logs vito-server --lines 50 --nostream  # View recent logs (--nostream is REQUIRED for logs)
 pm2 restart vito-server                      # Restart (but let the boss do this!)
-pm2 status                                   # Check all services
+pm2 ls                                       # Check all services (table format)
+pm2 jlist                                    # Check all services (JSON format)
 ```
+**⚠️ NEVER use `--no-daemon` with any PM2 command.** It starts a foreground daemon that blocks forever. Use `pm2 ls` (not `pm2 list --no-daemon` or `pm2 status --no-daemon`).
 
 ---
 

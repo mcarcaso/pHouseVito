@@ -4,6 +4,8 @@ import { ClaudeCodeHarness, PiHarness, withPersistence, withRelay, withTracing, 
 import { withNoReplyCheck } from "./harness/decorators/index.js";
 import { shouldCompact, acquireCompactionLock, releaseCompactionLock } from "./memory/compaction.js";
 import { assembleContext, formatContextForPrompt } from "./memory/context.js";
+import { maybeEmbedNewChunks } from "./memory/embeddings.js";
+import { loadProfileForPrompt, maybeUpdateProfile } from "./memory/profile.js";
 import { SessionManager } from "./sessions/manager.js";
 import { getEffectiveSettings } from "./settings.js";
 import { discoverSkills, formatSkillsForPrompt } from "./skills/discovery.js";
@@ -637,6 +639,34 @@ export class Orchestrator {
       this.notifyResponseComplete(channel);
     }
 
+    // Fire-and-forget: check if we should embed new chunks for this session
+    maybeEmbedNewChunks(vitoSession.id).catch((err) => {
+      console.error(`[Embeddings] Background embedding failed:`, err);
+    });
+
+    // Fire-and-forget: check if the conversation revealed profile-worthy facts
+    try {
+      const recentMsgs = this.queries.getRecentMessages(vitoSession.id, 6, false, false, false, false);
+      const profileMessages = recentMsgs
+        .filter((m) => m.type === "user" || m.type === "assistant")
+        .map((m) => {
+          const text = (() => {
+            try {
+              const content = JSON.parse(m.content);
+              return typeof content === "string" ? content : content.text || "";
+            } catch {
+              return String(m.content);
+            }
+          })();
+          return { role: m.type as "user" | "assistant", text };
+        });
+      maybeUpdateProfile(profileMessages).catch((err) => {
+        console.error(`[Profile] Background profile update failed:`, err);
+      });
+    } catch (err) {
+      console.error(`[Profile] Failed to prepare messages for profile update:`, err);
+    }
+
     // Check if compaction is needed (run in background)
     if (shouldCompact(this.queries, this.config)) {
       const percent = this.config.compaction.percent ?? 50;
@@ -899,6 +929,12 @@ export class Orchestrator {
     // Inject harness-specific instructions if they exist (before memory)
     if (harnessInstructions) {
       parts.push(`<custom-instructions>\n${harnessInstructions}\n</custom-instructions>`);
+    }
+
+    // User profile — structured semantic memory, always injected
+    const profilePrompt = loadProfileForPrompt();
+    if (profilePrompt) {
+      parts.push(`<user-profile>\n${profilePrompt}\n</user-profile>`);
     }
 
     if (contextPrompt) {

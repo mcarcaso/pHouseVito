@@ -139,9 +139,15 @@ fi
 # USER DATA SCRIPT (runs on first boot)
 # ============================================================================
 
-USER_DATA=$(cat <<'EOF'
+# Write user data to a temp file to avoid heredoc nesting issues
+USER_DATA_FILE=$(mktemp)
+cat > "$USER_DATA_FILE" << 'USERDATA_END'
 #!/bin/bash
 set -e
+
+exec > /var/log/user-data.log 2>&1
+
+echo "Starting CloudMallInc setup..."
 
 # Update system
 dnf update -y
@@ -162,19 +168,15 @@ dnf copr enable -y @caddy/caddy
 dnf install -y caddy
 
 # Create directories
-mkdir -p /opt/cloudmallinc/{containers,caddy,logs}
+mkdir -p /opt/cloudmallinc/containers
 mkdir -p /opt/cloudmallinc/caddy/data
 mkdir -p /opt/cloudmallinc/caddy/config
+mkdir -p /opt/cloudmallinc/logs
 
-# Create base Caddyfile (will be configured later)
-cat > /opt/cloudmallinc/caddy/Caddyfile <<'CADDYFILE'
+# Create base Caddyfile
+cat > /opt/cloudmallinc/caddy/Caddyfile << 'CADDYFILE_END'
 {
     email admin@cloudmallinc.com
-    acme_dns route53 {
-        access_key_id {$AWS_ACCESS_KEY_ID}
-        secret_access_key {$AWS_SECRET_ACCESS_KEY}
-        region {$AWS_REGION}
-    }
 }
 
 # Wildcard cert for all subdomains
@@ -196,10 +198,10 @@ cloudmallinc.com {
     respond /health "OK" 200
     respond "CloudMall Inc Platform" 200
 }
-CADDYFILE
+CADDYFILE_END
 
-# Create systemd service for Caddy with env vars
-cat > /etc/systemd/system/cloudmallinc-caddy.service <<'SERVICE'
+# Create systemd service for Caddy
+cat > /etc/systemd/system/cloudmallinc-caddy.service << 'SERVICE_END'
 [Unit]
 Description=CloudMall Inc Caddy Reverse Proxy
 After=network.target
@@ -214,18 +216,18 @@ RestartSec=5
 
 [Install]
 WantedBy=multi-user.target
-SERVICE
+SERVICE_END
 
-# Create placeholder env file (to be filled with AWS creds)
-cat > /opt/cloudmallinc/caddy/.env <<'ENVFILE'
+# Create placeholder env file
+cat > /opt/cloudmallinc/caddy/.env << 'ENV_END'
 AWS_ACCESS_KEY_ID=REPLACE_ME
 AWS_SECRET_ACCESS_KEY=REPLACE_ME
 AWS_REGION=us-east-1
-ENVFILE
+ENV_END
 chmod 600 /opt/cloudmallinc/caddy/.env
 
-# Create helper scripts
-cat > /opt/cloudmallinc/add-customer.sh <<'ADDCUST'
+# Create helper script for adding customers
+cat > /opt/cloudmallinc/add-customer.sh << 'ADDCUST_END'
 #!/bin/bash
 # Usage: ./add-customer.sh <subdomain> <port>
 SUBDOMAIN=$1
@@ -237,25 +239,29 @@ if [ -z "$SUBDOMAIN" ] || [ -z "$PORT" ]; then
 fi
 
 # Add to Caddyfile
-cat >> /opt/cloudmallinc/caddy/Caddyfile <<EOF
-
-# Customer: $SUBDOMAIN
-$SUBDOMAIN.cloudmallinc.com {
-    reverse_proxy localhost:$PORT
-}
-EOF
+echo "" >> /opt/cloudmallinc/caddy/Caddyfile
+echo "# Customer: $SUBDOMAIN" >> /opt/cloudmallinc/caddy/Caddyfile
+echo "$SUBDOMAIN.cloudmallinc.com {" >> /opt/cloudmallinc/caddy/Caddyfile
+echo "    reverse_proxy localhost:$PORT" >> /opt/cloudmallinc/caddy/Caddyfile
+echo "}" >> /opt/cloudmallinc/caddy/Caddyfile
 
 # Reload Caddy
 caddy reload --config /opt/cloudmallinc/caddy/Caddyfile
 echo "Added $SUBDOMAIN.cloudmallinc.com -> localhost:$PORT"
-ADDCUST
+ADDCUST_END
 chmod +x /opt/cloudmallinc/add-customer.sh
+
+# Enable systemd service (don't start yet - needs AWS creds)
+systemctl daemon-reload
+systemctl enable cloudmallinc-caddy
 
 # Mark setup complete
 touch /opt/cloudmallinc/.setup-complete
-echo "Setup complete at $(date)" >> /opt/cloudmallinc/setup.log
-EOF
-)
+echo "Setup complete at $(date)" > /opt/cloudmallinc/setup.log
+USERDATA_END
+
+USER_DATA=$(cat "$USER_DATA_FILE")
+rm -f "$USER_DATA_FILE"
 
 # ============================================================================
 # LAUNCH EC2 INSTANCE

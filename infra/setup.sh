@@ -43,7 +43,7 @@ apt-get upgrade -y -qq
 # Step 2: Install Docker
 # -----------------------------------------
 log "Installing Docker..."
-apt-get install -y -qq ca-certificates curl gnupg lsb-release
+apt-get install -y -qq ca-certificates curl gnupg lsb-release jq
 
 # Add Docker's official GPG key
 install -m 0755 -d /etc/apt/keyrings
@@ -64,108 +64,58 @@ usermod -aG docker ubuntu
 log "Docker installed: $(docker --version)"
 
 # -----------------------------------------
-# Step 3: Install Go (needed for xcaddy)
+# Step 3: Install Caddy (standard binary, no plugins needed)
 # -----------------------------------------
-log "Installing Go..."
-GO_VERSION="1.22.0"
-wget -q "https://go.dev/dl/go${GO_VERSION}.linux-amd64.tar.gz" -O /tmp/go.tar.gz
-rm -rf /usr/local/go
-tar -C /usr/local -xzf /tmp/go.tar.gz
-rm /tmp/go.tar.gz
+log "Installing Caddy..."
+apt-get install -y -qq debian-keyring debian-archive-keyring apt-transport-https
+curl -1sLf 'https://dl.cloudsmith.io/public/caddy/stable/gpg.key' | gpg --dearmor -o /usr/share/keyrings/caddy-stable-archive-keyring.gpg
+curl -1sLf 'https://dl.cloudsmith.io/public/caddy/stable/debian.deb.txt' | tee /etc/apt/sources.list.d/caddy-stable.list
+apt-get update -qq
+apt-get install -y -qq caddy
 
-export PATH=$PATH:/usr/local/go/bin
-echo 'export PATH=$PATH:/usr/local/go/bin' >> /etc/profile.d/go.sh
-
-log "Go installed: $(/usr/local/go/bin/go version)"
+log "Caddy installed: $(caddy version)"
 
 # -----------------------------------------
-# Step 4: Build Caddy with Route53 DNS plugin
-# -----------------------------------------
-log "Installing xcaddy and building Caddy with Route53 plugin..."
-/usr/local/go/bin/go install github.com/caddyserver/xcaddy/cmd/xcaddy@latest
-
-# Build caddy with route53 dns plugin
-/root/go/bin/xcaddy build \
-    --with github.com/caddy-dns/route53 \
-    --output /usr/local/bin/caddy
-
-chmod +x /usr/local/bin/caddy
-
-log "Caddy installed: $(/usr/local/bin/caddy version)"
-
-# -----------------------------------------
-# Step 5: Create directory structure
+# Step 4: Create directory structure
 # -----------------------------------------
 log "Creating directory structure..."
 mkdir -p /opt/cloudmallinc/caddy
-mkdir -p /opt/cloudmallinc/customers
+mkdir -p /opt/cloudmallinc/certs
+mkdir -p /opt/cloudmallinc/containers
 mkdir -p /var/log/caddy
 
+# Create empty customers registry
+echo '[]' > /opt/cloudmallinc/caddy/customers.json
+
 # -----------------------------------------
-# Step 6: Create Caddyfile
+# Step 5: Create initial Caddyfile
 # -----------------------------------------
 log "Creating Caddyfile..."
-cat > /opt/cloudmallinc/caddy/Caddyfile << 'CADDYFILE_END'
+DOMAIN="cloudmallinc.com"
+
+cat > /opt/cloudmallinc/caddy/Caddyfile << CADDYFILE_END
 # CloudMall Inc Platform - Caddy Configuration
 #
-# This handles wildcard SSL via Let's Encrypt + Route53 DNS challenge
-# and routes subdomains to customer containers
+# SSL certificates are provisioned externally and stored in /opt/cloudmallinc/certs/
+# Each customer gets: /opt/cloudmallinc/certs/<customer>/fullchain.pem and privkey.pem
 #
 
-# Global options
 {
-    email admin@cloudmallinc.com
-    acme_dns route53
+    admin off
 }
 
 # Health check endpoint on the root domain
-cloudmallinc.com {
+$DOMAIN {
     respond /health "OK" 200
     respond "CloudMall Inc Platform" 200
 }
 
-# Wildcard handler - routes *.cloudmallinc.com to containers
-*.cloudmallinc.com {
-    tls {
-        dns route53
-    }
-    
-    # Extract subdomain and proxy to the right container
-    # Customer containers run on ports starting at 4000
-    # Mapping is managed via /opt/cloudmallinc/customers/routing.json
-    
-    @customer {
-        expression {http.request.host.labels.2} != ""
-    }
-    
-    handle @customer {
-        # For now, respond with a placeholder
-        # We'll add dynamic routing once customers are set up
-        respond "Customer portal: {http.request.host}" 200
-    }
-    
-    handle {
-        respond "Unknown subdomain" 404
-    }
-}
+# Customer routes are added dynamically by provision-customer.sh
+
 CADDYFILE_END
 
 # -----------------------------------------
-# Step 7: Create environment file template
-# -----------------------------------------
-log "Creating environment file template..."
-cat > /opt/cloudmallinc/caddy/.env << 'ENV_END'
-# AWS credentials for Route53 DNS challenge
-# Fill these in with your AWS credentials that have Route53 permissions
-AWS_ACCESS_KEY_ID=YOUR_ACCESS_KEY_HERE
-AWS_SECRET_ACCESS_KEY=YOUR_SECRET_KEY_HERE
-AWS_REGION=us-east-1
-ENV_END
-
-chmod 600 /opt/cloudmallinc/caddy/.env
-
-# -----------------------------------------
-# Step 8: Create systemd service for Caddy
+# Step 6: Create systemd service for Caddy
 # -----------------------------------------
 log "Creating Caddy systemd service..."
 cat > /etc/systemd/system/caddy.service << 'SERVICE_END'
@@ -179,9 +129,8 @@ Requires=network-online.target
 Type=notify
 User=root
 Group=root
-EnvironmentFile=/opt/cloudmallinc/caddy/.env
-ExecStart=/usr/local/bin/caddy run --config /opt/cloudmallinc/caddy/Caddyfile --adapter caddyfile
-ExecReload=/usr/local/bin/caddy reload --config /opt/cloudmallinc/caddy/Caddyfile --adapter caddyfile
+ExecStart=/usr/bin/caddy run --config /opt/cloudmallinc/caddy/Caddyfile --adapter caddyfile
+ExecReload=/usr/bin/caddy reload --config /opt/cloudmallinc/caddy/Caddyfile --adapter caddyfile
 TimeoutStopSec=5s
 LimitNOFILE=1048576
 LimitNPROC=512
@@ -197,92 +146,24 @@ systemctl daemon-reload
 systemctl enable caddy
 
 # -----------------------------------------
-# Step 9: Create helper scripts
+# Step 7: Create helper scripts
 # -----------------------------------------
 log "Creating helper scripts..."
-
-# Script to add a new customer
-cat > /opt/cloudmallinc/add-customer.sh << 'SCRIPT_END'
-#!/bin/bash
-#
-# Add a new customer to the platform
-# Usage: ./add-customer.sh <customer-name> <port>
-#
-
-CUSTOMER=$1
-PORT=$2
-
-if [ -z "$CUSTOMER" ] || [ -z "$PORT" ]; then
-    echo "Usage: ./add-customer.sh <customer-name> <port>"
-    echo "Example: ./add-customer.sh mike 4000"
-    exit 1
-fi
-
-CADDYFILE="/opt/cloudmallinc/caddy/Caddyfile"
-
-# Check if customer already exists
-if grep -q "@${CUSTOMER}" "$CADDYFILE"; then
-    echo "Customer '$CUSTOMER' already exists in Caddyfile"
-    exit 1
-fi
-
-# Add customer route before the catch-all handle block
-sed -i "/handle @customer {/i\\
-    @${CUSTOMER} host ${CUSTOMER}.cloudmallinc.com\\
-    handle @${CUSTOMER} {\\
-        reverse_proxy localhost:${PORT}\\
-    }\\
-" "$CADDYFILE"
-
-echo "Added customer '$CUSTOMER' on port $PORT"
-echo "Reloading Caddy..."
-systemctl reload caddy
-echo "Done! https://${CUSTOMER}.cloudmallinc.com is now live"
-SCRIPT_END
-chmod +x /opt/cloudmallinc/add-customer.sh
-
-# Script to remove a customer
-cat > /opt/cloudmallinc/remove-customer.sh << 'SCRIPT_END'
-#!/bin/bash
-#
-# Remove a customer from the platform
-# Usage: ./remove-customer.sh <customer-name>
-#
-
-CUSTOMER=$1
-
-if [ -z "$CUSTOMER" ]; then
-    echo "Usage: ./remove-customer.sh <customer-name>"
-    exit 1
-fi
-
-CADDYFILE="/opt/cloudmallinc/caddy/Caddyfile"
-
-# Remove customer block (the @name matcher and handle block)
-sed -i "/@${CUSTOMER} host/d" "$CADDYFILE"
-sed -i "/handle @${CUSTOMER} {/,/}/d" "$CADDYFILE"
-
-echo "Removed customer '$CUSTOMER'"
-echo "Reloading Caddy..."
-systemctl reload caddy
-echo "Done!"
-SCRIPT_END
-chmod +x /opt/cloudmallinc/remove-customer.sh
 
 # Script to list customers
 cat > /opt/cloudmallinc/list-customers.sh << 'SCRIPT_END'
 #!/bin/bash
-#
-# List all customers on the platform
-#
-
 echo "Current customers:"
-grep -oP '@\K[a-z0-9-]+(?= host)' /opt/cloudmallinc/caddy/Caddyfile | while read customer; do
-    port=$(grep -A2 "@${customer} host" /opt/cloudmallinc/caddy/Caddyfile | grep -oP 'localhost:\K[0-9]+')
-    echo "  - $customer (port $port) -> https://${customer}.cloudmallinc.com"
-done
+echo ""
+cat /opt/cloudmallinc/caddy/customers.json | jq -r '.[] | "  - \(.name) (port \(.port)) -> https://\(.domain)"'
 SCRIPT_END
 chmod +x /opt/cloudmallinc/list-customers.sh
+
+# -----------------------------------------
+# Step 8: Start Caddy
+# -----------------------------------------
+log "Starting Caddy..."
+systemctl start caddy
 
 # -----------------------------------------
 # Done!
@@ -293,26 +174,21 @@ echo "  Setup Complete!"
 echo "============================================"
 echo ""
 log "Docker installed and running"
-log "Caddy built with Route53 DNS plugin"
-log "Systemd service created (not started yet)"
+log "Caddy installed and running"
+log "Directory structure created"
 echo ""
-warn "NEXT STEPS:"
+echo "  Directories:"
+echo "    /opt/cloudmallinc/caddy/      - Caddyfile + customers.json"
+echo "    /opt/cloudmallinc/certs/      - SSL certs per customer"
+echo "    /opt/cloudmallinc/containers/ - Docker compose per customer"
 echo ""
-echo "  1. Add your AWS credentials:"
-echo "     sudo nano /opt/cloudmallinc/caddy/.env"
+echo "  Commands:"
+echo "    sudo systemctl status caddy   - Check Caddy status"
+echo "    /opt/cloudmallinc/list-customers.sh - List customers"
 echo ""
-echo "  2. Start Caddy:"
-echo "     sudo systemctl start caddy"
+echo "  To add customers, run from YOUR machine:"
+echo "    ./provision-customer.sh <name>"
 echo ""
-echo "  3. Check status:"
-echo "     sudo systemctl status caddy"
-echo "     curl https://cloudmallinc.com/health"
-echo ""
-echo "  4. Add a customer:"
-echo "     sudo /opt/cloudmallinc/add-customer.sh mike 4000"
-echo ""
-echo "  Helper scripts in /opt/cloudmallinc/:"
-echo "     - add-customer.sh <name> <port>"
-echo "     - remove-customer.sh <name>"
-echo "     - list-customers.sh"
+echo "  NO AWS CREDENTIALS NEEDED ON THIS BOX!"
+echo "  Certs are provisioned externally and uploaded."
 echo ""

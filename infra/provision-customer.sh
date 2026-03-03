@@ -49,7 +49,8 @@ if [ ! -f "$STATE_FILE" ]; then
 fi
 
 EC2_IP=$(jq -r '.elastic_ip' "$STATE_FILE")
-EC2_KEY=$(jq -r '.key_file' "$STATE_FILE")
+KEY_NAME=$(jq -r '.key_name' "$STATE_FILE")
+EC2_KEY="$HOME/.ssh/${KEY_NAME}.pem"
 HOSTED_ZONE_ID=$(jq -r '.hosted_zone_id' "$STATE_FILE")
 
 if [ -z "$EC2_IP" ] || [ "$EC2_IP" == "null" ]; then

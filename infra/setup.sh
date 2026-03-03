@@ -3,6 +3,13 @@
 # CloudMall Inc Platform Setup Script
 # SCP this to your Ubuntu EC2 instance and run it as root
 #
+# ARCHITECTURE:
+# - This box runs Docker + Caddy ONLY
+# - NO AWS credentials on this box
+# - SSL certs are provisioned by YOUR machine (via certbot DNS challenge)
+# - Certs get uploaded to /opt/cloudmallinc/certs/<customer>/
+# - One wildcard cert per customer covers ALL their apps
+#
 # Usage:
 #   scp -i ~/.ssh/cloudmallinc-key.pem setup.sh ubuntu@<ip>:~/
 #   ssh -i ~/.ssh/cloudmallinc-key.pem ubuntu@<ip>
@@ -64,7 +71,7 @@ usermod -aG docker ubuntu
 log "Docker installed: $(docker --version)"
 
 # -----------------------------------------
-# Step 3: Install Caddy (standard binary, no plugins needed)
+# Step 3: Install Caddy (standard - no plugins!)
 # -----------------------------------------
 log "Installing Caddy..."
 apt-get install -y -qq debian-keyring debian-archive-keyring apt-transport-https
@@ -93,25 +100,36 @@ echo '[]' > /opt/cloudmallinc/caddy/customers.json
 log "Creating Caddyfile..."
 DOMAIN="cloudmallinc.com"
 
-cat > /opt/cloudmallinc/caddy/Caddyfile << CADDYFILE_END
+cat > /opt/cloudmallinc/caddy/Caddyfile << 'CADDYFILE_END'
 # CloudMall Inc Platform - Caddy Configuration
 #
-# SSL certificates are provisioned externally and stored in /opt/cloudmallinc/certs/
-# Each customer gets: /opt/cloudmallinc/certs/<customer>/fullchain.pem and privkey.pem
+# SSL certificates are provisioned externally via certbot DNS challenge.
+# Your machine (with AWS creds) creates wildcard certs per customer.
+# They get uploaded here to /opt/cloudmallinc/certs/<customer>/
 #
+# NO AWS CREDENTIALS ON THIS BOX!
+#
+# Each customer gets:
+#   /opt/cloudmallinc/certs/<customer>/fullchain.pem
+#   /opt/cloudmallinc/certs/<customer>/privkey.pem
+#
+# And their Caddy block:
+#   *.<customer>.cloudmallinc.com {
+#       tls /opt/cloudmallinc/certs/<customer>/fullchain.pem /opt/cloudmallinc/certs/<customer>/privkey.pem
+#       reverse_proxy localhost:<port>
+#   }
 
 {
     admin off
 }
 
 # Health check endpoint on the root domain
-$DOMAIN {
+cloudmallinc.com {
     respond /health "OK" 200
     respond "CloudMall Inc Platform" 200
 }
 
 # Customer routes are added dynamically by provision-customer.sh
-
 CADDYFILE_END
 
 # -----------------------------------------
@@ -155,9 +173,21 @@ cat > /opt/cloudmallinc/list-customers.sh << 'SCRIPT_END'
 #!/bin/bash
 echo "Current customers:"
 echo ""
-cat /opt/cloudmallinc/caddy/customers.json | jq -r '.[] | "  - \(.name) (port \(.port)) -> https://\(.domain)"'
+if [ -s /opt/cloudmallinc/caddy/customers.json ] && [ "$(cat /opt/cloudmallinc/caddy/customers.json)" != "[]" ]; then
+    cat /opt/cloudmallinc/caddy/customers.json | jq -r '.[] | "  - \(.name) (port \(.port)) -> https://*.\(.name).cloudmallinc.com"'
+else
+    echo "  (none yet)"
+fi
 SCRIPT_END
 chmod +x /opt/cloudmallinc/list-customers.sh
+
+# Script to reload Caddy (called by provision-customer.sh via SSH)
+cat > /opt/cloudmallinc/reload-caddy.sh << 'SCRIPT_END'
+#!/bin/bash
+systemctl reload caddy
+echo "Caddy reloaded"
+SCRIPT_END
+chmod +x /opt/cloudmallinc/reload-caddy.sh
 
 # -----------------------------------------
 # Step 8: Start Caddy
@@ -186,9 +216,10 @@ echo "  Commands:"
 echo "    sudo systemctl status caddy   - Check Caddy status"
 echo "    /opt/cloudmallinc/list-customers.sh - List customers"
 echo ""
-echo "  To add customers, run from YOUR machine:"
+echo "  To add customers, run from YOUR machine (not here):"
 echo "    ./provision-customer.sh <name>"
 echo ""
-echo "  NO AWS CREDENTIALS NEEDED ON THIS BOX!"
-echo "  Certs are provisioned externally and uploaded."
+echo "  NO AWS CREDENTIALS ON THIS BOX!"
+echo "  Certs are provisioned by certbot on YOUR machine"
+echo "  and uploaded here via SCP."
 echo ""

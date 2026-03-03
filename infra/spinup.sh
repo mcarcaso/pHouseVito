@@ -5,6 +5,13 @@ set -e
 # CLOUDMALLINC INFRASTRUCTURE SPINUP
 # ============================================================================
 # Spins up an EC2 instance with Docker + Caddy for the whitelabel AI platform
+# 
+# ARCHITECTURE:
+# - EC2 runs Docker + Caddy (no AWS creds)
+# - YOUR machine runs certbot with Route53 DNS challenge
+# - Wildcard certs per customer, provisioned at onboarding time
+# - One wildcard cert covers ALL apps under that customer's subdomain
+#
 # Usage: ./spinup.sh [--key-name your-key] [--instance-type t3.small]
 # ============================================================================
 
@@ -27,7 +34,7 @@ INSTANCE_NAME="cloudmallinc-platform"
 REGION="${AWS_REGION:-us-east-1}"
 INSTANCE_TYPE="t3.small"
 KEY_NAME=""
-AMI_ID=""  # Will auto-detect latest Amazon Linux 2023
+AMI_ID=""  # Will auto-detect latest Ubuntu 22.04 LTS
 
 # Parse arguments
 while [[ $# -gt 0 ]]; do
@@ -114,7 +121,7 @@ if [ "$SG_ID" == "None" ] || [ -z "$SG_ID" ]; then
         --cidr 0.0.0.0/0 \
         --region "$REGION"
     
-    # Allow HTTP
+    # Allow HTTP (needed for ACME HTTP challenge)
     aws ec2 authorize-security-group-ingress \
         --group-id "$SG_ID" \
         --protocol tcp \
@@ -160,7 +167,7 @@ apt-get update -y
 apt-get upgrade -y
 
 # Install Docker
-apt-get install -y ca-certificates curl gnupg
+apt-get install -y ca-certificates curl gnupg jq
 install -m 0755 -d /etc/apt/keyrings
 curl -fsSL https://download.docker.com/linux/ubuntu/gpg | gpg --dearmor -o /etc/apt/keyrings/docker.gpg
 chmod a+r /etc/apt/keyrings/docker.gpg
@@ -171,101 +178,93 @@ systemctl enable docker
 systemctl start docker
 usermod -aG docker ubuntu
 
-# Install Go (needed for xcaddy)
-apt-get install -y golang-go
-
-# Install xcaddy and build Caddy with Route53 DNS plugin
-go install github.com/caddyserver/xcaddy/cmd/xcaddy@latest
-/root/go/bin/xcaddy build --with github.com/caddy-dns/route53 --output /usr/bin/caddy
-chmod +x /usr/bin/caddy
+# Install Caddy (standard binary - no plugins needed!)
+apt-get install -y debian-keyring debian-archive-keyring apt-transport-https
+curl -1sLf 'https://dl.cloudsmith.io/public/caddy/stable/gpg.key' | gpg --dearmor -o /usr/share/keyrings/caddy-stable-archive-keyring.gpg
+curl -1sLf 'https://dl.cloudsmith.io/public/caddy/stable/debian.deb.txt' | tee /etc/apt/sources.list.d/caddy-stable.list
+apt-get update -y
+apt-get install -y caddy
 
 # Create directories
+mkdir -p /opt/cloudmallinc/caddy
+mkdir -p /opt/cloudmallinc/certs
 mkdir -p /opt/cloudmallinc/containers
-mkdir -p /opt/cloudmallinc/caddy/data
-mkdir -p /opt/cloudmallinc/caddy/config
-mkdir -p /opt/cloudmallinc/logs
+mkdir -p /var/log/caddy
 
-# Create base Caddyfile
+# Initialize empty customers registry
+echo '[]' > /opt/cloudmallinc/caddy/customers.json
+
+# Create base Caddyfile (no SSL config - certs loaded from disk)
 cat > /opt/cloudmallinc/caddy/Caddyfile << 'CADDYFILE_END'
+# CloudMall Inc Platform - Caddy Configuration
+# 
+# SSL certificates are provisioned externally via certbot DNS challenge.
+# Your machine (with AWS creds) creates wildcard certs per customer.
+# They get uploaded here to /opt/cloudmallinc/certs/<customer>/
+#
+# NO AWS CREDENTIALS ON THIS BOX!
+
 {
-    email admin@cloudmallinc.com
+    admin off
 }
 
-# Wildcard cert for all subdomains
-*.cloudmallinc.com {
-    tls {
-        dns route53 {
-            access_key_id {$AWS_ACCESS_KEY_ID}
-            secret_access_key {$AWS_SECRET_ACCESS_KEY}
-            region {$AWS_REGION}
-        }
-    }
-    
-    # Default response until containers are configured
-    respond "Service not configured" 503
-}
-
-# Health check endpoint on main domain
+# Health check endpoint on the root domain
 cloudmallinc.com {
     respond /health "OK" 200
     respond "CloudMall Inc Platform" 200
 }
+
+# Customer routes are added dynamically by provision-customer.sh
+# Each customer gets:
+#   *.<customer>.cloudmallinc.com {
+#       tls /opt/cloudmallinc/certs/<customer>/fullchain.pem /opt/cloudmallinc/certs/<customer>/privkey.pem
+#       reverse_proxy localhost:<port>
+#   }
+
 CADDYFILE_END
 
-# Create systemd service for Caddy
-cat > /etc/systemd/system/cloudmallinc-caddy.service << 'SERVICE_END'
+# Create systemd service for Caddy (no env file needed!)
+cat > /etc/systemd/system/caddy.service << 'SERVICE_END'
 [Unit]
-Description=CloudMall Inc Caddy Reverse Proxy
-After=network.target
+Description=Caddy web server for CloudMall Inc
+Documentation=https://caddyserver.com/docs/
+After=network.target network-online.target
+Requires=network-online.target
 
 [Service]
-Type=simple
-EnvironmentFile=/opt/cloudmallinc/caddy/.env
-ExecStart=/usr/bin/caddy run --config /opt/cloudmallinc/caddy/Caddyfile
-ExecReload=/usr/bin/caddy reload --config /opt/cloudmallinc/caddy/Caddyfile
-Restart=always
-RestartSec=5
+Type=notify
+User=root
+Group=root
+ExecStart=/usr/bin/caddy run --config /opt/cloudmallinc/caddy/Caddyfile --adapter caddyfile
+ExecReload=/usr/bin/caddy reload --config /opt/cloudmallinc/caddy/Caddyfile --adapter caddyfile
+TimeoutStopSec=5s
+LimitNOFILE=1048576
+LimitNPROC=512
+PrivateTmp=true
+ProtectSystem=full
+AmbientCapabilities=CAP_NET_BIND_SERVICE
 
 [Install]
 WantedBy=multi-user.target
 SERVICE_END
 
-# Create placeholder env file
-cat > /opt/cloudmallinc/caddy/.env << 'ENV_END'
-AWS_ACCESS_KEY_ID=REPLACE_ME
-AWS_SECRET_ACCESS_KEY=REPLACE_ME
-AWS_REGION=us-east-1
-ENV_END
-chmod 600 /opt/cloudmallinc/caddy/.env
-
-# Create helper script for adding customers
-cat > /opt/cloudmallinc/add-customer.sh << 'ADDCUST_END'
+# Create helper scripts
+cat > /opt/cloudmallinc/list-customers.sh << 'SCRIPT_END'
 #!/bin/bash
-# Usage: ./add-customer.sh <subdomain> <port>
-SUBDOMAIN=$1
-PORT=$2
-
-if [ -z "$SUBDOMAIN" ] || [ -z "$PORT" ]; then
-    echo "Usage: ./add-customer.sh <subdomain> <port>"
-    exit 1
+echo "Current customers:"
+echo ""
+if [ -s /opt/cloudmallinc/caddy/customers.json ]; then
+    cat /opt/cloudmallinc/caddy/customers.json | jq -r '.[] | "  - \(.name) (port \(.port)) -> https://*.\(.name).cloudmallinc.com"'
+else
+    echo "  (none)"
 fi
+SCRIPT_END
+chmod +x /opt/cloudmallinc/list-customers.sh
 
-# Add to Caddyfile
-echo "" >> /opt/cloudmallinc/caddy/Caddyfile
-echo "# Customer: $SUBDOMAIN" >> /opt/cloudmallinc/caddy/Caddyfile
-echo "$SUBDOMAIN.cloudmallinc.com {" >> /opt/cloudmallinc/caddy/Caddyfile
-echo "    reverse_proxy localhost:$PORT" >> /opt/cloudmallinc/caddy/Caddyfile
-echo "}" >> /opt/cloudmallinc/caddy/Caddyfile
-
-# Reload Caddy
-caddy reload --config /opt/cloudmallinc/caddy/Caddyfile
-echo "Added $SUBDOMAIN.cloudmallinc.com -> localhost:$PORT"
-ADDCUST_END
-chmod +x /opt/cloudmallinc/add-customer.sh
-
-# Enable systemd service (don't start yet - needs AWS creds)
+# Enable and start Caddy
 systemctl daemon-reload
-systemctl enable cloudmallinc-caddy
+systemctl enable caddy
+systemctl start caddy
 
 # Mark setup complete
 touch /opt/cloudmallinc/.setup-complete
@@ -339,7 +338,7 @@ if [ -z "$HOSTED_ZONE_ID" ] || [ "$HOSTED_ZONE_ID" == "None" ]; then
     error "Could not find hosted zone for $DOMAIN"
 fi
 
-# Create/update wildcard A record
+# Create/update wildcard A record for *.cloudmallinc.com
 aws route53 change-resource-record-sets \
     --hosted-zone-id "$HOSTED_ZONE_ID" \
     --change-batch '{
@@ -410,11 +409,20 @@ echo "  SSH Access:     ssh -i ~/.ssh/${KEY_NAME}.pem ubuntu@$ELASTIC_IP"
 echo ""
 echo "  NEXT STEPS:"
 echo "  1. Wait 2-3 minutes for setup to complete"
-echo "  2. SSH in and configure AWS credentials for Caddy:"
-echo "     ssh -i ~/.ssh/${KEY_NAME}.pem ubuntu@$ELASTIC_IP"
-echo "     sudo vi /opt/cloudmallinc/caddy/.env"
-echo "  3. Start Caddy:"
-echo "     sudo systemctl start cloudmallinc-caddy"
-echo "     sudo systemctl enable cloudmallinc-caddy"
+echo "  2. Verify it's running:"
+echo "     ssh -i ~/.ssh/${KEY_NAME}.pem ubuntu@$ELASTIC_IP 'cat /opt/cloudmallinc/setup.log'"
+echo ""
+echo "  3. Provision your first customer (from YOUR machine with AWS creds):"
+echo "     ./provision-customer.sh mike"
+echo ""
+echo "     This will:"
+echo "     - Create Route53 record: *.mike.cloudmallinc.com -> EC2"
+echo "     - Run certbot DNS challenge to get wildcard cert"
+echo "     - Upload cert to EC2"
+echo "     - Start customer's container"
+echo "     - Update Caddy config"
+echo ""
+echo "  NO AWS CREDENTIALS ON THE EC2 BOX!"
+echo "  All cert provisioning happens on YOUR machine."
 echo ""
 echo "============================================================================"

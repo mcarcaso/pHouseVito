@@ -243,6 +243,10 @@ done
 apt-get update -y
 apt-get upgrade -y
 
+# Enable passwordless sudo for ubuntu user
+echo 'ubuntu ALL=(ALL) NOPASSWD:ALL' > /etc/sudoers.d/ubuntu
+chmod 440 /etc/sudoers.d/ubuntu
+
 # Install Docker
 apt-get install -y ca-certificates curl gnupg jq
 install -m 0755 -d /etc/apt/keyrings

@@ -1,0 +1,4 @@
+node_modules
+dashboard/node_modules
+.git
+*.log

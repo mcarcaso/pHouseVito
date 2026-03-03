@@ -2,7 +2,7 @@ import { resolve } from "path";
 import { existsSync, writeFileSync, readFileSync, watch } from "fs";
 import { createDatabase } from "./db/schema.js";
 import { Queries } from "./db/queries.js";
-import { ensureUserDir, loadConfig, loadSoul, USER_DIR } from "./config.js";
+import { ensureUserDir, loadConfig, loadSoul, getUserDir } from "./config.js";
 import { Orchestrator } from "./orchestrator.js";
 import { DashboardChannel } from "./channels/dashboard.js";
 import { TelegramChannel } from "./channels/telegram.js";
@@ -11,7 +11,23 @@ import { loadSecrets } from "./secrets.js";
 
 const ROOT = process.cwd();
 
+// Parse command line args for port
+function getPort(): number {
+  const args = process.argv.slice(2);
+  const portIndex = args.indexOf("--port");
+  if (portIndex !== -1 && args[portIndex + 1]) {
+    return parseInt(args[portIndex + 1], 10) || 3030;
+  }
+  return parseInt(process.env.PORT || "3030", 10);
+}
+
 async function main() {
+  const port = getPort();
+  const userDir = getUserDir();
+  
+  console.log(`Workspace: ${userDir}`);
+  console.log(`Port: ${port}`);
+  
   // Ensure user/ directory exists (copy from user.example/ on first run)
   ensureUserDir();
 
@@ -41,17 +57,17 @@ async function main() {
   }
 
   // Initialize database
-  const dbPath = resolve(USER_DIR, "vito.db");
+  const dbPath = resolve(userDir, "vito.db");
   const db = createDatabase(dbPath);
   const queries = new Queries(db);
   console.log(`Database: ${dbPath}`);
 
   // Create orchestrator
-  const skillsDir = resolve(USER_DIR, "skills");
+  const skillsDir = resolve(userDir, "skills");
   const orchestrator = new Orchestrator(queries, config, soul, skillsDir);
 
   // Register Dashboard channel (starts web server)
-  const dashboard = new DashboardChannel(db, queries, config);
+  const dashboard = new DashboardChannel(db, queries, config, port);
   dashboard.setSkillsGetter(() => orchestrator.getSkills());
   dashboard.setAskHandler((opts) => orchestrator.ask(opts));
   dashboard.setCronManager({
@@ -78,7 +94,7 @@ async function main() {
   // Start channels
   await orchestrator.start();
 
-  console.log("\nVito is ready. Dashboard at http://localhost:3030\n");
+  console.log(`\nVito is ready. Dashboard at http://localhost:${port}\n`);
 
   // Heartbeat log every 30 minutes
   setInterval(() => {
@@ -88,7 +104,7 @@ async function main() {
   }, 30 * 60 * 1000); // 30 minutes
 
   // Watch config file for changes (hot-reload cron jobs)
-  const configPath = resolve(USER_DIR, "vito.config.json");
+  const configPath = resolve(userDir, "vito.config.json");
   let reloadTimeout: NodeJS.Timeout | null = null;
   
   watch(configPath, (eventType) => {

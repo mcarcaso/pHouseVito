@@ -405,8 +405,9 @@ export class Orchestrator {
       }
     }
     
-    // Start cron scheduler
-    this.cronScheduler.start(this.config.cron.jobs);
+    // Start cron scheduler (handle missing cron config)
+    const cronJobs = this.config.cron?.jobs ?? [];
+    this.cronScheduler.start(cronJobs);
   }
 
   /** Stop all channels */

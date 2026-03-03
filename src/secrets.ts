@@ -1,9 +1,15 @@
 import { resolve } from "path";
 import { existsSync, readFileSync, writeFileSync } from "fs";
 import { homedir } from "os";
-import { USER_DIR } from "./config.js";
+import { getUserDir } from "./config.js";
 
-export const SECRETS_PATH = resolve(USER_DIR, "secrets.json");
+// Dynamic path getter (resolves VITO_WORKSPACE at call time)
+export function getSecretsPath(): string {
+  return resolve(getUserDir(), "secrets.json");
+}
+
+// For backwards compatibility — evaluated once at import time
+export const SECRETS_PATH = getSecretsPath();
 export const PI_AUTH_PATH = resolve(homedir(), ".pi/agent/auth.json");
 
 // System keys that always appear in the dashboard (with descriptions)
@@ -115,9 +121,10 @@ export interface SecretEntry {
 
 /** Read secrets.json → flat Record<string, string> */
 export function readSecrets(): Record<string, string> {
-  if (!existsSync(SECRETS_PATH)) return {};
+  const secretsPath = getSecretsPath();
+  if (!existsSync(secretsPath)) return {};
   try {
-    return JSON.parse(readFileSync(SECRETS_PATH, "utf-8"));
+    return JSON.parse(readFileSync(secretsPath, "utf-8"));
   } catch {
     console.error("Failed to parse secrets.json — returning empty");
     return {};
@@ -126,12 +133,14 @@ export function readSecrets(): Record<string, string> {
 
 /** Write flat Record<string, string> → secrets.json */
 export function writeSecrets(secrets: Record<string, string>): void {
-  writeFileSync(SECRETS_PATH, JSON.stringify(secrets, null, 2) + "\n", "utf-8");
+  const secretsPath = getSecretsPath();
+  writeFileSync(secretsPath, JSON.stringify(secrets, null, 2) + "\n", "utf-8");
 }
 
 /** Load secrets.json into process.env (override existing) */
 export function loadSecrets(): void {
-  const existing = existsSync(SECRETS_PATH) ? readSecrets() : {};
+  const secretsPath = getSecretsPath();
+  const existing = existsSync(secretsPath) ? readSecrets() : {};
   let updated = false;
 
   // Seed any missing system keys from env
@@ -143,7 +152,7 @@ export function loadSecrets(): void {
   }
 
   // Write if we added new keys
-  if (updated || !existsSync(SECRETS_PATH)) {
+  if (updated || !existsSync(secretsPath)) {
     writeSecrets(existing);
     console.log(`secrets.json updated with ${Object.keys(existing).length} key(s)`);
   }

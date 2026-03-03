@@ -6,8 +6,13 @@
  */
 
 import { homedir } from 'os';
-import { resolve, join } from 'path';
+import { resolve, join, dirname } from 'path';
 import { existsSync } from 'fs';
+import { fileURLToPath } from 'url';
+
+// ESM-compatible __dirname
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = dirname(__filename);
 
 // Check if we're running from source (dev mode) or installed package
 function isDevMode(): boolean {

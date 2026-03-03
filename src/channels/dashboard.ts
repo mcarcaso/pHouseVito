@@ -16,10 +16,18 @@ import { readSecrets, writeSecrets, loadSecrets, getSecretsForDashboard, SYSTEM_
 import Database from "better-sqlite3";
 import OpenAI from "openai";
 import { getProviders, getModels } from "@mariozechner/pi-ai";
+import { getUserDir } from "../config.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const ATTACHMENTS_DIR = path.join(process.cwd(), "data", "attachments");
-const CONFIG_PATH = path.join(process.cwd(), "user", "vito.config.json");
+
+// These are resolved dynamically based on workspace
+function getAttachmentsDir(): string {
+  return path.join(getUserDir(), "data", "attachments");
+}
+
+function getConfigPath(): string {
+  return path.join(getUserDir(), "vito.config.json");
+}
 
 interface DashboardMessage {
   type: "chat" | "typing" | "status";
@@ -42,7 +50,7 @@ export class DashboardChannel implements Channel {
   private server = createServer(this.app);
   private wss = new WebSocketServer({ server: this.server });
   private clients = new Set<WebSocket>();
-  private port = 3030;
+  // port is now set in constructor
   private eventHandler?: (event: InboundEvent) => void;
 
   private skillsGetter?: () => any[];
@@ -64,7 +72,10 @@ export class DashboardChannel implements Channel {
     channelPrompt?: string;
   }) => Promise<string>;
 
-  constructor(private db: any, private queries: any, private config: any) {
+  private port: number;
+  
+  constructor(private db: any, private queries: any, private config: any, port: number = 3030) {
+    this.port = port;
     this.setupExpress();
     this.setupWebSocket();
   }
@@ -72,7 +83,7 @@ export class DashboardChannel implements Channel {
   /** Save current config to disk */
   private saveConfig(): void {
     try {
-      writeFileSync(CONFIG_PATH, JSON.stringify(this.config, null, 2) + "\n", "utf-8");
+      writeFileSync(getConfigPath(), JSON.stringify(this.config, null, 2) + "\n", "utf-8");
       console.log("[Dashboard] Config saved to disk");
     } catch (err) {
       console.error("[Dashboard] Failed to save config:", err);
@@ -119,8 +130,9 @@ export class DashboardChannel implements Channel {
     this.app.use(express.static(path.join(__dirname, "../../dashboard/dist")));
 
     // Serve uploaded attachments
-    if (!existsSync(ATTACHMENTS_DIR)) mkdirSync(ATTACHMENTS_DIR, { recursive: true });
-    this.app.use("/attachments", express.static(ATTACHMENTS_DIR));
+    const attachmentsDir = getAttachmentsDir();
+    if (!existsSync(attachmentsDir)) mkdirSync(attachmentsDir, { recursive: true });
+    this.app.use("/attachments", express.static(attachmentsDir));
 
     // API endpoints
     this.app.get("/api/config", (req, res) => {
@@ -906,9 +918,10 @@ export class DashboardChannel implements Channel {
       const savedFilename = filename
         ? `${id}-${filename}`
         : `${id}.${ext}`;
-      const filePath = path.join(ATTACHMENTS_DIR, savedFilename);
+      const attachDir = getAttachmentsDir();
+      const filePath = path.join(attachDir, savedFilename);
 
-      if (!existsSync(ATTACHMENTS_DIR)) mkdirSync(ATTACHMENTS_DIR, { recursive: true });
+      if (!existsSync(attachDir)) mkdirSync(attachDir, { recursive: true });
       writeFileSync(filePath, buffer);
 
       res.json({

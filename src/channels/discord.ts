@@ -172,7 +172,7 @@ export class DiscordChannel implements Channel {
       const target = interaction.guild ? interaction.channelId : interaction.user.id;
 
       if (interaction.commandName === "new") {
-        // Defer the reply since compaction can take a while
+        // Defer the reply since embedding can take a while
         await interaction.deferReply();
 
         const event: InboundEvent = {
@@ -264,7 +264,7 @@ export class DiscordChannel implements Channel {
     const commands = [
       new SlashCommandBuilder()
         .setName("new")
-        .setDescription("Start a fresh conversation — compacts and archives the current session"),
+        .setDescription("Start a fresh conversation — embeds and archives the current session"),
       new SlashCommandBuilder()
         .setName("stop")
         .setDescription("Stop current request and clear any queued messages"),

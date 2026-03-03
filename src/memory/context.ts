@@ -1,9 +1,5 @@
 import type { Queries } from "../db/queries.js";
 import type { MessageRow, ResolvedSettings, VitoConfig } from "../types.js";
-import { readdirSync, existsSync, readFileSync } from "fs";
-import { join } from "path";
-
-const MEMORIES_DIR = join(process.cwd(), "user", "memories");
 
 export interface AssembledContext {
   memoriesBlock: string;
@@ -42,7 +38,7 @@ export async function assembleContext(
     includeCompacted: false,
   };
 
-  // 1. Long-term memories — just file titles from user/memories/
+  // Memories block is unused — profile.json + embeddings handle long-term memory now
   const memoriesBlock = "";
 
   // Load session aliases for human-readable display
@@ -92,45 +88,6 @@ export function formatContextForPrompt(ctx: AssembledContext): string {
   }
 
   return parts.join("\n\n");
-}
-
-/**
- * Parse YAML frontmatter from a memory file.
- * Returns the description if found, null otherwise.
- */
-function parseMemoryDescription(filePath: string): string | null {
-  try {
-    const content = readFileSync(filePath, "utf-8");
-    if (!content.startsWith("---")) return null;
-    
-    const endIndex = content.indexOf("---", 3);
-    if (endIndex === -1) return null;
-    
-    const frontmatter = content.slice(3, endIndex);
-    const match = frontmatter.match(/^description:\s*(.+)$/m);
-    return match ? match[1].trim() : null;
-  } catch {
-    return null;
-  }
-}
-
-/**
- * Build a lightweight memory block — file titles with descriptions from user/memories/.
- * Each file can have YAML frontmatter with a description field.
- * The LLM can use the Read tool to pull full content when needed.
- */
-function buildMemoriesTitlesBlock(): string {
-  if (!existsSync(MEMORIES_DIR)) return "";
-
-  const files = readdirSync(MEMORIES_DIR).filter((f) => f.endsWith(".md"));
-  if (files.length === 0) return "";
-
-  const entries = files.map((f) => {
-    const desc = parseMemoryDescription(join(MEMORIES_DIR, f));
-    return desc ? `- ${f} — ${desc}` : `- ${f}`;
-  }).join("\n");
-  
-  return `Long-term memory documents:\n${entries}\nUse the Read tool on user/memories/<filename> to load full content when needed.`;
 }
 
 /** Extract display text from a stored message, including attachment references */

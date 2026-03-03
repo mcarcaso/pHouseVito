@@ -160,20 +160,6 @@ export class DashboardChannel implements Channel {
       res.json(this.config);
     });
 
-    // Compaction status endpoint
-    this.app.get("/api/compaction/status", (req, res) => {
-      const messageTypes = this.config.compaction.messageTypes;
-      const uncompactedCount = this.queries.countUncompacted(messageTypes);
-      const threshold = this.config.compaction.threshold;
-      res.json({
-        uncompactedCount,
-        threshold,
-        messageTypes: messageTypes || ["user", "assistant"], // Return current filter for UI
-        progress: Math.min(uncompactedCount / threshold, 1),
-        willTrigger: uncompactedCount > threshold
-      });
-    });
-
     // Harnesses endpoint
     this.app.get("/api/harnesses", (req, res) => {
       // Get config and list registered harnesses
@@ -312,42 +298,6 @@ export class DashboardChannel implements Channel {
       const cleanAlias = alias && alias.trim() ? alias.trim() : null;
       this.queries.updateSessionAlias(sessionId, cleanAlias);
       res.json({ id: sessionId, alias: cleanAlias });
-    });
-
-    this.app.get("/api/memories", (req, res) => {
-      const memoriesDir = path.join(process.cwd(), "user", "memories");
-      if (!existsSync(memoriesDir)) {
-        res.json([]);
-        return;
-      }
-      const files = readdirSync(memoriesDir).filter((f: string) => f.endsWith(".md"));
-      const memories = files.map((f: string, i: number) => {
-        const filePath = path.join(memoriesDir, f);
-        const content = readFileSync(filePath, "utf-8");
-        const stat = statSync(filePath);
-        
-        // Parse description from YAML frontmatter
-        let description: string | null = null;
-        if (content.startsWith("---")) {
-          const endIndex = content.indexOf("---", 3);
-          if (endIndex !== -1) {
-            const frontmatter = content.slice(3, endIndex);
-            const match = frontmatter.match(/^description:\s*(.+)$/m);
-            if (match) {
-              description = match[1].trim();
-            }
-          }
-        }
-        
-        return {
-          id: i + 1,
-          timestamp: stat.mtimeMs,
-          title: f,
-          description,
-          content,
-        };
-      });
-      res.json(memories);
     });
 
     this.app.get("/api/skills", async (req, res) => {

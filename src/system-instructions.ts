@@ -1,74 +1,36 @@
 /**
- * Centralized system instructions for all prompts.
+ * System instructions loader.
  * 
- * This ensures consistency across:
- * - Main conversation prompts
- * - Test/battle prompts
- * - Compaction prompts
+ * All operational rules and reference material live in SYSTEM.md (hot-reloaded).
+ * This file just reads it and wraps it in <system> tags for the prompt.
  */
 
-/**
- * Core system instructions that appear in every prompt.
- * These are the foundational rules that never change.
- */
-export const CORE_INSTRUCTIONS = `For system architecture, file structure, restart rules, bash guidelines, and operational knowledge, read SYSTEM.md using the Read tool. Only pull it when you need system-level context.
+import { readFileSync } from "fs";
+import { join } from "path";
 
-**PM2 logs must use --nostream (never use streaming logs).**
-
-You can query the SQLite database (user/vito.db) for more message history if needed. Read SYSTEM.md for schema details.
-
-To send/share a file or image inline, output MEDIA:/path/to/file on its own line. The channel will deliver it as an attachment. Don't paste file contents when the user asks you to "send" a file — use MEDIA: instead.
-
-NEVER restart yourself. You don't know what long-running jobs might be in progress. When changes need a restart, say "changes are ready, restart when you're clear" and let the boss decide when.`;
+const COMMANDS_SECTION = `Available commands: /new (embed + archive session), /stop (abort current request + clear queue)`;
 
 /**
- * Available slash commands (only shown in interactive sessions, not tests)
- */
-export const COMMANDS_SECTION = `Available commands: /new (embed + archive session), /stop (abort current request + clear queue)`;
-
-/**
- * Cardinal rules that must always be followed
- */
-export const CARDINAL_RULES = `## Cardinal Rules
-
-- **Never improvise facts.** If uncertain about something, verify it first. Don't guess and present it as truth.
-- **When debugging something unexpected**, search the message DB for related context before assuming it's a bug. Grab surrounding messages to understand the full picture.
-- **When a message has an image attached**, always use the Read tool to view the image before responding. Never describe, comment on, or react to an image you haven't actually read. No exceptions, no bluffing.`;
-
-/**
- * Investigation-first approach
- */
-export const INVESTIGATION_FIRST = `## Investigation First
-
-When instructions are vague or incomplete, investigate before asking:
-- Check existing files and configs
-- Query the message history if needed
-- **Search long-term memory** with \`node user/scripts/search-memory.mjs "query"\` for past conversations (supports --limit N, --session id, --mode hybrid|embedding|bm25)
-- Only ask clarifying questions if you've genuinely exhausted available context
-
-Relevant past conversations are automatically searched and injected into <recalled-memories> when available. For deeper digs, use the search script above.
-
-Treat unknowns as puzzles to solve, not gaps to fill with questions.`;
-
-/**
- * Build the full <system> block.
- * 
- * @param includeCommands - Whether to include slash commands (false for tests/battles)
+ * Build the <system> block by reading SYSTEM.md.
  */
 export function buildSystemBlock(includeCommands: boolean = true, botName: string = "Vito"): string {
-  const parts = [
+  const parts: string[] = [
     `Your name is ${botName}.`,
     `If the user message is only your name (e.g., "@${botName}"), interpret it as a follow-up to the previous user message.`,
-    CORE_INSTRUCTIONS,
   ];
-  
+
+  // Read SYSTEM.md — the single source of truth
+  try {
+    const systemMd = readFileSync(join(process.cwd(), "SYSTEM.md"), "utf-8");
+    parts.push(systemMd);
+  } catch {
+    parts.push("(SYSTEM.md not found — operating without system reference)");
+  }
+
   if (includeCommands) {
     parts.push(COMMANDS_SECTION);
   }
-  
-  parts.push(CARDINAL_RULES);
-  parts.push(INVESTIGATION_FIRST);
-  
+
   return `<system>\n${parts.join("\n\n")}\n</system>`;
 }
 

@@ -61,13 +61,17 @@ Use this skill when you need to:
   ```
   This ensures updates are live immediately without waiting for Cloudflare cache to expire.
 
-**App Icons:**
-If you have access to an image generation skill (like `gemini-image`), generate icons for the app:
+---
+
+### ⚠️ APP ICONS — DO NOT SKIP THIS STEP ⚠️
+
+**Every app MUST have icons.** Use the `gemini-image` skill to generate them:
 
 1. **Generate the icon** after the app is created (so you have a directory to save to):
    ```bash
    ~/vito3.0/user/skills/gemini-image/generate.py "your icon description" -o ~/vito3.0/user/apps/<name>/icon-180.png
    ```
+   **⚠️ EDGE-TO-EDGE — NO WHITE BORDERS:** Always include in the prompt: "filling the ENTIRE image edge to edge with NO border, NO padding, NO rounded corners, NO margins, NO white space around edges." The background must bleed to every pixel edge. iOS adds its own rounded mask — never bake one in.
 
 2. **Resize for both sizes** using sips:
    ```bash

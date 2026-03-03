@@ -1,11 +1,11 @@
 {
-  "name": "vito-ai",
+  "name": "personal-ai",
   "version": "0.1.0",
   "description": "Your personal AI assistant — runs locally, remembers everything, extends with skills",
   "type": "module",
   "main": "dist/index.js",
   "bin": {
-    "vito": "./bin/vito.js"
+    "ai": "./bin/vito.js"
   },
   "scripts": {
     "dev": "tsx watch src/index.ts",

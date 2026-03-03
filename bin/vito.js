@@ -14,11 +14,11 @@ const packageRoot = resolve(__dirname, '..');
 const program = new Command();
 
 // Default workspace location
-const DEFAULT_WORKSPACE = join(homedir(), 'vito');
-const PID_FILE = join(DEFAULT_WORKSPACE, '.vito.pid');
+const DEFAULT_WORKSPACE = join(homedir(), 'ai-assistant');
+const PID_FILE = join(DEFAULT_WORKSPACE, '.assistant.pid');
 
 function getWorkspace() {
-  return process.env.VITO_WORKSPACE || DEFAULT_WORKSPACE;
+  return process.env.AI_WORKSPACE || DEFAULT_WORKSPACE;
 }
 
 function copyDirRecursive(src, dest) {
@@ -41,13 +41,13 @@ function copyDirRecursive(src, dest) {
 }
 
 program
-  .name('vito')
-  .description('Vito — Your personal AI assistant')
+  .name('ai')
+  .description('Personal AI Assistant — your own customizable AI')
   .version('0.1.0');
 
 program
   .command('init')
-  .description('Initialize a new Vito workspace')
+  .description('Initialize a new workspace')
   .option('-d, --dir <path>', 'Workspace directory', DEFAULT_WORKSPACE)
   .action((options) => {
     const workspace = options.dir;
@@ -58,7 +58,7 @@ program
       process.exit(1);
     }
     
-    console.log(`🚀 Initializing Vito workspace at ${workspace}...`);
+    console.log(`🚀 Initializing workspace at ${workspace}...`);
     
     // Create workspace directory
     mkdirSync(workspace, { recursive: true });
@@ -75,10 +75,10 @@ program
     mkdirSync(join(workspace, 'apps'), { recursive: true });
     
     // Create default config if not copied from template
-    if (!existsSync(join(workspace, 'vito.config.json'))) {
-      writeFileSync(join(workspace, 'vito.config.json'), JSON.stringify({
+    if (!existsSync(join(workspace, 'config.json'))) {
+      writeFileSync(join(workspace, 'config.json'), JSON.stringify({
         settings: {
-          harness: "claude-code",
+          harness: "pi-coding-agent",
           streamMode: "stream",
           memory: {
             currentSessionLimit: 100,
@@ -95,9 +95,7 @@ program
     // Create empty secrets file
     if (!existsSync(join(workspace, 'secrets.json'))) {
       writeFileSync(join(workspace, 'secrets.json'), JSON.stringify({
-        ANTHROPIC_API_KEY: "",
-        OPENROUTER_API_KEY: "",
-        // Add more as needed
+        OPENROUTER_API_KEY: ""
       }, null, 2));
     }
     
@@ -108,6 +106,9 @@ program
           name: "",
           email: ""
         },
+        bot: {
+          name: ""
+        },
         preferences: {},
         notes: {}
       }, null, 2));
@@ -117,33 +118,33 @@ program
     console.log('✅ Workspace initialized!');
     console.log('');
     console.log('Next steps:');
-    console.log(`  1. Edit ${join(workspace, 'secrets.json')} and add your API keys`);
-    console.log(`  2. Edit ${join(workspace, 'profile.json')} to personalize Vito`);
-    console.log('  3. Run: vito start');
+    console.log(`  1. Run: ai start`);
+    console.log(`  2. Open the dashboard and start chatting — it'll help you set everything up`);
     console.log('');
   });
 
 program
   .command('start')
-  .description('Start Vito')
+  .description('Start the assistant')
   .option('-d, --dir <path>', 'Workspace directory', DEFAULT_WORKSPACE)
   .option('-p, --port <number>', 'Port to run on', '3000')
+  .option('-f, --foreground', 'Run in foreground (for Docker)')
   .action((options) => {
     const workspace = options.dir;
     
     if (!existsSync(workspace)) {
       console.log(`❌ Workspace not found at ${workspace}`);
-      console.log('   Run: vito init');
+      console.log('   Run: ai init');
       process.exit(1);
     }
     
-    // Check if already running
-    if (existsSync(PID_FILE)) {
+    // Check if already running (only when not in foreground mode)
+    if (!options.foreground && existsSync(PID_FILE)) {
       const pid = readFileSync(PID_FILE, 'utf-8').trim();
       try {
         process.kill(parseInt(pid), 0); // Check if process exists
-        console.log(`⚠️  Vito is already running (PID: ${pid})`);
-        console.log('   Run: vito stop');
+        console.log(`⚠️  Already running (PID: ${pid})`);
+        console.log('   Run: ai stop');
         process.exit(1);
       } catch (e) {
         // Process doesn't exist, clean up stale PID file
@@ -151,43 +152,61 @@ program
       }
     }
     
-    console.log(`🚀 Starting Vito...`);
+    console.log(`🚀 Starting...`);
     console.log(`   Workspace: ${workspace}`);
     console.log(`   Port: ${options.port}`);
     
-    const serverPath = join(packageRoot, 'dist', 'server.js');
+    const serverPath = join(packageRoot, 'dist', 'index.js');
     
-    const child = spawn('node', [serverPath, '--port', options.port], {
-      cwd: packageRoot,
-      env: {
-        ...process.env,
-        VITO_WORKSPACE: workspace,
-        PORT: options.port
-      },
-      detached: true,
-      stdio: 'ignore'
-    });
-    
-    // Save PID
-    writeFileSync(PID_FILE, child.pid.toString());
-    
-    child.unref();
-    
-    console.log('');
-    console.log(`✅ Vito is running! (PID: ${child.pid})`);
-    console.log(`   Dashboard: http://localhost:${options.port}`);
-    console.log('');
-    console.log('   Run: vito stop   — to stop');
-    console.log('   Run: vito logs   — to view logs');
-    console.log('');
+    if (options.foreground) {
+      // Run in foreground (for Docker/containers)
+      const child = spawn('node', [serverPath, '--port', options.port], {
+        cwd: packageRoot,
+        env: {
+          ...process.env,
+          AI_WORKSPACE: workspace,
+          PORT: options.port
+        },
+        stdio: 'inherit'  // Attach to current terminal
+      });
+      
+      child.on('close', (code) => {
+        process.exit(code || 0);
+      });
+    } else {
+      // Run in background (normal operation)
+      const child = spawn('node', [serverPath, '--port', options.port], {
+        cwd: packageRoot,
+        env: {
+          ...process.env,
+          AI_WORKSPACE: workspace,
+          PORT: options.port
+        },
+        detached: true,
+        stdio: 'ignore'
+      });
+      
+      // Save PID
+      writeFileSync(PID_FILE, child.pid.toString());
+      
+      child.unref();
+      
+      console.log('');
+      console.log(`✅ Running! (PID: ${child.pid})`);
+      console.log(`   Dashboard: http://localhost:${options.port}`);
+      console.log('');
+      console.log('   Run: ai stop   — to stop');
+      console.log('   Run: ai logs   — to view logs');
+      console.log('');
+    }
   });
 
 program
   .command('stop')
-  .description('Stop Vito')
+  .description('Stop the assistant')
   .action(() => {
     if (!existsSync(PID_FILE)) {
-      console.log('⚠️  Vito is not running');
+      console.log('⚠️  Not running');
       process.exit(0);
     }
     
@@ -196,7 +215,7 @@ program
     try {
       process.kill(parseInt(pid), 'SIGTERM');
       unlinkSync(PID_FILE);
-      console.log(`✅ Vito stopped (PID: ${pid})`);
+      console.log(`✅ Stopped (PID: ${pid})`);
     } catch (e) {
       console.log(`⚠️  Could not stop process ${pid} — it may have already exited`);
       unlinkSync(PID_FILE);
@@ -205,10 +224,10 @@ program
 
 program
   .command('status')
-  .description('Check if Vito is running')
+  .description('Check if the assistant is running')
   .action(() => {
     if (!existsSync(PID_FILE)) {
-      console.log('⚪ Vito is not running');
+      console.log('⚪ Not running');
       process.exit(0);
     }
     
@@ -216,20 +235,20 @@ program
     
     try {
       process.kill(parseInt(pid), 0);
-      console.log(`🟢 Vito is running (PID: ${pid})`);
+      console.log(`🟢 Running (PID: ${pid})`);
     } catch (e) {
-      console.log('⚪ Vito is not running (stale PID file cleaned up)');
+      console.log('⚪ Not running (stale PID file cleaned up)');
       unlinkSync(PID_FILE);
     }
   });
 
 program
   .command('logs')
-  .description('View Vito logs')
+  .description('View logs')
   .option('-f, --follow', 'Follow log output')
   .action((options) => {
     const workspace = getWorkspace();
-    const logFile = join(workspace, 'vito.log');
+    const logFile = join(workspace, 'assistant.log');
     
     if (!existsSync(logFile)) {
       console.log('No logs found yet.');
@@ -264,9 +283,9 @@ program
     
     setTimeout(() => {
       // Reset config
-      writeFileSync(join(workspace, 'vito.config.json'), JSON.stringify({
+      writeFileSync(join(workspace, 'config.json'), JSON.stringify({
         settings: {
-          harness: "claude-code",
+          harness: "pi-coding-agent",
           streamMode: "stream",
           memory: {
             currentSessionLimit: 100,
@@ -280,7 +299,7 @@ program
       }, null, 2));
       
       // Remove database
-      const dbPath = join(workspace, 'vito.db');
+      const dbPath = join(workspace, 'assistant.db');
       if (existsSync(dbPath)) {
         unlinkSync(dbPath);
       }

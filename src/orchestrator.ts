@@ -38,7 +38,7 @@ export function buildTestSystemPrompt(
   soul: string,
   skillsDir: string,
   channelPrompt: string = "",
-  botName: string = "Vito"
+  botName: string = "Assistant"
 ): string {
   const parts: string[] = [];
 
@@ -132,7 +132,7 @@ export class Orchestrator {
   /** Hot-reload the full config (model, memory, etc.) */
   reloadConfig(config: VitoConfig): void {
     this.config = config;
-    const defaultHarness = config.settings?.harness || "claude-code";
+    const defaultHarness = config.settings?.harness || "pi-coding-agent";
     console.log(`[Orchestrator] Config reloaded — default harness: ${defaultHarness}`);
   }
 
@@ -286,7 +286,7 @@ export class Orchestrator {
     }
 
     // No commands in test prompts (no /new etc.)
-    parts.push(buildSystemBlock(false, this.config.bot?.name || "Vito"));
+    parts.push(buildSystemBlock(false, this.config.bot?.name || "Assistant"));
 
     // Skills prompt
     const skillsPrompt = formatSkillsForPrompt(this.getSkills());
@@ -307,7 +307,7 @@ export class Orchestrator {
   private async removeJobFromConfig(jobName: string): Promise<void> {
     console.log(`[Config] removeJobFromConfig called for: ${jobName}`);
     try {
-      const configPath = resolve(process.cwd(), "user/vito.config.json");
+      const configPath = resolve(process.cwd(), "user/config.json");
       console.log(`[Config] Config path resolved to: ${configPath}`);
       const fs = await import("fs/promises");
       const configText = await fs.readFile(configPath, "utf-8");
@@ -960,7 +960,7 @@ export class Orchestrator {
     }
 
     // Include commands for interactive sessions
-    parts.push(buildSystemBlock(true, this.config.bot?.name || "Vito"));
+    parts.push(buildSystemBlock(true, this.config.bot?.name || "Assistant"));
 
     if (skillsPrompt) {
       parts.push(`<skills>\n${skillsPrompt}\n</skills>`);

@@ -2,15 +2,15 @@
 
 ## Core
 
-- **Message history** lives in `vito.db` (SQLite)
+- **Message history** lives in `assistant.db` (SQLite)
 - Share files inline: `MEDIA:/path/to/file` on its own line
-- Config lives in `vito.config.json`
+- Config lives in `config.json`
 
 ## File Structure
 
-- **Database:** `vito.db`
+- **Database:** `assistant.db`
 - **Profile:** `profile.json`
-- **Config:** `vito.config.json`
+- **Config:** `config.json`
 - **Secrets:** `secrets.json`
 - **Skills:** `skills/`
 - **Images:** `images/`
@@ -28,4 +28,4 @@
 
 ## Sandbox
 
-You're running in a sandboxed environment. You can read/write files in your workspace directory, but cannot access system files or the Vito source code.
+You're running in a sandboxed environment. You can read/write files in your workspace directory, but cannot access system files or the source code.

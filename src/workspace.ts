@@ -1,7 +1,7 @@
 /**
  * Workspace management and sandbox enforcement
  * 
- * In packaged mode, users are sandboxed to their ~/vito workspace.
+ * In packaged mode, users are sandboxed to their ~/ai-assistant workspace.
  * In dev mode (running from source), full filesystem access is allowed.
  */
 
@@ -23,7 +23,10 @@ function isDevMode(): boolean {
 
 // Get the user's workspace directory
 export function getWorkspace(): string {
-  // Environment variable takes precedence
+  // Environment variable takes precedence (AI_WORKSPACE or legacy VITO_WORKSPACE)
+  if (process.env.AI_WORKSPACE) {
+    return resolve(process.env.AI_WORKSPACE);
+  }
   if (process.env.VITO_WORKSPACE) {
     return resolve(process.env.VITO_WORKSPACE);
   }
@@ -33,8 +36,8 @@ export function getWorkspace(): string {
     return resolve(__dirname, '..', 'user');
   }
   
-  // In package mode, use ~/vito
-  return join(homedir(), 'vito');
+  // In package mode, use ~/ai-assistant
+  return join(homedir(), 'ai-assistant');
 }
 
 // Get the path to built-in skills (shipped with the package)
@@ -58,7 +61,7 @@ export function isSandboxed(): boolean {
   }
   
   // Explicit override via env var
-  if (process.env.VITO_SANDBOX === 'false') {
+  if (process.env.AI_SANDBOX === 'false' || process.env.VITO_SANDBOX === 'false') {
     return false;
   }
   
@@ -90,7 +93,7 @@ export function validatePath(targetPath: string, operation: string = 'access'): 
       `🚫 Cannot ${operation} outside your workspace.\n` +
       `   Attempted: ${resolvedPath}\n` +
       `   Workspace: ${resolvedWorkspace}\n` +
-      `   Hint: All your files live in ~/vito/`
+      `   Hint: All your files live in ~/ai-assistant/`
     );
   }
   

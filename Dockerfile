@@ -14,13 +14,20 @@ RUN cd dashboard && npm install
 # Build TypeScript and dashboard
 RUN npm run build
 
+# Verify dashboard build exists
+RUN ls -la dashboard/dist/ && test -f dashboard/dist/index.html
+
+# Copy built-in skills to where the package expects them (/app/skills/)
+RUN cp -r src/skills/builtin skills && ls -la skills/
+
 # Link globally to simulate npm install -g
 RUN npm link
 
-# Create a test user
-RUN useradd -m testuser
-USER testuser
-WORKDIR /home/testuser
+# Expose port
+EXPOSE 3200
 
-# Test the CLI
-CMD ["bash", "-c", "vito init && cat ~/vito/profile.json && echo '=== INIT SUCCESS ===' && vito start && sleep 2 && vito status && vito stop && echo '=== ALL TESTS PASSED ==='"]
+# Run as root for full permissions
+WORKDIR /root
+
+# Default: init workspace then start server on port 3200
+CMD ["sh", "-c", "ai init && ai start --foreground --port 3200"]

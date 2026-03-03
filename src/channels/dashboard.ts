@@ -26,7 +26,11 @@ function getAttachmentsDir(): string {
 }
 
 function getConfigPath(): string {
-  return path.join(getUserDir(), "vito.config.json");
+  return path.join(getUserDir(), "config.json");
+}
+
+function getLogsDir(): string {
+  return path.join(getUserDir(), "logs");
 }
 
 interface DashboardMessage {
@@ -176,7 +180,7 @@ export class DashboardChannel implements Channel {
     this.app.get("/api/harnesses", (req, res) => {
       // Get config and list registered harnesses
       const harnesses = this.config.harnesses || {};
-      const defaultHarness = this.config.settings?.harness || "claude-code";
+      const defaultHarness = this.config.settings?.harness || "pi-coding-agent";
       
       // Build harness info
       const available: Record<string, any> = {
@@ -1307,7 +1311,7 @@ export class DashboardChannel implements Channel {
 
     this.app.get("/api/logs", (req, res) => {
       try {
-        const logsDir = path.join(process.cwd(), "logs");
+        const logsDir = getLogsDir();
         if (!existsSync(logsDir)) {
           res.json([]);
           return;
@@ -1409,7 +1413,7 @@ export class DashboardChannel implements Channel {
           return;
         }
         
-        const filePath = path.join(process.cwd(), "logs", filename);
+        const filePath = path.join(getLogsDir(), filename);
         if (!existsSync(filePath)) {
           res.status(404).json({ error: "Log not found" });
           return;
@@ -1449,7 +1453,7 @@ export class DashboardChannel implements Channel {
           return;
         }
         
-        const filePath = path.join(process.cwd(), "logs", filename);
+        const filePath = path.join(getLogsDir(), filename);
         if (!existsSync(filePath)) {
           res.status(404).json({ error: "Log not found" });
           return;
@@ -1465,7 +1469,7 @@ export class DashboardChannel implements Channel {
     // Delete all trace files
     this.app.delete("/api/logs", (req, res) => {
       try {
-        const logsDir = path.join(process.cwd(), "logs");
+        const logsDir = getLogsDir();
         if (!existsSync(logsDir)) {
           res.json({ success: true, deleted: 0 });
           return;

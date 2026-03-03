@@ -34,14 +34,14 @@ async function main() {
   // Load secrets.json as source of truth (inject into process.env)
   loadSecrets();
 
-  console.log("Starting Vito...\n");
+  console.log("Starting server...\n");
 
   // Load config and soul
   const config = loadConfig();
   const soul = loadSoul();
 
   // Log the default harness and settings
-  const defaultHarness = config.settings?.harness || "claude-code";
+  const defaultHarness = config.settings?.harness || "pi-coding-agent";
   console.log(`Default harness: ${defaultHarness}`);
   if (defaultHarness === "claude-code") {
     const ccModel = config.settings?.["claude-code"]?.model || config.harnesses?.["claude-code"]?.model || "sonnet";
@@ -57,7 +57,7 @@ async function main() {
   }
 
   // Initialize database
-  const dbPath = resolve(userDir, "vito.db");
+  const dbPath = resolve(userDir, "assistant.db");
   const db = createDatabase(dbPath);
   const queries = new Queries(db);
   console.log(`Database: ${dbPath}`);
@@ -94,17 +94,17 @@ async function main() {
   // Start channels
   await orchestrator.start();
 
-  console.log(`\nVito is ready. Dashboard at http://localhost:${port}\n`);
+  console.log(`\nServer ready. Dashboard at http://localhost:${port}\n`);
 
   // Heartbeat log every 30 minutes
   setInterval(() => {
-    console.log(`[Heartbeat] Vito alive @ ${new Date().toLocaleString()}`);
+    console.log(`[Heartbeat] Server alive @ ${new Date().toLocaleString()}`);
     const cronHealth = orchestrator.getCronScheduler().checkHealth();
     console.log(`[Heartbeat] Cron jobs: ${cronHealth.length} active`);
   }, 30 * 60 * 1000); // 30 minutes
 
   // Watch config file for changes (hot-reload cron jobs)
-  const configPath = resolve(userDir, "vito.config.json");
+  const configPath = resolve(userDir, "config.json");
   let reloadTimeout: NodeJS.Timeout | null = null;
   
   watch(configPath, (eventType) => {
@@ -117,7 +117,7 @@ async function main() {
           console.log("\n[Config] Detected changes, reloading...");
           const newConfig = loadConfig();
           orchestrator.reloadConfig(newConfig);
-          orchestrator.reloadCronJobs(newConfig.cron.jobs);
+          orchestrator.reloadCronJobs(newConfig.cron?.jobs ?? []);
           dashboard.reloadConfig(newConfig);
           console.log("[Config] Reloaded successfully\n");
         } catch (err) {

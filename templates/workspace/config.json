@@ -1,6 +1,6 @@
 {
   "settings": {
-    "harness": "claude-code",
+    "harness": "pi-coding-agent",
     "streamMode": "stream",
     "memory": {
       "currentSessionLimit": 100,

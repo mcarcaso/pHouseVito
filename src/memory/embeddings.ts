@@ -24,11 +24,11 @@ import { join, resolve } from "path";
 // ── Config ─────────────────────────────────────────────────
 
 const ROOT = resolve(process.cwd());
-const VITO_DB_PATH = join(ROOT, "user", "vito.db");
+const VITO_DB_PATH = join(ROOT, "user", "assistant.db");
 const EMBEDDINGS_DB_PATH = join(ROOT, "user", "embeddings.db");
 const MIN_CHUNK_CHARS = 2000;  // Start chunking when buffer hits this
 const MAX_CHUNK_CHARS = 4000;  // Hard cap per chunk
-const ASSISTANT_LABEL = "@Vito";
+const ASSISTANT_LABEL = "@Assistant";
 const EMBEDDING_MODEL = "text-embedding-3-small";
 const CONTEXTUAL_MODEL = "gpt-4o-mini";
 
@@ -352,7 +352,7 @@ async function _doEmbedding(
 
   const afterId = lastEmbedded?.last_id ?? 0;
 
-  // Query vito.db for unembedded messages in this session
+  // Query assistant.db for unembedded messages in this session
   const vitoDB = new Database(VITO_DB_PATH, { readonly: true });
   
   const unembeddedMessages = vitoDB.prepare(`

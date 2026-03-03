@@ -8,6 +8,7 @@ import { appendFileSync, mkdirSync, statSync } from "fs";
 import { dirname, join } from "path";
 import { ProxyHarness } from "./proxy.js";
 import type { Harness, HarnessCallbacks, NormalizedEvent } from "./types.js";
+import { getWorkspace } from "../workspace.js";
 
 // Max trace file size: 50MB (prevents runaway traces from filling disk)
 const MAX_TRACE_SIZE_BYTES = 50 * 1024 * 1024;
@@ -104,7 +105,7 @@ export class TracingHarness extends ProxyHarness {
     // Create a fresh trace file for each run
     const timestamp = new Date().toISOString().replace(/:/g, "-");
     const suffix = Math.random().toString(36).slice(2, 8); // 6 random chars for uniqueness
-    this.traceFile = join("logs", `trace-${timestamp}-${suffix}.jsonl`);
+    this.traceFile = join(getWorkspace(), "logs", `trace-${timestamp}-${suffix}.jsonl`);
     mkdirSync(dirname(this.traceFile), { recursive: true });
 
     const startTime = Date.now();

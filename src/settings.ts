@@ -26,7 +26,7 @@ const DEFAULT_CROSS_CONTEXT: ResolvedContextSettings = {
 
 /** Default settings when nothing is specified */
 const DEFAULTS: ResolvedSettings = {
-  harness: "claude-code",
+  harness: "pi-coding-agent",
   streamMode: "stream",
   currentContext: DEFAULT_CURRENT_CONTEXT,
   crossContext: DEFAULT_CROSS_CONTEXT,

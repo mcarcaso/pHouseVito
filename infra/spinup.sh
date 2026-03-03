@@ -72,19 +72,19 @@ if [ -z "$KEY_NAME" ]; then
     fi
 fi
 
-# Get latest Amazon Linux 2023 AMI
-log "Finding latest Amazon Linux 2023 AMI..."
+# Get latest Ubuntu 22.04 LTS AMI
+log "Finding latest Ubuntu 22.04 LTS AMI..."
 AMI_ID=$(aws ec2 describe-images \
     --region "$REGION" \
-    --owners amazon \
-    --filters "Name=name,Values=al2023-ami-2023*-x86_64" "Name=state,Values=available" \
+    --owners 099720109477 \
+    --filters "Name=name,Values=ubuntu/images/hvm-ssd/ubuntu-jammy-22.04-amd64-server-*" "Name=state,Values=available" \
     --query 'sort_by(Images, &CreationDate)[-1].ImageId' \
     --output text)
 
 if [ -z "$AMI_ID" ] || [ "$AMI_ID" == "None" ]; then
-    error "Could not find Amazon Linux 2023 AMI"
+    error "Could not find Ubuntu 22.04 LTS AMI"
 fi
-log "Using AMI: $AMI_ID"
+log "Using AMI: $AMI_ID (Ubuntu 22.04 LTS)"
 
 # ============================================================================
 # SECURITY GROUP
@@ -149,23 +149,35 @@ exec > /var/log/user-data.log 2>&1
 
 echo "Starting CloudMallInc setup..."
 
+# Wait for apt to be available (cloud-init sometimes holds the lock)
+while fuser /var/lib/dpkg/lock-frontend >/dev/null 2>&1; do
+    echo "Waiting for apt lock..."
+    sleep 5
+done
+
 # Update system
-dnf update -y
+apt-get update -y
+apt-get upgrade -y
 
 # Install Docker
-dnf install -y docker
+apt-get install -y ca-certificates curl gnupg
+install -m 0755 -d /etc/apt/keyrings
+curl -fsSL https://download.docker.com/linux/ubuntu/gpg | gpg --dearmor -o /etc/apt/keyrings/docker.gpg
+chmod a+r /etc/apt/keyrings/docker.gpg
+echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.gpg] https://download.docker.com/linux/ubuntu $(. /etc/os-release && echo "$VERSION_CODENAME") stable" | tee /etc/apt/sources.list.d/docker.list > /dev/null
+apt-get update -y
+apt-get install -y docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin
 systemctl enable docker
 systemctl start docker
-usermod -aG docker ec2-user
+usermod -aG docker ubuntu
 
-# Install Docker Compose
-curl -L "https://github.com/docker/compose/releases/latest/download/docker-compose-$(uname -s)-$(uname -m)" -o /usr/local/bin/docker-compose
-chmod +x /usr/local/bin/docker-compose
+# Install Go (needed for xcaddy)
+apt-get install -y golang-go
 
-# Install Caddy
-dnf install -y 'dnf-command(copr)'
-dnf copr enable -y @caddy/caddy
-dnf install -y caddy
+# Install xcaddy and build Caddy with Route53 DNS plugin
+go install github.com/caddyserver/xcaddy/cmd/xcaddy@latest
+/root/go/bin/xcaddy build --with github.com/caddy-dns/route53 --output /usr/bin/caddy
+chmod +x /usr/bin/caddy
 
 # Create directories
 mkdir -p /opt/cloudmallinc/containers
@@ -394,12 +406,12 @@ echo "  Elastic IP:     $ELASTIC_IP"
 echo "  Domain:         https://$DOMAIN"
 echo "  Wildcard:       https://*.${DOMAIN}"
 echo ""
-echo "  SSH Access:     ssh -i ~/.ssh/${KEY_NAME}.pem ec2-user@$ELASTIC_IP"
+echo "  SSH Access:     ssh -i ~/.ssh/${KEY_NAME}.pem ubuntu@$ELASTIC_IP"
 echo ""
 echo "  NEXT STEPS:"
 echo "  1. Wait 2-3 minutes for setup to complete"
 echo "  2. SSH in and configure AWS credentials for Caddy:"
-echo "     ssh -i ~/.ssh/${KEY_NAME}.pem ec2-user@$ELASTIC_IP"
+echo "     ssh -i ~/.ssh/${KEY_NAME}.pem ubuntu@$ELASTIC_IP"
 echo "     sudo vi /opt/cloudmallinc/caddy/.env"
 echo "  3. Start Caddy:"
 echo "     sudo systemctl start cloudmallinc-caddy"

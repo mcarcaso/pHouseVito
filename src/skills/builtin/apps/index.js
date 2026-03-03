@@ -1,32 +1,65 @@
 import { existsSync, mkdirSync, writeFileSync, readFileSync, readdirSync, rmSync } from 'fs';
 import { join } from 'path';
 import { execSync } from 'child_process';
+import { getWorkspace } from '../../../workspace.js';
 
-const APPS_DIR = join(process.cwd(), 'user', 'apps');
-const CLOUDFLARE_CONFIG = join(process.env.HOME, '.cloudflared', 'config.yml');
-const DOMAIN = 'theworstproductions.com';
 const PORT_START = 3100;
 
+function getAppsDir() {
+  return join(getWorkspace(), 'apps');
+}
+
+function getConfig() {
+  try {
+    const configPath = join(getWorkspace(), 'config.json');
+    if (existsSync(configPath)) {
+      return JSON.parse(readFileSync(configPath, 'utf-8'));
+    }
+  } catch (e) {
+    // Fall back to defaults
+  }
+  return {};
+}
+
+function getBaseDomain() {
+  const config = getConfig();
+  // Config takes precedence, then env var
+  return config.apps?.baseDomain || process.env.AI_BASE_DOMAIN || null;
+}
+
+function getPortStart() {
+  const config = getConfig();
+  return config.apps?.portStart || PORT_START;
+}
+
 function ensureAppsDir() {
-  if (!existsSync(APPS_DIR)) {
-    mkdirSync(APPS_DIR, { recursive: true });
+  const appsDir = getAppsDir();
+  if (!existsSync(appsDir)) {
+    mkdirSync(appsDir, { recursive: true });
   }
 }
 
 function getUsedPorts() {
-  const config = readFileSync(CLOUDFLARE_CONFIG, 'utf-8');
+  const appsDir = getAppsDir();
+  if (!existsSync(appsDir)) return [];
+  
   const ports = [];
-  const regex = /localhost:(\d+)/g;
-  let match;
-  while ((match = regex.exec(config)) !== null) {
-    ports.push(parseInt(match[1]));
+  const dirs = readdirSync(appsDir, { withFileTypes: true })
+    .filter(d => d.isDirectory())
+    .map(d => d.name);
+  
+  for (const name of dirs) {
+    const meta = getAppMeta(name);
+    if (meta?.port) {
+      ports.push(meta.port);
+    }
   }
   return ports;
 }
 
 function findAvailablePort() {
   const usedPorts = getUsedPorts();
-  let port = PORT_START;
+  let port = getPortStart();
   while (usedPorts.includes(port)) {
     port++;
   }
@@ -34,58 +67,23 @@ function findAvailablePort() {
 }
 
 function getAppMeta(appName) {
-  const metaPath = join(APPS_DIR, appName, '.vito-app.json');
+  const metaPath = join(getAppsDir(), appName, '.app-meta.json');
   if (!existsSync(metaPath)) return null;
   return JSON.parse(readFileSync(metaPath, 'utf-8'));
 }
 
 function saveAppMeta(appName, meta) {
-  const metaPath = join(APPS_DIR, appName, '.vito-app.json');
+  const metaPath = join(getAppsDir(), appName, '.app-meta.json');
   writeFileSync(metaPath, JSON.stringify(meta, null, 2));
 }
 
-function addCloudflareEntry(appName, port, description) {
-  let config = readFileSync(CLOUDFLARE_CONFIG, 'utf-8');
-  const entry = `\n  # ${description} (Vito App)\n  - hostname: ${appName}.${DOMAIN}\n    service: http://localhost:${port}\n`;
-
-  const catchAllIndex = config.indexOf('  # Catch-all');
-  if (catchAllIndex === -1) {
-    const lastNewline = config.lastIndexOf('\n  - service:');
-    config = config.slice(0, lastNewline) + entry + config.slice(lastNewline);
-  } else {
-    config = config.slice(0, catchAllIndex) + entry + config.slice(catchAllIndex);
+function getAppUrl(appName, port) {
+  const baseDomain = getBaseDomain();
+  if (baseDomain) {
+    return `https://${appName}.${baseDomain}`;
   }
-
-  writeFileSync(CLOUDFLARE_CONFIG, config);
-}
-
-function removeCloudflareEntry(appName) {
-  let config = readFileSync(CLOUDFLARE_CONFIG, 'utf-8');
-  const hostname = `${appName}.${DOMAIN}`;
-  const lines = config.split('\n');
-  const filtered = [];
-  let skipNext = false;
-
-  for (let i = 0; i < lines.length; i++) {
-    if (i + 1 < lines.length && lines[i + 1].includes(hostname)) {
-      continue;
-    }
-    if (lines[i].includes(hostname)) {
-      skipNext = true;
-      continue;
-    }
-    if (skipNext && lines[i].trim().startsWith('service:')) {
-      skipNext = false;
-      if (i + 1 < lines.length && lines[i + 1].trim() === '') {
-        i++;
-      }
-      continue;
-    }
-    skipNext = false;
-    filtered.push(lines[i]);
-  }
-
-  writeFileSync(CLOUDFLARE_CONFIG, filtered.join('\n'));
+  // Fallback: localhost with port
+  return `http://localhost:${port}`;
 }
 
 /**
@@ -101,7 +99,7 @@ function startAppServer(appName, port, appDir) {
   // Install dependencies if needed
   if (hasPackageJson) {
     try {
-      execSync('npm install', { cwd: appDir, stdio: 'pipe', timeout: 60000 });
+      execSync('npm install', { cwd: appDir, stdio: 'pipe', timeout: 120000 });
     } catch (e) {
       throw new Error(`npm install failed: ${e.stderr?.toString() || e.message}`);
     }
@@ -109,7 +107,7 @@ function startAppServer(appName, port, appDir) {
 
   if (hasRequirementsTxt) {
     try {
-      execSync('pip3 install -r requirements.txt', { cwd: appDir, stdio: 'pipe', timeout: 60000 });
+      execSync('pip3 install -r requirements.txt', { cwd: appDir, stdio: 'pipe', timeout: 120000 });
     } catch (e) {
       throw new Error(`pip install failed: ${e.stderr?.toString() || e.message}`);
     }
@@ -145,18 +143,10 @@ function stopAppServer(appName) {
   }
 }
 
-function restartTunnel() {
-  try {
-    execSync('npx pm2 restart cloudflared-tunnel', { stdio: 'pipe' });
-  } catch (e) {
-    // Tunnel might not be managed by PM2
-  }
-}
-
 async function createApp(name, description, files) {
   ensureAppsDir();
 
-  const appDir = join(APPS_DIR, name);
+  const appDir = join(getAppsDir(), name);
   const isUpdate = existsSync(appDir);
 
   if (isUpdate) {
@@ -175,7 +165,7 @@ async function createApp(name, description, files) {
       // Stop and restart to pick up any new deps or server changes
       stopAppServer(name);
       startAppServer(name, meta.port, appDir);
-      return `Updated app "${name}" — live at https://${name}.${DOMAIN} (port ${meta.port})`;
+      return `Updated app "${name}" — live at ${meta.url} (port ${meta.port})`;
     }
   }
 
@@ -192,38 +182,26 @@ async function createApp(name, description, files) {
   }
 
   const port = findAvailablePort();
+  const url = getAppUrl(name, port);
 
   saveAppMeta(name, {
     name,
     description,
     port,
     createdAt: new Date().toISOString(),
-    url: `https://${name}.${DOMAIN}`,
+    url,
   });
-
-  // Add to Cloudflare config
-  addCloudflareEntry(name, port, description);
-
-  // Create DNS record via cloudflared CLI
-  try {
-    execSync(`cloudflared tunnel route dns vito-services ${name}.${DOMAIN}`, { stdio: 'pipe' });
-  } catch (e) {
-    // DNS record might already exist, that's fine
-  }
 
   // Start the server (handles deps install, detects server type)
   startAppServer(name, port, appDir);
 
-  // Restart tunnel to pick up new config
-  restartTunnel();
-
-  return `App "${name}" deployed!\nURL: https://${name}.${DOMAIN}\nPort: ${port}\nFiles: ${files.map(f => f.path).join(', ')}`;
+  return `App "${name}" deployed!\nURL: ${url}\nPort: ${port}\nFiles: ${files.map(f => f.path).join(', ')}`;
 }
 
 async function listApps() {
   ensureAppsDir();
 
-  const dirs = readdirSync(APPS_DIR, { withFileTypes: true })
+  const dirs = readdirSync(getAppsDir(), { withFileTypes: true })
     .filter(d => d.isDirectory())
     .map(d => d.name);
 
@@ -252,34 +230,32 @@ async function listApps() {
 }
 
 async function deleteApp(name) {
-  const appDir = join(APPS_DIR, name);
+  const appDir = join(getAppsDir(), name);
 
   if (!existsSync(appDir)) {
     return `App "${name}" not found.`;
   }
 
   stopAppServer(name);
-  removeCloudflareEntry(name);
   rmSync(appDir, { recursive: true, force: true });
-  restartTunnel();
 
-  return `App "${name}" deleted. Server stopped, tunnel entry removed, files cleaned up.`;
+  return `App "${name}" deleted. Server stopped, files cleaned up.`;
 }
 
 export const skill = {
   name: 'apps',
-  description: 'Create, deploy, and manage web apps accessible via Cloudflare tunnel at <name>.theworstproductions.com',
+  description: 'Create, deploy, and manage web apps accessible at subdomains of your configured base domain',
 
   tools: [
     {
       name: 'create_app',
-      description: 'Create and deploy a new web app. Write files to user/apps/<name>/, start a server, add Cloudflare tunnel entry, and register with PM2. The app will be live at <name>.theworstproductions.com. Files should be provided as an array of {path, content} objects. For static sites, just provide HTML/CSS/JS. For Node.js apps, include a server.js that accepts --port flag.',
+      description: 'Create and deploy a new web app. Write files to apps/<name>/, start a server, and register with PM2. Files should be provided as an array of {path, content} objects. For static sites, just provide HTML/CSS/JS. For Node.js apps, include a server.js that accepts --port flag.',
       input_schema: {
         type: 'object',
         properties: {
           name: {
             type: 'string',
-            description: 'App name (lowercase, letters/numbers/hyphens only). Used as subdomain: <name>.theworstproductions.com',
+            description: 'App name (lowercase, letters/numbers/hyphens only). Used as subdomain if baseDomain is configured.',
           },
           description: {
             type: 'string',
@@ -332,7 +308,7 @@ export const skill = {
     },
     {
       name: 'delete_app',
-      description: 'Delete a deployed app. Stops the server, removes Cloudflare tunnel entry, and deletes all files.',
+      description: 'Delete a deployed app. Stops the server and deletes all files.',
       input_schema: {
         type: 'object',
         properties: {

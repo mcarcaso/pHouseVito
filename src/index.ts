@@ -8,6 +8,7 @@ import { DashboardChannel } from "./channels/dashboard.js";
 import { TelegramChannel } from "./channels/telegram.js";
 import { DiscordChannel } from "./channels/discord.js";
 import { loadSecrets } from "./secrets.js";
+import { startProxyServer } from "./proxy.js";
 
 const ROOT = process.cwd();
 
@@ -22,11 +23,19 @@ function getPort(): number {
 }
 
 async function main() {
-  const port = getPort();
+  const requestedPort = getPort();
+  const baseDomain = process.env.AI_BASE_DOMAIN || null;
+  
+  // If baseDomain is set, we use a proxy architecture:
+  // - Proxy listens on the requested port (public)
+  // - Dashboard listens on requested port + 1 (internal)
+  const port = baseDomain ? requestedPort + 1 : requestedPort;
+  const proxyPort = baseDomain ? requestedPort : null;
+  
   const userDir = getUserDir();
   
   console.log(`Workspace: ${userDir}`);
-  console.log(`Port: ${port}`);
+  console.log(`Port: ${port}${baseDomain ? ` (proxy on ${proxyPort})` : ''}`);
   
   // Ensure user/ directory exists (copy from user.example/ on first run)
   ensureUserDir();
@@ -95,6 +104,18 @@ async function main() {
   await orchestrator.start();
 
   console.log(`\nServer ready. Dashboard at http://localhost:${port}\n`);
+
+  // Start subdomain proxy if baseDomain is configured
+  // The proxy runs on the public port and routes:
+  // - {baseDomain} → dashboard on internal port
+  // - {appName}.{baseDomain} → app on its assigned port
+  if (proxyPort) {
+    try {
+      startProxyServer(port, proxyPort);
+    } catch (e: any) {
+      console.log(`[Proxy] Not started: ${e.message}`);
+    }
+  }
 
   // Heartbeat log every 30 minutes
   setInterval(() => {

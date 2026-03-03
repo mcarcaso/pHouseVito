@@ -1089,7 +1089,7 @@ export class DashboardChannel implements Channel {
             name: appName,
             description: meta.description || "",
             port: meta.port,
-            url: meta.url || `https://${appName}.theworstproductions.com`,
+            url: meta.url || `http://localhost:${meta.port}`,
             createdAt: meta.createdAt,
             status: pm2Process?.pm2_env?.status || "unknown",
             uptime: pm2Process?.pm2_env?.pm_uptime
@@ -1180,39 +1180,6 @@ export class DashboardChannel implements Channel {
           });
         } catch (e) {
           // Might not exist in PM2, that's fine
-        }
-
-        // Remove Cloudflare tunnel entry
-        const cfConfigPath = path.join(process.env.HOME || "", ".cloudflared", "config.yml");
-        if (existsSync(cfConfigPath)) {
-          let cfConfig = readFileSync(cfConfigPath, "utf-8");
-          const appUrl = `${name}.theworstproductions.com`;
-          // Remove the ingress entry for this app
-          const lines = cfConfig.split("\n");
-          const filteredLines: string[] = [];
-          let skipNext = false;
-          for (let i = 0; i < lines.length; i++) {
-            const line = lines[i];
-            if (line.includes(`hostname: ${appUrl}`)) {
-              // Skip this line and the next (service line)
-              skipNext = true;
-              continue;
-            }
-            if (skipNext && line.trim().startsWith("service:")) {
-              skipNext = false;
-              continue;
-            }
-            skipNext = false;
-            filteredLines.push(line);
-          }
-          writeFileSync(cfConfigPath, filteredLines.join("\n"), "utf-8");
-
-          // Restart cloudflared tunnel
-          try {
-            execSync("pkill -HUP cloudflared || true", { encoding: "utf-8" });
-          } catch (e) {
-            // Might fail, that's ok
-          }
         }
 
         // Delete app directory

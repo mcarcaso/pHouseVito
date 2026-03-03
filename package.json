@@ -30,6 +30,7 @@
   "dependencies": {
     "@mariozechner/pi-ai": "^0.54.0",
     "@mariozechner/pi-coding-agent": "latest",
+    "@types/http-proxy": "^1.17.17",
     "ajv": "^8.18.0",
     "axios": "^1.13.5",
     "better-sqlite3": "^11.0.0",
@@ -43,6 +44,7 @@
     "googleapis": "^171.4.0",
     "grammy": "^1.40.0",
     "gray-matter": "^4.0.3",
+    "http-proxy": "^1.18.1",
     "openai": "^4.104.0",
     "playwright": "^1.58.2",
     "ws": "^8.19.0"

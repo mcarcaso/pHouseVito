@@ -1,4 +1,7 @@
 {
+  "bot": {
+    "name": "ASSISTANT"
+  },
   "settings": {
     "harness": "pi-coding-agent",
     "streamMode": "stream",
@@ -12,5 +15,9 @@
       "enabled": true
     }
   },
-  "sessions": {}
+  "sessions": {},
+  "apps": {
+    "baseDomain": null,
+    "portStart": 3100
+  }
 }

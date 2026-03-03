@@ -4,13 +4,14 @@ set -e
 # ============================================================================
 # CLOUDMALLINC INFRASTRUCTURE SPINUP
 # ============================================================================
-# Spins up an EC2 instance with Docker + Caddy for the whitelabel AI platform
+# Spins up an EC2 instance with Docker + Caddy + Certbot for whitelabel AI
 # 
-# ARCHITECTURE:
-# - EC2 runs Docker + Caddy (no AWS creds)
-# - YOUR machine runs certbot with Route53 DNS challenge
-# - Wildcard certs per customer, provisioned at onboarding time
-# - One wildcard cert covers ALL apps under that customer's subdomain
+# ARCHITECTURE (Option B — Self-Contained):
+# - EC2 runs Docker + Caddy + Certbot
+# - EC2 has IAM role with Route53 access (for DNS challenge)
+# - Certbot auto-renews wildcard certs via cron
+# - Customers are isolated in Docker containers
+# - One wildcard cert per customer covers ALL their apps
 #
 # Usage: ./spinup.sh [--key-name your-key] [--instance-type t3.small]
 # ============================================================================
@@ -94,6 +95,73 @@ fi
 log "Using AMI: $AMI_ID (Ubuntu 22.04 LTS)"
 
 # ============================================================================
+# IAM ROLE FOR ROUTE53 ACCESS
+# ============================================================================
+
+ROLE_NAME="cloudmallinc-certbot-role"
+INSTANCE_PROFILE_NAME="cloudmallinc-certbot-profile"
+
+# Check if role exists
+if ! aws iam get-role --role-name "$ROLE_NAME" &> /dev/null; then
+    log "Creating IAM role: $ROLE_NAME"
+    
+    # Create trust policy for EC2
+    aws iam create-role \
+        --role-name "$ROLE_NAME" \
+        --assume-role-policy-document '{
+            "Version": "2012-10-17",
+            "Statement": [{
+                "Effect": "Allow",
+                "Principal": {"Service": "ec2.amazonaws.com"},
+                "Action": "sts:AssumeRole"
+            }]
+        }' > /dev/null
+    
+    # Attach Route53 policy (limited to cloudmallinc.com hosted zone)
+    aws iam put-role-policy \
+        --role-name "$ROLE_NAME" \
+        --policy-name "route53-dns-challenge" \
+        --policy-document '{
+            "Version": "2012-10-17",
+            "Statement": [{
+                "Effect": "Allow",
+                "Action": [
+                    "route53:ListHostedZones",
+                    "route53:GetChange"
+                ],
+                "Resource": "*"
+            }, {
+                "Effect": "Allow",
+                "Action": [
+                    "route53:ChangeResourceRecordSets",
+                    "route53:ListResourceRecordSets"
+                ],
+                "Resource": "arn:aws:route53:::hostedzone/*"
+            }]
+        }' > /dev/null
+    
+    log "IAM role created with Route53 permissions"
+else
+    warn "Using existing IAM role: $ROLE_NAME"
+fi
+
+# Create or get instance profile
+if ! aws iam get-instance-profile --instance-profile-name "$INSTANCE_PROFILE_NAME" &> /dev/null; then
+    log "Creating instance profile: $INSTANCE_PROFILE_NAME"
+    aws iam create-instance-profile \
+        --instance-profile-name "$INSTANCE_PROFILE_NAME" > /dev/null
+    
+    aws iam add-role-to-instance-profile \
+        --instance-profile-name "$INSTANCE_PROFILE_NAME" \
+        --role-name "$ROLE_NAME" > /dev/null
+    
+    # Wait for profile to be ready
+    sleep 10
+else
+    warn "Using existing instance profile: $INSTANCE_PROFILE_NAME"
+fi
+
+# ============================================================================
 # SECURITY GROUP
 # ============================================================================
 
@@ -121,7 +189,7 @@ if [ "$SG_ID" == "None" ] || [ -z "$SG_ID" ]; then
         --cidr 0.0.0.0/0 \
         --region "$REGION"
     
-    # Allow HTTP (needed for ACME HTTP challenge)
+    # Allow HTTP (needed for ACME HTTP challenge fallback)
     aws ec2 authorize-security-group-ingress \
         --group-id "$SG_ID" \
         --protocol tcp \
@@ -146,9 +214,18 @@ fi
 # USER DATA SCRIPT (runs on first boot)
 # ============================================================================
 
-# Write user data to a temp file to avoid heredoc nesting issues
+# Get hosted zone ID for the domain
+HOSTED_ZONE_ID=$(aws route53 list-hosted-zones \
+    --query "HostedZones[?Name=='${DOMAIN}.'].Id" \
+    --output text | sed 's|/hostedzone/||')
+
+if [ -z "$HOSTED_ZONE_ID" ] || [ "$HOSTED_ZONE_ID" == "None" ]; then
+    error "Could not find hosted zone for $DOMAIN"
+fi
+
+# Write user data to a temp file
 USER_DATA_FILE=$(mktemp)
-cat > "$USER_DATA_FILE" << 'USERDATA_END'
+cat > "$USER_DATA_FILE" << USERDATA_END
 #!/bin/bash
 set -e
 
@@ -156,7 +233,7 @@ exec > /var/log/user-data.log 2>&1
 
 echo "Starting CloudMallInc setup..."
 
-# Wait for apt to be available (cloud-init sometimes holds the lock)
+# Wait for apt to be available
 while fuser /var/lib/dpkg/lock-frontend >/dev/null 2>&1; do
     echo "Waiting for apt lock..."
     sleep 5
@@ -171,19 +248,22 @@ apt-get install -y ca-certificates curl gnupg jq
 install -m 0755 -d /etc/apt/keyrings
 curl -fsSL https://download.docker.com/linux/ubuntu/gpg | gpg --dearmor -o /etc/apt/keyrings/docker.gpg
 chmod a+r /etc/apt/keyrings/docker.gpg
-echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.gpg] https://download.docker.com/linux/ubuntu $(. /etc/os-release && echo "$VERSION_CODENAME") stable" | tee /etc/apt/sources.list.d/docker.list > /dev/null
+echo "deb [arch=\$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.gpg] https://download.docker.com/linux/ubuntu \$(. /etc/os-release && echo "\$VERSION_CODENAME") stable" | tee /etc/apt/sources.list.d/docker.list > /dev/null
 apt-get update -y
 apt-get install -y docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin
 systemctl enable docker
 systemctl start docker
 usermod -aG docker ubuntu
 
-# Install Caddy (standard binary - no plugins needed!)
+# Install Caddy
 apt-get install -y debian-keyring debian-archive-keyring apt-transport-https
 curl -1sLf 'https://dl.cloudsmith.io/public/caddy/stable/gpg.key' | gpg --dearmor -o /usr/share/keyrings/caddy-stable-archive-keyring.gpg
 curl -1sLf 'https://dl.cloudsmith.io/public/caddy/stable/debian.deb.txt' | tee /etc/apt/sources.list.d/caddy-stable.list
 apt-get update -y
 apt-get install -y caddy
+
+# Install Certbot with Route53 plugin
+apt-get install -y certbot python3-certbot-dns-route53
 
 # Create directories
 mkdir -p /opt/cloudmallinc/caddy
@@ -191,18 +271,23 @@ mkdir -p /opt/cloudmallinc/certs
 mkdir -p /opt/cloudmallinc/containers
 mkdir -p /var/log/caddy
 
+# Store domain and hosted zone ID for later use
+echo "$DOMAIN" > /opt/cloudmallinc/domain
+echo "$HOSTED_ZONE_ID" > /opt/cloudmallinc/hosted-zone-id
+
 # Initialize empty customers registry
 echo '[]' > /opt/cloudmallinc/caddy/customers.json
 
-# Create base Caddyfile (no SSL config - certs loaded from disk)
+# Create base Caddyfile
 cat > /opt/cloudmallinc/caddy/Caddyfile << 'CADDYFILE_END'
 # CloudMall Inc Platform - Caddy Configuration
-# 
-# SSL certificates are provisioned externally via certbot DNS challenge.
-# Your machine (with AWS creds) creates wildcard certs per customer.
-# They get uploaded here to /opt/cloudmallinc/certs/<customer>/
 #
-# NO AWS CREDENTIALS ON THIS BOX!
+# SSL certificates are provisioned by certbot on this box.
+# IAM role provides Route53 access for DNS challenge.
+# Customers are isolated in Docker containers.
+#
+# Each customer gets a wildcard cert: *.<customer>.cloudmallinc.com
+# Certs auto-renew via cron.
 
 {
     admin off
@@ -214,16 +299,10 @@ cloudmallinc.com {
     respond "CloudMall Inc Platform" 200
 }
 
-# Customer routes are added dynamically by provision-customer.sh
-# Each customer gets:
-#   *.<customer>.cloudmallinc.com {
-#       tls /opt/cloudmallinc/certs/<customer>/fullchain.pem /opt/cloudmallinc/certs/<customer>/privkey.pem
-#       reverse_proxy localhost:<port>
-#   }
-
+# Customer routes are added by provision-customer.sh
 CADDYFILE_END
 
-# Create systemd service for Caddy (no env file needed!)
+# Create systemd service for Caddy
 cat > /etc/systemd/system/caddy.service << 'SERVICE_END'
 [Unit]
 Description=Caddy web server for CloudMall Inc
@@ -248,18 +327,261 @@ AmbientCapabilities=CAP_NET_BIND_SERVICE
 WantedBy=multi-user.target
 SERVICE_END
 
-# Create helper scripts
-cat > /opt/cloudmallinc/list-customers.sh << 'SCRIPT_END'
+# Create provision-customer script (runs ON this box now!)
+cat > /opt/cloudmallinc/provision-customer.sh << 'PROVISION_END'
 #!/bin/bash
+set -e
+
+CUSTOMER_NAME="\$1"
+CUSTOMER_PORT="\${2:-}"
+DOMAIN=\$(cat /opt/cloudmallinc/domain)
+CERTS_DIR="/opt/cloudmallinc/certs"
+CADDY_DIR="/opt/cloudmallinc/caddy"
+CONTAINERS_DIR="/opt/cloudmallinc/containers"
+
+RED='\033[0;31m'
+GREEN='\033[0;32m'
+NC='\033[0m'
+
+log() { echo -e "\${GREEN}[✓]\${NC} \$1"; }
+error() { echo -e "\${RED}[✗]\${NC} \$1"; exit 1; }
+
+if [ -z "\$CUSTOMER_NAME" ]; then
+    echo "Usage: ./provision-customer.sh <username> [port]"
+    exit 1
+fi
+
+if ! [[ "\$CUSTOMER_NAME" =~ ^[a-z0-9-]+\$ ]]; then
+    error "Customer name must be lowercase alphanumeric with hyphens only"
+fi
+
+log "Provisioning customer: \$CUSTOMER_NAME"
+
+# Find available port
+if [ -z "\$CUSTOMER_PORT" ]; then
+    USED_PORTS=\$(cat \$CADDY_DIR/customers.json | jq -r '.[].port' 2>/dev/null || echo '')
+    CUSTOMER_PORT=4001
+    while echo "\$USED_PORTS" | grep -q "^\$CUSTOMER_PORT\$"; do
+        CUSTOMER_PORT=\$((CUSTOMER_PORT + 1))
+    done
+    log "Assigned port: \$CUSTOMER_PORT"
+fi
+
+# Request wildcard SSL certificate via DNS challenge
+log "Requesting wildcard SSL certificate for *.\$CUSTOMER_NAME.\$DOMAIN"
+
+certbot certonly \
+    --non-interactive \
+    --agree-tos \
+    --email "admin@\$DOMAIN" \
+    --dns-route53 \
+    --dns-route53-propagation-seconds 30 \
+    -d "\$CUSTOMER_NAME.\$DOMAIN" \
+    -d "*.\$CUSTOMER_NAME.\$DOMAIN"
+
+CERT_SRC="/etc/letsencrypt/live/\$CUSTOMER_NAME.\$DOMAIN"
+
+if [ ! -f "\$CERT_SRC/fullchain.pem" ]; then
+    error "Certificate generation failed"
+fi
+
+log "Certificate generated successfully"
+
+# Copy certs to cloudmallinc directory
+mkdir -p \$CERTS_DIR/\$CUSTOMER_NAME
+cp \$CERT_SRC/fullchain.pem \$CERTS_DIR/\$CUSTOMER_NAME/
+cp \$CERT_SRC/privkey.pem \$CERTS_DIR/\$CUSTOMER_NAME/
+chmod 600 \$CERTS_DIR/\$CUSTOMER_NAME/*.pem
+
+log "Certificate copied to \$CERTS_DIR/\$CUSTOMER_NAME/"
+
+# Start customer container
+log "Starting customer container..."
+mkdir -p \$CONTAINERS_DIR/\$CUSTOMER_NAME
+
+cat > \$CONTAINERS_DIR/\$CUSTOMER_NAME/docker-compose.yml << COMPOSE
+version: '3.8'
+services:
+  vito:
+    image: node:20-alpine
+    container_name: vito-\$CUSTOMER_NAME
+    restart: unless-stopped
+    ports:
+      - "\$CUSTOMER_PORT:3000"
+    volumes:
+      - ./data:/app/data
+    environment:
+      - NODE_ENV=production
+      - CUSTOMER_NAME=\$CUSTOMER_NAME
+      - BASE_DOMAIN=\$CUSTOMER_NAME.\$DOMAIN
+    command: sh -c "echo 'Vito container for \$CUSTOMER_NAME' && sleep infinity"
+COMPOSE
+
+cd \$CONTAINERS_DIR/\$CUSTOMER_NAME
+docker compose up -d
+
+log "Container started on port \$CUSTOMER_PORT"
+
+# Update customers.json
+jq ". += [{\"name\": \"\$CUSTOMER_NAME\", \"port\": \$CUSTOMER_PORT, \"domain\": \"\$CUSTOMER_NAME.\$DOMAIN\", \"created\": \"\$(date -u +%Y-%m-%dT%H:%M:%SZ)\"}]" \
+    \$CADDY_DIR/customers.json > /tmp/customers.json
+mv /tmp/customers.json \$CADDY_DIR/customers.json
+
+# Regenerate Caddyfile
+cat > \$CADDY_DIR/Caddyfile << CADDYFILE
+{
+    admin off
+}
+
+\$DOMAIN {
+    respond /health "OK" 200
+    respond "CloudMall Inc Platform" 200
+}
+CADDYFILE
+
+for row in \$(cat \$CADDY_DIR/customers.json | jq -c '.[]'); do
+    NAME=\$(echo \$row | jq -r '.name')
+    PORT=\$(echo \$row | jq -r '.port')
+    
+    cat >> \$CADDY_DIR/Caddyfile << BLOCK
+
+# Customer: \$NAME
+\$NAME.\$DOMAIN, *.\$NAME.\$DOMAIN {
+    tls \$CERTS_DIR/\$NAME/fullchain.pem \$CERTS_DIR/\$NAME/privkey.pem
+    reverse_proxy localhost:\$PORT
+}
+BLOCK
+done
+
+# Reload Caddy
+systemctl reload caddy || systemctl restart caddy
+
+log "Caddy configuration updated"
+
+echo ""
+echo "=============================================="
+log "Customer '\$CUSTOMER_NAME' provisioned!"
+echo "=============================================="
+echo ""
+echo "  Dashboard:  https://\$CUSTOMER_NAME.\$DOMAIN"
+echo "  Apps:       https://<appname>.\$CUSTOMER_NAME.\$DOMAIN"
+echo "  Container:  vito-\$CUSTOMER_NAME (port \$CUSTOMER_PORT)"
+echo ""
+echo "  Certs auto-renew via cron. No action needed."
+echo ""
+PROVISION_END
+chmod +x /opt/cloudmallinc/provision-customer.sh
+
+# Create deprovision script
+cat > /opt/cloudmallinc/deprovision-customer.sh << 'DEPROVISION_END'
+#!/bin/bash
+set -e
+
+CUSTOMER_NAME="\$1"
+DOMAIN=\$(cat /opt/cloudmallinc/domain)
+CERTS_DIR="/opt/cloudmallinc/certs"
+CADDY_DIR="/opt/cloudmallinc/caddy"
+CONTAINERS_DIR="/opt/cloudmallinc/containers"
+
+if [ -z "\$CUSTOMER_NAME" ]; then
+    echo "Usage: ./deprovision-customer.sh <username>"
+    exit 1
+fi
+
+echo "Deprovisioning customer: \$CUSTOMER_NAME"
+
+# Stop and remove container
+if [ -f "\$CONTAINERS_DIR/\$CUSTOMER_NAME/docker-compose.yml" ]; then
+    cd \$CONTAINERS_DIR/\$CUSTOMER_NAME
+    docker compose down || true
+    rm -rf \$CONTAINERS_DIR/\$CUSTOMER_NAME
+    echo "[✓] Container removed"
+fi
+
+# Remove certs
+rm -rf \$CERTS_DIR/\$CUSTOMER_NAME
+certbot delete --cert-name "\$CUSTOMER_NAME.\$DOMAIN" --non-interactive || true
+echo "[✓] Certificates removed"
+
+# Update customers.json
+jq "del(.[] | select(.name == \"\$CUSTOMER_NAME\"))" \$CADDY_DIR/customers.json > /tmp/customers.json
+mv /tmp/customers.json \$CADDY_DIR/customers.json
+
+# Regenerate Caddyfile
+cat > \$CADDY_DIR/Caddyfile << CADDYFILE
+{
+    admin off
+}
+
+\$DOMAIN {
+    respond /health "OK" 200
+    respond "CloudMall Inc Platform" 200
+}
+CADDYFILE
+
+for row in \$(cat \$CADDY_DIR/customers.json | jq -c '.[]'); do
+    NAME=\$(echo \$row | jq -r '.name')
+    PORT=\$(echo \$row | jq -r '.port')
+    
+    cat >> \$CADDY_DIR/Caddyfile << BLOCK
+
+\$NAME.\$DOMAIN, *.\$NAME.\$DOMAIN {
+    tls \$CERTS_DIR/\$NAME/fullchain.pem \$CERTS_DIR/\$NAME/privkey.pem
+    reverse_proxy localhost:\$PORT
+}
+BLOCK
+done
+
+systemctl reload caddy || systemctl restart caddy
+echo "[✓] Customer '\$CUSTOMER_NAME' deprovisioned"
+DEPROVISION_END
+chmod +x /opt/cloudmallinc/deprovision-customer.sh
+
+# Create list-customers script
+cat > /opt/cloudmallinc/list-customers.sh << 'LIST_END'
+#!/bin/bash
+DOMAIN=\$(cat /opt/cloudmallinc/domain)
 echo "Current customers:"
 echo ""
-if [ -s /opt/cloudmallinc/caddy/customers.json ]; then
-    cat /opt/cloudmallinc/caddy/customers.json | jq -r '.[] | "  - \(.name) (port \(.port)) -> https://*.\(.name).cloudmallinc.com"'
+if [ -s /opt/cloudmallinc/caddy/customers.json ] && [ "\$(cat /opt/cloudmallinc/caddy/customers.json)" != "[]" ]; then
+    cat /opt/cloudmallinc/caddy/customers.json | jq -r ".[] | \"  - \(.name) (port \(.port)) -> https://*.\(.name).\$DOMAIN\""
 else
     echo "  (none)"
 fi
-SCRIPT_END
+LIST_END
 chmod +x /opt/cloudmallinc/list-customers.sh
+
+# Set up certbot auto-renewal cron (runs twice daily)
+# Certbot's default renewal handles all certs and copies them to our dir
+cat > /etc/cron.d/certbot-renew << 'CRON_END'
+# Certbot auto-renewal - runs twice daily
+0 0,12 * * * root certbot renew --quiet --deploy-hook "/opt/cloudmallinc/post-renew.sh"
+CRON_END
+
+# Create post-renewal hook to copy certs and reload Caddy
+cat > /opt/cloudmallinc/post-renew.sh << 'HOOK_END'
+#!/bin/bash
+# Called by certbot after successful renewal
+CERTS_DIR="/opt/cloudmallinc/certs"
+CADDY_DIR="/opt/cloudmallinc/caddy"
+
+# Copy renewed certs to our directory
+for row in \$(cat \$CADDY_DIR/customers.json | jq -c '.[]'); do
+    NAME=\$(echo \$row | jq -r '.name')
+    DOMAIN=\$(cat /opt/cloudmallinc/domain)
+    SRC="/etc/letsencrypt/live/\$NAME.\$DOMAIN"
+    
+    if [ -d "\$SRC" ]; then
+        cp \$SRC/fullchain.pem \$CERTS_DIR/\$NAME/
+        cp \$SRC/privkey.pem \$CERTS_DIR/\$NAME/
+        chmod 600 \$CERTS_DIR/\$NAME/*.pem
+    fi
+done
+
+# Reload Caddy
+systemctl reload caddy
+HOOK_END
+chmod +x /opt/cloudmallinc/post-renew.sh
 
 # Enable and start Caddy
 systemctl daemon-reload
@@ -268,7 +590,7 @@ systemctl start caddy
 
 # Mark setup complete
 touch /opt/cloudmallinc/.setup-complete
-echo "Setup complete at $(date)" > /opt/cloudmallinc/setup.log
+echo "Setup complete at \$(date)" > /opt/cloudmallinc/setup.log
 USERDATA_END
 
 USER_DATA=$(cat "$USER_DATA_FILE")
@@ -285,6 +607,7 @@ INSTANCE_ID=$(aws ec2 run-instances \
     --instance-type "$INSTANCE_TYPE" \
     --key-name "$KEY_NAME" \
     --security-group-ids "$SG_ID" \
+    --iam-instance-profile Name="$INSTANCE_PROFILE_NAME" \
     --region "$REGION" \
     --user-data "$USER_DATA" \
     --tag-specifications "ResourceType=instance,Tags=[{Key=Name,Value=$INSTANCE_NAME}]" \
@@ -329,14 +652,6 @@ log "Elastic IP associated with instance"
 # ============================================================================
 
 log "Updating Route 53 DNS..."
-
-HOSTED_ZONE_ID=$(aws route53 list-hosted-zones \
-    --query "HostedZones[?Name=='${DOMAIN}.'].Id" \
-    --output text | sed 's|/hostedzone/||')
-
-if [ -z "$HOSTED_ZONE_ID" ] || [ "$HOSTED_ZONE_ID" == "None" ]; then
-    error "Could not find hosted zone for $DOMAIN"
-fi
 
 # Create/update wildcard A record for *.cloudmallinc.com
 aws route53 change-resource-record-sets \
@@ -385,6 +700,7 @@ cat > "$STATE_FILE" <<EOF
     "region": "$REGION",
     "domain": "$DOMAIN",
     "hosted_zone_id": "$HOSTED_ZONE_ID",
+    "iam_role": "$ROLE_NAME",
     "created_at": "$(date -u +%Y-%m-%dT%H:%M:%SZ)"
 }
 EOF
@@ -404,6 +720,7 @@ echo "  Instance ID:    $INSTANCE_ID"
 echo "  Elastic IP:     $ELASTIC_IP"
 echo "  Domain:         https://$DOMAIN"
 echo "  Wildcard:       https://*.${DOMAIN}"
+echo "  IAM Role:       $ROLE_NAME (Route53 access for certbot)"
 echo ""
 echo "  SSH Access:     ssh -i ~/.ssh/${KEY_NAME}.pem ubuntu@$ELASTIC_IP"
 echo ""
@@ -412,17 +729,20 @@ echo "  1. Wait 2-3 minutes for setup to complete"
 echo "  2. Verify it's running:"
 echo "     ssh -i ~/.ssh/${KEY_NAME}.pem ubuntu@$ELASTIC_IP 'cat /opt/cloudmallinc/setup.log'"
 echo ""
-echo "  3. Provision your first customer (from YOUR machine with AWS creds):"
-echo "     ./provision-customer.sh mike"
+echo "  3. Provision customers (SSH into the box):"
+echo "     ssh -i ~/.ssh/${KEY_NAME}.pem ubuntu@$ELASTIC_IP"
+echo "     sudo /opt/cloudmallinc/provision-customer.sh mike"
 echo ""
 echo "     This will:"
-echo "     - Create Route53 record: *.mike.cloudmallinc.com -> EC2"
 echo "     - Run certbot DNS challenge to get wildcard cert"
-echo "     - Upload cert to EC2"
-echo "     - Start customer's container"
+echo "     - Start customer's Docker container"
 echo "     - Update Caddy config"
+echo "     - Auto-renew certs via cron (no manual work!)"
 echo ""
-echo "  NO AWS CREDENTIALS ON THE EC2 BOX!"
-echo "  All cert provisioning happens on YOUR machine."
+echo "  OR run remotely from your machine:"
+echo "     ./provision-customer.sh mike"
+echo ""
+echo "  SELF-CONTAINED: The EC2 box handles everything."
+echo "  IAM role provides Route53 access. Certs auto-renew."
 echo ""
 echo "============================================================================"

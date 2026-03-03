@@ -2,56 +2,30 @@
 
 # ============================================================================
 # List Customers
-# Shows all provisioned customers with their details
 # 
+# Shows all provisioned customers on the EC2 box
+#
 # Usage: ./list-customers.sh
 # ============================================================================
 
-CUSTOMERS_STATE="$(dirname "$0")/customers.json"
-DOMAIN="cloudmallinc.com"
+STATE_FILE="$(dirname "$0")/cloudmallinc-state.json"
 
-# Colors
-RED='\033[0;31m'
-GREEN='\033[0;32m'
-YELLOW='\033[1;33m'
-CYAN='\033[0;36m'
-NC='\033[0m'
-
-if [ ! -f "$CUSTOMERS_STATE" ]; then
-    echo "No customers provisioned yet."
-    echo "Run: ./provision-customer.sh <username>"
-    exit 0
+if [ ! -f "$STATE_FILE" ]; then
+    echo "State file not found. Run spinup.sh first."
+    exit 1
 fi
 
-CUSTOMERS=$(jq -r '.[] | @base64' "$CUSTOMERS_STATE")
+EC2_IP=$(jq -r '.elastic_ip' "$STATE_FILE")
+KEY_NAME=$(jq -r '.key_name' "$STATE_FILE")
+EC2_KEY="$HOME/.ssh/${KEY_NAME}.pem"
 
-if [ -z "$CUSTOMERS" ]; then
-    echo "No customers provisioned yet."
-    exit 0
+if [ -z "$EC2_IP" ] || [ "$EC2_IP" == "null" ]; then
+    echo "Could not find EC2 IP in state file"
+    exit 1
 fi
 
-echo ""
-echo "========================================"
-echo "       PROVISIONED CUSTOMERS"
-echo "========================================"
+echo "Fetching customers from EC2..."
 echo ""
 
-printf "${CYAN}%-12s %-6s %-30s %s${NC}\n" "NAME" "PORT" "DOMAIN" "CREATED"
-echo "------------------------------------------------------------------------"
-
-for row in $CUSTOMERS; do
-    _jq() {
-        echo "$row" | base64 --decode | jq -r "${1}"
-    }
-    
-    NAME=$(_jq '.name')
-    PORT=$(_jq '.port')
-    DOMAIN_FULL=$(_jq '.domain')
-    CREATED=$(_jq '.created')
-    
-    printf "%-12s %-6s %-30s %s\n" "$NAME" "$PORT" "$DOMAIN_FULL" "$CREATED"
-done
-
-echo ""
-echo "Total: $(jq '. | length' "$CUSTOMERS_STATE") customer(s)"
-echo ""
+ssh -i "$EC2_KEY" -o StrictHostKeyChecking=no "ubuntu@$EC2_IP" \
+    "/opt/cloudmallinc/list-customers.sh"

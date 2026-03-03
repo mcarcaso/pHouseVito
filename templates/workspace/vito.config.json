@@ -1,0 +1,16 @@
+{
+  "settings": {
+    "harness": "claude-code",
+    "streamMode": "stream",
+    "memory": {
+      "currentSessionLimit": 100,
+      "crossSessionLimit": 5
+    }
+  },
+  "channels": {
+    "dashboard": {
+      "enabled": true
+    }
+  },
+  "sessions": {}
+}

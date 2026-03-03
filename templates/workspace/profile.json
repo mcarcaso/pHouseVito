@@ -1,0 +1,20 @@
+{
+  "user": {
+    "name": "",
+    "email": "",
+    "timezone": ""
+  },
+  "people": {},
+  "interests": {},
+  "preferences": {
+    "communication": [],
+    "code": [],
+    "design": []
+  },
+  "work": {
+    "title": "",
+    "company": "",
+    "sideProjects": []
+  },
+  "notes": {}
+}

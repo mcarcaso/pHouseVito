@@ -6,7 +6,8 @@ import type {
 } from "../types.js";
 import express from "express";
 import { WebSocketServer, WebSocket } from "ws";
-import { createServer } from "http";
+import http from "http";
+const createServer = http.createServer.bind(http);
 import path from "path";
 import { readFileSync, writeFileSync, existsSync, mkdirSync, readdirSync, statSync, openSync, readSync, closeSync, unlinkSync } from "fs";
 import { execSync } from "child_process";
@@ -115,6 +116,41 @@ export class DashboardChannel implements Channel {
   }
 
   private setupExpress() {
+    // Subdomain app proxy — routes appname.basedomain requests to the app's PM2 port
+    // Must be before express.json() so request body can be piped to the upstream app
+    this.app.use((req, res, next) => {
+      const host = (req.headers.host || "").split(":")[0]; // strip port
+      const baseDomain = process.env.AI_BASE_DOMAIN;
+      if (!baseDomain || !host.endsWith(baseDomain)) return next();
+
+      const prefix = host.slice(0, -(baseDomain.length + 1)); // e.g. "myapp"
+      if (!prefix || prefix.includes(".")) return next(); // no nested subdomains
+
+      const appDir = path.join(process.cwd(), "user", "apps", prefix);
+      const metaPath = path.join(appDir, ".vito-app.json");
+      if (!existsSync(metaPath)) return next();
+
+      let port: number;
+      try {
+        const meta = JSON.parse(readFileSync(metaPath, "utf-8"));
+        port = meta.port;
+      } catch {
+        return next();
+      }
+
+      const proxyReq = http.request(
+        { hostname: "127.0.0.1", port, path: req.originalUrl, method: req.method, headers: req.headers },
+        (proxyRes) => {
+          res.writeHead(proxyRes.statusCode || 502, proxyRes.headers);
+          proxyRes.pipe(res);
+        }
+      );
+      proxyReq.on("error", () => {
+        res.status(502).send("App not responding");
+      });
+      req.pipe(proxyReq);
+    });
+
     this.app.use(express.json({ limit: "200mb" }));
     this.app.use(express.static(path.join(__dirname, "../../dashboard/dist")));
 
@@ -1076,7 +1112,7 @@ export class DashboardChannel implements Channel {
             name: appName,
             description: meta.description || "",
             port: meta.port,
-            url: meta.url || `https://${appName}.theworstproductions.com`,
+            url: meta.url || `http://localhost:${meta.port}`,
             createdAt: meta.createdAt,
             status: pm2Process?.pm2_env?.status || "unknown",
             uptime: pm2Process?.pm2_env?.pm_uptime
@@ -1167,39 +1203,6 @@ export class DashboardChannel implements Channel {
           });
         } catch (e) {
           // Might not exist in PM2, that's fine
-        }
-
-        // Remove Cloudflare tunnel entry
-        const cfConfigPath = path.join(process.env.HOME || "", ".cloudflared", "config.yml");
-        if (existsSync(cfConfigPath)) {
-          let cfConfig = readFileSync(cfConfigPath, "utf-8");
-          const appUrl = `${name}.theworstproductions.com`;
-          // Remove the ingress entry for this app
-          const lines = cfConfig.split("\n");
-          const filteredLines: string[] = [];
-          let skipNext = false;
-          for (let i = 0; i < lines.length; i++) {
-            const line = lines[i];
-            if (line.includes(`hostname: ${appUrl}`)) {
-              // Skip this line and the next (service line)
-              skipNext = true;
-              continue;
-            }
-            if (skipNext && line.trim().startsWith("service:")) {
-              skipNext = false;
-              continue;
-            }
-            skipNext = false;
-            filteredLines.push(line);
-          }
-          writeFileSync(cfConfigPath, filteredLines.join("\n"), "utf-8");
-
-          // Restart cloudflared tunnel
-          try {
-            execSync("pkill -HUP cloudflared || true", { encoding: "utf-8" });
-          } catch (e) {
-            // Might fail, that's ok
-          }
         }
 
         // Delete app directory

@@ -33,4 +33,7 @@ temp/
 *.tmp
 .venv/
 
+# Deploy state (contains instance IDs, IPs)
+aws_deploy/state/
+
 

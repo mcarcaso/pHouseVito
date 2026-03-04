@@ -1,6 +1,9 @@
 {
+  "bot": {
+    "name": "ASSISTANT"
+  },
   "settings": {
-    "harness": "claude-code",
+    "harness": "pi-coding-agent",
     "streamMode": "stream",
     "traceMessageUpdates": false,
     "currentContext": {
@@ -19,6 +22,10 @@
     }
   },
   "harnesses": {
+    "pi-coding-agent": {
+      "model": "sonnet",
+      "permissionMode": "bypassPermissions"
+    },
     "claude-code": {
       "model": "sonnet",
       "permissionMode": "bypassPermissions"

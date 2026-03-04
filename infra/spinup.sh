@@ -487,6 +487,9 @@ mkdir -p \$CONTAINERS_DIR/\$CUSTOMER_NAME/data
 # Create default config for customer (Pi harness for onboarding)
 cat > \$CONTAINERS_DIR/\$CUSTOMER_NAME/user/config.json << 'CONFIG'
 {
+  "bot": {
+    "name": "ASSISTANT"
+  },
   "settings": {
     "harness": "pi-coding-agent",
     "streamMode": "stream",

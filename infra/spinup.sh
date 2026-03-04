@@ -166,6 +166,31 @@ if ! aws iam get-role --role-name "$ROLE_NAME" &> /dev/null; then
     log "IAM role created with Route53 and ECR permissions"
 else
     warn "Using existing IAM role: $ROLE_NAME"
+    
+    # Ensure ECR policy exists (might be missing from older role)
+    log "Ensuring ECR policy is attached..."
+    aws iam put-role-policy \
+        --role-name "$ROLE_NAME" \
+        --policy-name "ecr-pull" \
+        --policy-document '{
+            "Version": "2012-10-17",
+            "Statement": [{
+                "Effect": "Allow",
+                "Action": [
+                    "ecr:GetAuthorizationToken"
+                ],
+                "Resource": "*"
+            }, {
+                "Effect": "Allow",
+                "Action": [
+                    "ecr:BatchCheckLayerAvailability",
+                    "ecr:GetDownloadUrlForLayer",
+                    "ecr:BatchGetImage"
+                ],
+                "Resource": "arn:aws:ecr:*:*:repository/cloudmallinc/*"
+            }]
+        }' > /dev/null
+    log "ECR policy verified"
 fi
 
 # Create or get instance profile

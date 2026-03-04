@@ -140,7 +140,30 @@ if ! aws iam get-role --role-name "$ROLE_NAME" &> /dev/null; then
             }]
         }' > /dev/null
     
-    log "IAM role created with Route53 permissions"
+    # Attach ECR pull policy (for pulling Vito images)
+    aws iam put-role-policy \
+        --role-name "$ROLE_NAME" \
+        --policy-name "ecr-pull" \
+        --policy-document '{
+            "Version": "2012-10-17",
+            "Statement": [{
+                "Effect": "Allow",
+                "Action": [
+                    "ecr:GetAuthorizationToken"
+                ],
+                "Resource": "*"
+            }, {
+                "Effect": "Allow",
+                "Action": [
+                    "ecr:BatchCheckLayerAvailability",
+                    "ecr:GetDownloadUrlForLayer",
+                    "ecr:BatchGetImage"
+                ],
+                "Resource": "arn:aws:ecr:*:*:repository/cloudmallinc/*"
+            }]
+        }' > /dev/null
+    
+    log "IAM role created with Route53 and ECR permissions"
 else
     warn "Using existing IAM role: $ROLE_NAME"
 fi
@@ -214,6 +237,13 @@ fi
 # USER DATA SCRIPT (runs on first boot)
 # ============================================================================
 
+# Get AWS account ID for ECR
+AWS_ACCOUNT_ID=$(aws sts get-caller-identity --query Account --output text)
+if [ -z "$AWS_ACCOUNT_ID" ]; then
+    error "Could not get AWS account ID"
+fi
+log "AWS Account ID: $AWS_ACCOUNT_ID"
+
 # Get hosted zone ID for the domain
 HOSTED_ZONE_ID=$(aws route53 list-hosted-zones \
     --query "HostedZones[?Name=='${DOMAIN}.'].Id" \
@@ -248,7 +278,7 @@ echo 'ubuntu ALL=(ALL) NOPASSWD:ALL' > /etc/sudoers.d/ubuntu
 chmod 440 /etc/sudoers.d/ubuntu
 
 # Install Docker
-apt-get install -y ca-certificates curl gnupg jq
+apt-get install -y ca-certificates curl gnupg jq awscli
 install -m 0755 -d /etc/apt/keyrings
 curl -fsSL https://download.docker.com/linux/ubuntu/gpg | gpg --dearmor -o /etc/apt/keyrings/docker.gpg
 chmod a+r /etc/apt/keyrings/docker.gpg
@@ -275,9 +305,11 @@ mkdir -p /opt/cloudmallinc/certs
 mkdir -p /opt/cloudmallinc/containers
 mkdir -p /var/log/caddy
 
-# Store domain and hosted zone ID for later use
+# Store domain, hosted zone ID, and AWS info for later use
 echo "$DOMAIN" > /opt/cloudmallinc/domain
 echo "$HOSTED_ZONE_ID" > /opt/cloudmallinc/hosted-zone-id
+echo "$AWS_ACCOUNT_ID" > /opt/cloudmallinc/aws-account-id
+echo "$REGION" > /opt/cloudmallinc/aws-region
 
 # Initialize empty customers registry
 echo '[]' > /opt/cloudmallinc/caddy/customers.json
@@ -349,10 +381,13 @@ set -e
 CUSTOMER_NAME="$1"
 CUSTOMER_PORT="${2:-}"
 DOMAIN=$(cat /opt/cloudmallinc/domain)
+AWS_ACCOUNT_ID=$(cat /opt/cloudmallinc/aws-account-id)
+AWS_REGION=$(cat /opt/cloudmallinc/aws-region)
 CERTS_DIR="/opt/cloudmallinc/certs"
 CADDY_DIR="/opt/cloudmallinc/caddy"
 CONTAINERS_DIR="/opt/cloudmallinc/containers"
-VITO_IMAGE="${VITO_IMAGE:-cloudmallinc/vito:latest}"
+ECR_REGISTRY="$AWS_ACCOUNT_ID.dkr.ecr.$AWS_REGION.amazonaws.com"
+VITO_IMAGE="${VITO_IMAGE:-$ECR_REGISTRY/cloudmallinc/vito:latest}"
 
 RED='\033[0;31m'
 GREEN='\033[0;32m'
@@ -498,6 +533,11 @@ services:
 COMPOSE
 
 cd $CONTAINERS_DIR/$CUSTOMER_NAME
+
+# Login to ECR to pull the Vito image
+log "Logging into ECR..."
+aws ecr get-login-password --region $AWS_REGION | docker login --username AWS --password-stdin $ECR_REGISTRY >/dev/null 2>&1
+
 docker compose up -d --quiet-pull >/dev/null 2>&1
 
 log "Container started on port $CUSTOMER_PORT"

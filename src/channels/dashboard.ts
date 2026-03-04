@@ -185,7 +185,7 @@ export class DashboardChannel implements Channel {
     this.app.use("/attachments", express.static(ATTACHMENTS_DIR));
 
     // ── Public Drive route (before auth) ──
-    this.app.get("/d/:id/*", (req, res) => {
+    this.app.get("/d/:id/*path", (req, res) => {
       const id = req.params.id;
       const itemDir = path.join(DRIVE_DIR, id);
       const metaPath = path.join(itemDir, ".meta.json");
@@ -198,7 +198,7 @@ export class DashboardChannel implements Channel {
       if (!meta.isPublic) { res.status(404).send("Not found"); return; }
 
       // Determine which file to serve
-      let requestedPath = (req.params as any)[0] || "";
+      let requestedPath = req.params.path ? req.params.path.join("/") : "";
       if (!requestedPath && meta.type === "site") requestedPath = "index.html";
       if (!requestedPath && meta.type === "file" && meta.filename) requestedPath = meta.filename;
       if (!requestedPath) { res.status(404).send("Not found"); return; }

@@ -9,6 +9,7 @@ interface DriveItem {
   createdAt: string;
   mimeType?: string;
   filename?: string;
+  folder: string; // relative path from drive root, "" for top-level
 }
 
 interface DriveFile {
@@ -37,9 +38,42 @@ function getPublicUrl(item: DriveItem): string {
   return `${base}/d/${item.id}/`;
 }
 
+/** Build a tree of folders and items from flat list */
+function buildFolderTree(items: DriveItem[]) {
+  // Collect all unique folder paths (including intermediate ones)
+  const folderSet = new Set<string>();
+  for (const item of items) {
+    if (item.folder) {
+      const parts = item.folder.split('/');
+      for (let i = 1; i <= parts.length; i++) {
+        folderSet.add(parts.slice(0, i).join('/'));
+      }
+    }
+  }
+
+  return {
+    folders: Array.from(folderSet).sort(),
+    // Get child folders of a given path
+    getChildFolders: (parent: string): string[] => {
+      const prefix = parent ? parent + '/' : '';
+      return Array.from(folderSet)
+        .filter(f => {
+          if (!parent) return !f.includes('/'); // top-level folders
+          return f.startsWith(prefix) && !f.slice(prefix.length).includes('/');
+        })
+        .sort();
+    },
+    // Get items in a specific folder
+    getItems: (folder: string): DriveItem[] => {
+      return items.filter(i => i.folder === folder);
+    },
+  };
+}
+
 export default function Drive() {
   const [items, setItems] = useState<DriveItem[]>([]);
   const [loading, setLoading] = useState(true);
+  const [currentFolder, setCurrentFolder] = useState('');
   const [expandedItem, setExpandedItem] = useState<string | null>(null);
   const [itemFiles, setItemFiles] = useState<Record<string, DriveFile[]>>({});
   const [selectedFile, setSelectedFile] = useState<{ id: string; path: string; url: string } | null>(null);
@@ -70,6 +104,10 @@ export default function Drive() {
 
   useEffect(() => { fetchItems(); }, []);
 
+  const tree = buildFolderTree(items);
+  const childFolders = tree.getChildFolders(currentFolder);
+  const currentItems = tree.getItems(currentFolder);
+
   const fetchFiles = async (id: string) => {
     if (itemFiles[id]) return;
     try {
@@ -90,6 +128,20 @@ export default function Drive() {
     }
     setSelectedFile(null);
     setDeleteConfirm(null);
+  };
+
+  const navigateToFolder = (folder: string) => {
+    setCurrentFolder(folder);
+    setExpandedItem(null);
+    setSelectedFile(null);
+    setDeleteConfirm(null);
+  };
+
+  const navigateUp = () => {
+    if (!currentFolder) return;
+    const parts = currentFolder.split('/');
+    parts.pop();
+    navigateToFolder(parts.join('/'));
   };
 
   const handleTogglePublic = async (item: DriveItem) => {
@@ -165,6 +217,7 @@ export default function Drive() {
           isPublic: uploadPublic,
           data: dataUrl,
           filename: uploadFile.name,
+          folder: currentFolder || undefined,
         }),
       });
 
@@ -192,6 +245,8 @@ export default function Drive() {
     setSelectedFile({ id, path: filePath, url: `/api/drive/${id}/content/${filePath}` });
   };
 
+  const totalInFolder = currentItems.length + childFolders.length;
+
   return (
     <div className="flex flex-col pb-8">
       {/* Toast */}
@@ -215,10 +270,42 @@ export default function Drive() {
       </div>
 
       <div className="p-4 sm:p-6 max-w-[700px] mx-auto w-full">
+        {/* Breadcrumb */}
+        {currentFolder && (
+          <div className="flex items-center gap-1 mb-3 text-sm">
+            <button
+              onClick={() => navigateToFolder('')}
+              className="text-blue-400 hover:underline"
+            >
+              Drive
+            </button>
+            {currentFolder.split('/').map((part, i, arr) => {
+              const folderPath = arr.slice(0, i + 1).join('/');
+              return (
+                <span key={folderPath} className="flex items-center gap-1">
+                  <span className="text-neutral-600">/</span>
+                  {i === arr.length - 1 ? (
+                    <span className="text-white">{part}</span>
+                  ) : (
+                    <button
+                      onClick={() => navigateToFolder(folderPath)}
+                      className="text-blue-400 hover:underline"
+                    >
+                      {part}
+                    </button>
+                  )}
+                </span>
+              );
+            })}
+          </div>
+        )}
+
         {/* Upload form */}
         {showUpload && (
           <div className="bg-neutral-900 border border-neutral-800 rounded-xl p-4 sm:p-5 mb-4">
-            <h3 className="text-sm font-semibold text-white mb-3">Upload</h3>
+            <h3 className="text-sm font-semibold text-white mb-3">
+              Upload{currentFolder ? ` to ${currentFolder}` : ''}
+            </h3>
             <div className="flex flex-col gap-3">
               <input
                 type="text"
@@ -280,14 +367,43 @@ export default function Drive() {
           </div>
         )}
 
-        {/* Items list */}
+        {/* Content */}
         {loading ? (
           <div className="text-center text-neutral-500 py-12">Loading...</div>
-        ) : items.length === 0 ? (
+        ) : totalInFolder === 0 && !currentFolder ? (
           <div className="text-center text-neutral-500 py-12">No items yet. Upload a file or site to get started.</div>
         ) : (
-          <div className="flex flex-col gap-3">
-            {items.map(item => (
+          <div className="flex flex-col gap-2">
+            {/* Back button */}
+            {currentFolder && (
+              <button
+                onClick={navigateUp}
+                className="flex items-center gap-2 px-4 py-3 bg-neutral-900 border border-neutral-800 rounded-xl text-sm text-neutral-400 hover:bg-neutral-800 hover:text-white transition-colors"
+              >
+                <span>&#x2190;</span> ..
+              </button>
+            )}
+
+            {/* Folders */}
+            {childFolders.map(folder => {
+              const folderName = folder.split('/').pop()!;
+              // Count items inside this folder (recursively)
+              const itemCount = items.filter(i => i.folder === folder || i.folder.startsWith(folder + '/')).length;
+              return (
+                <button
+                  key={folder}
+                  onClick={() => navigateToFolder(folder)}
+                  className="flex items-center gap-3 px-4 py-3 bg-neutral-900 border border-neutral-800 rounded-xl text-left hover:border-neutral-700 transition-colors"
+                >
+                  <span className="text-lg">&#x1F4C1;</span>
+                  <span className="text-sm font-semibold text-white">{folderName}</span>
+                  <span className="text-xs text-neutral-600">{itemCount} item{itemCount !== 1 ? 's' : ''}</span>
+                </button>
+              );
+            })}
+
+            {/* Items */}
+            {currentItems.map(item => (
               <div
                 key={item.id}
                 className="bg-neutral-900 border border-neutral-800 rounded-xl overflow-hidden hover:border-neutral-700 transition-colors"
@@ -451,6 +567,11 @@ export default function Drive() {
                 )}
               </div>
             ))}
+
+            {/* Empty folder */}
+            {currentFolder && currentItems.length === 0 && childFolders.length === 0 && (
+              <div className="text-center text-neutral-500 py-8">This folder is empty</div>
+            )}
           </div>
         )}
       </div>

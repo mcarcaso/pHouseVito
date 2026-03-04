@@ -1473,7 +1473,12 @@ export class DashboardChannel implements Channel {
     this.app.get("/api/drive", (req, res) => {
       try {
         const items = findDriveItems(DRIVE_DIR)
-          .map(i => i.meta)
+          .map(i => {
+            // folder = path from DRIVE_DIR to the item's parent dir
+            const parentDir = path.dirname(i.dir);
+            const folder = parentDir === DRIVE_DIR ? "" : path.relative(DRIVE_DIR, parentDir);
+            return { ...i.meta, folder };
+          })
           .sort((a: any, b: any) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
         res.json(items);
       } catch (e: any) {

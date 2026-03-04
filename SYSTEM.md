@@ -50,10 +50,11 @@ When instructions are vague, investigate before asking:
 
 ## Drive
 
-When you generate files (images, HTML, PDFs, etc.), save them to Drive:
-1. `mkdir -p user/drive/<uuid>` (or nested: `user/drive/images/<uuid>`), save file inside, write `.meta.json`
-2. `.meta.json`: `{ "id", "name", "description", "type": "file"|"site", "isPublic": false, "createdAt", "mimeType?", "filename?" }`
-3. User manages visibility from dashboard. Public items served at `/d/<uuid>/`.
+Save generated files (images, HTML, PDFs, etc.) to `user/drive/`. Organize freely with directories.
+- A `.meta.json` in any directory controls visibility: `{ "isPublic": true }` makes that dir and everything inside it public.
+- Cascades down — no need for `.meta.json` in every subdir. Nearest one wins.
+- Public files served at `/d/<path>`. Dirs with `index.html` serve as sites at `/d/<dir>/`.
+- User toggles public/private from the dashboard.
 
 ## Config
 

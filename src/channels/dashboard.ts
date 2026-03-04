@@ -24,29 +24,23 @@ const ATTACHMENTS_DIR = path.join(process.cwd(), "data", "attachments");
 const DRIVE_DIR = path.join(process.cwd(), "user", "drive");
 const CONFIG_PATH = path.join(process.cwd(), "user", "vito.config.json");
 
-/** Recursively find all drive items (dirs containing .meta.json) */
-function findDriveItems(dir: string): { dir: string; meta: any }[] {
-  if (!existsSync(dir)) return [];
-  const results: { dir: string; meta: any }[] = [];
-  for (const entry of readdirSync(dir, { withFileTypes: true })) {
-    if (!entry.isDirectory()) continue;
-    const entryDir = path.join(dir, entry.name);
-    const metaPath = path.join(entryDir, ".meta.json");
+/** Check if a path inside DRIVE_DIR is public by walking up the directory tree.
+ *  Nearest .meta.json wins. No .meta.json anywhere = private. */
+function isDrivePathPublic(absPath: string): boolean {
+  let dir = absPath;
+  if (!statSync(absPath).isDirectory()) dir = path.dirname(absPath);
+  while (dir.startsWith(DRIVE_DIR)) {
+    const metaPath = path.join(dir, ".meta.json");
     if (existsSync(metaPath)) {
-      try { results.push({ dir: entryDir, meta: JSON.parse(readFileSync(metaPath, "utf-8")) }); } catch {}
-    } else {
-      // Recurse into subdirectories that aren't items themselves
-      results.push(...findDriveItems(entryDir));
+      try {
+        const meta = JSON.parse(readFileSync(metaPath, "utf-8"));
+        return Boolean(meta.isPublic);
+      } catch { return false; }
     }
+    if (dir === DRIVE_DIR) break;
+    dir = path.dirname(dir);
   }
-  return results;
-}
-
-/** Find a single drive item by ID */
-function findDriveItem(id: string): string | null {
-  const items = findDriveItems(DRIVE_DIR);
-  const found = items.find(i => i.meta.id === id);
-  return found ? found.dir : null;
+  return false;
 }
 
 // ── Auth helpers ──
@@ -210,40 +204,33 @@ export class DashboardChannel implements Channel {
     this.app.use("/attachments", express.static(ATTACHMENTS_DIR));
 
     // ── Public Drive route (before auth) ──
-    this.app.get("/d/:id/*path", (req, res) => {
-      const id = req.params.id;
-      const itemDir = findDriveItem(id);
-      if (!itemDir) { res.status(404).send("Not found"); return; }
+    // Serves any file under user/drive/ if its nearest .meta.json has isPublic:true
+    this.app.get("/d/*filepath", (req, res) => {
+      let reqPath = req.params.filepath.join("/");
 
-      let meta: any;
-      try { meta = JSON.parse(readFileSync(path.join(itemDir, ".meta.json"), "utf-8")); } catch { res.status(404).send("Not found"); return; }
-
-      if (!meta.isPublic) { res.status(404).send("Not found"); return; }
-
-      // Determine which file to serve
-      let requestedPath = req.params.path ? req.params.path.join("/") : "";
-      if (!requestedPath && meta.type === "site") requestedPath = "index.html";
-      if (!requestedPath && meta.type === "file" && meta.filename) requestedPath = meta.filename;
-      if (!requestedPath) { res.status(404).send("Not found"); return; }
-
-      const resolved = path.resolve(itemDir, requestedPath);
+      const resolved = path.resolve(DRIVE_DIR, reqPath);
       // Path traversal protection
-      if (!resolved.startsWith(itemDir + path.sep) && resolved !== itemDir) {
+      if (!resolved.startsWith(DRIVE_DIR + path.sep) && resolved !== DRIVE_DIR) {
         res.status(404).send("Not found");
         return;
       }
 
-      if (!existsSync(resolved) || statSync(resolved).isDirectory()) {
+      // If directory, try index.html
+      if (existsSync(resolved) && statSync(resolved).isDirectory()) {
+        const indexPath = path.join(resolved, "index.html");
+        if (existsSync(indexPath)) {
+          if (!isDrivePathPublic(indexPath)) { res.status(404).send("Not found"); return; }
+          res.sendFile(indexPath);
+          return;
+        }
         res.status(404).send("Not found");
         return;
       }
+
+      if (!existsSync(resolved)) { res.status(404).send("Not found"); return; }
+      if (!isDrivePathPublic(resolved)) { res.status(404).send("Not found"); return; }
 
       res.sendFile(resolved);
-    });
-
-    // Also handle bare /d/:id/ (no trailing path) for sites
-    this.app.get("/d/:id", (req, res) => {
-      res.redirect(`/d/${req.params.id}/`);
     });
 
     // ── Auth routes (before middleware) ──
@@ -1469,120 +1456,155 @@ export class DashboardChannel implements Channel {
     });
 
     // ── Drive (file & site hosting) ──
+    // Directory-based file browser. .meta.json at any dir level controls visibility (cascades down).
 
-    this.app.get("/api/drive", (req, res) => {
+    // List contents of a directory
+    this.app.get("/api/drive/ls", (req, res) => {
       try {
-        const items = findDriveItems(DRIVE_DIR)
-          .map(i => {
-            // folder = path from DRIVE_DIR to the item's parent dir
-            const parentDir = path.dirname(i.dir);
-            const folder = parentDir === DRIVE_DIR ? "" : path.relative(DRIVE_DIR, parentDir);
-            return { ...i.meta, folder };
-          })
-          .sort((a: any, b: any) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
-        res.json(items);
+        const reqPath = (req.query.path as string) || "";
+        const dir = path.resolve(DRIVE_DIR, reqPath);
+        if (!dir.startsWith(DRIVE_DIR)) { res.status(403).json({ error: "Access denied" }); return; }
+        if (!existsSync(dir) || !statSync(dir).isDirectory()) {
+          // Auto-create the root
+          if (dir === DRIVE_DIR) { mkdirSync(dir, { recursive: true }); }
+          else { res.status(404).json({ error: "Directory not found" }); return; }
+        }
+
+        // Read .meta.json for this dir if it exists
+        const metaPath = path.join(dir, ".meta.json");
+        let meta: any = null;
+        if (existsSync(metaPath)) {
+          try { meta = JSON.parse(readFileSync(metaPath, "utf-8")); } catch {}
+        }
+
+        const entries = readdirSync(dir, { withFileTypes: true });
+        const dirs: { name: string; hasMeta: boolean; meta: any }[] = [];
+        const files: { name: string; size: number }[] = [];
+
+        for (const entry of entries) {
+          if (entry.name === ".meta.json") continue;
+          if (entry.isDirectory()) {
+            const childMetaPath = path.join(dir, entry.name, ".meta.json");
+            let childMeta: any = null;
+            if (existsSync(childMetaPath)) {
+              try { childMeta = JSON.parse(readFileSync(childMetaPath, "utf-8")); } catch {}
+            }
+            dirs.push({ name: entry.name, hasMeta: Boolean(childMeta), meta: childMeta });
+          } else {
+            files.push({ name: entry.name, size: statSync(path.join(dir, entry.name)).size });
+          }
+        }
+
+        dirs.sort((a, b) => a.name.localeCompare(b.name));
+        files.sort((a, b) => a.name.localeCompare(b.name));
+
+        const isPublic = isDrivePathPublic(dir);
+
+        res.json({ path: reqPath, meta, isPublic, dirs, files });
       } catch (e: any) {
         res.status(500).json({ error: e.message });
       }
     });
 
-    this.app.post("/api/drive", (req, res) => {
+    // Upload a file into a directory
+    this.app.post("/api/drive/upload", (req, res) => {
       try {
-        const { name, type, isPublic, data, filename, folder } = req.body;
-        if (!name || !type || !data) {
-          res.status(400).json({ error: "name, type, and data are required" });
-          return;
-        }
-        if (!["file", "site"].includes(type)) {
-          res.status(400).json({ error: "type must be 'file' or 'site'" });
+        const { data, filename, folder } = req.body;
+        if (!data || !filename) {
+          res.status(400).json({ error: "data and filename are required" });
           return;
         }
 
-        const id = crypto.randomUUID();
-        const parentDir = folder ? path.join(DRIVE_DIR, folder) : DRIVE_DIR;
-        const itemDir = path.join(parentDir, id);
-        mkdirSync(itemDir, { recursive: true });
-
-        // Parse data URL
         const match = data.match(/^data:([^;]+);base64,(.+)$/);
-        if (!match) {
-          res.status(400).json({ error: "Invalid data URL format" });
-          return;
-        }
-        const mimeType = match[1];
+        if (!match) { res.status(400).json({ error: "Invalid data URL format" }); return; }
         const buffer = Buffer.from(match[2], "base64");
 
-        if (type === "file") {
-          const safeName = filename || `file.${mimeType.split("/")[1] || "bin"}`;
-          writeFileSync(path.join(itemDir, safeName), buffer);
-          const meta = {
-            id, name, description: "", type: "file",
-            isPublic: Boolean(isPublic), createdAt: new Date().toISOString(),
-            mimeType, filename: safeName,
-          };
-          writeFileSync(path.join(itemDir, ".meta.json"), JSON.stringify(meta, null, 2));
-          res.json(meta);
-        } else {
-          // Site: write zip, extract, validate
-          const zipPath = path.join(itemDir, "__upload.zip");
-          writeFileSync(zipPath, buffer);
+        const targetDir = folder ? path.resolve(DRIVE_DIR, folder) : DRIVE_DIR;
+        if (!targetDir.startsWith(DRIVE_DIR)) { res.status(403).json({ error: "Access denied" }); return; }
+        mkdirSync(targetDir, { recursive: true });
 
-          try {
-            execSync(`unzip -o "${zipPath}" -d "${itemDir}"`, { timeout: 30000 });
-          } catch (e: any) {
-            // Clean up on failure
-            execSync(`rm -rf "${itemDir}"`);
-            res.status(400).json({ error: "Failed to extract zip file" });
-            return;
-          }
-          unlinkSync(zipPath);
-
-          // Handle single-root-dir zips: if extraction produced exactly one directory
-          // and no other files, move its contents up
-          const extracted = readdirSync(itemDir).filter(f => f !== ".meta.json");
-          if (extracted.length === 1) {
-            const singleEntry = path.join(itemDir, extracted[0]);
-            if (statSync(singleEntry).isDirectory()) {
-              const innerFiles = readdirSync(singleEntry);
-              for (const f of innerFiles) {
-                execSync(`mv "${path.join(singleEntry, f)}" "${itemDir}/"`);
-              }
-              execSync(`rmdir "${singleEntry}"`);
-            }
-          }
-
-          // Validate index.html exists
-          if (!existsSync(path.join(itemDir, "index.html"))) {
-            execSync(`rm -rf "${itemDir}"`);
-            res.status(400).json({ error: "Site zip must contain an index.html at the root" });
-            return;
-          }
-
-          const meta = {
-            id, name, description: "", type: "site",
-            isPublic: Boolean(isPublic), createdAt: new Date().toISOString(),
-          };
-          writeFileSync(path.join(itemDir, ".meta.json"), JSON.stringify(meta, null, 2));
-          res.json(meta);
-        }
+        const filePath = path.join(targetDir, filename);
+        writeFileSync(filePath, buffer);
+        res.json({ success: true, path: folder ? `${folder}/${filename}` : filename });
       } catch (e: any) {
         res.status(500).json({ error: e.message });
       }
     });
 
-    this.app.put("/api/drive/:id", (req, res) => {
+    // Upload a zip site into a directory
+    this.app.post("/api/drive/upload-site", (req, res) => {
       try {
-        const itemDir = findDriveItem(req.params.id);
-        if (!itemDir) {
-          res.status(404).json({ error: "Item not found" });
+        const { data, folder } = req.body;
+        if (!data || !folder) {
+          res.status(400).json({ error: "data and folder are required" });
           return;
         }
-        const metaPath = path.join(itemDir, ".meta.json");
-        const meta = JSON.parse(readFileSync(metaPath, "utf-8"));
-        const { name, description, isPublic } = req.body;
+
+        const match = data.match(/^data:([^;]+);base64,(.+)$/);
+        if (!match) { res.status(400).json({ error: "Invalid data URL format" }); return; }
+        const buffer = Buffer.from(match[2], "base64");
+
+        const targetDir = path.resolve(DRIVE_DIR, folder);
+        if (!targetDir.startsWith(DRIVE_DIR)) { res.status(403).json({ error: "Access denied" }); return; }
+        mkdirSync(targetDir, { recursive: true });
+
+        const zipPath = path.join(targetDir, "__upload.zip");
+        writeFileSync(zipPath, buffer);
+
+        try {
+          execSync(`unzip -o "${zipPath}" -d "${targetDir}"`, { timeout: 30000 });
+        } catch {
+          execSync(`rm -rf "${targetDir}"`);
+          res.status(400).json({ error: "Failed to extract zip file" });
+          return;
+        }
+        unlinkSync(zipPath);
+
+        // Handle single-root-dir zips
+        const extracted = readdirSync(targetDir).filter(f => f !== ".meta.json");
+        if (extracted.length === 1) {
+          const singleEntry = path.join(targetDir, extracted[0]);
+          if (statSync(singleEntry).isDirectory()) {
+            for (const f of readdirSync(singleEntry)) {
+              execSync(`mv "${path.join(singleEntry, f)}" "${targetDir}/"`);
+            }
+            execSync(`rmdir "${singleEntry}"`);
+          }
+        }
+
+        if (!existsSync(path.join(targetDir, "index.html"))) {
+          execSync(`rm -rf "${targetDir}"`);
+          res.status(400).json({ error: "Site zip must contain an index.html" });
+          return;
+        }
+
+        res.json({ success: true, path: folder });
+      } catch (e: any) {
+        res.status(500).json({ error: e.message });
+      }
+    });
+
+    // Create or update .meta.json for a directory
+    this.app.put("/api/drive/meta", (req, res) => {
+      try {
+        const reqPath = (req.query.path as string) || "";
+        const dir = path.resolve(DRIVE_DIR, reqPath);
+        if (!dir.startsWith(DRIVE_DIR)) { res.status(403).json({ error: "Access denied" }); return; }
+        if (!existsSync(dir)) {
+          mkdirSync(dir, { recursive: true });
+        }
+
+        const metaPath = path.join(dir, ".meta.json");
+        let meta: any = {};
+        if (existsSync(metaPath)) {
+          try { meta = JSON.parse(readFileSync(metaPath, "utf-8")); } catch {}
+        }
+
+        const { isPublic, name, description } = req.body;
+        if (isPublic !== undefined) meta.isPublic = Boolean(isPublic);
         if (name !== undefined) meta.name = name;
         if (description !== undefined) meta.description = description;
-        if (isPublic !== undefined) meta.isPublic = Boolean(isPublic);
+
         writeFileSync(metaPath, JSON.stringify(meta, null, 2));
         res.json(meta);
       } catch (e: any) {
@@ -1590,61 +1612,32 @@ export class DashboardChannel implements Channel {
       }
     });
 
-    this.app.delete("/api/drive/:id", (req, res) => {
+    // Delete a file or directory
+    this.app.delete("/api/drive", (req, res) => {
       try {
-        const itemDir = findDriveItem(req.params.id);
-        if (!itemDir) {
-          res.status(404).json({ error: "Item not found" });
-          return;
+        const reqPath = req.query.path as string;
+        if (!reqPath) { res.status(400).json({ error: "path is required" }); return; }
+        const target = path.resolve(DRIVE_DIR, reqPath);
+        if (!target.startsWith(DRIVE_DIR + path.sep)) { res.status(403).json({ error: "Access denied" }); return; }
+        if (!existsSync(target)) { res.status(404).json({ error: "Not found" }); return; }
+
+        if (statSync(target).isDirectory()) {
+          execSync(`rm -rf "${target}"`);
+        } else {
+          unlinkSync(target);
         }
-        execSync(`rm -rf "${itemDir}"`);
         res.json({ success: true });
       } catch (e: any) {
         res.status(500).json({ error: e.message });
       }
     });
 
-    this.app.get("/api/drive/:id/files", (req, res) => {
+    // Serve a file (authed, for dashboard preview)
+    this.app.get("/api/drive/file/*filepath", (req, res) => {
       try {
-        const itemDir = findDriveItem(req.params.id);
-        if (!itemDir) {
-          res.status(404).json({ error: "Item not found" });
-          return;
-        }
-        const walkDir = (dir: string, prefix = ""): { path: string; size: number; isDir: boolean }[] => {
-          const entries = readdirSync(dir, { withFileTypes: true });
-          const files: { path: string; size: number; isDir: boolean }[] = [];
-          for (const entry of entries) {
-            if (entry.name === ".meta.json") continue;
-            const fullPath = path.join(dir, entry.name);
-            const relativePath = prefix ? `${prefix}/${entry.name}` : entry.name;
-            if (entry.isDirectory()) {
-              files.push({ path: relativePath, size: 0, isDir: true });
-              files.push(...walkDir(fullPath, relativePath));
-            } else {
-              files.push({ path: relativePath, size: statSync(fullPath).size, isDir: false });
-            }
-          }
-          return files;
-        };
-        res.json(walkDir(itemDir));
-      } catch (e: any) {
-        res.status(500).json({ error: e.message });
-      }
-    });
-
-    this.app.get("/api/drive/:id/content/*filepath", (req, res) => {
-      try {
-        const itemDir = findDriveItem(req.params.id);
-        if (!itemDir) { res.status(404).json({ error: "Item not found" }); return; }
         const filePath = req.params.filepath.join("/");
-        const resolved = path.resolve(itemDir, filePath);
-
-        // Path traversal protection
-        if (!resolved.startsWith(itemDir + path.sep) && resolved !== itemDir) {
-          res.status(403).json({ error: "Access denied" });
-          return;
-        }
+        const resolved = path.resolve(DRIVE_DIR, filePath);
+        if (!resolved.startsWith(DRIVE_DIR + path.sep)) { res.status(403).json({ error: "Access denied" }); return; }
         if (!existsSync(resolved) || statSync(resolved).isDirectory()) {
           res.status(404).json({ error: "File not found" });
           return;

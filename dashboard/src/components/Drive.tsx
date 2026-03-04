@@ -1,163 +1,86 @@
 import { useState, useEffect, useRef } from 'react';
 
-interface DriveItem {
-  id: string;
-  name: string;
-  description: string;
-  type: 'file' | 'site';
-  isPublic: boolean;
-  createdAt: string;
-  mimeType?: string;
-  filename?: string;
-  folder: string; // relative path from drive root, "" for top-level
-}
-
-interface DriveFile {
+interface DirListing {
   path: string;
-  size: number;
-  isDir: boolean;
-}
-
-function formatDate(iso: string): string {
-  const d = new Date(iso);
-  return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+  meta: any | null;
+  isPublic: boolean;
+  dirs: { name: string; hasMeta: boolean; meta: any | null }[];
+  files: { name: string; size: number }[];
 }
 
 function formatBytes(bytes: number): string {
   if (bytes < 1024) return `${bytes} B`;
   const kb = bytes / 1024;
   if (kb < 1024) return `${kb.toFixed(1)} KB`;
-  const mb = kb / 1024;
-  return `${mb.toFixed(1)} MB`;
-}
-
-function getPublicUrl(item: DriveItem): string {
-  const base = window.location.origin;
-  if (item.type === 'site') return `${base}/d/${item.id}/`;
-  if (item.filename) return `${base}/d/${item.id}/${item.filename}`;
-  return `${base}/d/${item.id}/`;
-}
-
-/** Build a tree of folders and items from flat list */
-function buildFolderTree(items: DriveItem[]) {
-  // Collect all unique folder paths (including intermediate ones)
-  const folderSet = new Set<string>();
-  for (const item of items) {
-    if (item.folder) {
-      const parts = item.folder.split('/');
-      for (let i = 1; i <= parts.length; i++) {
-        folderSet.add(parts.slice(0, i).join('/'));
-      }
-    }
-  }
-
-  return {
-    folders: Array.from(folderSet).sort(),
-    // Get child folders of a given path
-    getChildFolders: (parent: string): string[] => {
-      const prefix = parent ? parent + '/' : '';
-      return Array.from(folderSet)
-        .filter(f => {
-          if (!parent) return !f.includes('/'); // top-level folders
-          return f.startsWith(prefix) && !f.slice(prefix.length).includes('/');
-        })
-        .sort();
-    },
-    // Get items in a specific folder
-    getItems: (folder: string): DriveItem[] => {
-      return items.filter(i => i.folder === folder);
-    },
-  };
+  return `${(kb / 1024).toFixed(1)} MB`;
 }
 
 export default function Drive() {
-  const [items, setItems] = useState<DriveItem[]>([]);
+  const [listing, setListing] = useState<DirListing | null>(null);
   const [loading, setLoading] = useState(true);
-  const [currentFolder, setCurrentFolder] = useState('');
-  const [expandedItem, setExpandedItem] = useState<string | null>(null);
-  const [itemFiles, setItemFiles] = useState<Record<string, DriveFile[]>>({});
-  const [selectedFile, setSelectedFile] = useState<{ id: string; path: string; url: string } | null>(null);
+  const [currentPath, setCurrentPath] = useState('');
+  const [selectedFile, setSelectedFile] = useState<string | null>(null);
   const [deleteConfirm, setDeleteConfirm] = useState<string | null>(null);
   const [actionLoading, setActionLoading] = useState<string | null>(null);
   const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' } | null>(null);
 
-  // Upload form state
+  // Upload
   const [showUpload, setShowUpload] = useState(false);
-  const [uploadName, setUploadName] = useState('');
   const [uploadType, setUploadType] = useState<'file' | 'site'>('file');
-  const [uploadPublic, setUploadPublic] = useState(false);
   const [uploadFile, setUploadFile] = useState<File | null>(null);
   const [uploading, setUploading] = useState(false);
+  const [siteFolderName, setSiteFolderName] = useState('');
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  // New folder
+  const [showNewFolder, setShowNewFolder] = useState(false);
+  const [newFolderName, setNewFolderName] = useState('');
 
   const showToast = (message: string, type: 'success' | 'error') => {
     setToast({ message, type });
     setTimeout(() => setToast(null), 3000);
   };
 
-  const fetchItems = () => {
-    fetch('/api/drive')
+  const fetchListing = (p?: string) => {
+    const target = p !== undefined ? p : currentPath;
+    setLoading(true);
+    fetch(`/api/drive/ls?path=${encodeURIComponent(target)}`)
       .then(r => r.json())
-      .then(data => { setItems(data); setLoading(false); })
+      .then(data => { setListing(data); setLoading(false); })
       .catch(() => setLoading(false));
   };
 
-  useEffect(() => { fetchItems(); }, []);
+  useEffect(() => { fetchListing(); }, [currentPath]);
 
-  const tree = buildFolderTree(items);
-  const childFolders = tree.getChildFolders(currentFolder);
-  const currentItems = tree.getItems(currentFolder);
-
-  const fetchFiles = async (id: string) => {
-    if (itemFiles[id]) return;
-    try {
-      const res = await fetch(`/api/drive/${id}/files`);
-      const files = await res.json();
-      setItemFiles(prev => ({ ...prev, [id]: files }));
-    } catch (e) {
-      console.error('Failed to fetch files:', e);
-    }
-  };
-
-  const toggleExpand = (id: string) => {
-    if (expandedItem === id) {
-      setExpandedItem(null);
-    } else {
-      setExpandedItem(id);
-      fetchFiles(id);
-    }
-    setSelectedFile(null);
-    setDeleteConfirm(null);
-  };
-
-  const navigateToFolder = (folder: string) => {
-    setCurrentFolder(folder);
-    setExpandedItem(null);
+  const navigate = (folder: string) => {
+    setCurrentPath(folder);
     setSelectedFile(null);
     setDeleteConfirm(null);
   };
 
   const navigateUp = () => {
-    if (!currentFolder) return;
-    const parts = currentFolder.split('/');
+    if (!currentPath) return;
+    const parts = currentPath.split('/');
     parts.pop();
-    navigateToFolder(parts.join('/'));
+    navigate(parts.join('/'));
   };
 
-  const handleTogglePublic = async (item: DriveItem) => {
-    setActionLoading(`${item.id}-toggle`);
+  const navigateInto = (dirName: string) => {
+    navigate(currentPath ? `${currentPath}/${dirName}` : dirName);
+  };
+
+  const togglePublic = async () => {
+    if (!listing) return;
+    setActionLoading('toggle');
     try {
-      const res = await fetch(`/api/drive/${item.id}`, {
+      const res = await fetch(`/api/drive/meta?path=${encodeURIComponent(currentPath)}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ isPublic: !item.isPublic }),
+        body: JSON.stringify({ isPublic: !listing.isPublic }),
       });
       if (res.ok) {
-        showToast(item.isPublic ? 'Made private' : 'Made public', 'success');
-        fetchItems();
-      } else {
-        const data = await res.json();
-        showToast(data.error || 'Failed', 'error');
+        showToast(listing.isPublic ? 'Made private' : 'Made public', 'success');
+        fetchListing();
       }
     } catch (e: any) {
       showToast(e.message || 'Failed', 'error');
@@ -166,15 +89,16 @@ export default function Drive() {
     }
   };
 
-  const handleDelete = async (id: string) => {
-    setActionLoading(`${id}-delete`);
+  const handleDelete = async (name: string, isDir: boolean) => {
+    const targetPath = currentPath ? `${currentPath}/${name}` : name;
+    setActionLoading(`delete-${name}`);
     try {
-      const res = await fetch(`/api/drive/${id}`, { method: 'DELETE' });
+      const res = await fetch(`/api/drive?path=${encodeURIComponent(targetPath)}`, { method: 'DELETE' });
       if (res.ok) {
-        showToast('Item deleted', 'success');
-        setExpandedItem(null);
+        showToast(`Deleted ${name}`, 'success');
         setDeleteConfirm(null);
-        fetchItems();
+        if (selectedFile === name) setSelectedFile(null);
+        fetchListing();
       } else {
         const data = await res.json();
         showToast(data.error || 'Delete failed', 'error');
@@ -186,17 +110,12 @@ export default function Drive() {
     }
   };
 
-  const copyUrl = (item: DriveItem) => {
-    navigator.clipboard.writeText(getPublicUrl(item));
-    showToast('URL copied', 'success');
-  };
-
   const handleUpload = async () => {
-    if (!uploadFile || !uploadName.trim()) return;
+    if (!uploadFile) return;
 
-    if (uploadType === 'site' && !uploadFile.name.endsWith('.zip')) {
-      showToast('Sites require a .zip file', 'error');
-      return;
+    if (uploadType === 'site') {
+      if (!uploadFile.name.endsWith('.zip')) { showToast('Sites require a .zip file', 'error'); return; }
+      if (!siteFolderName.trim()) { showToast('Enter a folder name for the site', 'error'); return; }
     }
 
     setUploading(true);
@@ -208,29 +127,26 @@ export default function Drive() {
         reader.readAsDataURL(uploadFile);
       });
 
-      const res = await fetch('/api/drive', {
+      const endpoint = uploadType === 'site' ? '/api/drive/upload-site' : '/api/drive/upload';
+      const body = uploadType === 'site'
+        ? { data: dataUrl, folder: currentPath ? `${currentPath}/${siteFolderName.trim()}` : siteFolderName.trim() }
+        : { data: dataUrl, filename: uploadFile.name, folder: currentPath || undefined };
+
+      const res = await fetch(endpoint, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          name: uploadName.trim(),
-          type: uploadType,
-          isPublic: uploadPublic,
-          data: dataUrl,
-          filename: uploadFile.name,
-          folder: currentFolder || undefined,
-        }),
+        body: JSON.stringify(body),
       });
 
       const data = await res.json();
       if (res.ok) {
-        showToast('Uploaded successfully', 'success');
+        showToast('Uploaded', 'success');
         setShowUpload(false);
-        setUploadName('');
-        setUploadType('file');
-        setUploadPublic(false);
         setUploadFile(null);
+        setUploadType('file');
+        setSiteFolderName('');
         if (fileInputRef.current) fileInputRef.current.value = '';
-        fetchItems();
+        fetchListing();
       } else {
         showToast(data.error || 'Upload failed', 'error');
       }
@@ -241,15 +157,48 @@ export default function Drive() {
     }
   };
 
-  const viewFileInDashboard = (id: string, filePath: string) => {
-    setSelectedFile({ id, path: filePath, url: `/api/drive/${id}/content/${filePath}` });
+  const handleNewFolder = async () => {
+    if (!newFolderName.trim()) return;
+    const folderPath = currentPath ? `${currentPath}/${newFolderName.trim()}` : newFolderName.trim();
+    // Creating a .meta.json in the folder will create the folder
+    try {
+      const res = await fetch(`/api/drive/meta?path=${encodeURIComponent(folderPath)}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ isPublic: false }),
+      });
+      if (res.ok) {
+        showToast('Folder created', 'success');
+        setShowNewFolder(false);
+        setNewFolderName('');
+        fetchListing();
+      } else {
+        showToast('Failed to create folder', 'error');
+      }
+    } catch {
+      showToast('Failed to create folder', 'error');
+    }
   };
 
-  const totalInFolder = currentItems.length + childFolders.length;
+  const copyPublicUrl = () => {
+    const base = window.location.origin;
+    const url = `${base}/d/${currentPath}/`;
+    navigator.clipboard.writeText(url);
+    showToast('URL copied', 'success');
+  };
+
+  const fileUrl = (name: string) => {
+    const p = currentPath ? `${currentPath}/${name}` : name;
+    return `/api/drive/file/${p}`;
+  };
+
+  const publicFileUrl = (name: string) => {
+    const p = currentPath ? `${currentPath}/${name}` : name;
+    return `${window.location.origin}/d/${p}`;
+  };
 
   return (
     <div className="flex flex-col pb-8">
-      {/* Toast */}
       {toast && (
         <div className={`fixed top-4 right-4 z-50 px-4 py-2 rounded-lg shadow-lg text-sm font-medium animate-[slideIn_0.2s_ease-out] ${
           toast.type === 'success' ? 'bg-green-600 text-white' : 'bg-red-600 text-white'
@@ -260,68 +209,100 @@ export default function Drive() {
 
       {/* Header */}
       <div className="flex items-center gap-3 px-4 py-3 border-b border-neutral-800 sticky top-0 bg-black/95 backdrop-blur z-10">
-        <h2 className="text-lg font-semibold text-white">Drive ({items.length})</h2>
-        <button
-          onClick={() => setShowUpload(!showUpload)}
-          className="ml-auto px-3 py-1.5 text-sm font-medium rounded-lg bg-blue-600 hover:bg-blue-500 text-white transition-colors"
-        >
-          {showUpload ? 'Cancel' : '+ Upload'}
-        </button>
+        <h2 className="text-lg font-semibold text-white">Drive</h2>
+        <div className="ml-auto flex gap-2">
+          <button
+            onClick={() => { setShowNewFolder(!showNewFolder); setShowUpload(false); }}
+            className="px-3 py-1.5 text-sm font-medium rounded-lg bg-neutral-700 hover:bg-neutral-600 text-white transition-colors"
+          >
+            + Folder
+          </button>
+          <button
+            onClick={() => { setShowUpload(!showUpload); setShowNewFolder(false); }}
+            className="px-3 py-1.5 text-sm font-medium rounded-lg bg-blue-600 hover:bg-blue-500 text-white transition-colors"
+          >
+            {showUpload ? 'Cancel' : '+ Upload'}
+          </button>
+        </div>
       </div>
 
       <div className="p-4 sm:p-6 max-w-[700px] mx-auto w-full">
         {/* Breadcrumb */}
-        {currentFolder && (
-          <div className="flex items-center gap-1 mb-3 text-sm">
+        <div className="flex items-center gap-1 mb-3 text-sm">
+          <button
+            onClick={() => navigate('')}
+            className={currentPath ? 'text-blue-400 hover:underline' : 'text-white font-medium'}
+          >
+            drive
+          </button>
+          {currentPath && currentPath.split('/').map((part, i, arr) => {
+            const folderPath = arr.slice(0, i + 1).join('/');
+            const isLast = i === arr.length - 1;
+            return (
+              <span key={folderPath} className="flex items-center gap-1">
+                <span className="text-neutral-600">/</span>
+                {isLast ? (
+                  <span className="text-white font-medium">{part}</span>
+                ) : (
+                  <button onClick={() => navigate(folderPath)} className="text-blue-400 hover:underline">{part}</button>
+                )}
+              </span>
+            );
+          })}
+
+          {/* Public indicator + toggle */}
+          {listing && (
+            <span className="ml-3 flex items-center gap-2">
+              <span className={`text-[11px] font-semibold uppercase tracking-wide px-2 py-0.5 rounded-md ${
+                listing.isPublic ? 'text-green-400 bg-green-400/10' : 'text-neutral-500 bg-neutral-500/10'
+              }`}>
+                {listing.isPublic ? 'Public' : 'Private'}
+              </span>
+              <button
+                onClick={togglePublic}
+                disabled={actionLoading === 'toggle'}
+                className="text-xs text-neutral-500 hover:text-white transition-colors"
+              >
+                {actionLoading === 'toggle' ? '...' : listing.isPublic ? 'make private' : 'make public'}
+              </button>
+              {listing.isPublic && currentPath && (
+                <button onClick={copyPublicUrl} className="text-xs text-blue-400 hover:underline">copy url</button>
+              )}
+            </span>
+          )}
+        </div>
+
+        {/* New folder form */}
+        {showNewFolder && (
+          <div className="flex gap-2 mb-3">
+            <input
+              type="text"
+              placeholder="Folder name"
+              value={newFolderName}
+              onChange={e => setNewFolderName(e.target.value)}
+              onKeyDown={e => e.key === 'Enter' && handleNewFolder()}
+              className="flex-1 px-3 py-2 rounded-lg bg-neutral-800 border border-neutral-700 text-white text-sm placeholder:text-neutral-500 focus:outline-none focus:border-blue-500"
+              autoFocus
+            />
             <button
-              onClick={() => navigateToFolder('')}
-              className="text-blue-400 hover:underline"
+              onClick={handleNewFolder}
+              disabled={!newFolderName.trim()}
+              className="px-3 py-2 text-sm font-medium rounded-lg bg-blue-600 hover:bg-blue-500 text-white disabled:opacity-50 transition-colors"
             >
-              Drive
+              Create
             </button>
-            {currentFolder.split('/').map((part, i, arr) => {
-              const folderPath = arr.slice(0, i + 1).join('/');
-              return (
-                <span key={folderPath} className="flex items-center gap-1">
-                  <span className="text-neutral-600">/</span>
-                  {i === arr.length - 1 ? (
-                    <span className="text-white">{part}</span>
-                  ) : (
-                    <button
-                      onClick={() => navigateToFolder(folderPath)}
-                      className="text-blue-400 hover:underline"
-                    >
-                      {part}
-                    </button>
-                  )}
-                </span>
-              );
-            })}
           </div>
         )}
 
         {/* Upload form */}
         {showUpload && (
-          <div className="bg-neutral-900 border border-neutral-800 rounded-xl p-4 sm:p-5 mb-4">
-            <h3 className="text-sm font-semibold text-white mb-3">
-              Upload{currentFolder ? ` to ${currentFolder}` : ''}
-            </h3>
+          <div className="bg-neutral-900 border border-neutral-800 rounded-xl p-4 mb-4">
             <div className="flex flex-col gap-3">
-              <input
-                type="text"
-                placeholder="Name"
-                value={uploadName}
-                onChange={e => setUploadName(e.target.value)}
-                className="w-full px-3 py-2 rounded-lg bg-neutral-800 border border-neutral-700 text-white text-sm placeholder:text-neutral-500 focus:outline-none focus:border-blue-500"
-              />
-
               <div className="flex gap-2">
                 <button
                   onClick={() => setUploadType('file')}
                   className={`px-3 py-1.5 text-sm font-medium rounded-lg transition-colors ${
-                    uploadType === 'file'
-                      ? 'bg-blue-600 text-white'
-                      : 'bg-neutral-800 text-neutral-400 hover:text-white'
+                    uploadType === 'file' ? 'bg-blue-600 text-white' : 'bg-neutral-800 text-neutral-400 hover:text-white'
                   }`}
                 >
                   File
@@ -329,14 +310,22 @@ export default function Drive() {
                 <button
                   onClick={() => setUploadType('site')}
                   className={`px-3 py-1.5 text-sm font-medium rounded-lg transition-colors ${
-                    uploadType === 'site'
-                      ? 'bg-blue-600 text-white'
-                      : 'bg-neutral-800 text-neutral-400 hover:text-white'
+                    uploadType === 'site' ? 'bg-blue-600 text-white' : 'bg-neutral-800 text-neutral-400 hover:text-white'
                   }`}
                 >
                   Site (.zip)
                 </button>
               </div>
+
+              {uploadType === 'site' && (
+                <input
+                  type="text"
+                  placeholder="Folder name for site"
+                  value={siteFolderName}
+                  onChange={e => setSiteFolderName(e.target.value)}
+                  className="w-full px-3 py-2 rounded-lg bg-neutral-800 border border-neutral-700 text-white text-sm placeholder:text-neutral-500 focus:outline-none focus:border-blue-500"
+                />
+              )}
 
               <input
                 ref={fileInputRef}
@@ -346,19 +335,9 @@ export default function Drive() {
                 className="w-full text-sm text-neutral-400 file:mr-3 file:px-3 file:py-1.5 file:rounded-lg file:border-0 file:bg-neutral-800 file:text-neutral-300 file:text-sm file:font-medium file:cursor-pointer hover:file:bg-neutral-700"
               />
 
-              <label className="flex items-center gap-2 text-sm text-neutral-400 cursor-pointer">
-                <input
-                  type="checkbox"
-                  checked={uploadPublic}
-                  onChange={e => setUploadPublic(e.target.checked)}
-                  className="rounded bg-neutral-800 border-neutral-700 text-blue-600 focus:ring-blue-500"
-                />
-                Make public
-              </label>
-
               <button
                 onClick={handleUpload}
-                disabled={uploading || !uploadFile || !uploadName.trim()}
+                disabled={uploading || !uploadFile || (uploadType === 'site' && !siteFolderName.trim())}
                 className="w-full px-3 py-2 text-sm font-medium rounded-lg bg-blue-600 hover:bg-blue-500 text-white disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
               >
                 {uploading ? 'Uploading...' : 'Upload'}
@@ -367,211 +346,115 @@ export default function Drive() {
           </div>
         )}
 
-        {/* Content */}
+        {/* Directory listing */}
         {loading ? (
           <div className="text-center text-neutral-500 py-12">Loading...</div>
-        ) : totalInFolder === 0 && !currentFolder ? (
-          <div className="text-center text-neutral-500 py-12">No items yet. Upload a file or site to get started.</div>
+        ) : !listing ? (
+          <div className="text-center text-neutral-500 py-12">Failed to load</div>
         ) : (
-          <div className="flex flex-col gap-2">
-            {/* Back button */}
-            {currentFolder && (
+          <div className="flex flex-col gap-1">
+            {/* Back */}
+            {currentPath && (
               <button
                 onClick={navigateUp}
-                className="flex items-center gap-2 px-4 py-3 bg-neutral-900 border border-neutral-800 rounded-xl text-sm text-neutral-400 hover:bg-neutral-800 hover:text-white transition-colors"
+                className="flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm text-neutral-400 hover:bg-neutral-800 hover:text-white transition-colors"
               >
-                <span>&#x2190;</span> ..
+                <span className="w-5 text-center">..</span>
               </button>
             )}
 
             {/* Folders */}
-            {childFolders.map(folder => {
-              const folderName = folder.split('/').pop()!;
-              // Count items inside this folder (recursively)
-              const itemCount = items.filter(i => i.folder === folder || i.folder.startsWith(folder + '/')).length;
-              return (
+            {listing.dirs.map(dir => (
+              <div key={dir.name} className="group flex items-center rounded-lg hover:bg-neutral-800 transition-colors">
                 <button
-                  key={folder}
-                  onClick={() => navigateToFolder(folder)}
-                  className="flex items-center gap-3 px-4 py-3 bg-neutral-900 border border-neutral-800 rounded-xl text-left hover:border-neutral-700 transition-colors"
+                  onClick={() => navigateInto(dir.name)}
+                  className="flex-1 flex items-center gap-3 px-3 py-2.5 text-left text-sm"
                 >
-                  <span className="text-lg">&#x1F4C1;</span>
-                  <span className="text-sm font-semibold text-white">{folderName}</span>
-                  <span className="text-xs text-neutral-600">{itemCount} item{itemCount !== 1 ? 's' : ''}</span>
+                  <span className="w-5 text-center text-neutral-500">&#x1F4C1;</span>
+                  <span className="text-white font-medium">{dir.name}</span>
+                  {dir.meta?.isPublic && (
+                    <span className="text-[10px] font-semibold uppercase tracking-wide px-1.5 py-0.5 rounded text-green-400 bg-green-400/10">public</span>
+                  )}
                 </button>
-              );
-            })}
-
-            {/* Items */}
-            {currentItems.map(item => (
-              <div
-                key={item.id}
-                className="bg-neutral-900 border border-neutral-800 rounded-xl overflow-hidden hover:border-neutral-700 transition-colors"
-              >
-                {/* Card header */}
-                <div
-                  className="p-4 sm:p-5 cursor-pointer"
-                  onClick={() => toggleExpand(item.id)}
-                >
-                  <div className="flex justify-between items-center mb-2">
-                    <div className="flex items-center gap-2">
-                      <span className="text-base font-semibold text-white">{item.name}</span>
-                      <span className={`text-[11px] font-semibold uppercase tracking-wide px-2 py-0.5 rounded-md ${
-                        item.type === 'site'
-                          ? 'text-purple-400 bg-purple-400/10'
-                          : 'text-sky-400 bg-sky-400/10'
-                      }`}>
-                        {item.type}
-                      </span>
-                      <span className={`ml-1 text-lg transition-transform ${expandedItem === item.id ? 'rotate-180' : ''}`}>&#x25BC;</span>
-                    </div>
-                    <span className={`text-[11px] font-semibold uppercase tracking-wide px-2 py-0.5 rounded-md ${
-                      item.isPublic
-                        ? 'text-green-400 bg-green-400/10'
-                        : 'text-neutral-500 bg-neutral-500/10'
-                    }`}>
-                      {item.isPublic ? 'Public' : 'Private'}
-                    </span>
-                  </div>
-
-                  {item.description && (
-                    <p className="text-sm text-neutral-500 mb-2 leading-relaxed">{item.description}</p>
-                  )}
-
-                  {item.isPublic && (
+                {deleteConfirm === dir.name ? (
+                  <div className="flex items-center gap-1 pr-2">
                     <button
-                      className="inline-block text-sm text-blue-400 hover:underline mb-2"
-                      onClick={e => { e.stopPropagation(); copyUrl(item); }}
-                      title="Click to copy"
+                      onClick={() => handleDelete(dir.name, true)}
+                      disabled={actionLoading === `delete-${dir.name}`}
+                      className="text-xs px-2 py-1 rounded bg-red-600 text-white hover:bg-red-500 disabled:opacity-50"
                     >
-                      {getPublicUrl(item).replace(/^https?:\/\//, '')} &#x2197;
+                      {actionLoading === `delete-${dir.name}` ? '...' : 'Delete'}
                     </button>
-                  )}
-
-                  <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs text-neutral-600">
-                    {item.filename && <span>{item.filename}</span>}
-                    {item.createdAt && <span>{formatDate(item.createdAt)}</span>}
+                    <button onClick={() => setDeleteConfirm(null)} className="text-xs px-2 py-1 rounded bg-neutral-700 text-white hover:bg-neutral-600">No</button>
                   </div>
-                </div>
-
-                {/* Expanded panel */}
-                {expandedItem === item.id && (
-                  <div className="border-t border-neutral-800 bg-neutral-950">
-                    {/* Actions */}
-                    <div className="p-4 flex flex-wrap gap-2 border-b border-neutral-800">
-                      <button
-                        onClick={() => handleTogglePublic(item)}
-                        disabled={actionLoading === `${item.id}-toggle`}
-                        className={`px-3 py-1.5 text-sm font-medium rounded-lg transition-colors disabled:opacity-50 ${
-                          item.isPublic
-                            ? 'bg-neutral-700 hover:bg-neutral-600 text-white'
-                            : 'bg-green-600 hover:bg-green-500 text-white'
-                        }`}
-                      >
-                        {actionLoading === `${item.id}-toggle` ? '...' : item.isPublic ? 'Make Private' : 'Make Public'}
-                      </button>
-
-                      {item.isPublic && (
-                        <button
-                          onClick={() => copyUrl(item)}
-                          className="px-3 py-1.5 text-sm font-medium rounded-lg bg-neutral-700 hover:bg-neutral-600 text-white transition-colors"
-                        >
-                          Copy URL
-                        </button>
-                      )}
-
-                      {item.isPublic && (
-                        <a
-                          href={getPublicUrl(item)}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="px-3 py-1.5 text-sm font-medium rounded-lg bg-neutral-700 hover:bg-neutral-600 text-white transition-colors inline-flex items-center"
-                        >
-                          Open &#x2197;
-                        </a>
-                      )}
-
-                      {deleteConfirm === item.id ? (
-                        <div className="flex gap-2 ml-auto">
-                          <span className="text-sm text-red-400 self-center">Delete forever?</span>
-                          <button
-                            onClick={() => handleDelete(item.id)}
-                            disabled={actionLoading === `${item.id}-delete`}
-                            className="px-3 py-1.5 text-sm font-medium rounded-lg bg-red-600 hover:bg-red-500 text-white disabled:opacity-50 transition-colors"
-                          >
-                            {actionLoading === `${item.id}-delete` ? '...' : 'Yes, Delete'}
-                          </button>
-                          <button
-                            onClick={() => setDeleteConfirm(null)}
-                            className="px-3 py-1.5 text-sm font-medium rounded-lg bg-neutral-700 hover:bg-neutral-600 text-white transition-colors"
-                          >
-                            Cancel
-                          </button>
-                        </div>
-                      ) : (
-                        <button
-                          onClick={() => setDeleteConfirm(item.id)}
-                          className="px-3 py-1.5 text-sm font-medium rounded-lg bg-red-900/50 hover:bg-red-800/50 text-red-400 ml-auto transition-colors"
-                        >
-                          Delete
-                        </button>
-                      )}
-                    </div>
-
-                    {/* Files section */}
-                    <div className="p-4">
-                      <h4 className="text-sm font-semibold text-neutral-400 mb-3">Files</h4>
-                      {!itemFiles[item.id] ? (
-                        <div className="text-sm text-neutral-600">Loading files...</div>
-                      ) : (
-                        <div className="flex flex-col sm:flex-row gap-4">
-                          {/* File list */}
-                          <div className="sm:w-56 shrink-0">
-                            <div className="flex flex-col gap-1 max-h-64 overflow-y-auto">
-                              {itemFiles[item.id]
-                                .filter(f => !f.isDir)
-                                .map(file => (
-                                  <button
-                                    key={file.path}
-                                    onClick={() => viewFileInDashboard(item.id, file.path)}
-                                    className={`text-left px-2 py-2 rounded text-sm transition-colors ${
-                                      selectedFile?.id === item.id && selectedFile?.path === file.path
-                                        ? 'bg-blue-600 text-white'
-                                        : 'text-neutral-300 hover:bg-neutral-800 hover:text-white'
-                                    }`}
-                                  >
-                                    <div className="font-medium">{file.path.split('/').pop()}</div>
-                                    <div className="flex gap-2 text-xs opacity-50">
-                                      {file.path.includes('/') && <span>{file.path.split('/').slice(0, -1).join('/')}/</span>}
-                                      <span>{formatBytes(file.size)}</span>
-                                    </div>
-                                  </button>
-                                ))}
-                            </div>
-                          </div>
-
-                          {/* File preview */}
-                          <div className="flex-1 min-w-0">
-                            {selectedFile?.id === item.id ? (
-                              <FilePreview url={selectedFile.url} filePath={selectedFile.path} />
-                            ) : (
-                              <div className="text-sm text-neutral-600 italic">
-                                Click a file to preview
-                              </div>
-                            )}
-                          </div>
-                        </div>
-                      )}
-                    </div>
-                  </div>
+                ) : (
+                  <button
+                    onClick={() => setDeleteConfirm(dir.name)}
+                    className="text-neutral-700 hover:text-red-400 px-2 py-1 opacity-0 group-hover:opacity-100 transition-opacity text-xs"
+                  >
+                    &#x2715;
+                  </button>
                 )}
               </div>
             ))}
 
-            {/* Empty folder */}
-            {currentFolder && currentItems.length === 0 && childFolders.length === 0 && (
-              <div className="text-center text-neutral-500 py-8">This folder is empty</div>
+            {/* Files */}
+            {listing.files.map(file => (
+              <div key={file.name} className="group flex items-center rounded-lg hover:bg-neutral-800 transition-colors">
+                <button
+                  onClick={() => setSelectedFile(selectedFile === file.name ? null : file.name)}
+                  className={`flex-1 flex items-center gap-3 px-3 py-2.5 text-left text-sm ${
+                    selectedFile === file.name ? 'bg-blue-600/20' : ''
+                  }`}
+                >
+                  <span className="w-5 text-center text-neutral-600">&#x1F4C4;</span>
+                  <span className="text-neutral-200">{file.name}</span>
+                  <span className="text-xs text-neutral-600">{formatBytes(file.size)}</span>
+                </button>
+                {listing.isPublic && (
+                  <button
+                    onClick={() => { navigator.clipboard.writeText(publicFileUrl(file.name)); showToast('URL copied', 'success'); }}
+                    className="text-xs text-neutral-600 hover:text-blue-400 px-2 opacity-0 group-hover:opacity-100 transition-opacity"
+                    title="Copy public URL"
+                  >
+                    link
+                  </button>
+                )}
+                {deleteConfirm === file.name ? (
+                  <div className="flex items-center gap-1 pr-2">
+                    <button
+                      onClick={() => handleDelete(file.name, false)}
+                      disabled={actionLoading === `delete-${file.name}`}
+                      className="text-xs px-2 py-1 rounded bg-red-600 text-white hover:bg-red-500 disabled:opacity-50"
+                    >
+                      {actionLoading === `delete-${file.name}` ? '...' : 'Delete'}
+                    </button>
+                    <button onClick={() => setDeleteConfirm(null)} className="text-xs px-2 py-1 rounded bg-neutral-700 text-white hover:bg-neutral-600">No</button>
+                  </div>
+                ) : (
+                  <button
+                    onClick={() => setDeleteConfirm(file.name)}
+                    className="text-neutral-700 hover:text-red-400 px-2 py-1 opacity-0 group-hover:opacity-100 transition-opacity text-xs"
+                  >
+                    &#x2715;
+                  </button>
+                )}
+              </div>
+            ))}
+
+            {listing.dirs.length === 0 && listing.files.length === 0 && !currentPath && (
+              <div className="text-center text-neutral-500 py-12">Drive is empty. Upload a file or create a folder.</div>
             )}
+            {listing.dirs.length === 0 && listing.files.length === 0 && currentPath && (
+              <div className="text-center text-neutral-500 py-8">Empty folder</div>
+            )}
+          </div>
+        )}
+
+        {/* File preview */}
+        {selectedFile && (
+          <div className="mt-4">
+            <FilePreview url={fileUrl(selectedFile)} filePath={selectedFile} />
           </div>
         )}
       </div>
@@ -586,7 +469,6 @@ export default function Drive() {
   );
 }
 
-/** Preview a file served from the drive content API */
 function FilePreview({ url, filePath }: { url: string; filePath: string }) {
   const ext = filePath.split('.').pop()?.toLowerCase() || '';
   const imageExts = ['png', 'jpg', 'jpeg', 'gif', 'webp', 'svg', 'bmp'];
@@ -612,10 +494,9 @@ function FilePreview({ url, filePath }: { url: string; filePath: string }) {
     return <TextFilePreview url={url} filePath={filePath} />;
   }
 
-  // Fallback: download link
   return (
     <div className="bg-neutral-900 border border-neutral-800 rounded-lg p-4 text-sm text-neutral-400">
-      <a href={url} download className="text-blue-400 hover:underline">Download {filePath.split('/').pop()}</a>
+      <a href={url} download className="text-blue-400 hover:underline">Download {filePath}</a>
     </div>
   );
 }

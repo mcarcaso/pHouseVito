@@ -42,7 +42,7 @@ export class DashboardChannel implements Channel {
   private server = createServer(this.app);
   private wss = new WebSocketServer({ server: this.server });
   private clients = new Set<WebSocket>();
-  private port = 3030;
+  private port = parseInt(process.env.PORT || "3030", 10);
   private eventHandler?: (event: InboundEvent) => void;
 
   private skillsGetter?: () => any[];
@@ -123,6 +123,10 @@ export class DashboardChannel implements Channel {
     this.app.use("/attachments", express.static(ATTACHMENTS_DIR));
 
     // API endpoints
+    this.app.get("/api/health", (req, res) => {
+      res.json({ status: "ok", timestamp: new Date().toISOString() });
+    });
+
     this.app.get("/api/config", (req, res) => {
       res.json(this.config);
     });

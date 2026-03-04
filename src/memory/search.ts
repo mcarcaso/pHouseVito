@@ -23,21 +23,21 @@ import { join, resolve } from "path";
 
 const ROOT = resolve(process.cwd());
 const EMBEDDINGS_DB_PATH = join(ROOT, "user", "embeddings.db");
-const EMBEDDING_MODEL = "text-embedding-3-small";
+const EMBEDDING_MODEL = "openai/text-embedding-3-small";
 
 // Auto-search settings
 const AUTO_SEARCH_LIMIT = 3;           // Max chunks to inject
 const AUTO_SEARCH_RRF_THRESHOLD = 0.005; // Minimum RRF score to include (filters noise)
 const RRF_K = 60;                      // RRF constant
 
-let openaiApiKey: string | null = null;
+let openrouterApiKey: string | null = null;
 
-function getOpenAIKey(): string {
-  if (!openaiApiKey) {
+function getOpenRouterKey(): string {
+  if (!openrouterApiKey) {
     const secrets = JSON.parse(readFileSync(join(ROOT, "user", "secrets.json"), "utf-8"));
-    openaiApiKey = secrets.OPENAI_API_KEY;
+    openrouterApiKey = secrets.OPENROUTER_API_KEY;
   }
-  return openaiApiKey!;
+  return openrouterApiKey!;
 }
 
 // ── Shared DB ──────────────────────────────────────────────
@@ -71,7 +71,10 @@ function cosineSimilarity(a: Float32Array, b: Float32Array): number {
 // ── Embed Query ────────────────────────────────────────────
 
 async function embedQuery(text: string): Promise<Float32Array> {
-  const openai = new OpenAI({ apiKey: getOpenAIKey() });
+  const openai = new OpenAI({ 
+    apiKey: getOpenRouterKey(),
+    baseURL: "https://openrouter.ai/api/v1",
+  });
   const response = await openai.embeddings.create({
     model: EMBEDDING_MODEL,
     input: text,

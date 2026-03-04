@@ -19,7 +19,7 @@ import { getProviders, getModels } from "@mariozechner/pi-ai";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const ATTACHMENTS_DIR = path.join(process.cwd(), "data", "attachments");
-const CONFIG_PATH = path.join(process.cwd(), "user", "vito.config.json");
+const CONFIG_PATH = path.join(process.cwd(), "user", "config.json");
 
 interface DashboardMessage {
   type: "chat" | "typing" | "status";

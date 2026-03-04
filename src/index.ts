@@ -78,7 +78,7 @@ async function main() {
   // Start channels
   await orchestrator.start();
 
-  console.log("\nVito is ready. Dashboard at http://localhost:3030\n");
+  console.log(`\nVito is ready. Dashboard at http://localhost:${process.env.PORT || 3030}\n`);
 
   // Heartbeat log every 30 minutes
   setInterval(() => {
@@ -88,7 +88,7 @@ async function main() {
   }, 30 * 60 * 1000); // 30 minutes
 
   // Watch config file for changes (hot-reload cron jobs)
-  const configPath = resolve(USER_DIR, "vito.config.json");
+  const configPath = resolve(USER_DIR, "config.json");
   let reloadTimeout: NodeJS.Timeout | null = null;
   
   watch(configPath, (eventType) => {

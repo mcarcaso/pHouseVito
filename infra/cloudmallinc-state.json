@@ -1,0 +1,12 @@
+{
+    "instance_id": "i-09b8aa75395f7b5d2",
+    "elastic_ip": "3.230.56.39",
+    "allocation_id": "eipalloc-04b7bfb4f14f71259",
+    "security_group_id": "sg-0be29ca2470fbd0ad",
+    "key_name": "cloudmallinc-key",
+    "region": "us-east-1",
+    "domain": "cloudmallinc.com",
+    "hosted_zone_id": "ZGK9R74Z2VF3P",
+    "iam_role": "cloudmallinc-certbot-role",
+    "created_at": "2026-03-04T02:56:38Z"
+}

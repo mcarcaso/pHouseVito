@@ -23,7 +23,7 @@
 ## Restart vs Hot-Reload
 
 - **Needs restart:** Changes to `src/` or `dashboard/` (after build)
-- **Hot-reloaded:** Skills, `user/vito.config.json`, SOUL.md, SYSTEM.md, new PM2 apps
+- **Hot-reloaded:** Skills, `user/config.json`, SOUL.md, SYSTEM.md, new PM2 apps
 
 ## Cardinal Rules
 
@@ -42,7 +42,7 @@ When instructions are vague, investigate before asking:
 
 - **Database:** `user/vito.db`
 - **Profile:** `user/profile.json`
-- **Config:** `user/vito.config.json`
+- **Config:** `user/config.json`
 - **Skills:** `user/skills/<name>/`
 - **Images:** `user/images/`
 - **Backend:** `src/`
@@ -50,11 +50,11 @@ When instructions are vague, investigate before asking:
 
 ## Config
 
-All config lives in `user/vito.config.json`. See `src/types.ts` for `VitoConfig`, `Settings`, `ChannelConfig`.
+All config lives in `user/config.json`. See `src/types.ts` for `VitoConfig`, `Settings`, `ChannelConfig`.
 
 Settings cascade: **Global** → **Channel** → **Session** (most specific wins).
 
-**When told to change a setting, write it to `user/vito.config.json` directly.**
+**When told to change a setting, write it to `user/config.json` directly.**
 
 ## Sessions
 

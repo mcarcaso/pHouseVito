@@ -1,0 +1,8 @@
+node_modules
+dashboard/node_modules
+dist
+dashboard/dist
+.git
+user
+infra
+*.log

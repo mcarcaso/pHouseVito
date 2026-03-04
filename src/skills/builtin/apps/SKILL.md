@@ -1,26 +1,38 @@
 ---
 name: apps
-description: Create, deploy, and manage web apps accessible via Cloudflare tunnel at <name>.theworstproductions.com
+description: Create, deploy, and manage web apps accessible at subdomains of your configured base domain
 ---
 
 # Apps Skill
 
-Create and deploy web apps using ANY technology stack — static HTML, React, Node.js, Python, Astro, whatever the job calls for. Apps are served locally and exposed to the public internet via Cloudflare tunnel.
+Create and deploy web apps using ANY technology stack — static HTML, React, Node.js, Python, Astro, whatever the job calls for. Apps run locally on PM2 and are accessible via your configured domain.
 
 ## Architecture
 
 - **App directory:** `user/apps/<name>/` — each deployed app gets its own folder
-- **Metadata:** `.vito-app.json` in each app folder (name, description, port, URL, createdAt)
+- **Metadata:** `.app-meta.json` in each app folder (name, description, port, URL, createdAt)
 - **PM2 tracking:** Each app registered as `app-<name>` in PM2
-- **Cloudflare tunnel:** Adds ingress entry to `~/.cloudflared/config.yml`, restarts tunnel
-- **DNS Records:** Created automatically via `cloudflared tunnel route dns` command for each app
-- **Ports:** Auto-assigned starting from 3100, scanned from tunnel config to avoid conflicts
-- **Dashboard:** Apps page (`/apps`) reads metadata + PM2 status via `GET /api/apps`
+- **Ports:** Auto-assigned starting from 3100 (configurable via `apps.portStart` in config.json)
+
+## Configuration
+
+In your `config.json`:
+
+```json
+{
+  "apps": {
+    "baseDomain": "your-domain.com",
+    "portStart": 3100
+  }
+}
+```
+
+If `baseDomain` is null, apps will be accessible at `http://localhost:<port>`.
 
 ## Lifecycle
 
-- **create_app:** Writes files → installs deps → starts server → adds tunnel entry → restarts cloudflared
-- **delete_app:** Stops PM2 process → removes tunnel entry → deletes files → restarts cloudflared
+- **create_app:** Writes files → installs deps → starts server on assigned port
+- **delete_app:** Stops PM2 process → deletes files
 - **Updates:** If app name already exists, files are overwritten and server is restarted
 
 ## When to Use
@@ -51,57 +63,18 @@ Use this skill when you need to:
 - For React-style apps, use self-contained approaches (CDN imports, single-file bundles)
 - The server MUST listen on the port passed via `--port` flag
 - Keep app names short, lowercase, URL-friendly (letters, numbers, hyphens)
-- **No caching by default** — add a `serve.json` file to disable caching:
-  ```json
-  {
-    "headers": [
-      { "source": "**/*", "headers": [{ "key": "Cache-Control", "value": "no-cache, no-store, must-revalidate" }] }
-    ]
-  }
-  ```
-  This ensures updates are live immediately without waiting for Cloudflare cache to expire.
-
----
-
-### ⚠️ APP ICONS — DO NOT SKIP THIS STEP ⚠️
-
-**Every app MUST have icons.** Use the `gemini-image` skill to generate them:
-
-1. **Generate the icon** after the app is created (so you have a directory to save to):
-   ```bash
-   ~/vito3.0/user/skills/gemini-image/generate.py "your icon description" -o ~/vito3.0/user/apps/<name>/icon-180.png
-   ```
-   **⚠️ EDGE-TO-EDGE — NO WHITE BORDERS:** Always include in the prompt: "filling the ENTIRE image edge to edge with NO border, NO padding, NO rounded corners, NO margins, NO white space around edges." The background must bleed to every pixel edge. iOS adds its own rounded mask — never bake one in.
-
-2. **Resize for both sizes** using sips:
-   ```bash
-   cd ~/vito3.0/user/apps/<name>
-   sips -z 180 180 icon-180.png  # resize to 180x180 for iOS
-   cp icon-180.png icon-full.png && sips -z 32 32 icon-full.png --out icon-32.png && rm icon-full.png
-   ```
-
-3. **Add meta tags to the HTML** (in the `<head>`):
-   ```html
-   <link rel="icon" type="image/png" href="icon-32.png">
-   <link rel="apple-touch-icon" href="icon-180.png">
-   <meta name="apple-mobile-web-app-capable" content="yes">
-   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-   <meta name="apple-mobile-web-app-title" content="App Name">
-   ```
-
-**Important:** Use unique filenames like `icon-180.png` and `icon-32.png` instead of generic names like `apple-touch-icon.png` or `favicon.png`. Cloudflare aggressively caches these common filenames, and if they get cached with wrong content-type (e.g., from SPA mode routing), you'll be stuck waiting hours for cache to expire.
 
 ## Tools
 
 ### create_app
-Creates app with provided files, installs deps, starts server, adds Cloudflare entry.
+Creates app with provided files, installs deps, starts server.
 - Updates existing apps if the name already exists (restarts server after update)
 
 ### list_apps
 Lists all deployed apps with URLs, ports, and PM2 status.
 
 ### delete_app
-Stops server, removes PM2 process, removes Cloudflare entry, deletes files.
+Stops server, removes PM2 process, deletes files.
 
 ## Examples
 
@@ -116,16 +89,16 @@ Stops server, removes PM2 process, removes Cloudflare entry, deletes files.
 ```
 user/apps/
 ├── my-portfolio/
-│   ├── .vito-app.json    (metadata — port, url, description)
+│   ├── .app-meta.json    (metadata — port, url, description)
 │   ├── index.html
 │   ├── style.css
 │   └── script.js
 ├── my-api/
-│   ├── .vito-app.json
+│   ├── .app-meta.json
 │   ├── server.js
 │   └── package.json
 ├── my-flask-app/
-│   ├── .vito-app.json
+│   ├── .app-meta.json
 │   ├── server.py
 │   └── requirements.txt
 ```

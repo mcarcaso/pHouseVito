@@ -59,7 +59,7 @@ cp -r user.example user
 # Edit user/secrets.json and fill in your keys
 
 # Configure your settings
-# Edit user/vito.config.json to set model, channels, etc.
+# Edit user/config.json to set model, channels, etc.
 
 # Configure PM2 paths
 # Edit user/ecosystem.config.cjs and set your node path
@@ -80,7 +80,7 @@ The `user.example/` directory is the template — copy it to `user/` to get star
 user/
 ├── SOUL.md                  # Your agent's personality (edit this!)
 ├── secrets.json             # API keys and tokens
-├── vito.config.json         # Model, memory, and channel settings
+├── config.json         # Model, memory, and channel settings
 ├── ecosystem.config.cjs     # PM2 process manager config
 ├── vito.db                  # SQLite database (auto-created)
 ├── memories/                # Long-term memory docs (auto-managed)
@@ -113,7 +113,7 @@ pHouseVito/
 └── user/                      # Your data, config, and customizations (gitignored)
     ├── SOUL.md                # Agent personality
     ├── secrets.json           # API keys
-    ├── vito.config.json       # Configuration
+    ├── config.json       # Configuration
     ├── ecosystem.config.cjs   # PM2 config
     ├── vito.db                # SQLite database
     ├── memories/              # Long-term memory docs
@@ -202,7 +202,7 @@ Harnesses are pluggable AI backends that handle the actual LLM interaction. Curr
 - **claude-code** — Uses the Claude Code SDK. Supports Sonnet and Opus models with configurable permission mode.
 - **pi-coding-agent** — Uses the Pi Coding Agent SDK. Supports multiple providers (OpenAI, Anthropic, Google, OpenRouter) with thinking levels.
 
-Configure your default harness in `user/vito.config.json`:
+Configure your default harness in `user/config.json`:
 ```json
 {
   "settings": {
@@ -276,13 +276,13 @@ Channels are adapters that convert between platform-specific formats and Vito's 
 ### Cron + Scheduler
 
 - **node-cron** schedules recurring jobs
-- Jobs live in `user/vito.config.json` and hot-reload on config change
+- Jobs live in `user/config.json` and hot-reload on config change
 - `NO_REPLY` message marker suppresses replies when `sendCondition` isn’t met
 - Health check endpoint at `/api/cron/health` exposes runner state
 
 ### Bot Identity + Mentions
 
-- `bot.name` in `user/vito.config.json` defines Vito’s display name
+- `bot.name` in `user/config.json` defines Vito’s display name
 - Channels normalize @mentions to `@{bot.name}` for clean storage
 - `requireMention` can be overridden per session/channel in the settings cascade
 

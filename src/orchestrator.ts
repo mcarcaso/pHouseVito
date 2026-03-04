@@ -307,7 +307,7 @@ export class Orchestrator {
   private async removeJobFromConfig(jobName: string): Promise<void> {
     console.log(`[Config] removeJobFromConfig called for: ${jobName}`);
     try {
-      const configPath = resolve(process.cwd(), "user/vito.config.json");
+      const configPath = resolve(process.cwd(), "user/config.json");
       console.log(`[Config] Config path resolved to: ${configPath}`);
       const fs = await import("fs/promises");
       const configText = await fs.readFile(configPath, "utf-8");

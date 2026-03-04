@@ -7,7 +7,12 @@
       "WebFetch(domain:www.npmjs.com)",
       "Bash(npm install:*)",
       "Bash(npx tsc:*)",
-      "Bash(timeout 5 npx tsx:*)"
+      "Bash(timeout 5 npx tsx:*)",
+      "Bash(xargs:*)",
+      "Bash(./infra/build-vito-image.sh:*)",
+      "Bash(ssh:*)",
+      "Bash(npm run build:*)",
+      "Bash(test:*)"
     ]
   }
 }

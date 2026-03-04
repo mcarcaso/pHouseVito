@@ -18,7 +18,7 @@ export function ensureUserDir(): void {
 }
 
 export function loadConfig(): VitoConfig {
-  const configPath = resolve(USER_DIR, "vito.config.json");
+  const configPath = resolve(USER_DIR, "config.json");
   if (!existsSync(configPath)) {
     throw new Error(`Config file not found: ${configPath}`);
   }

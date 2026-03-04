@@ -25,18 +25,27 @@ const DRIVE_DIR = path.join(process.cwd(), "user", "drive");
 const CONFIG_PATH = path.join(process.cwd(), "user", "vito.config.json");
 
 /** Check if a path inside DRIVE_DIR is public by walking up the directory tree.
- *  Nearest .meta.json wins. No .meta.json anywhere = private. */
+ *  Nearest .meta.json wins. Per-file overrides in "files" map take priority.
+ *  No .meta.json anywhere = private. */
 function isDrivePathPublic(absPath: string): boolean {
-  let dir = absPath;
-  if (!statSync(absPath).isDirectory()) dir = path.dirname(absPath);
+  const isFile = existsSync(absPath) && !statSync(absPath).isDirectory();
+  const fileName = isFile ? path.basename(absPath) : null;
+  let dir = isFile ? path.dirname(absPath) : absPath;
+  let checkedFileOverride = false;
+
   while (dir.startsWith(DRIVE_DIR)) {
     const metaPath = path.join(dir, ".meta.json");
     if (existsSync(metaPath)) {
       try {
         const meta = JSON.parse(readFileSync(metaPath, "utf-8"));
+        // Check per-file override (only in the file's own directory)
+        if (fileName && !checkedFileOverride && meta.files?.[fileName]) {
+          return Boolean(meta.files[fileName].isPublic);
+        }
         return Boolean(meta.isPublic);
       } catch { return false; }
     }
+    checkedFileOverride = true; // only check file overrides in immediate dir
     if (dir === DRIVE_DIR) break;
     dir = path.dirname(dir);
   }
@@ -1479,7 +1488,7 @@ export class DashboardChannel implements Channel {
 
         const entries = readdirSync(dir, { withFileTypes: true });
         const dirs: { name: string; hasMeta: boolean; meta: any }[] = [];
-        const files: { name: string; size: number }[] = [];
+        const files: { name: string; size: number; isPublic: boolean }[] = [];
 
         for (const entry of entries) {
           if (entry.name === ".meta.json") continue;
@@ -1491,7 +1500,9 @@ export class DashboardChannel implements Channel {
             }
             dirs.push({ name: entry.name, hasMeta: Boolean(childMeta), meta: childMeta });
           } else {
-            files.push({ name: entry.name, size: statSync(path.join(dir, entry.name)).size });
+            const filePath = path.join(dir, entry.name);
+            const filePublic = isDrivePathPublic(filePath);
+            files.push({ name: entry.name, size: statSync(filePath).size, isPublic: filePublic });
           }
         }
 
@@ -1607,6 +1618,44 @@ export class DashboardChannel implements Channel {
 
         writeFileSync(metaPath, JSON.stringify(meta, null, 2));
         res.json(meta);
+      } catch (e: any) {
+        res.status(500).json({ error: e.message });
+      }
+    });
+
+    // Toggle per-file public override
+    this.app.put("/api/drive/file-meta", (req, res) => {
+      try {
+        const reqPath = (req.query.path as string) || "";
+        const filePath = path.resolve(DRIVE_DIR, reqPath);
+        if (!filePath.startsWith(DRIVE_DIR + path.sep)) { res.status(403).json({ error: "Access denied" }); return; }
+        if (!existsSync(filePath) || statSync(filePath).isDirectory()) {
+          res.status(404).json({ error: "File not found" });
+          return;
+        }
+
+        const dir = path.dirname(filePath);
+        const fileName = path.basename(filePath);
+        const metaPath = path.join(dir, ".meta.json");
+
+        let meta: any = {};
+        if (existsSync(metaPath)) {
+          try { meta = JSON.parse(readFileSync(metaPath, "utf-8")); } catch {}
+        }
+
+        if (!meta.files) meta.files = {};
+        const { isPublic } = req.body;
+
+        if (isPublic === undefined || isPublic === null) {
+          // Remove override — fall back to dir-level
+          delete meta.files[fileName];
+          if (Object.keys(meta.files).length === 0) delete meta.files;
+        } else {
+          meta.files[fileName] = { isPublic: Boolean(isPublic) };
+        }
+
+        writeFileSync(metaPath, JSON.stringify(meta, null, 2));
+        res.json({ file: fileName, isPublic: isDrivePathPublic(filePath) });
       } catch (e: any) {
         res.status(500).json({ error: e.message });
       }

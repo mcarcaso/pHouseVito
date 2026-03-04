@@ -5,7 +5,7 @@ interface DirListing {
   meta: any | null;
   isPublic: boolean;
   dirs: { name: string; hasMeta: boolean; meta: any | null }[];
-  files: { name: string; size: number }[];
+  files: { name: string; size: number; isPublic: boolean }[];
 }
 
 function formatBytes(bytes: number): string {
@@ -89,7 +89,27 @@ export default function Drive() {
     }
   };
 
-  const handleDelete = async (name: string, isDir: boolean) => {
+  const toggleFilePublic = async (fileName: string, currentlyPublic: boolean) => {
+    const filePath = currentPath ? `${currentPath}/${fileName}` : fileName;
+    setActionLoading(`toggle-${fileName}`);
+    try {
+      const res = await fetch(`/api/drive/file-meta?path=${encodeURIComponent(filePath)}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ isPublic: !currentlyPublic }),
+      });
+      if (res.ok) {
+        showToast(currentlyPublic ? `${fileName} made private` : `${fileName} made public`, 'success');
+        fetchListing();
+      }
+    } catch (e: any) {
+      showToast(e.message || 'Failed', 'error');
+    } finally {
+      setActionLoading(null);
+    }
+  };
+
+  const handleDelete = async (name: string, _isDir: boolean) => {
     const targetPath = currentPath ? `${currentPath}/${name}` : name;
     setActionLoading(`delete-${name}`);
     try {
@@ -411,7 +431,19 @@ export default function Drive() {
                   <span className="text-neutral-200">{file.name}</span>
                   <span className="text-xs text-neutral-600">{formatBytes(file.size)}</span>
                 </button>
-                {listing.isPublic && (
+                <button
+                  onClick={() => toggleFilePublic(file.name, file.isPublic)}
+                  disabled={actionLoading === `toggle-${file.name}`}
+                  className={`text-[10px] font-semibold uppercase tracking-wide px-1.5 py-0.5 rounded cursor-pointer transition-colors shrink-0 ${
+                    file.isPublic
+                      ? 'text-green-400 bg-green-400/10 hover:bg-green-400/20'
+                      : 'text-neutral-600 bg-neutral-600/10 hover:bg-neutral-600/20'
+                  }`}
+                  title={file.isPublic ? 'Click to make private' : 'Click to make public'}
+                >
+                  {actionLoading === `toggle-${file.name}` ? '...' : file.isPublic ? 'public' : 'private'}
+                </button>
+                {file.isPublic && (
                   <button
                     onClick={() => { navigator.clipboard.writeText(publicFileUrl(file.name)); showToast('URL copied', 'success'); }}
                     className="text-xs text-neutral-600 hover:text-blue-400 px-2 opacity-0 group-hover:opacity-100 transition-opacity"

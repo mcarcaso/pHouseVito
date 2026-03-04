@@ -1,4 +1,7 @@
 {
+  "bot": {
+    "name": "Assistant"
+  },
   "settings": {
     "harness": "claude-code",
     "streamMode": "stream",

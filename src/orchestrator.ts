@@ -38,7 +38,7 @@ export function buildTestSystemPrompt(
   soul: string,
   skillsDir: string,
   channelPrompt: string = "",
-  botName: string = "Assistant"
+  botName?: string
 ): string {
   const parts: string[] = [];
 
@@ -286,7 +286,7 @@ export class Orchestrator {
     }
 
     // No commands in test prompts (no /new etc.)
-    parts.push(buildSystemBlock(false, this.config.bot?.name || "Assistant"));
+    parts.push(buildSystemBlock(false, this.config.bot?.name));
 
     // Skills prompt
     const skillsPrompt = formatSkillsForPrompt(this.getSkills());
@@ -851,7 +851,7 @@ export class Orchestrator {
     }
 
     // Include commands for interactive sessions
-    parts.push(buildSystemBlock(true, this.config.bot?.name || "Assistant"));
+    parts.push(buildSystemBlock(true, this.config.bot?.name));
 
     if (skillsPrompt) {
       parts.push(`<skills>\n${skillsPrompt}\n</skills>`);

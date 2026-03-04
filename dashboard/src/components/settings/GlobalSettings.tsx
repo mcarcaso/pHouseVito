@@ -84,7 +84,7 @@ function NumberInput({
 
 export default function GlobalSettings({ config, onSave }: GlobalSettingsProps) {
   const settings = config.settings || {};
-  const botName = config.bot?.name || 'Assistant';
+  const botName = config.bot?.name || '';
 
   const updateSetting = async (field: string, value: any) => {
     const newSettings = { ...settings };

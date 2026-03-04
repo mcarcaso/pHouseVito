@@ -13,11 +13,12 @@ const COMMANDS_SECTION = `Available commands: /new (embed + archive session), /s
 /**
  * Build the <system> block by reading SYSTEM.md.
  */
-export function buildSystemBlock(includeCommands: boolean = true, botName: string = "Assistant"): string {
-  const parts: string[] = [
-    `Your name is ${botName}.`,
-    `If the user message is only your name (e.g., "@${botName}"), interpret it as a follow-up to the previous user message.`,
-  ];
+export function buildSystemBlock(includeCommands: boolean = true, botName?: string): string {
+  const parts: string[] = [];
+  if (botName) {
+    parts.push(`Your name is ${botName}.`);
+    parts.push(`If the user message is only your name (e.g., "@${botName}"), interpret it as a follow-up to the previous user message.`);
+  }
 
   // Read SYSTEM.md — the single source of truth
   try {

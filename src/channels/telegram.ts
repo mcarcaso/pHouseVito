@@ -78,7 +78,7 @@ export class TelegramChannel implements Channel {
       const hasMention = isPrivate || isMentionedInText;
 
       // Normalize bot @mention to @BotName
-      const botName = this.config.bot?.name || "Assistant";
+      const botName = this.config.bot?.name;
       let content = ctx.message.text;
       if (botUsername) {
         content = content.replace(new RegExp(`@${botUsername}`, "gi"), `@${botName}`);
@@ -108,7 +108,7 @@ export class TelegramChannel implements Channel {
     // Helper to normalize @botusername → @BotName in text
     const normalizeContent = (text: string): string => {
       const botUsername = this.bot!.botInfo.username;
-      const botName = this.config.bot?.name || "Assistant";
+      const botName = this.config.bot?.name;
       if (botUsername) {
         return text.replace(new RegExp(`@${botUsername}`, "gi"), `@${botName}`);
       }

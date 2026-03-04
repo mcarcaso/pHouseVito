@@ -44,9 +44,32 @@ When instructions are vague, investigate before asking:
 - **Profile:** `user/profile.json`
 - **Config:** `user/vito.config.json`
 - **Skills:** `user/skills/<name>/`
-- **Images:** `user/images/`
+- **Drive:** `user/drive/<uuid>/` — hosted files & sites (see below)
 - **Backend:** `src/`
 - **Dashboard:** `dashboard/`
+
+## Drive — File & Site Hosting
+
+When you create artifacts (images, PDFs, HTML pages, any file the user might want to keep or share), save them to Drive instead of dumping them in random directories.
+
+**To save a file to Drive:**
+1. Generate a unique directory name (UUID recommended): `id=$(cat /proc/sys/kernel/random/uuid)`
+2. Create dir: `mkdir -p user/drive/$id`
+3. Save your file there with its original name: `user/drive/$id/my-image.png`
+4. Write metadata: `user/drive/$id/.meta.json`
+
+**`.meta.json` format:**
+```json
+{ "id": "<uuid>", "name": "Descriptive Name", "description": "", "type": "file",
+  "isPublic": false, "createdAt": "2026-01-01T00:00:00.000Z",
+  "mimeType": "image/png", "filename": "filename.png" }
+```
+
+For multi-file sites, set `"type": "site"` and ensure `index.html` exists at root.
+
+**Public URLs:** Items with `"isPublic": true` are served at `/d/<uuid>/<filename>` (files) or `/d/<uuid>/` (sites). The user can toggle public/private from the dashboard.
+
+**After saving**, tell the user the item is in Drive. If they want to share it, they can make it public from the dashboard.
 
 ## Config
 

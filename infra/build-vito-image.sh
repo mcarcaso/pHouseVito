@@ -82,7 +82,12 @@ if ! aws ecr describe-repositories --repository-names "$ECR_REPO_NAME" --region 
 fi
 
 # Copy Dockerfile to Vito source (needs to be in build context)
-cp "$SCRIPT_DIR/../Dockerfile" "$VITO_SOURCE/Dockerfile"
+# Skip if source and dest are the same file
+DOCKERFILE_SRC="$(cd "$SCRIPT_DIR/.." && pwd)/Dockerfile"
+DOCKERFILE_DST="$VITO_SOURCE/Dockerfile"
+if [ "$DOCKERFILE_SRC" != "$DOCKERFILE_DST" ]; then
+    cp "$DOCKERFILE_SRC" "$DOCKERFILE_DST"
+fi
 
 # Build
 cd "$VITO_SOURCE"

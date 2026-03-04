@@ -8,7 +8,6 @@ export interface ContextSettings {
   includeThoughts?: boolean;
   includeTools?: boolean;
   includeArchived?: boolean;
-  includeCompacted?: boolean;
 }
 
 export interface ResolvedContextSettings {
@@ -16,7 +15,6 @@ export interface ResolvedContextSettings {
   includeThoughts: boolean;
   includeTools: boolean;
   includeArchived: boolean;
-  includeCompacted: boolean;
 }
 
 export interface Settings {
@@ -65,10 +63,6 @@ export interface VitoConfig {
       allowedTools?: string[];
     };
   };
-  compaction: {
-    threshold: number;
-    percent?: number;
-  };
   channels: Record<string, ChannelConfig>;
   sessions?: Record<string, Settings>;
   cron: { jobs: any[] };
@@ -88,7 +82,6 @@ const DEFAULT_CURRENT_CONTEXT: ResolvedContextSettings = {
   includeThoughts: true,
   includeTools: true,
   includeArchived: false,
-  includeCompacted: false,
 };
 
 const DEFAULT_CROSS_CONTEXT: ResolvedContextSettings = {
@@ -96,7 +89,6 @@ const DEFAULT_CROSS_CONTEXT: ResolvedContextSettings = {
   includeThoughts: false,
   includeTools: false,
   includeArchived: false,
-  includeCompacted: false,
 };
 
 const DEFAULTS: ResolvedSettings = {
@@ -174,14 +166,12 @@ export function getEffectiveSettings(
       includeThoughts: settings.currentContext?.includeThoughts ?? DEFAULT_CURRENT_CONTEXT.includeThoughts,
       includeTools: settings.currentContext?.includeTools ?? DEFAULT_CURRENT_CONTEXT.includeTools,
       includeArchived: settings.currentContext?.includeArchived ?? DEFAULT_CURRENT_CONTEXT.includeArchived,
-      includeCompacted: settings.currentContext?.includeCompacted ?? DEFAULT_CURRENT_CONTEXT.includeCompacted,
     },
     crossContext: {
       limit: settings.crossContext?.limit ?? DEFAULT_CROSS_CONTEXT.limit,
       includeThoughts: settings.crossContext?.includeThoughts ?? DEFAULT_CROSS_CONTEXT.includeThoughts,
       includeTools: settings.crossContext?.includeTools ?? DEFAULT_CROSS_CONTEXT.includeTools,
       includeArchived: settings.crossContext?.includeArchived ?? DEFAULT_CROSS_CONTEXT.includeArchived,
-      includeCompacted: settings.crossContext?.includeCompacted ?? DEFAULT_CROSS_CONTEXT.includeCompacted,
     },
     requireMention: settings.requireMention,
     traceMessageUpdates: settings.traceMessageUpdates ?? false,
@@ -245,12 +235,10 @@ export const CASCADING_FIELDS = [
   { key: 'currentContext.includeThoughts', label: 'Current: Thoughts', type: 'boolean' as const },
   { key: 'currentContext.includeTools', label: 'Current: Tools', type: 'boolean' as const },
   { key: 'currentContext.includeArchived', label: 'Current: Archived', type: 'boolean' as const },
-  { key: 'currentContext.includeCompacted', label: 'Current: Compacted', type: 'boolean' as const },
   { key: 'traceMessageUpdates', label: 'Trace Message Updates', type: 'boolean' as const },
   // Cross context settings
   { key: 'crossContext.limit', label: 'Cross: Num Messages', type: 'number' as const },
   { key: 'crossContext.includeThoughts', label: 'Cross: Thoughts', type: 'boolean' as const },
   { key: 'crossContext.includeTools', label: 'Cross: Tools', type: 'boolean' as const },
   { key: 'crossContext.includeArchived', label: 'Cross: Archived', type: 'boolean' as const },
-  { key: 'crossContext.includeCompacted', label: 'Cross: Compacted', type: 'boolean' as const },
 ] as const;

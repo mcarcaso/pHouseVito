@@ -31,7 +31,6 @@ interface Message {
   type: string;
   content: string;
   timestamp: number;
-  compacted: boolean;
   author?: string | null;
 }
 

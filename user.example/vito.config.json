@@ -7,15 +7,13 @@
       "limit": 100,
       "includeThoughts": true,
       "includeTools": true,
-      "includeArchived": false,
-      "includeCompacted": false
+      "includeArchived": false
     },
     "crossContext": {
       "limit": 5,
       "includeThoughts": false,
       "includeTools": false,
-      "includeArchived": false,
-      "includeCompacted": false
+      "includeArchived": false
     }
   },
   "harnesses": {
@@ -23,10 +21,6 @@
       "model": "sonnet",
       "permissionMode": "bypassPermissions"
     }
-  },
-  "compaction": {
-    "threshold": 200,
-    "percent": 50
   },
   "channels": {
     "dashboard": {

@@ -63,8 +63,8 @@ export class Queries {
   insertMessage(msg: Omit<MessageRow, "id">): number {
     const result = this.db
       .prepare(
-        `INSERT INTO messages (session_id, channel, channel_target, timestamp, type, content, compacted, archived, author)
-         VALUES (@session_id, @channel, @channel_target, @timestamp, @type, @content, @compacted, @archived, @author)`
+        `INSERT INTO messages (session_id, channel, channel_target, timestamp, type, content, archived, author)
+         VALUES (@session_id, @channel, @channel_target, @timestamp, @type, @content, @archived, @author)`
       )
       .run(msg);
     return result.lastInsertRowid as number;
@@ -79,15 +79,14 @@ export class Queries {
 
   /**
    * Get recent messages for the CURRENT session context.
-   * Filtered by context settings (tools, thoughts, archived, compacted).
+   * Filtered by context settings (tools, thoughts, archived).
    */
   getRecentMessages(
     sessionId: string,
     limit: number,
     includeTools = true,
     includeThoughts = true,
-    includeArchived = false,
-    includeCompacted = false
+    includeArchived = false
   ): MessageRow[] {
     const filters: string[] = ["session_id = ?"];
     
@@ -99,9 +98,6 @@ export class Queries {
     }
     if (!includeArchived) {
       filters.push("archived = 0");
-    }
-    if (!includeCompacted) {
-      filters.push("compacted = 0");
     }
     
     const whereClause = filters.join(" AND ");
@@ -118,7 +114,7 @@ export class Queries {
       .all(sessionId, limit) as MessageRow[];
   }
 
-  /** Get all messages for a session (including compacted/archived) for dashboard */
+  /** Get all messages for a session (including archived) for dashboard */
   getAllMessagesForSession(sessionId: string, limit?: number, beforeId?: number, hideThoughts?: boolean, hideTools?: boolean): MessageRow[] {
     // Build filter clause based on filter options
     let filterClause = "";
@@ -183,7 +179,6 @@ export class Queries {
 
   /**
    * Get recent messages from OTHER sessions for cross-session context.
-   * Only shows un-compacted, un-archived messages by default.
    * Optionally includes archived messages (configurable).
    */
   getCrossSessionMessages(
@@ -193,13 +188,12 @@ export class Queries {
     showArchived = false
   ): MessageRow[] {
     const toolFilter = includeTools ? "" : " AND type NOT IN ('tool_start', 'tool_end')";
-    // Never show compacted from other sessions. Optionally show archived.
     const archiveFilter = showArchived ? "" : " AND archived = 0";
     return this.db
       .prepare(
         `SELECT * FROM (
            SELECT * FROM messages
-           WHERE session_id != ? AND compacted = 0${archiveFilter}${toolFilter}
+           WHERE session_id != ?${archiveFilter}${toolFilter}
            ORDER BY timestamp DESC
            LIMIT ?
          ) ORDER BY timestamp ASC`
@@ -209,22 +203,20 @@ export class Queries {
 
   /**
    * Get last N messages per OTHER session for cross-session context.
-   * Filtered by context settings (tools, thoughts, archived, compacted).
+   * Filtered by context settings (tools, thoughts, archived).
    */
   getCrossSessionMessagesPerSession(
     excludeSessionId: string,
     perSessionLimit: number,
     includeTools = false,
     includeThoughts = false,
-    includeArchived = false,
-    includeCompacted = false
+    includeArchived = false
   ): MessageRow[] {
     const buildFilters = (prefix: string = "") => {
       const filters: string[] = [];
       if (!includeTools) filters.push(`${prefix}type NOT IN ('tool_start', 'tool_end')`);
       if (!includeThoughts) filters.push(`${prefix}type != 'thought'`);
       if (!includeArchived) filters.push(`${prefix}archived = 0`);
-      if (!includeCompacted) filters.push(`${prefix}compacted = 0`);
       return filters.length > 0 ? " AND " + filters.join(" AND ") : "";
     };
     
@@ -256,62 +248,11 @@ export class Queries {
     return allMessages;
   }
 
-  /** Get all un-compacted messages across all sessions */
-  getAllUncompactedMessages(): MessageRow[] {
-    return this.db
-      .prepare(
-        "SELECT * FROM messages WHERE compacted = 0 ORDER BY timestamp ASC"
-      )
-      .all() as MessageRow[];
-  }
-
-  /** Get un-compacted messages for a specific session */
-  getUncompactedMessagesForSession(sessionId: string): MessageRow[] {
-    return this.db
-      .prepare(
-        "SELECT * FROM messages WHERE session_id = ? AND compacted = 0 ORDER BY timestamp ASC"
-      )
-      .all(sessionId) as MessageRow[];
-  }
-
-  /** Count un-compacted messages */
-  countUncompacted(messageTypes?: string[]): number {
-    // Default to user + assistant only (the actual conversation)
-    const types = messageTypes && messageTypes.length > 0 
-      ? messageTypes 
-      : ["user", "assistant"];
-    const placeholders = types.map(() => "?").join(",");
-    const row = this.db
-      .prepare(`SELECT COUNT(*) as count FROM messages WHERE compacted = 0 AND type IN (${placeholders})`)
-      .get(...types) as { count: number };
-    return row.count;
-  }
-
-  /** Mark messages as compacted */
-  markCompacted(ids: number[]): void {
-    if (ids.length === 0) return;
-    const placeholders = ids.map(() => "?").join(",");
-    this.db
-      .prepare(
-        `UPDATE messages SET compacted = 1 WHERE id IN (${placeholders})`
-      )
-      .run(...ids);
-  }
-
   /** Mark all messages in a session as archived */
   markSessionArchived(sessionId: string): void {
     this.db
       .prepare(
         "UPDATE messages SET archived = 1 WHERE session_id = ?"
-      )
-      .run(sessionId);
-  }
-
-  /** Mark all messages in a session as compacted */
-  markSessionCompacted(sessionId: string): void {
-    this.db
-      .prepare(
-        "UPDATE messages SET compacted = 1 WHERE session_id = ?"
       )
       .run(sessionId);
   }

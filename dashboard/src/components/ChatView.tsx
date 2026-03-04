@@ -16,7 +16,6 @@ interface DbMessage {
   type: string;  // 'user' | 'thought' | 'assistant' | 'tool_start' | 'tool_end'
   content: string;
   timestamp: number;
-  compacted?: boolean;
   author?: string | null;
 }
 

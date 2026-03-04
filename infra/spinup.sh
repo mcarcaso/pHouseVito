@@ -297,8 +297,8 @@ cat > /opt/cloudmallinc/caddy/Caddyfile << 'CADDYFILE_END'
     admin off
 }
 
-# Health check endpoint on the root domain
-cloudmallinc.com {
+# Health check endpoint on the root domain (http only - no cert for base domain)
+http://cloudmallinc.com {
     respond /health "OK" 200
     respond "CloudMall Inc Platform" 200
 }
@@ -404,7 +404,7 @@ log "Starting customer container..."
 mkdir -p \$CONTAINERS_DIR/\$CUSTOMER_NAME
 mkdir -p \$CONTAINERS_DIR/\$CUSTOMER_NAME/app
 
-# Create a simple Express server for the customer
+# Create a simple HTTP server for the customer
 cat > \$CONTAINERS_DIR/\$CUSTOMER_NAME/app/server.js << 'SERVERJS'
 const http = require('http');
 const hostname = process.env.HOSTNAME || require('os').hostname();
@@ -421,48 +421,44 @@ const server = http.createServer((req, res) => {
   }
   
   res.writeHead(200, { 'Content-Type': 'text/html' });
-  res.end(`
-<!DOCTYPE html>
-<html>
-<head>
-  <title>${customerName}'s Vito Instance</title>
-  <style>
-    body { font-family: system-ui; max-width: 600px; margin: 50px auto; padding: 20px; }
-    h1 { color: #333; }
-    .info { background: #f5f5f5; padding: 15px; border-radius: 8px; margin: 20px 0; }
-    .success { color: #22c55e; }
-    code { background: #e5e5e5; padding: 2px 6px; border-radius: 4px; }
-  </style>
-</head>
-<body>
-  <h1>🤖 ${customerName}'s Vito Instance</h1>
-  <p class="success">✅ Container is running!</p>
-  
-  <div class="info">
-    <strong>Request Host:</strong> ${host}<br>
-    <strong>Customer:</strong> ${customerName}<br>
-    <strong>Base Domain:</strong> ${baseDomain}<br>
-    <strong>Container:</strong> ${hostname}
-  </div>
-  
-  <p>This is a placeholder page. Your Vito AI instance is ready to be configured.</p>
-  
-  <h3>What's Working:</h3>
-  <ul>
-    <li>✅ SSL/TLS (wildcard cert for *.${baseDomain})</li>
-    <li>✅ Docker container running</li>
-    <li>✅ Caddy reverse proxy routing</li>
-    <li>✅ Subdomain routing (any <code>*.${baseDomain}</code> works)</li>
-  </ul>
-  
-  <p><em>Deploy your apps to any subdomain — they're all covered by the wildcard cert!</em></p>
-</body>
-</html>
-  `);
+  res.end([
+    '<!DOCTYPE html>',
+    '<html>',
+    '<head>',
+    '  <title>' + customerName + ' - Vito Instance</title>',
+    '  <style>',
+    '    body { font-family: system-ui; max-width: 600px; margin: 50px auto; padding: 20px; }',
+    '    h1 { color: #333; }',
+    '    .info { background: #f5f5f5; padding: 15px; border-radius: 8px; margin: 20px 0; }',
+    '    .success { color: #22c55e; }',
+    '    code { background: #e5e5e5; padding: 2px 6px; border-radius: 4px; }',
+    '  </style>',
+    '</head>',
+    '<body>',
+    '  <h1>🤖 ' + customerName + ' - Vito Instance</h1>',
+    '  <p class="success">✅ Container is running!</p>',
+    '  <div class="info">',
+    '    <strong>Request Host:</strong> ' + host + '<br>',
+    '    <strong>Customer:</strong> ' + customerName + '<br>',
+    '    <strong>Base Domain:</strong> ' + baseDomain + '<br>',
+    '    <strong>Container:</strong> ' + hostname,
+    '  </div>',
+    '  <p>This is a placeholder page. Your Vito AI instance is ready to be configured.</p>',
+    '  <h3>What\'s Working:</h3>',
+    '  <ul>',
+    '    <li>✅ SSL/TLS (wildcard cert for *.' + baseDomain + ')</li>',
+    '    <li>✅ Docker container running</li>',
+    '    <li>✅ Caddy reverse proxy routing</li>',
+    '    <li>✅ Subdomain routing (any <code>*.' + baseDomain + '</code> works)</li>',
+    '  </ul>',
+    '  <p><em>Deploy your apps to any subdomain — they are all covered by the wildcard cert!</em></p>',
+    '</body>',
+    '</html>'
+  ].join('\n'));
 });
 
-server.listen(3000, '0.0.0.0', () => {
-  console.log(\`Vito server for \${customerName} running on port 3000\`);
+server.listen(3000, '0.0.0.0', function() {
+  console.log('Vito server for ' + customerName + ' running on port 3000');
 });
 SERVERJS
 
@@ -487,7 +483,7 @@ services:
 COMPOSE
 
 cd \$CONTAINERS_DIR/\$CUSTOMER_NAME
-docker compose up -d --quiet-pull 2>&1
+docker compose up -d --quiet-pull >/dev/null 2>&1
 
 log "Container started on port \$CUSTOMER_PORT"
 
@@ -502,7 +498,7 @@ cat > \$CADDY_DIR/Caddyfile << CADDYFILE
     admin off
 }
 
-\$DOMAIN {
+http://\$DOMAIN {
     respond /health "OK" 200
     respond "CloudMall Inc Platform" 200
 }
@@ -582,7 +578,7 @@ cat > \$CADDY_DIR/Caddyfile << CADDYFILE
     admin off
 }
 
-\$DOMAIN {
+http://\$DOMAIN {
     respond /health "OK" 200
     respond "CloudMall Inc Platform" 200
 }

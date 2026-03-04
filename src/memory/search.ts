@@ -18,6 +18,7 @@ import Database from "better-sqlite3";
 import OpenAI from "openai";
 import { readFileSync } from "fs";
 import { join, resolve } from "path";
+import type { ResolvedMemorySettings } from "../types.js";
 
 // ── Config ─────────────────────────────────────────────────
 
@@ -25,10 +26,10 @@ const ROOT = resolve(process.cwd());
 const EMBEDDINGS_DB_PATH = join(ROOT, "user", "embeddings.db");
 const EMBEDDING_MODEL = "openai/text-embedding-3-small";
 
-// Auto-search settings
-const AUTO_SEARCH_LIMIT = 3;           // Max chunks to inject
-const AUTO_SEARCH_RRF_THRESHOLD = 0.005; // Minimum RRF score to include (filters noise)
-const RRF_K = 60;                      // RRF constant
+// Default auto-search settings (used if not provided via config)
+const DEFAULT_AUTO_SEARCH_LIMIT = 3;           // Max chunks to inject
+const DEFAULT_AUTO_SEARCH_RRF_THRESHOLD = 0.005; // Minimum RRF score to include (filters noise)
+const RRF_K = 60;                              // RRF constant
 
 let openrouterApiKey: string | null = null;
 
@@ -267,6 +268,11 @@ export interface AutoSearchResult {
   };
 }
 
+export interface AutoSearchOptions {
+  /** Memory settings from resolved config */
+  memory?: ResolvedMemorySettings;
+}
+
 /**
  * Lightweight auto-search that runs before every response.
  * Embeds the user's message, searches the memory, and returns
@@ -279,9 +285,16 @@ export interface AutoSearchResult {
  * 
  * Cost: ~200ms (one embedding call + SQLite queries)
  */
-export async function autoSearchForContext(userMessage: string): Promise<AutoSearchResult> {
+export async function autoSearchForContext(
+  userMessage: string,
+  options: AutoSearchOptions = {}
+): Promise<AutoSearchResult> {
   const startTime = Date.now();
   const trimmed = userMessage.trim();
+
+  // Use config values or fall back to defaults
+  const limit = options.memory?.recalledMemoryLimit ?? DEFAULT_AUTO_SEARCH_LIMIT;
+  const threshold = options.memory?.recalledMemoryThreshold ?? DEFAULT_AUTO_SEARCH_RRF_THRESHOLD;
 
   const makeResult = (text: string, results: AutoSearchResult["trace"]["results"], resultsFound: number, skipped?: string): AutoSearchResult => ({
     text,
@@ -299,7 +312,7 @@ export async function autoSearchForContext(userMessage: string): Promise<AutoSea
   if (trimmed.length === 0) return makeResult("", [], 0, "empty query");
 
   try {
-    const results = await searchMemory(trimmed, { limit: AUTO_SEARCH_LIMIT });
+    const results = await searchMemory(trimmed, { limit });
     
     const traceResults = results.map(r => ({
       id: r.id,
@@ -315,7 +328,7 @@ export async function autoSearchForContext(userMessage: string): Promise<AutoSea
     if (results.length === 0) return makeResult("", traceResults, 0);
 
     // Filter by RRF threshold — only include genuinely relevant results
-    const relevant = results.filter((r) => r.rrfScore >= AUTO_SEARCH_RRF_THRESHOLD);
+    const relevant = results.filter((r) => r.rrfScore >= threshold);
     if (relevant.length === 0) return makeResult("", traceResults, results.length);
 
     // Format as recalled memories block

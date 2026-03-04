@@ -5,7 +5,7 @@
  *   Global (config.settings) → Channel (config.channels[name].settings) → Session (config.sessions[key])
  */
 
-import type { ResolvedSettings, ResolvedContextSettings, Settings, VitoConfig } from "./types.js";
+import type { ResolvedSettings, ResolvedContextSettings, ResolvedMemorySettings, Settings, VitoConfig } from "./types.js";
 
 /** Default context settings */
 const DEFAULT_CURRENT_CONTEXT: ResolvedContextSettings = {
@@ -22,12 +22,19 @@ const DEFAULT_CROSS_CONTEXT: ResolvedContextSettings = {
   includeArchived: false,
 };
 
+/** Default memory settings */
+const DEFAULT_MEMORY: ResolvedMemorySettings = {
+  recalledMemoryLimit: 3,
+  recalledMemoryThreshold: 0.005,
+};
+
 /** Default settings when nothing is specified */
 const DEFAULTS: ResolvedSettings = {
   harness: "claude-code",
   streamMode: "stream",
   currentContext: DEFAULT_CURRENT_CONTEXT,
   crossContext: DEFAULT_CROSS_CONTEXT,
+  memory: DEFAULT_MEMORY,
 };
 
 /**
@@ -48,6 +55,9 @@ function mergeSettings(base: Settings, override: Settings): Settings {
   }
   if (override.crossContext !== undefined) {
     result.crossContext = { ...base.crossContext, ...override.crossContext };
+  }
+  if (override.memory !== undefined) {
+    result.memory = { ...base.memory, ...override.memory };
   }
   if (override["pi-coding-agent"] !== undefined) {
     result["pi-coding-agent"] = { ...base["pi-coding-agent"], ...override["pi-coding-agent"] };
@@ -114,6 +124,10 @@ export function getEffectiveSettings(
       includeThoughts: settings.crossContext?.includeThoughts ?? DEFAULT_CROSS_CONTEXT.includeThoughts,
       includeTools: settings.crossContext?.includeTools ?? DEFAULT_CROSS_CONTEXT.includeTools,
       includeArchived: settings.crossContext?.includeArchived ?? DEFAULT_CROSS_CONTEXT.includeArchived,
+    },
+    memory: {
+      recalledMemoryLimit: settings.memory?.recalledMemoryLimit ?? DEFAULT_MEMORY.recalledMemoryLimit,
+      recalledMemoryThreshold: settings.memory?.recalledMemoryThreshold ?? DEFAULT_MEMORY.recalledMemoryThreshold,
     },
     requireMention: settings.requireMention,
     traceMessageUpdates: settings.traceMessageUpdates ?? false,

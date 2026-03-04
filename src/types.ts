@@ -112,6 +112,14 @@ export interface ContextSettings {
   includeArchived?: boolean;
 }
 
+/** Memory recall settings for semantic search */
+export interface MemorySettings {
+  /** Max number of memory chunks to inject (default 3) */
+  recalledMemoryLimit?: number;
+  /** Minimum RRF score to include (default 0.005) */
+  recalledMemoryThreshold?: number;
+}
+
 export interface Settings {
   /** Which harness to use */
   harness?: string;
@@ -121,6 +129,8 @@ export interface Settings {
   currentContext?: ContextSettings;
   /** Cross-session context settings */
   crossContext?: ContextSettings;
+  /** Memory recall settings */
+  memory?: MemorySettings;
   /** Require @mention to respond (Discord/Telegram) — still logs all messages */
   requireMention?: boolean;
   /** Log message_update raw events to trace files (noisy). Default false */
@@ -139,10 +149,17 @@ export interface ResolvedContextSettings {
   includeArchived: boolean;
 }
 
+/** Resolved memory settings with all fields required */
+export interface ResolvedMemorySettings {
+  recalledMemoryLimit: number;
+  recalledMemoryThreshold: number;
+}
+
 /** Deep merge helper type for settings resolution */
 export type ResolvedSettings = Required<Pick<Settings, "harness" | "streamMode">> & {
   currentContext: ResolvedContextSettings;
   crossContext: ResolvedContextSettings;
+  memory: ResolvedMemorySettings;
   requireMention?: boolean;
   traceMessageUpdates?: boolean;
   "pi-coding-agent"?: Partial<PiHarnessConfig>;

@@ -17,11 +17,22 @@ export interface ResolvedContextSettings {
   includeArchived: boolean;
 }
 
+export interface MemorySettings {
+  recalledMemoryLimit?: number;
+  recalledMemoryThreshold?: number;
+}
+
+export interface ResolvedMemorySettings {
+  recalledMemoryLimit: number;
+  recalledMemoryThreshold: number;
+}
+
 export interface Settings {
   harness?: string;
   streamMode?: 'stream' | 'bundled' | 'final';
   currentContext?: ContextSettings;
   crossContext?: ContextSettings;
+  memory?: MemorySettings;
   requireMention?: boolean;
   traceMessageUpdates?: boolean;
   'pi-coding-agent'?: {
@@ -41,6 +52,7 @@ export interface ResolvedSettings {
   streamMode: 'stream' | 'bundled' | 'final';
   currentContext: ResolvedContextSettings;
   crossContext: ResolvedContextSettings;
+  memory: ResolvedMemorySettings;
   requireMention?: boolean;
   traceMessageUpdates?: boolean;
   'pi-coding-agent'?: Settings['pi-coding-agent'];
@@ -91,11 +103,17 @@ const DEFAULT_CROSS_CONTEXT: ResolvedContextSettings = {
   includeArchived: false,
 };
 
+const DEFAULT_MEMORY: ResolvedMemorySettings = {
+  recalledMemoryLimit: 3,
+  recalledMemoryThreshold: 0.005,
+};
+
 const DEFAULTS: ResolvedSettings = {
   harness: 'claude-code',
   streamMode: 'stream',
   currentContext: DEFAULT_CURRENT_CONTEXT,
   crossContext: DEFAULT_CROSS_CONTEXT,
+  memory: DEFAULT_MEMORY,
 };
 
 /** Deep merge two Settings objects. Later values win. */
@@ -109,6 +127,9 @@ function mergeSettings(base: Settings, override: Settings): Settings {
   }
   if (override.crossContext !== undefined) {
     result.crossContext = { ...base.crossContext, ...override.crossContext };
+  }
+  if (override.memory !== undefined) {
+    result.memory = { ...base.memory, ...override.memory };
   }
   if (override['pi-coding-agent'] !== undefined) {
     result['pi-coding-agent'] = { ...base['pi-coding-agent'], ...override['pi-coding-agent'] };
@@ -172,6 +193,10 @@ export function getEffectiveSettings(
       includeThoughts: settings.crossContext?.includeThoughts ?? DEFAULT_CROSS_CONTEXT.includeThoughts,
       includeTools: settings.crossContext?.includeTools ?? DEFAULT_CROSS_CONTEXT.includeTools,
       includeArchived: settings.crossContext?.includeArchived ?? DEFAULT_CROSS_CONTEXT.includeArchived,
+    },
+    memory: {
+      recalledMemoryLimit: settings.memory?.recalledMemoryLimit ?? DEFAULT_MEMORY.recalledMemoryLimit,
+      recalledMemoryThreshold: settings.memory?.recalledMemoryThreshold ?? DEFAULT_MEMORY.recalledMemoryThreshold,
     },
     requireMention: settings.requireMention,
     traceMessageUpdates: settings.traceMessageUpdates ?? false,
@@ -241,4 +266,7 @@ export const CASCADING_FIELDS = [
   { key: 'crossContext.includeThoughts', label: 'Cross: Thoughts', type: 'boolean' as const },
   { key: 'crossContext.includeTools', label: 'Cross: Tools', type: 'boolean' as const },
   { key: 'crossContext.includeArchived', label: 'Cross: Archived', type: 'boolean' as const },
+  // Memory settings
+  { key: 'memory.recalledMemoryLimit', label: 'Recalled Memory Limit', type: 'number' as const },
+  { key: 'memory.recalledMemoryThreshold', label: 'Recalled Memory Threshold', type: 'number' as const },
 ] as const;

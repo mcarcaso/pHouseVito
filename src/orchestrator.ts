@@ -551,7 +551,7 @@ export class Orchestrator {
     let memorySearchTrace: AutoSearchResult["trace"] | null = null;
     try {
       const rawQuery = event.content?.trim() || "";
-      const searchResult = await autoSearchForContext(rawQuery);
+      const searchResult = await autoSearchForContext(rawQuery, { memory: effectiveSettings.memory });
       recalledMemories = searchResult.text;
       memorySearchTrace = searchResult.trace;
       if (recalledMemories) {

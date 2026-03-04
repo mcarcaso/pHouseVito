@@ -78,7 +78,7 @@ async function main() {
   // Start channels
   await orchestrator.start();
 
-  console.log("\nVito is ready. Dashboard at http://localhost:3000\n");
+  console.log(`\nVito is ready. Dashboard at http://localhost:${process.env.PORT || 3030}\n`);
 
   // Heartbeat log every 30 minutes
   setInterval(() => {

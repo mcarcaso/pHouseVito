@@ -42,7 +42,7 @@ export class DashboardChannel implements Channel {
   private server = createServer(this.app);
   private wss = new WebSocketServer({ server: this.server });
   private clients = new Set<WebSocket>();
-  private port = parseInt(process.env.PORT || "3000", 10);
+  private port = parseInt(process.env.PORT || "3030", 10);
   private eventHandler?: (event: InboundEvent) => void;
 
   private skillsGetter?: () => any[];

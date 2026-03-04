@@ -29,7 +29,7 @@ const VITO_DB_PATH = join(ROOT, "user", "vito.db");
 const EMBEDDINGS_DB_PATH = join(ROOT, "user", "embeddings.db");
 const MIN_CHUNK_CHARS = 2000;  // Start chunking when buffer hits this
 const MAX_CHUNK_CHARS = 4000;  // Hard cap per chunk
-const ASSISTANT_LABEL = "@Vito";
+const ASSISTANT_LABEL = "assistant";
 const CONTEXTUAL_MODEL = "openai/gpt-4o-mini";
 
 let openrouterApiKey: string | null = null;

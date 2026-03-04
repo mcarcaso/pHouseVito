@@ -487,7 +487,7 @@ services:
 COMPOSE
 
 cd \$CONTAINERS_DIR/\$CUSTOMER_NAME
-docker compose up -d
+docker compose up -d --quiet-pull 2>&1
 
 log "Container started on port \$CUSTOMER_PORT"
 

@@ -777,6 +777,47 @@ EOF
 log "State saved to $STATE_FILE"
 
 # ============================================================================
+# WAIT FOR SETUP TO COMPLETE
+# ============================================================================
+
+log "Waiting for EC2 setup to complete..."
+warn "This takes 2-3 minutes (installing Docker, Caddy, certbot...)"
+echo ""
+
+SSH_KEY="$HOME/.ssh/${KEY_NAME}.pem"
+SSH_OPTS="-o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o ConnectTimeout=5 -o LogLevel=ERROR"
+MAX_ATTEMPTS=60  # 5 minutes max (5 sec intervals)
+ATTEMPT=0
+
+while [ $ATTEMPT -lt $MAX_ATTEMPTS ]; do
+    ATTEMPT=$((ATTEMPT + 1))
+    
+    # Try to check if setup is complete
+    SETUP_STATUS=$(ssh $SSH_OPTS -i "$SSH_KEY" ubuntu@"$ELASTIC_IP" \
+        'cat /opt/cloudmallinc/setup.log 2>/dev/null || echo "NOT_READY"' 2>/dev/null || echo "SSH_FAILED")
+    
+    if echo "$SETUP_STATUS" | grep -q "Setup complete"; then
+        log "EC2 setup complete!"
+        break
+    elif [ "$SETUP_STATUS" = "SSH_FAILED" ]; then
+        printf "\r  [%02d/%d] Waiting for SSH access..." "$ATTEMPT" "$MAX_ATTEMPTS"
+    elif [ "$SETUP_STATUS" = "NOT_READY" ]; then
+        printf "\r  [%02d/%d] Setup in progress..." "$ATTEMPT" "$MAX_ATTEMPTS"
+    else
+        printf "\r  [%02d/%d] Installing packages..." "$ATTEMPT" "$MAX_ATTEMPTS"
+    fi
+    
+    sleep 5
+done
+
+echo ""  # Clear the line
+
+if [ $ATTEMPT -ge $MAX_ATTEMPTS ]; then
+    warn "Setup is taking longer than expected. Check manually:"
+    warn "  ssh -i ~/.ssh/${KEY_NAME}.pem ubuntu@$ELASTIC_IP 'cat /opt/cloudmallinc/setup.log'"
+fi
+
+# ============================================================================
 # DONE
 # ============================================================================
 
@@ -793,25 +834,15 @@ echo "  IAM Role:       $ROLE_NAME (Route53 access for certbot)"
 echo ""
 echo "  SSH Access:     ssh -i ~/.ssh/${KEY_NAME}.pem ubuntu@$ELASTIC_IP"
 echo ""
-echo "  NEXT STEPS:"
-echo "  1. Wait 2-3 minutes for setup to complete"
-echo "  2. Verify it's running:"
-echo "     ssh -i ~/.ssh/${KEY_NAME}.pem ubuntu@$ELASTIC_IP 'cat /opt/cloudmallinc/setup.log'"
+echo "  PROVISION CUSTOMERS:"
 echo ""
-echo "  3. Provision customers (SSH into the box):"
+echo "  From your Mac (creates DNS records + SSHs in):"
+echo "     ./infra/provision-customer.sh mike"
+echo ""
+echo "  Or SSH in and run directly:"
 echo "     ssh -i ~/.ssh/${KEY_NAME}.pem ubuntu@$ELASTIC_IP"
 echo "     sudo /opt/cloudmallinc/provision-customer.sh mike"
 echo ""
-echo "     This will:"
-echo "     - Run certbot DNS challenge to get wildcard cert"
-echo "     - Start customer's Docker container"
-echo "     - Update Caddy config"
-echo "     - Auto-renew certs via cron (no manual work!)"
-echo ""
-echo "  OR run remotely from your machine:"
-echo "     ./provision-customer.sh mike"
-echo ""
-echo "  SELF-CONTAINED: The EC2 box handles everything."
-echo "  IAM role provides Route53 access. Certs auto-renew."
+echo "  SELF-CONTAINED: EC2 handles certbot via IAM role. Certs auto-renew."
 echo ""
 echo "============================================================================"

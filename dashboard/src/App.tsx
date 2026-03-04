@@ -11,11 +11,25 @@ import Server from './components/Server';
 import Apps from './components/Apps';
 import Traces from './components/Traces';
 import UnifiedSettings from './components/settings/UnifiedSettings';
+import Login from './components/Login';
 
 function App() {
   const [menuOpen, setMenuOpen] = useState(false);
+  const [authState, setAuthState] = useState<'loading' | 'authenticated' | 'login' | 'setup'>('loading');
   const menuRef = useRef<HTMLDivElement>(null);
   const location = useLocation();
+
+  // Check auth status on mount
+  useEffect(() => {
+    fetch('/api/auth/check')
+      .then(r => r.json())
+      .then(data => {
+        if (!data.passwordSet) setAuthState('setup');
+        else if (data.authenticated) setAuthState('authenticated');
+        else setAuthState('login');
+      })
+      .catch(() => setAuthState('authenticated')); // If check fails, allow through (offline/dev)
+  }, []);
 
   // Close menu on route change (mobile only)
   useEffect(() => {
@@ -49,6 +63,30 @@ function App() {
     if (path.startsWith('/traces')) return 'Traces';
     return 'Chat';
   };
+
+  const handleLogout = async () => {
+    await fetch('/api/auth/logout', { method: 'POST' });
+    setAuthState('login');
+  };
+
+  // Show loading spinner while checking auth
+  if (authState === 'loading') {
+    return (
+      <div className="flex items-center justify-center min-h-screen bg-[#0a0a0a] text-neutral-400">
+        Loading...
+      </div>
+    );
+  }
+
+  // Show login/setup screen
+  if (authState === 'login' || authState === 'setup') {
+    return (
+      <Login
+        mode={authState}
+        onSuccess={() => setAuthState('authenticated')}
+      />
+    );
+  }
 
   const navItemClass = ({ isActive }: { isActive: boolean }) =>
     `flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors ${
@@ -114,6 +152,19 @@ function App() {
         <span className="w-6 text-center text-base">🖥️</span>
         Server
       </NavLink>
+
+      {authState === 'authenticated' && (
+        <>
+          <div className="h-px bg-neutral-800 my-1.5 mx-2" />
+          <button
+            onClick={handleLogout}
+            className="flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors text-neutral-400 hover:bg-neutral-800 hover:text-white w-full text-left"
+          >
+            <span className="w-6 text-center text-base">🚪</span>
+            Logout
+          </button>
+        </>
+      )}
     </>
   );
 

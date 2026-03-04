@@ -11,6 +11,8 @@ export const SYSTEM_KEYS: Record<string, string> = {
   // Channel tokens
   TELEGRAM_BOT_TOKEN: "Telegram Bot API token — get from @BotFather (required for Telegram channel)",
   DISCORD_BOT_TOKEN: "Discord Bot token — get from https://discord.com/developers/applications (required for Discord channel)",
+  // Dashboard auth
+  DASHBOARD_PASSWORD_HASH: "Dashboard password hash (managed automatically — do not edit manually)",
   // Provider API keys (auto-populated from PROVIDER_API_KEYS below)
 };
 

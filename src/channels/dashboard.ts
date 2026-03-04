@@ -23,6 +23,30 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const ATTACHMENTS_DIR = path.join(process.cwd(), "data", "attachments");
 const CONFIG_PATH = path.join(process.cwd(), "user", "vito.config.json");
 
+// ── Auth helpers ──
+
+const SESSION_TTL = 7 * 24 * 60 * 60 * 1000; // 7 days
+const sessions = new Map<string, { expires: number }>();
+
+function hashPassword(password: string): string {
+  const salt = crypto.randomBytes(16).toString("hex");
+  const hash = crypto.scryptSync(password, salt, 64).toString("hex");
+  return `${salt}:${hash}`;
+}
+
+function verifyPassword(password: string, stored: string): boolean {
+  const [salt, hash] = stored.split(":");
+  if (!salt || !hash) return false;
+  const derived = crypto.scryptSync(password, salt, 64).toString("hex");
+  return crypto.timingSafeEqual(Buffer.from(hash, "hex"), Buffer.from(derived, "hex"));
+}
+
+function parseCookie(cookieHeader: string | undefined, name: string): string {
+  if (!cookieHeader) return "";
+  const match = cookieHeader.match(new RegExp(`(?:^|;\\s*)${name}=([^;]*)`));
+  return match ? decodeURIComponent(match[1]) : "";
+}
+
 interface DashboardMessage {
   type: "chat" | "typing" | "status";
   sessionId?: string;
@@ -158,6 +182,87 @@ export class DashboardChannel implements Channel {
     // Serve uploaded attachments
     if (!existsSync(ATTACHMENTS_DIR)) mkdirSync(ATTACHMENTS_DIR, { recursive: true });
     this.app.use("/attachments", express.static(ATTACHMENTS_DIR));
+
+    // ── Auth routes (before middleware) ──
+
+    this.app.get("/api/auth/check", (req, res) => {
+      const secrets = readSecrets();
+      const passwordSet = Boolean(secrets.DASHBOARD_PASSWORD_HASH);
+      if (!passwordSet) {
+        res.json({ authenticated: false, passwordSet: false });
+        return;
+      }
+      const sessionId = parseCookie(req.headers.cookie, "session");
+      const session = sessions.get(sessionId);
+      const authenticated = Boolean(session && session.expires > Date.now());
+      res.json({ authenticated, passwordSet: true });
+    });
+
+    this.app.post("/api/auth/setup", (req, res) => {
+      const secrets = readSecrets();
+      if (secrets.DASHBOARD_PASSWORD_HASH) {
+        res.status(400).json({ error: "Password already set. Use login instead." });
+        return;
+      }
+      // Auto-generate a UUID password
+      const password = crypto.randomUUID();
+      secrets.DASHBOARD_PASSWORD_HASH = hashPassword(password);
+      writeSecrets(secrets);
+      // Auto-login after setup
+      const sessionId = crypto.randomUUID();
+      sessions.set(sessionId, { expires: Date.now() + SESSION_TTL });
+      res.setHeader("Set-Cookie", `session=${sessionId}; HttpOnly; Path=/; SameSite=Lax; Max-Age=${SESSION_TTL / 1000}`);
+      res.json({ ok: true, password });
+    });
+
+    this.app.post("/api/auth/login", (req, res) => {
+      const secrets = readSecrets();
+      const hash = secrets.DASHBOARD_PASSWORD_HASH;
+      if (!hash) {
+        res.status(400).json({ error: "No password set. Use setup first." });
+        return;
+      }
+      const { password } = req.body;
+      if (!password || !verifyPassword(password, hash)) {
+        res.status(401).json({ error: "Invalid password" });
+        return;
+      }
+      const sessionId = crypto.randomUUID();
+      sessions.set(sessionId, { expires: Date.now() + SESSION_TTL });
+      res.setHeader("Set-Cookie", `session=${sessionId}; HttpOnly; Path=/; SameSite=Lax; Max-Age=${SESSION_TTL / 1000}`);
+      res.json({ ok: true });
+    });
+
+    this.app.post("/api/auth/logout", (req, res) => {
+      const sessionId = parseCookie(req.headers.cookie, "session");
+      if (sessionId) sessions.delete(sessionId);
+      res.setHeader("Set-Cookie", "session=; HttpOnly; Path=/; SameSite=Lax; Max-Age=0");
+      res.json({ ok: true });
+    });
+
+    // ── Auth middleware (protects all /api/* routes below) ──
+
+    this.app.use("/api", (req, res, next) => {
+      // Auth endpoints handled above
+      if (req.path.startsWith("/auth")) return next();
+      // Health check is public
+      if (req.path === "/health") return next();
+      // /api/ask has its own Bearer token auth via VITO_ASK_API_KEY
+      if (req.path === "/ask") return next();
+
+      // If no password set, allow all (first-time setup)
+      const secrets = readSecrets();
+      if (!secrets.DASHBOARD_PASSWORD_HASH) return next();
+
+      // Check session cookie
+      const sessionId = parseCookie(req.headers.cookie, "session");
+      const session = sessions.get(sessionId);
+      if (!session || session.expires < Date.now()) {
+        res.status(401).json({ error: "Unauthorized" });
+        return;
+      }
+      next();
+    });
 
     // API endpoints
     this.app.get("/api/health", (req, res) => {

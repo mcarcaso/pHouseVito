@@ -22,16 +22,16 @@ const Ajv = AjvModule.default || AjvModule;
 const ROOT = resolve(process.cwd());
 const PROFILE_PATH = join(ROOT, "user", "profile.json");
 const SCHEMA_PATH = join(ROOT, "src", "memory", "profile.schema.json");
-const EXTRACTION_MODEL = "gpt-4o-mini";
+const EXTRACTION_MODEL = "openai/gpt-4o-mini";
 
-let openaiApiKey: string | null = null;
+let openrouterApiKey: string | null = null;
 
-function getOpenAIKey(): string {
-  if (!openaiApiKey) {
+function getOpenRouterKey(): string {
+  if (!openrouterApiKey) {
     const secrets = JSON.parse(readFileSync(join(ROOT, "user", "secrets.json"), "utf-8"));
-    openaiApiKey = secrets.OPENAI_API_KEY;
+    openrouterApiKey = secrets.OPENROUTER_API_KEY;
   }
-  return openaiApiKey!;
+  return openrouterApiKey!;
 }
 
 // ── Schema Validation ──────────────────────────────────────
@@ -247,7 +247,7 @@ async function _doProfileUpdate(recentMessages: ConversationMessage[], start: nu
     .map((m) => `${m.role === "user" ? "User" : "Assistant"}: ${m.text}`)
     .join("\n");
 
-  const openai = new OpenAI({ apiKey: getOpenAIKey() });
+  const openai = new OpenAI({ apiKey: getOpenRouterKey(), baseURL: "https://openrouter.ai/api/v1" });
 
   const response = await openai.chat.completions.create({
     model: EXTRACTION_MODEL,

@@ -575,6 +575,7 @@ services:
       - NODE_ENV=production
       - CUSTOMER_NAME=\$CUSTOMER_NAME
       - BASE_DOMAIN=\$CUSTOMER_NAME.\$DOMAIN
+      - AI_WORKSPACE=/app/user
     healthcheck:
       test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:3000/api/health"]
       interval: 30s

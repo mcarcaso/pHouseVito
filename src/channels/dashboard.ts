@@ -24,6 +24,31 @@ const ATTACHMENTS_DIR = path.join(process.cwd(), "data", "attachments");
 const DRIVE_DIR = path.join(process.cwd(), "user", "drive");
 const CONFIG_PATH = path.join(process.cwd(), "user", "vito.config.json");
 
+/** Recursively find all drive items (dirs containing .meta.json) */
+function findDriveItems(dir: string): { dir: string; meta: any }[] {
+  if (!existsSync(dir)) return [];
+  const results: { dir: string; meta: any }[] = [];
+  for (const entry of readdirSync(dir, { withFileTypes: true })) {
+    if (!entry.isDirectory()) continue;
+    const entryDir = path.join(dir, entry.name);
+    const metaPath = path.join(entryDir, ".meta.json");
+    if (existsSync(metaPath)) {
+      try { results.push({ dir: entryDir, meta: JSON.parse(readFileSync(metaPath, "utf-8")) }); } catch {}
+    } else {
+      // Recurse into subdirectories that aren't items themselves
+      results.push(...findDriveItems(entryDir));
+    }
+  }
+  return results;
+}
+
+/** Find a single drive item by ID */
+function findDriveItem(id: string): string | null {
+  const items = findDriveItems(DRIVE_DIR);
+  const found = items.find(i => i.meta.id === id);
+  return found ? found.dir : null;
+}
+
 // ── Auth helpers ──
 
 const SESSION_TTL = 7 * 24 * 60 * 60 * 1000; // 7 days
@@ -187,13 +212,11 @@ export class DashboardChannel implements Channel {
     // ── Public Drive route (before auth) ──
     this.app.get("/d/:id/*path", (req, res) => {
       const id = req.params.id;
-      const itemDir = path.join(DRIVE_DIR, id);
-      const metaPath = path.join(itemDir, ".meta.json");
-
-      if (!existsSync(metaPath)) { res.status(404).send("Not found"); return; }
+      const itemDir = findDriveItem(id);
+      if (!itemDir) { res.status(404).send("Not found"); return; }
 
       let meta: any;
-      try { meta = JSON.parse(readFileSync(metaPath, "utf-8")); } catch { res.status(404).send("Not found"); return; }
+      try { meta = JSON.parse(readFileSync(path.join(itemDir, ".meta.json"), "utf-8")); } catch { res.status(404).send("Not found"); return; }
 
       if (!meta.isPublic) { res.status(404).send("Not found"); return; }
 
@@ -1449,22 +1472,9 @@ export class DashboardChannel implements Channel {
 
     this.app.get("/api/drive", (req, res) => {
       try {
-        if (!existsSync(DRIVE_DIR)) {
-          res.json([]);
-          return;
-        }
-        const entries = readdirSync(DRIVE_DIR, { withFileTypes: true })
-          .filter(e => e.isDirectory());
-
-        const items = entries
-          .map(e => {
-            const metaPath = path.join(DRIVE_DIR, e.name, ".meta.json");
-            if (!existsSync(metaPath)) return null;
-            try { return JSON.parse(readFileSync(metaPath, "utf-8")); } catch { return null; }
-          })
-          .filter(Boolean)
+        const items = findDriveItems(DRIVE_DIR)
+          .map(i => i.meta)
           .sort((a: any, b: any) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
-
         res.json(items);
       } catch (e: any) {
         res.status(500).json({ error: e.message });
@@ -1473,7 +1483,7 @@ export class DashboardChannel implements Channel {
 
     this.app.post("/api/drive", (req, res) => {
       try {
-        const { name, type, isPublic, data, filename } = req.body;
+        const { name, type, isPublic, data, filename, folder } = req.body;
         if (!name || !type || !data) {
           res.status(400).json({ error: "name, type, and data are required" });
           return;
@@ -1484,7 +1494,8 @@ export class DashboardChannel implements Channel {
         }
 
         const id = crypto.randomUUID();
-        const itemDir = path.join(DRIVE_DIR, id);
+        const parentDir = folder ? path.join(DRIVE_DIR, folder) : DRIVE_DIR;
+        const itemDir = path.join(parentDir, id);
         mkdirSync(itemDir, { recursive: true });
 
         // Parse data URL
@@ -1556,11 +1567,12 @@ export class DashboardChannel implements Channel {
 
     this.app.put("/api/drive/:id", (req, res) => {
       try {
-        const metaPath = path.join(DRIVE_DIR, req.params.id, ".meta.json");
-        if (!existsSync(metaPath)) {
+        const itemDir = findDriveItem(req.params.id);
+        if (!itemDir) {
           res.status(404).json({ error: "Item not found" });
           return;
         }
+        const metaPath = path.join(itemDir, ".meta.json");
         const meta = JSON.parse(readFileSync(metaPath, "utf-8"));
         const { name, description, isPublic } = req.body;
         if (name !== undefined) meta.name = name;
@@ -1575,8 +1587,8 @@ export class DashboardChannel implements Channel {
 
     this.app.delete("/api/drive/:id", (req, res) => {
       try {
-        const itemDir = path.join(DRIVE_DIR, req.params.id);
-        if (!existsSync(itemDir)) {
+        const itemDir = findDriveItem(req.params.id);
+        if (!itemDir) {
           res.status(404).json({ error: "Item not found" });
           return;
         }
@@ -1589,8 +1601,8 @@ export class DashboardChannel implements Channel {
 
     this.app.get("/api/drive/:id/files", (req, res) => {
       try {
-        const itemDir = path.join(DRIVE_DIR, req.params.id);
-        if (!existsSync(itemDir)) {
+        const itemDir = findDriveItem(req.params.id);
+        if (!itemDir) {
           res.status(404).json({ error: "Item not found" });
           return;
         }
@@ -1618,7 +1630,8 @@ export class DashboardChannel implements Channel {
 
     this.app.get("/api/drive/:id/content/*filepath", (req, res) => {
       try {
-        const itemDir = path.join(DRIVE_DIR, req.params.id);
+        const itemDir = findDriveItem(req.params.id);
+        if (!itemDir) { res.status(404).json({ error: "Item not found" }); return; }
         const filePath = req.params.filepath.join("/");
         const resolved = path.resolve(itemDir, filePath);
 

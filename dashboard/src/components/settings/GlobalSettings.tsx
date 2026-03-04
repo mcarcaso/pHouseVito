@@ -226,6 +226,38 @@ export default function GlobalSettings({ config, onSave }: GlobalSettingsProps) 
         />
       </section>
 
+      {/* ── Memory / Recalled Memories ── */}
+      <section className="bg-neutral-900 border border-neutral-800 rounded-xl p-5">
+        <h3 className="text-base font-semibold text-white mb-1">Memory Recall</h3>
+        <p className="text-xs text-neutral-600 mb-4">Settings for semantic search over past conversations.</p>
+
+        <NumberInput
+          label="Recalled Memory Limit"
+          value={settings.memory?.recalledMemoryLimit ?? 3}
+          onChange={(val) => updateSetting('memory.recalledMemoryLimit', val)}
+          min={0}
+          max={10}
+          hint="Max memory chunks to inject (0 to disable)"
+        />
+
+        <div className="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-4 py-3">
+          <label className="text-sm text-neutral-400 sm:w-48 sm:shrink-0">Relevance Threshold</label>
+          <input
+            type="number"
+            value={settings.memory?.recalledMemoryThreshold ?? 0.005}
+            onChange={(e) => {
+              const val = parseFloat(e.target.value);
+              if (!isNaN(val)) updateSetting('memory.recalledMemoryThreshold', val);
+            }}
+            min={0}
+            max={1}
+            step={0.001}
+            className="w-full sm:w-28 bg-neutral-950 border border-neutral-700 rounded-md px-3 py-2 text-neutral-200 text-sm focus:outline-none focus:border-blue-600 transition-colors"
+          />
+          <span className="text-xs text-neutral-600">Min RRF score (lower = more results)</span>
+        </div>
+      </section>
+
       {/* ── Harness Configurations ── */}
       <section>
         <div className="mb-3">

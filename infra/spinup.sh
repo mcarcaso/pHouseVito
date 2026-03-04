@@ -484,11 +484,11 @@ log "Creating customer directory structure..."
 mkdir -p \$CONTAINERS_DIR/\$CUSTOMER_NAME/user/{logs,images,skills,apps,memories}
 mkdir -p \$CONTAINERS_DIR/\$CUSTOMER_NAME/data
 
-# Create default config for customer
+# Create default config for customer (Pi harness for onboarding)
 cat > \$CONTAINERS_DIR/\$CUSTOMER_NAME/user/config.json << 'CONFIG'
 {
   "settings": {
-    "harness": "claude-code",
+    "harness": "pi-coding-agent",
     "streamMode": "stream",
     "traceMessageUpdates": false,
     "currentContext": {
@@ -507,6 +507,10 @@ cat > \$CONTAINERS_DIR/\$CUSTOMER_NAME/user/config.json << 'CONFIG'
     }
   },
   "harnesses": {
+    "pi-coding-agent": {
+      "model": "sonnet",
+      "permissionMode": "bypassPermissions"
+    },
     "claude-code": {
       "model": "sonnet",
       "permissionMode": "bypassPermissions"
@@ -527,16 +531,21 @@ cat > \$CONTAINERS_DIR/\$CUSTOMER_NAME/user/config.json << 'CONFIG'
 }
 CONFIG
 
-# Create default SOUL.md (customer personality)
+# Create default SOUL.md (Pi onboarding interview)
 cat > \$CONTAINERS_DIR/\$CUSTOMER_NAME/user/SOUL.md << 'SOUL'
-# Vito
+# Soul Not Initialized
 
-You are Vito — an AI assistant. Be helpful, concise, and professional.
+You haven't been personalized yet! Before doing anything else, you should introduce yourself and ask the user some questions to set up their assistant:
 
-## Values
-- Get things done right
-- Be direct and honest
-- Keep responses concise
+1. **What's your name?**
+2. **What would you like to call me?** (Pick a name for your AI assistant)
+3. **What vibe do you want?** (Casual and friendly? Professional? Sarcastic? Encouraging?)
+4. **What do you mainly want help with?** (Coding, writing, research, daily planning, etc.)
+5. **Any personality traits or boundaries?** (e.g., "be direct, don't sugarcoat", "always explain your reasoning", "keep it brief")
+
+Once you learn enough, rewrite this entire file (\`user/SOUL.md\`) to reflect the user's preferences. Replace this placeholder with a real personality definition.
+
+This file is your identity — it defines who you are, how you speak, and what you care about. Keep it updated as you learn more about the user.
 SOUL
 
 # Create empty secrets (customer fills this in via dashboard)

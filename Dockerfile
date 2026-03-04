@@ -71,6 +71,7 @@ COPY user.example/ ./user.example/
 # Environment
 ENV NODE_ENV=production
 ENV PORT=3000
+ENV AI_WORKSPACE=/app/user
 
 # Expose the main port
 EXPOSE 3000

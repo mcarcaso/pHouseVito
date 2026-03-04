@@ -20,6 +20,7 @@ import Database from "better-sqlite3";
 import OpenAI from "openai";
 import { readFileSync } from "fs";
 import { join, resolve } from "path";
+import { EMBEDDING_MODEL } from "./models.js";
 
 // ── Config ─────────────────────────────────────────────────
 
@@ -29,7 +30,6 @@ const EMBEDDINGS_DB_PATH = join(ROOT, "user", "embeddings.db");
 const MIN_CHUNK_CHARS = 2000;  // Start chunking when buffer hits this
 const MAX_CHUNK_CHARS = 4000;  // Hard cap per chunk
 const ASSISTANT_LABEL = "@Vito";
-const EMBEDDING_MODEL = "openai/text-embedding-3-small";
 const CONTEXTUAL_MODEL = "openai/gpt-4o-mini";
 
 let openrouterApiKey: string | null = null;

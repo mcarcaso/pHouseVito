@@ -17,6 +17,7 @@ import { readSecrets, writeSecrets, loadSecrets, getSecretsForDashboard, SYSTEM_
 import Database from "better-sqlite3";
 import OpenAI from "openai";
 import { getProviders, getModels } from "@mariozechner/pi-ai";
+import { EMBEDDING_MODEL } from "../memory/models.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const ATTACHMENTS_DIR = path.join(process.cwd(), "data", "attachments");
@@ -711,9 +712,11 @@ export class DashboardChannel implements Channel {
       const start = Date.now();
 
       try {
-        const secretsPath = path.join(process.cwd(), "user", "secrets.json");
-        const secrets = JSON.parse(readFileSync(secretsPath, "utf-8"));
-        const openai = new OpenAI({ apiKey: secrets.OPENAI_API_KEY });
+        const secrets = readSecrets();
+        const openai = new OpenAI({
+          apiKey: secrets.OPENROUTER_API_KEY,
+          baseURL: "https://openrouter.ai/api/v1",
+        });
 
         const db = new Database(dbPath, { readonly: true });
 
@@ -729,7 +732,7 @@ export class DashboardChannel implements Channel {
         let embeddingResults: { id: number; score: number }[] = [];
         if (mode === "hybrid" || mode === "embedding") {
           const embResponse = await openai.embeddings.create({
-            model: "text-embedding-3-small",
+            model: EMBEDDING_MODEL,
             input: query,
           });
           const queryVector = new Float32Array(embResponse.data[0].embedding);

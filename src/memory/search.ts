@@ -18,12 +18,12 @@ import Database from "better-sqlite3";
 import OpenAI from "openai";
 import { readFileSync } from "fs";
 import { join, resolve } from "path";
+import { EMBEDDING_MODEL } from "./models.js";
 
 // ── Config ─────────────────────────────────────────────────
 
 const ROOT = resolve(process.cwd());
 const EMBEDDINGS_DB_PATH = join(ROOT, "user", "embeddings.db");
-const EMBEDDING_MODEL = "openai/text-embedding-3-small";
 
 // Auto-search settings
 const AUTO_SEARCH_LIMIT = 3;           // Max chunks to inject

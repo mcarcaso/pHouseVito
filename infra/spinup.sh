@@ -485,18 +485,44 @@ mkdir -p \$CONTAINERS_DIR/\$CUSTOMER_NAME/user/{logs,images,skills,apps,memories
 mkdir -p \$CONTAINERS_DIR/\$CUSTOMER_NAME/data
 
 # Create default config for customer
-cat > \$CONTAINERS_DIR/\$CUSTOMER_NAME/user/vito.config.json << 'CONFIG'
+cat > \$CONTAINERS_DIR/\$CUSTOMER_NAME/user/config.json << 'CONFIG'
 {
   "settings": {
     "harness": "claude-code",
-    "claude-code": {
-      "model": "sonnet"
+    "streamMode": "stream",
+    "traceMessageUpdates": false,
+    "currentContext": {
+      "limit": 100,
+      "includeThoughts": true,
+      "includeTools": true,
+      "includeArchived": false,
+      "includeCompacted": false
+    },
+    "crossContext": {
+      "limit": 5,
+      "includeThoughts": false,
+      "includeTools": false,
+      "includeArchived": false,
+      "includeCompacted": false
     }
+  },
+  "harnesses": {
+    "claude-code": {
+      "model": "sonnet",
+      "permissionMode": "bypassPermissions"
+    }
+  },
+  "compaction": {
+    "threshold": 200,
+    "percent": 50
   },
   "channels": {
     "dashboard": {
       "enabled": true
     }
+  },
+  "cron": {
+    "jobs": []
   }
 }
 CONFIG

@@ -402,6 +402,69 @@ log "Certificate copied to \$CERTS_DIR/\$CUSTOMER_NAME/"
 # Start customer container
 log "Starting customer container..."
 mkdir -p \$CONTAINERS_DIR/\$CUSTOMER_NAME
+mkdir -p \$CONTAINERS_DIR/\$CUSTOMER_NAME/app
+
+# Create a simple Express server for the customer
+cat > \$CONTAINERS_DIR/\$CUSTOMER_NAME/app/server.js << 'SERVERJS'
+const http = require('http');
+const hostname = process.env.HOSTNAME || require('os').hostname();
+const customerName = process.env.CUSTOMER_NAME || 'unknown';
+const baseDomain = process.env.BASE_DOMAIN || 'unknown';
+
+const server = http.createServer((req, res) => {
+  const host = req.headers.host || 'unknown';
+  
+  if (req.url === '/health') {
+    res.writeHead(200, { 'Content-Type': 'text/plain' });
+    res.end('OK');
+    return;
+  }
+  
+  res.writeHead(200, { 'Content-Type': 'text/html' });
+  res.end(`
+<!DOCTYPE html>
+<html>
+<head>
+  <title>${customerName}'s Vito Instance</title>
+  <style>
+    body { font-family: system-ui; max-width: 600px; margin: 50px auto; padding: 20px; }
+    h1 { color: #333; }
+    .info { background: #f5f5f5; padding: 15px; border-radius: 8px; margin: 20px 0; }
+    .success { color: #22c55e; }
+    code { background: #e5e5e5; padding: 2px 6px; border-radius: 4px; }
+  </style>
+</head>
+<body>
+  <h1>🤖 ${customerName}'s Vito Instance</h1>
+  <p class="success">✅ Container is running!</p>
+  
+  <div class="info">
+    <strong>Request Host:</strong> ${host}<br>
+    <strong>Customer:</strong> ${customerName}<br>
+    <strong>Base Domain:</strong> ${baseDomain}<br>
+    <strong>Container:</strong> ${hostname}
+  </div>
+  
+  <p>This is a placeholder page. Your Vito AI instance is ready to be configured.</p>
+  
+  <h3>What's Working:</h3>
+  <ul>
+    <li>✅ SSL/TLS (wildcard cert for *.${baseDomain})</li>
+    <li>✅ Docker container running</li>
+    <li>✅ Caddy reverse proxy routing</li>
+    <li>✅ Subdomain routing (any <code>*.${baseDomain}</code> works)</li>
+  </ul>
+  
+  <p><em>Deploy your apps to any subdomain — they're all covered by the wildcard cert!</em></p>
+</body>
+</html>
+  `);
+});
+
+server.listen(3000, '0.0.0.0', () => {
+  console.log(\`Vito server for \${customerName} running on port 3000\`);
+});
+SERVERJS
 
 cat > \$CONTAINERS_DIR/\$CUSTOMER_NAME/docker-compose.yml << COMPOSE
 version: '3.8'
@@ -414,11 +477,13 @@ services:
       - "\$CUSTOMER_PORT:3000"
     volumes:
       - ./data:/app/data
+      - ./app:/app/src
+    working_dir: /app/src
     environment:
       - NODE_ENV=production
       - CUSTOMER_NAME=\$CUSTOMER_NAME
       - BASE_DOMAIN=\$CUSTOMER_NAME.\$DOMAIN
-    command: sh -c "echo 'Vito container for \$CUSTOMER_NAME' && sleep infinity"
+    command: node server.js
 COMPOSE
 
 cd \$CONTAINERS_DIR/\$CUSTOMER_NAME

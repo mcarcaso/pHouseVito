@@ -84,7 +84,7 @@ function NumberInput({
 
 export default function GlobalSettings({ config, onSave }: GlobalSettingsProps) {
   const settings = config.settings || {};
-  const botName = config.bot?.name || 'Vito';
+  const botName = config.bot?.name || 'Assistant';
 
   const updateSetting = async (field: string, value: any) => {
     const newSettings = { ...settings };
@@ -114,7 +114,7 @@ export default function GlobalSettings({ config, onSave }: GlobalSettingsProps) 
             type="text"
             value={botName}
             onChange={(e) => updateBotName(e.target.value)}
-            placeholder="Vito"
+            placeholder="Assistant"
             className="w-full sm:w-48 bg-neutral-950 border border-neutral-700 rounded-md px-3 py-2 text-neutral-200 text-sm focus:outline-none focus:border-blue-600 transition-colors"
           />
           <span className="text-xs text-neutral-600">@mentions become @{botName}</span>

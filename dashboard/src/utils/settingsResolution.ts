@@ -49,7 +49,7 @@ export interface ResolvedSettings {
 
 export interface VitoConfig {
   bot?: {
-    name: string;  // e.g., "Vito" — @mentions get normalized to @{name}
+    name: string;  // @mentions get normalized to @{name}
   };
   settings: Settings;
   harnesses: {

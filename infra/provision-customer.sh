@@ -120,8 +120,8 @@ else
     PORT_ARG=""
 fi
 
-ssh -i "$EC2_KEY" -o StrictHostKeyChecking=no "$EC2_USER@$EC2_IP" \
-    "sudo /opt/cloudmallinc/provision-customer.sh $CUSTOMER_NAME $PORT_ARG"
+ssh -i "$EC2_KEY" -o StrictHostKeyChecking=no -t "$EC2_USER@$EC2_IP" \
+    "sudo /opt/cloudmallinc/provision-customer.sh $CUSTOMER_NAME $PORT_ARG; exit 0"
 
 # ============================================================================
 # Step 4: Update local state

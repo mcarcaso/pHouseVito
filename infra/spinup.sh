@@ -518,8 +518,8 @@ for row in \$(cat \$CADDY_DIR/customers.json | jq -c '.[]'); do
 BLOCK
 done
 
-# Reload Caddy
-systemctl reload caddy || systemctl restart caddy
+# Reload Caddy (timeout to prevent hanging)
+timeout 10 systemctl reload caddy 2>/dev/null || timeout 10 systemctl restart caddy 2>/dev/null || true
 
 log "Caddy configuration updated"
 

@@ -13,7 +13,8 @@ set -e
 # ============================================================================
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-VITO_SOURCE="${VITO_SOURCE:-$HOME/vito3.0}"
+REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
+VITO_SOURCE="${VITO_SOURCE:-$REPO_ROOT}"
 IMAGE_TAG="${IMAGE_TAG:-latest}"
 PUSH=false
 PLATFORM=""

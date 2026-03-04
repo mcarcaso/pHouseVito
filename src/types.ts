@@ -1,4 +1,4 @@
-// Shared types for Vito
+// Shared types
 
 // ── Channel types ──
 
@@ -152,7 +152,7 @@ export type ResolvedSettings = Required<Pick<Settings, "harness" | "streamMode">
 export interface VitoConfig {
   /** Bot identity — used for @mention normalization across channels */
   bot?: {
-    name: string;  // e.g., "Vito" — @mentions get normalized to @{name}
+    name: string;  // @mentions get normalized to @{name}
   };
   /** Global default settings — baseline for all channels and sessions */
   settings: Settings;

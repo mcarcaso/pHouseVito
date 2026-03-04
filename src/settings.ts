@@ -69,7 +69,7 @@ function mergeSettings(base: Settings, override: Settings): Settings {
  * Get effective settings for a given channel and session.
  * Cascades: Global → Channel → Session
  * 
- * @param config - Full Vito config
+ * @param config - Full app config
  * @param channelName - Channel name (e.g., "telegram", "discord", "dashboard")
  * @param sessionKey - Full session key (e.g., "telegram:123456789")
  * @returns Fully resolved settings with all defaults filled in

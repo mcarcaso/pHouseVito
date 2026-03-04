@@ -963,7 +963,7 @@ export class DashboardChannel implements Channel {
     });
 
     // ── Public Ask API ──
-    // External integrations (Bland.ai phone, webhooks, etc.) call this to get a Vito response.
+    // External integrations (Bland.ai phone, webhooks, etc.) call this to get a response.
     // Routes through the full orchestrator pipeline: system prompt, memories, skills, tools.
     this.app.post("/api/ask", async (req, res) => {
       // Authenticate with Bearer token from secrets

@@ -38,7 +38,7 @@ export function buildTestSystemPrompt(
   soul: string,
   skillsDir: string,
   channelPrompt: string = "",
-  botName: string = "Vito"
+  botName: string = "Assistant"
 ): string {
   const parts: string[] = [];
 
@@ -137,7 +137,7 @@ export class Orchestrator {
   }
 
   /**
-   * Public API: Ask Vito a question and get a text response.
+   * Public API: Ask a question and get a text response.
    * Routes through the full orchestrator pipeline (system prompt, memories, skills, harness)
    * but captures the response instead of sending it to a channel.
    * 
@@ -286,7 +286,7 @@ export class Orchestrator {
     }
 
     // No commands in test prompts (no /new etc.)
-    parts.push(buildSystemBlock(false, this.config.bot?.name || "Vito"));
+    parts.push(buildSystemBlock(false, this.config.bot?.name || "Assistant"));
 
     // Skills prompt
     const skillsPrompt = formatSkillsForPrompt(this.getSkills());
@@ -490,7 +490,7 @@ export class Orchestrator {
       return;
     }
 
-    // 1. Resolve/create Vito session
+    // 1. Resolve/create session
     const vitoSession = this.sessionManager.resolveSession(
       event.channel,
       event.target
@@ -851,7 +851,7 @@ export class Orchestrator {
     }
 
     // Include commands for interactive sessions
-    parts.push(buildSystemBlock(true, this.config.bot?.name || "Vito"));
+    parts.push(buildSystemBlock(true, this.config.bot?.name || "Assistant"));
 
     if (skillsPrompt) {
       parts.push(`<skills>\n${skillsPrompt}\n</skills>`);

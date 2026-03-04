@@ -103,10 +103,10 @@ export class DiscordChannel implements Channel {
       }
 
       // Normalize all @mentions to readable names
-      const botName = this.config.bot?.name || "Vito";
+      const botName = this.config.bot?.name || "Assistant";
       let content = msg.content;
       
-      // Replace bot mention with bot name (e.g., <@123456> → @Vito)
+      // Replace bot mention with bot name (e.g., <@123456> → @BotName)
       content = content.replace(new RegExp(`<@!?${this.client!.user!.id}>`, "g"), `@${botName}`);
       
       // Replace other user mentions with their display names (e.g., <@677139888222502922> → @Ian)

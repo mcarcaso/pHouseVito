@@ -18,7 +18,7 @@ async function main() {
   // Load secrets.json as source of truth (inject into process.env)
   loadSecrets();
 
-  console.log("Starting Vito...\n");
+  console.log("Starting server...\n");
 
   // Load config and soul
   const config = loadConfig();
@@ -82,7 +82,7 @@ async function main() {
 
   // Heartbeat log every 30 minutes
   setInterval(() => {
-    console.log(`[Heartbeat] Vito alive @ ${new Date().toLocaleString()}`);
+    console.log(`[Heartbeat] Server alive @ ${new Date().toLocaleString()}`);
     const cronHealth = orchestrator.getCronScheduler().checkHealth();
     console.log(`[Heartbeat] Cron jobs: ${cronHealth.length} active`);
   }, 30 * 60 * 1000); // 30 minutes

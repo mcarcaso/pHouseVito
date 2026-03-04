@@ -27,7 +27,16 @@ function Chat() {
   const [input, setInput] = useState('');
   const [isTyping] = useState(false); // Unused but kept for ChatView prop
   const [attachments, setAttachments] = useState<Attachment[]>([]);
-  const [filterState, setFilterState] = useState<FilterState>({ showThoughts: true, showTools: true });
+  const [filterState, setFilterState] = useState<FilterState>(() => {
+    try {
+      const saved = localStorage.getItem('chat-filter');
+      if (saved) return JSON.parse(saved);
+    } catch {}
+    return { showThoughts: true, showTools: true };
+  });
+  useEffect(() => {
+    try { localStorage.setItem('chat-filter', JSON.stringify(filterState)); } catch {}
+  }, [filterState]);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const lastAssistantTsRef = useRef<number | null>(null);
   const initialLoadRef = useRef(true);

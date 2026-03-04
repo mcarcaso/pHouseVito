@@ -1,40 +1,25 @@
 {
-  "name": "personal-ai",
+  "name": "vito",
   "version": "0.1.0",
-  "description": "Your personal AI assistant — runs locally, remembers everything, extends with skills",
+  "private": true,
   "type": "module",
-  "main": "dist/index.js",
-  "bin": {
-    "ai": "./bin/vito.js"
-  },
   "scripts": {
+    "start": "cd dashboard && rm -rf dist && npm run build && cd .. && pm2 start user/ecosystem.config.cjs",
+    "stop": "pm2 stop vito-server",
+    "restart": "pm2 restart vito-server",
+    "logs": "pm2 logs vito-server",
+    "status": "pm2 status",
+    "build": "tsc",
     "dev": "tsx watch src/index.ts",
-    "build": "npm run build:server && npm run build:dashboard",
-    "build:server": "tsc",
     "build:dashboard": "cd dashboard && npm run build",
-    "start": "node dist/server.js",
-    "package": "npm run build && node scripts/package.js"
-  },
-  "keywords": [
-    "ai",
-    "assistant",
-    "claude",
-    "personal-ai",
-    "automation"
-  ],
-  "author": "Mike Carcasole",
-  "license": "MIT",
-  "engines": {
-    "node": ">=20.0.0"
+    "dev:dashboard": "cd dashboard && npm run dev"
   },
   "dependencies": {
     "@mariozechner/pi-ai": "^0.54.0",
     "@mariozechner/pi-coding-agent": "latest",
-    "@types/http-proxy": "^1.17.17",
     "ajv": "^8.18.0",
     "axios": "^1.13.5",
     "better-sqlite3": "^11.0.0",
-    "commander": "^12.0.0",
     "cors": "^2.8.6",
     "cron-schedule": "^6.0.0",
     "discord.js": "^14.25.1",
@@ -44,25 +29,17 @@
     "googleapis": "^171.4.0",
     "grammy": "^1.40.0",
     "gray-matter": "^4.0.3",
-    "http-proxy": "^1.18.1",
     "openai": "^4.104.0",
     "playwright": "^1.58.2",
     "ws": "^8.19.0"
   },
   "devDependencies": {
-    "@types/better-sqlite3": "^7.6.13",
+    "@types/better-sqlite3": "^7.6.0",
     "@types/cors": "^2.8.19",
     "@types/express": "^5.0.6",
-    "@types/node": "^22.19.13",
+    "@types/node": "^22.0.0",
     "@types/ws": "^8.18.1",
-    "tsx": "^4.21.0",
-    "typescript": "^5.9.3"
-  },
-  "files": [
-    "dist/",
-    "bin/",
-    "skills/",
-    "templates/",
-    "README.md"
-  ]
+    "tsx": "^4.0.0",
+    "typescript": "^5.7.3"
+  }
 }

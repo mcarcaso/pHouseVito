@@ -16,22 +16,10 @@ import { readSecrets, writeSecrets, loadSecrets, getSecretsForDashboard, SYSTEM_
 import Database from "better-sqlite3";
 import OpenAI from "openai";
 import { getProviders, getModels } from "@mariozechner/pi-ai";
-import { getUserDir } from "../config.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
-
-// These are resolved dynamically based on workspace
-function getAttachmentsDir(): string {
-  return path.join(getUserDir(), "data", "attachments");
-}
-
-function getConfigPath(): string {
-  return path.join(getUserDir(), "config.json");
-}
-
-function getLogsDir(): string {
-  return path.join(getUserDir(), "logs");
-}
+const ATTACHMENTS_DIR = path.join(process.cwd(), "data", "attachments");
+const CONFIG_PATH = path.join(process.cwd(), "user", "config.json");
 
 interface DashboardMessage {
   type: "chat" | "typing" | "status";
@@ -54,7 +42,7 @@ export class DashboardChannel implements Channel {
   private server = createServer(this.app);
   private wss = new WebSocketServer({ server: this.server });
   private clients = new Set<WebSocket>();
-  // port is now set in constructor
+  private port = parseInt(process.env.PORT || "3000", 10);
   private eventHandler?: (event: InboundEvent) => void;
 
   private skillsGetter?: () => any[];
@@ -76,10 +64,7 @@ export class DashboardChannel implements Channel {
     channelPrompt?: string;
   }) => Promise<string>;
 
-  private port: number;
-  
-  constructor(private db: any, private queries: any, private config: any, port: number = 3030) {
-    this.port = port;
+  constructor(private db: any, private queries: any, private config: any) {
     this.setupExpress();
     this.setupWebSocket();
   }
@@ -87,7 +72,7 @@ export class DashboardChannel implements Channel {
   /** Save current config to disk */
   private saveConfig(): void {
     try {
-      writeFileSync(getConfigPath(), JSON.stringify(this.config, null, 2) + "\n", "utf-8");
+      writeFileSync(CONFIG_PATH, JSON.stringify(this.config, null, 2) + "\n", "utf-8");
       console.log("[Dashboard] Config saved to disk");
     } catch (err) {
       console.error("[Dashboard] Failed to save config:", err);
@@ -134,9 +119,8 @@ export class DashboardChannel implements Channel {
     this.app.use(express.static(path.join(__dirname, "../../dashboard/dist")));
 
     // Serve uploaded attachments
-    const attachmentsDir = getAttachmentsDir();
-    if (!existsSync(attachmentsDir)) mkdirSync(attachmentsDir, { recursive: true });
-    this.app.use("/attachments", express.static(attachmentsDir));
+    if (!existsSync(ATTACHMENTS_DIR)) mkdirSync(ATTACHMENTS_DIR, { recursive: true });
+    this.app.use("/attachments", express.static(ATTACHMENTS_DIR));
 
     // API endpoints
     this.app.get("/api/config", (req, res) => {
@@ -180,7 +164,7 @@ export class DashboardChannel implements Channel {
     this.app.get("/api/harnesses", (req, res) => {
       // Get config and list registered harnesses
       const harnesses = this.config.harnesses || {};
-      const defaultHarness = this.config.settings?.harness || "pi-coding-agent";
+      const defaultHarness = this.config.settings?.harness || "claude-code";
       
       // Build harness info
       const available: Record<string, any> = {
@@ -922,10 +906,9 @@ export class DashboardChannel implements Channel {
       const savedFilename = filename
         ? `${id}-${filename}`
         : `${id}.${ext}`;
-      const attachDir = getAttachmentsDir();
-      const filePath = path.join(attachDir, savedFilename);
+      const filePath = path.join(ATTACHMENTS_DIR, savedFilename);
 
-      if (!existsSync(attachDir)) mkdirSync(attachDir, { recursive: true });
+      if (!existsSync(ATTACHMENTS_DIR)) mkdirSync(ATTACHMENTS_DIR, { recursive: true });
       writeFileSync(filePath, buffer);
 
       res.json({
@@ -1089,7 +1072,7 @@ export class DashboardChannel implements Channel {
             name: appName,
             description: meta.description || "",
             port: meta.port,
-            url: meta.url || `http://localhost:${meta.port}`,
+            url: meta.url || `https://${appName}.theworstproductions.com`,
             createdAt: meta.createdAt,
             status: pm2Process?.pm2_env?.status || "unknown",
             uptime: pm2Process?.pm2_env?.pm_uptime
@@ -1180,6 +1163,39 @@ export class DashboardChannel implements Channel {
           });
         } catch (e) {
           // Might not exist in PM2, that's fine
+        }
+
+        // Remove Cloudflare tunnel entry
+        const cfConfigPath = path.join(process.env.HOME || "", ".cloudflared", "config.yml");
+        if (existsSync(cfConfigPath)) {
+          let cfConfig = readFileSync(cfConfigPath, "utf-8");
+          const appUrl = `${name}.theworstproductions.com`;
+          // Remove the ingress entry for this app
+          const lines = cfConfig.split("\n");
+          const filteredLines: string[] = [];
+          let skipNext = false;
+          for (let i = 0; i < lines.length; i++) {
+            const line = lines[i];
+            if (line.includes(`hostname: ${appUrl}`)) {
+              // Skip this line and the next (service line)
+              skipNext = true;
+              continue;
+            }
+            if (skipNext && line.trim().startsWith("service:")) {
+              skipNext = false;
+              continue;
+            }
+            skipNext = false;
+            filteredLines.push(line);
+          }
+          writeFileSync(cfConfigPath, filteredLines.join("\n"), "utf-8");
+
+          // Restart cloudflared tunnel
+          try {
+            execSync("pkill -HUP cloudflared || true", { encoding: "utf-8" });
+          } catch (e) {
+            // Might fail, that's ok
+          }
         }
 
         // Delete app directory
@@ -1278,7 +1294,7 @@ export class DashboardChannel implements Channel {
 
     this.app.get("/api/logs", (req, res) => {
       try {
-        const logsDir = getLogsDir();
+        const logsDir = path.join(process.cwd(), "logs");
         if (!existsSync(logsDir)) {
           res.json([]);
           return;
@@ -1380,7 +1396,7 @@ export class DashboardChannel implements Channel {
           return;
         }
         
-        const filePath = path.join(getLogsDir(), filename);
+        const filePath = path.join(process.cwd(), "logs", filename);
         if (!existsSync(filePath)) {
           res.status(404).json({ error: "Log not found" });
           return;
@@ -1420,7 +1436,7 @@ export class DashboardChannel implements Channel {
           return;
         }
         
-        const filePath = path.join(getLogsDir(), filename);
+        const filePath = path.join(process.cwd(), "logs", filename);
         if (!existsSync(filePath)) {
           res.status(404).json({ error: "Log not found" });
           return;
@@ -1436,7 +1452,7 @@ export class DashboardChannel implements Channel {
     // Delete all trace files
     this.app.delete("/api/logs", (req, res) => {
       try {
-        const logsDir = getLogsDir();
+        const logsDir = path.join(process.cwd(), "logs");
         if (!existsSync(logsDir)) {
           res.json({ success: true, deleted: 0 });
           return;

@@ -1,17 +1,17 @@
 import { existsSync, mkdirSync, writeFileSync, readFileSync, readdirSync, rmSync } from 'fs';
 import { join } from 'path';
 import { execSync } from 'child_process';
-import { getWorkspace } from '../../../workspace.js';
 
+const USER_DIR = join(process.cwd(), 'user');
 const PORT_START = 3100;
 
 function getAppsDir() {
-  return join(getWorkspace(), 'apps');
+  return join(USER_DIR, 'apps');
 }
 
 function getConfig() {
   try {
-    const configPath = join(getWorkspace(), 'config.json');
+    const configPath = join(USER_DIR, 'config.json');
     if (existsSync(configPath)) {
       return JSON.parse(readFileSync(configPath, 'utf-8'));
     }
@@ -42,12 +42,12 @@ function ensureAppsDir() {
 function getUsedPorts() {
   const appsDir = getAppsDir();
   if (!existsSync(appsDir)) return [];
-  
+
   const ports = [];
   const dirs = readdirSync(appsDir, { withFileTypes: true })
     .filter(d => d.isDirectory())
     .map(d => d.name);
-  
+
   for (const name of dirs) {
     const meta = getAppMeta(name);
     if (meta?.port) {
@@ -115,29 +115,29 @@ function startAppServer(appName, port, appDir) {
 
   if (hasNodeServer) {
     // Node.js app
-    execSync(`npx pm2 start server.js --name "${pm2Name}" --cwd "${appDir}" -- --port ${port}`, {
+    execSync(`pm2 start server.js --name "${pm2Name}" --cwd "${appDir}" -- --port ${port}`, {
       stdio: 'pipe',
     });
   } else if (hasPythonServer) {
     // Python app
-    execSync(`npx pm2 start server.py --name "${pm2Name}" --interpreter python3 --cwd "${appDir}" -- --port ${port}`, {
+    execSync(`pm2 start server.py --name "${pm2Name}" --interpreter python3 --cwd "${appDir}" -- --port ${port}`, {
       stdio: 'pipe',
     });
   } else {
-    // Static site — use npx serve (no SPA mode)
-    execSync(`npx pm2 start npx --name "${pm2Name}" -- serve "${appDir}" -l ${port} --no-clipboard`, {
+    // Static site — use serve (no SPA mode)
+    execSync(`pm2 start npx --name "${pm2Name}" -- serve "${appDir}" -l ${port} --no-clipboard`, {
       stdio: 'pipe',
     });
   }
 
-  execSync('npx pm2 save', { stdio: 'pipe' });
+  execSync('pm2 save', { stdio: 'pipe' });
 }
 
 function stopAppServer(appName) {
   const pm2Name = `app-${appName}`;
   try {
-    execSync(`npx pm2 delete "${pm2Name}"`, { stdio: 'pipe' });
-    execSync('npx pm2 save', { stdio: 'pipe' });
+    execSync(`pm2 delete "${pm2Name}"`, { stdio: 'pipe' });
+    execSync('pm2 save', { stdio: 'pipe' });
   } catch (e) {
     // App might not be running
   }
@@ -215,7 +215,7 @@ async function listApps() {
 
     let status = 'unknown';
     try {
-      const result = execSync('npx pm2 jlist', { stdio: ['pipe', 'pipe', 'pipe'] }).toString();
+      const result = execSync('pm2 jlist', { stdio: ['pipe', 'pipe', 'pipe'] }).toString();
       const processes = JSON.parse(result);
       const proc = processes.find(p => p.name === `app-${name}`);
       status = proc ? proc.pm2_env.status : 'stopped';

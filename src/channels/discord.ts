@@ -103,7 +103,7 @@ export class DiscordChannel implements Channel {
       }
 
       // Normalize all @mentions to readable names
-      const botName = this.config.bot?.name || "Assistant";
+      const botName = this.config.bot?.name || "Vito";
       let content = msg.content;
       
       // Replace bot mention with bot name (e.g., <@123456> → @Vito)

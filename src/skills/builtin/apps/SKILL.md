@@ -9,7 +9,7 @@ Create and deploy web apps using ANY technology stack — static HTML, React, No
 
 ## Architecture
 
-- **App directory:** `~/ai-assistant/apps/<name>/` — each deployed app gets its own folder
+- **App directory:** `user/apps/<name>/` — each deployed app gets its own folder
 - **Metadata:** `.app-meta.json` in each app folder (name, description, port, URL, createdAt)
 - **PM2 tracking:** Each app registered as `app-<name>` in PM2
 - **Ports:** Auto-assigned starting from 3100 (configurable via `apps.portStart` in config.json)
@@ -21,8 +21,8 @@ In your `config.json`:
 ```json
 {
   "apps": {
-    "baseDomain": "your-domain.com",  // Apps accessible at <name>.your-domain.com
-    "portStart": 3100                  // First port to assign (default: 3100)
+    "baseDomain": "your-domain.com",
+    "portStart": 3100
   }
 }
 ```
@@ -87,7 +87,7 @@ Stops server, removes PM2 process, deletes files.
 ## File Structure
 
 ```
-~/ai-assistant/apps/
+user/apps/
 ├── my-portfolio/
 │   ├── .app-meta.json    (metadata — port, url, description)
 │   ├── index.html

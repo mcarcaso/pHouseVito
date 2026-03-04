@@ -38,7 +38,7 @@ export function buildTestSystemPrompt(
   soul: string,
   skillsDir: string,
   channelPrompt: string = "",
-  botName: string = "Assistant"
+  botName: string = "Vito"
 ): string {
   const parts: string[] = [];
 
@@ -132,7 +132,7 @@ export class Orchestrator {
   /** Hot-reload the full config (model, memory, etc.) */
   reloadConfig(config: VitoConfig): void {
     this.config = config;
-    const defaultHarness = config.settings?.harness || "pi-coding-agent";
+    const defaultHarness = config.settings?.harness || "claude-code";
     console.log(`[Orchestrator] Config reloaded — default harness: ${defaultHarness}`);
   }
 
@@ -286,7 +286,7 @@ export class Orchestrator {
     }
 
     // No commands in test prompts (no /new etc.)
-    parts.push(buildSystemBlock(false, this.config.bot?.name || "Assistant"));
+    parts.push(buildSystemBlock(false, this.config.bot?.name || "Vito"));
 
     // Skills prompt
     const skillsPrompt = formatSkillsForPrompt(this.getSkills());
@@ -405,9 +405,8 @@ export class Orchestrator {
       }
     }
     
-    // Start cron scheduler (handle missing cron config)
-    const cronJobs = this.config.cron?.jobs ?? [];
-    this.cronScheduler.start(cronJobs);
+    // Start cron scheduler
+    this.cronScheduler.start(this.config.cron.jobs);
   }
 
   /** Stop all channels */
@@ -960,7 +959,7 @@ export class Orchestrator {
     }
 
     // Include commands for interactive sessions
-    parts.push(buildSystemBlock(true, this.config.bot?.name || "Assistant"));
+    parts.push(buildSystemBlock(true, this.config.bot?.name || "Vito"));
 
     if (skillsPrompt) {
       parts.push(`<skills>\n${skillsPrompt}\n</skills>`);

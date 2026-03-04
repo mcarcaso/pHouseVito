@@ -9,6 +9,7 @@ import Jobs from './components/Jobs';
 import System from './components/System';
 import Server from './components/Server';
 import Apps from './components/Apps';
+import Drive from './components/Drive';
 import Traces from './components/Traces';
 import UnifiedSettings from './components/settings/UnifiedSettings';
 import Login from './components/Login';
@@ -60,6 +61,7 @@ function App() {
     if (path.startsWith('/system')) return 'System';
     if (path.startsWith('/server')) return 'Server';
     if (path.startsWith('/apps')) return 'Apps';
+    if (path.startsWith('/drive')) return 'Drive';
     if (path.startsWith('/traces')) return 'Traces';
     return 'Chat';
   };
@@ -124,6 +126,10 @@ function App() {
       <NavLink to="/apps" className={navItemClass}>
         <span className="w-6 text-center text-base">🚀</span>
         Apps
+      </NavLink>
+      <NavLink to="/drive" className={navItemClass}>
+        <span className="w-6 text-center text-base">📁</span>
+        Drive
       </NavLink>
       <NavLink to="/traces" className={navItemClass}>
         <span className="w-6 text-center text-base">🔍</span>
@@ -224,6 +230,7 @@ function App() {
           <Route path="/system" element={<System />} />
           <Route path="/server" element={<Server />} />
           <Route path="/apps" element={<Apps />} />
+          <Route path="/drive" element={<Drive />} />
           <Route path="/traces" element={<Traces />} />
           {/* Redirects for old routes */}
           <Route path="/channels" element={<Navigate to="/settings?tab=channels" replace />} />

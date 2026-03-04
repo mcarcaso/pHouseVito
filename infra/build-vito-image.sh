@@ -96,8 +96,10 @@ docker build $PLATFORM -t "$ECR_REPO_NAME:$IMAGE_TAG" -t "$ECR_IMAGE:$IMAGE_TAG"
 
 log "Image built: $ECR_REPO_NAME:$IMAGE_TAG"
 
-# Clean up
-rm -f "$VITO_SOURCE/Dockerfile"
+# Clean up (only if we copied the Dockerfile)
+if [ "$DOCKERFILE_SRC" != "$DOCKERFILE_DST" ]; then
+    rm -f "$VITO_SOURCE/Dockerfile"
+fi
 
 # Push if requested
 if [ "$PUSH" = true ]; then

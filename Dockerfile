@@ -59,8 +59,9 @@ RUN npm ci --omit=dev
 COPY --from=builder /app/dist ./dist
 COPY --from=builder /app/dashboard/dist ./dashboard/dist
 
-# Copy source skills (builtin skills that come with Vito)
-COPY src/skills/builtin ./src/skills/builtin
+# Copy built-in skills (shipped with the package)
+# In package mode, workspace.ts looks for skills at /app/skills/
+COPY src/skills/builtin ./skills
 
 # Create user directory structure (will be mounted in production)
 RUN mkdir -p /app/user/logs /app/user/images /app/user/skills /app/user/apps

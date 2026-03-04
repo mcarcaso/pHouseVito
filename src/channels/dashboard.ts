@@ -123,6 +123,10 @@ export class DashboardChannel implements Channel {
     this.app.use("/attachments", express.static(ATTACHMENTS_DIR));
 
     // API endpoints
+    this.app.get("/api/health", (req, res) => {
+      res.json({ status: "ok", timestamp: new Date().toISOString() });
+    });
+
     this.app.get("/api/config", (req, res) => {
       res.json(this.config);
     });

@@ -55,7 +55,6 @@ export class PersistenceHarness extends ProxyHarness {
       timestamp,
       type,
       content: JSON.stringify(content),
-      compacted: 0,
       archived: 0,
       author,
     });

@@ -2,7 +2,7 @@ import { CronScheduler } from "./cron/scheduler.js";
 import type { Queries } from "./db/queries.js";
 import { ClaudeCodeHarness, PiHarness, withPersistence, withRelay, withTracing, withTyping, type Harness } from "./harnesses/index.js";
 import { withNoReplyCheck } from "./harness/decorators/index.js";
-import { shouldCompact, acquireCompactionLock, releaseCompactionLock } from "./memory/compaction.js";
+
 import { assembleContext, formatContextForPrompt } from "./memory/context.js";
 import { maybeEmbedNewChunks } from "./memory/embeddings.js";
 import { loadProfileForPrompt, maybeUpdateProfile } from "./memory/profile.js";
@@ -527,7 +527,6 @@ export class Orchestrator {
         timestamp: event.timestamp,
         type: "user",
         content: JSON.stringify(userContent),
-        compacted: 0,
         archived: 0,
         author: event.author ?? null,
       });
@@ -691,7 +690,7 @@ export class Orchestrator {
 
     // Background: check if the conversation revealed profile-worthy facts
     try {
-      const recentMsgs = this.queries.getRecentMessages(vitoSession.id, 6, false, false, false, false);
+      const recentMsgs = this.queries.getRecentMessages(vitoSession.id, 6, false, false, false);
       const profileMessages = recentMsgs
         .filter((m) => m.type === "user" || m.type === "assistant")
         .map((m) => {
@@ -722,7 +721,6 @@ export class Orchestrator {
       console.error(`[Profile] Failed to prepare messages for profile update:`, err);
     }
 
-    // Compaction disabled (manual only)
   }
 
   private async handleStopCommand(
@@ -835,112 +833,6 @@ export class Orchestrator {
     if ("reprompt" in channel && typeof (channel as any).reprompt === "function") {
       (channel as any).reprompt();
     }
-  }
-
-  /**
-   * Trigger compaction by sending a synthetic message to the system:compaction session.
-   * This runs compaction like any other task — Pi reads the skill, queries the DB, updates memories.
-   * After completion, marks all system:compaction messages as compacted to prevent loops.
-   */
-  private async triggerCompaction(task: string): Promise<void> {
-    // Acquire lock to prevent concurrent compaction
-    if (!acquireCompactionLock()) {
-      console.log("[Compaction] Already in progress, skipping...");
-      return;
-    }
-
-    const compactionSession = "system:compaction";
-    const compactionChannel = "system";
-    const compactionTarget = "compaction";
-
-    try {
-      // Create synthetic inbound event for compaction
-      const event: InboundEvent = {
-        sessionKey: compactionSession,
-        channel: compactionChannel,
-        target: compactionTarget,
-        author: "system",
-        content: task,
-        timestamp: Date.now(),
-        raw: { synthetic: true },
-      };
-
-      // Process the compaction message like any other message
-      // (but skip the normal compaction check at the end to avoid recursion)
-      await this.processCompactionMessage(event);
-
-      // After compaction completes, mark ALL messages in system:compaction as compacted
-      // This includes the task message, all tool calls, and the final response
-      this.queries.markSessionCompacted(compactionSession);
-      console.log(`[Compaction] Marked all system:compaction messages as compacted`);
-    } finally {
-      releaseCompactionLock();
-    }
-  }
-
-  /**
-   * Process a compaction message — like processMessage but without triggering compaction at the end
-   */
-  private async processCompactionMessage(event: InboundEvent): Promise<void> {
-    // Resolve session (creates system:compaction if needed)
-    const vitoSession = this.sessionManager.resolveSession(
-      event.channel,
-      event.target
-    );
-
-    const sessionKey = `${event.channel}:${event.target}`;
-    
-    // Get effective settings for system compaction session
-    const effectiveSettings = getEffectiveSettings(this.config, event.channel, sessionKey);
-
-    // Build context (compaction session will have minimal context)
-    const ctx = await assembleContext(
-      this.queries,
-      vitoSession.id,
-      this.config,
-      effectiveSettings
-    );
-    const contextPrompt = formatContextForPrompt(ctx);
-    const skillsPrompt = formatSkillsForPrompt(this.getSkills());
-
-    // Create harness with full tool access
-    const innerHarness = this.getHarness(effectiveSettings);
-    const tracedHarness = withTracing(innerHarness, {
-      session_id: vitoSession.id,
-      channel: event.channel,
-      target: event.target,
-      model: this.getModelString(effectiveSettings),
-      traceMessageUpdates: effectiveSettings.traceMessageUpdates ?? false,
-    });
-    const persistedHarness = withPersistence(tracedHarness, {
-      queries: this.queries,
-      sessionId: vitoSession.id,
-      channel: event.channel,
-      target: event.target,
-      userContent: event.content,
-      userTimestamp: event.timestamp,
-      author: event.author,
-    });
-    // No relay or typing for system tasks
-    const harness = persistedHarness;
-
-    // Build system prompt with compaction-specific channel prompt
-    const systemPrompt = this.buildSystemPrompt(
-      contextPrompt,
-      skillsPrompt,
-      "## Channel: System\nYou are running a background system task. No user interaction needed — just complete the task.",
-      innerHarness.getCustomInstructions?.() || ""
-    );
-
-    console.log(`[Compaction] Sending task to LLM: ${event.content.substring(0, 100)}...`);
-
-    await harness.run(
-      systemPrompt,
-      event.content,
-      { onRawEvent: () => {}, onNormalizedEvent: () => {} }
-    );
-
-    console.log(`[Compaction] Task complete`);
   }
 
   private buildSystemPrompt(

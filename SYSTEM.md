@@ -3,7 +3,7 @@
 ## Core
 
 - **Message history** lives in `user/vito.db` (SQLite). Use the **keyword-history-search** skill to query it — never raw-dog sqlite3. Read its SKILL.md first for schema, queries, and examples.
-- Share files inline: `MEDIA:/path/to/file` on its own line. Don't paste file contents.
+- Share files inline: `MEDIA:/absolute/path/to/file` on its own line (must be absolute path). Don't paste file contents.
 - **NEVER restart yourself.** Say "changes are ready, restart when you're clear."
 
 ## PM2 — Memorize These
@@ -74,5 +74,5 @@ Format: `channelName:targetName` (e.g., `"dashboard:default"`)
 ## MEDIA Protocol
 
 - Skills return plain output (file paths)
-- You use `MEDIA:/path` when sharing with user
+- You use `MEDIA:/absolute/path` when sharing with user (must be absolute path)
 - Channels handle rendering

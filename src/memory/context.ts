@@ -28,14 +28,12 @@ export async function assembleContext(
     includeThoughts: true,
     includeTools: true,
     includeArchived: false,
-    includeCompacted: false,
   };
   const crossContext = effectiveSettings?.crossContext ?? {
     limit: 5,
     includeThoughts: false,
     includeTools: false,
     includeArchived: false,
-    includeCompacted: false,
   };
 
   // Memories block is unused — profile.json + embeddings handle long-term memory now
@@ -50,8 +48,7 @@ export async function assembleContext(
     crossContext.limit,
     crossContext.includeTools,
     crossContext.includeThoughts,
-    crossContext.includeArchived,
-    crossContext.includeCompacted
+    crossContext.includeArchived
   );
   const assistantLabel = config.bot?.name ? `@${config.bot.name}` : "assistant";
   const crossSessionBlock = formatCrossSessionMessages(crossSessionMessages, aliases, assistantLabel);
@@ -62,8 +59,7 @@ export async function assembleContext(
     currentContext.limit,
     currentContext.includeTools,
     currentContext.includeThoughts,
-    currentContext.includeArchived,
-    currentContext.includeCompacted
+    currentContext.includeArchived
   );
   const currentSessionBlock = formatCurrentSessionMessages(
     currentSessionMessages,

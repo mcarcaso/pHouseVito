@@ -110,8 +110,6 @@ export interface ContextSettings {
   includeTools?: boolean;
   /** Include archived messages */
   includeArchived?: boolean;
-  /** Include compacted messages */
-  includeCompacted?: boolean;
 }
 
 export interface Settings {
@@ -139,7 +137,6 @@ export interface ResolvedContextSettings {
   includeThoughts: boolean;
   includeTools: boolean;
   includeArchived: boolean;
-  includeCompacted: boolean;
 }
 
 /** Deep merge helper type for settings resolution */
@@ -163,12 +160,6 @@ export interface VitoConfig {
   harnesses: {
     "pi-coding-agent"?: PiHarnessConfig;
     "claude-code"?: ClaudeCodeHarnessConfig;
-  };
-  /** Compaction settings (not cascading — global only) */
-  compaction: {
-    threshold: number;
-    percent?: number; // Percentage of messages to compact (default: 50)
-    messageTypes?: MsgType[]; // Which message types to count (default: ["user", "assistant"])
   };
   /** Per-channel configuration */
   channels: Record<string, ChannelConfig>;
@@ -218,7 +209,6 @@ export interface MessageRow {
   timestamp: number;
   type: MsgType;
   content: string; // JSON string
-  compacted: number; // 0 or 1
   archived: number; // 0 or 1
   author: string | null; // username/tag of the sender (for user messages)
 }

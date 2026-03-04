@@ -29,17 +29,17 @@ const EMBEDDINGS_DB_PATH = join(ROOT, "user", "embeddings.db");
 const MIN_CHUNK_CHARS = 2000;  // Start chunking when buffer hits this
 const MAX_CHUNK_CHARS = 4000;  // Hard cap per chunk
 const ASSISTANT_LABEL = "@Vito";
-const EMBEDDING_MODEL = "text-embedding-3-small";
-const CONTEXTUAL_MODEL = "gpt-4o-mini";
+const EMBEDDING_MODEL = "openai/text-embedding-3-small";
+const CONTEXTUAL_MODEL = "openai/gpt-4o-mini";
 
-let openaiApiKey: string | null = null;
+let openrouterApiKey: string | null = null;
 
-function getOpenAIKey(): string {
-  if (!openaiApiKey) {
+function getOpenRouterKey(): string {
+  if (!openrouterApiKey) {
     const secrets = JSON.parse(readFileSync(join(ROOT, "user", "secrets.json"), "utf-8"));
-    openaiApiKey = secrets.OPENAI_API_KEY;
+    openrouterApiKey = secrets.OPENROUTER_API_KEY;
   }
-  return openaiApiKey!;
+  return openrouterApiKey!;
 }
 
 // ── Global Lock ────────────────────────────────────────────
@@ -245,7 +245,10 @@ function produceCompleteChunks(
 // ── OpenAI Calls ───────────────────────────────────────────
 
 async function generateContext(currentText: string, previousText: string | null): Promise<string> {
-  const openai = new OpenAI({ apiKey: getOpenAIKey() });
+  const openai = new OpenAI({ 
+    apiKey: getOpenRouterKey(),
+    baseURL: "https://openrouter.ai/api/v1",
+  });
 
   const prevSection = previousText
     ? `<previous_chunk>\n${previousText}\n</previous_chunk>\n\n`
@@ -270,7 +273,10 @@ Do NOT summarize the full conversation. Just provide enough context so that if s
 }
 
 async function embedText(text: string): Promise<Float32Array> {
-  const openai = new OpenAI({ apiKey: getOpenAIKey() });
+  const openai = new OpenAI({ 
+    apiKey: getOpenRouterKey(),
+    baseURL: "https://openrouter.ai/api/v1",
+  });
 
   const response = await openai.embeddings.create({
     model: EMBEDDING_MODEL,

@@ -477,88 +477,41 @@ chmod 600 \$CERTS_DIR/\$CUSTOMER_NAME/*.pem
 log "Certificate copied to \$CERTS_DIR/\$CUSTOMER_NAME/"
 
 # ============================================================================
-# Set up customer directory structure
+# Set up customer directory structure from templates
 # ============================================================================
 
 log "Creating customer directory structure..."
 mkdir -p \$CONTAINERS_DIR/\$CUSTOMER_NAME/user/{logs,images,skills,apps,memories}
 mkdir -p \$CONTAINERS_DIR/\$CUSTOMER_NAME/data
 
-# Create default config for customer (Pi harness for onboarding)
-cat > \$CONTAINERS_DIR/\$CUSTOMER_NAME/user/config.json << 'CONFIG'
-{
-  "bot": {
-    "name": "ASSISTANT"
-  },
-  "settings": {
-    "harness": "pi-coding-agent",
-    "streamMode": "stream",
-    "traceMessageUpdates": false,
-    "currentContext": {
-      "limit": 100,
-      "includeThoughts": true,
-      "includeTools": true,
-      "includeArchived": false,
-      "includeCompacted": false
-    },
-    "crossContext": {
-      "limit": 5,
-      "includeThoughts": false,
-      "includeTools": false,
-      "includeArchived": false,
-      "includeCompacted": false
-    }
-  },
-  "harnesses": {
-    "pi-coding-agent": {
-      "model": "sonnet",
-      "permissionMode": "bypassPermissions"
-    },
-    "claude-code": {
-      "model": "sonnet",
-      "permissionMode": "bypassPermissions"
-    }
-  },
-  "compaction": {
-    "threshold": 200,
-    "percent": 50
-  },
-  "channels": {
-    "dashboard": {
-      "enabled": true
-    }
-  },
-  "cron": {
-    "jobs": []
-  }
-}
-CONFIG
+# Copy template files from /opt/cloudmallinc/templates/
+# These are uploaded from user.example/ during spinup
+TEMPLATES_DIR="/opt/cloudmallinc/templates"
 
-# Create default SOUL.md (Pi onboarding interview)
-cat > \$CONTAINERS_DIR/\$CUSTOMER_NAME/user/SOUL.md << 'SOUL'
-# Soul Not Initialized
+if [ -f "\$TEMPLATES_DIR/config.json" ]; then
+    cp "\$TEMPLATES_DIR/config.json" \$CONTAINERS_DIR/\$CUSTOMER_NAME/user/config.json
+else
+    error "Template config.json not found at \$TEMPLATES_DIR"
+fi
 
-You haven't been personalized yet! Before doing anything else, you should introduce yourself and ask the user some questions to set up their assistant:
+if [ -f "\$TEMPLATES_DIR/SOUL.md" ]; then
+    cp "\$TEMPLATES_DIR/SOUL.md" \$CONTAINERS_DIR/\$CUSTOMER_NAME/user/SOUL.md
+else
+    error "Template SOUL.md not found at \$TEMPLATES_DIR"
+fi
 
-1. **What's your name?**
-2. **What would you like to call me?** (Pick a name for your AI assistant)
-3. **What vibe do you want?** (Casual and friendly? Professional? Sarcastic? Encouraging?)
-4. **What do you mainly want help with?** (Coding, writing, research, daily planning, etc.)
-5. **Any personality traits or boundaries?** (e.g., "be direct, don't sugarcoat", "always explain your reasoning", "keep it brief")
-
-Once you learn enough, rewrite this entire file (\`user/SOUL.md\`) to reflect the user's preferences. Replace this placeholder with a real personality definition.
-
-This file is your identity — it defines who you are, how you speak, and what you care about. Keep it updated as you learn more about the user.
-SOUL
-
-# Create empty secrets (customer fills this in via dashboard)
-cat > \$CONTAINERS_DIR/\$CUSTOMER_NAME/user/secrets.json << 'SECRETS'
+if [ -f "\$TEMPLATES_DIR/secrets.json" ]; then
+    cp "\$TEMPLATES_DIR/secrets.json" \$CONTAINERS_DIR/\$CUSTOMER_NAME/user/secrets.json
+else
+    # Fallback: create empty secrets if template doesn't exist
+    cat > \$CONTAINERS_DIR/\$CUSTOMER_NAME/user/secrets.json << 'SECRETS'
 {
   "ANTHROPIC_API_KEY": "",
   "OPENAI_API_KEY": "",
   "GOOGLE_AI_API_KEY": ""
 }
 SECRETS
+fi
 
 chmod 600 \$CONTAINERS_DIR/\$CUSTOMER_NAME/user/secrets.json
 
@@ -945,6 +898,34 @@ echo ""  # Clear the line
 if [ $ATTEMPT -ge $MAX_ATTEMPTS ]; then
     warn "Setup is taking longer than expected. Check manually:"
     warn "  ssh -i ~/.ssh/${KEY_NAME}.pem ubuntu@$ELASTIC_IP 'cat /opt/cloudmallinc/setup.log'"
+fi
+
+# ============================================================================
+# UPLOAD TEMPLATES
+# ============================================================================
+# Upload user.example/ as templates for customer provisioning
+# This is the single source of truth for default config, SOUL.md, etc.
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+TEMPLATES_SRC="$SCRIPT_DIR/../user.example"
+
+if [ -d "$TEMPLATES_SRC" ]; then
+    log "Uploading templates to EC2..."
+    
+    # Create templates directory on EC2
+    ssh $SSH_OPTS -i "$SSH_KEY" ubuntu@"$ELASTIC_IP" "sudo mkdir -p /opt/cloudmallinc/templates"
+    
+    # Upload template files
+    scp $SSH_OPTS -i "$SSH_KEY" "$TEMPLATES_SRC/config.json" ubuntu@"$ELASTIC_IP":/tmp/config.json
+    scp $SSH_OPTS -i "$SSH_KEY" "$TEMPLATES_SRC/SOUL.md" ubuntu@"$ELASTIC_IP":/tmp/SOUL.md
+    scp $SSH_OPTS -i "$SSH_KEY" "$TEMPLATES_SRC/secrets.json" ubuntu@"$ELASTIC_IP":/tmp/secrets.json
+    
+    # Move to templates directory with proper permissions
+    ssh $SSH_OPTS -i "$SSH_KEY" ubuntu@"$ELASTIC_IP" "sudo mv /tmp/config.json /tmp/SOUL.md /tmp/secrets.json /opt/cloudmallinc/templates/ && sudo chmod 644 /opt/cloudmallinc/templates/*"
+    
+    log "Templates uploaded successfully"
+else
+    warn "Templates directory not found at $TEMPLATES_SRC — customers will fail to provision!"
 fi
 
 # ============================================================================

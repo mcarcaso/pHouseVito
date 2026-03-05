@@ -375,10 +375,10 @@ export default function Drive() {
           </div>
         )}
 
-        {/* Main content: file list + preview side by side */}
+        {/* Main content: file list + preview */}
         <div className="flex gap-4">
-          {/* Directory listing - left side */}
-          <div className={`${selectedFile ? 'w-1/2' : 'w-full max-w-[700px]'} transition-all`}>
+          {/* Directory listing - left side (hidden on mobile/tablet when file selected) */}
+          <div className={`${selectedFile ? 'hidden xl:block xl:w-1/2' : 'w-full max-w-[700px]'} transition-all`}>
             {loading ? (
               <div className="text-center text-neutral-500 py-12">Loading...</div>
             ) : !listing ? (
@@ -496,9 +496,9 @@ export default function Drive() {
             )}
           </div>
 
-          {/* File preview - right side */}
+          {/* File preview - side panel on desktop only (1280px+) */}
           {selectedFile && (
-            <div className="w-1/2 sticky top-20">
+            <div className="hidden xl:block xl:w-1/2 sticky top-20">
               <div className="flex items-center justify-between mb-2">
                 <span className="text-sm text-neutral-400 truncate">{selectedFile}</span>
                 <button
@@ -512,7 +512,29 @@ export default function Drive() {
             </div>
           )}
         </div>
+
       </div>
+
+      {/* Fullscreen preview overlay - mobile/tablet only (under 1280px) */}
+      {selectedFile && (
+        <div className="xl:hidden fixed inset-0 z-[250] bg-black flex flex-col">
+          {/* Overlay header with close button */}
+          <div className="flex items-center gap-3 px-4 py-3 border-b border-neutral-800 bg-black shrink-0">
+            <span className="text-sm text-neutral-300 truncate min-w-0 flex-1">{selectedFile}</span>
+            <button
+              onClick={() => setSelectedFile(null)}
+              className="w-10 h-10 flex items-center justify-center rounded-full bg-neutral-800 hover:bg-neutral-700 text-white text-xl font-bold transition-colors flex-none"
+              aria-label="Close preview"
+            >
+              ✕
+            </button>
+          </div>
+          {/* Preview content */}
+          <div className="flex-1 overflow-auto p-4">
+            <FilePreview url={fileUrl(selectedFile)} filePath={selectedFile} fullscreen />
+          </div>
+        </div>
+      )}
 
       <style>{`
         @keyframes slideIn {
@@ -524,7 +546,7 @@ export default function Drive() {
   );
 }
 
-function FilePreview({ url, filePath }: { url: string; filePath: string }) {
+function FilePreview({ url, filePath, fullscreen = false }: { url: string; filePath: string; fullscreen?: boolean }) {
   const ext = filePath.split('.').pop()?.toLowerCase() || '';
   const imageExts = ['png', 'jpg', 'jpeg', 'gif', 'webp', 'svg', 'bmp'];
   const audioExts = ['mp3', 'wav', 'ogg', 'm4a', 'aac', 'flac', 'webm'];
@@ -533,8 +555,8 @@ function FilePreview({ url, filePath }: { url: string; filePath: string }) {
 
   if (imageExts.includes(ext)) {
     return (
-      <div className="bg-neutral-900 border border-neutral-800 rounded-lg overflow-hidden p-2">
-        <img src={url} alt={filePath} className="max-w-full max-h-64 object-contain mx-auto" />
+      <div className={`bg-neutral-900 border border-neutral-800 rounded-lg overflow-hidden p-2 ${fullscreen ? 'h-full flex items-center justify-center' : ''}`}>
+        <img src={url} alt={filePath} className={`max-w-full object-contain mx-auto ${fullscreen ? 'max-h-full' : 'max-h-64'}`} />
       </div>
     );
   }
@@ -556,8 +578,8 @@ function FilePreview({ url, filePath }: { url: string; filePath: string }) {
 
   if (videoExts.includes(ext)) {
     return (
-      <div className="bg-neutral-900 border border-neutral-800 rounded-lg overflow-hidden p-2">
-        <video controls className="w-full max-h-64" preload="metadata">
+      <div className={`bg-neutral-900 border border-neutral-800 rounded-lg overflow-hidden p-2 ${fullscreen ? 'h-full flex items-center' : ''}`}>
+        <video controls className={`w-full ${fullscreen ? 'max-h-full' : 'max-h-64'}`} preload="metadata">
           <source src={url} type={`video/${ext === 'mov' ? 'quicktime' : ext}`} />
           Your browser does not support the video element.
         </video>
@@ -567,14 +589,14 @@ function FilePreview({ url, filePath }: { url: string; filePath: string }) {
 
   if (ext === 'pdf') {
     return (
-      <div className="bg-neutral-900 border border-neutral-800 rounded-lg overflow-hidden">
-        <iframe src={url} className="w-full h-64 border-0" title={filePath} />
+      <div className={`bg-neutral-900 border border-neutral-800 rounded-lg overflow-hidden ${fullscreen ? 'h-full' : ''}`}>
+        <iframe src={url} className={`w-full border-0 ${fullscreen ? 'h-full' : 'h-64'}`} title={filePath} />
       </div>
     );
   }
 
   if (textExts.includes(ext)) {
-    return <TextFilePreview url={url} filePath={filePath} />;
+    return <TextFilePreview url={url} filePath={filePath} fullscreen={fullscreen} />;
   }
 
   return (
@@ -584,7 +606,7 @@ function FilePreview({ url, filePath }: { url: string; filePath: string }) {
   );
 }
 
-function TextFilePreview({ url, filePath }: { url: string; filePath: string }) {
+function TextFilePreview({ url, filePath, fullscreen = false }: { url: string; filePath: string; fullscreen?: boolean }) {
   const [content, setContent] = useState<string | null>(null);
 
   useEffect(() => {
@@ -595,9 +617,9 @@ function TextFilePreview({ url, filePath }: { url: string; filePath: string }) {
   }, [url]);
 
   return (
-    <div className="bg-neutral-900 border border-neutral-800 rounded-lg overflow-hidden">
-      <div className="px-3 py-2 bg-neutral-800 text-xs text-neutral-400 font-mono">{filePath}</div>
-      <pre className="p-3 text-xs text-neutral-300 font-mono overflow-x-auto max-h-64 whitespace-pre-wrap break-all">
+    <div className={`bg-neutral-900 border border-neutral-800 rounded-lg overflow-hidden ${fullscreen ? 'h-full flex flex-col' : ''}`}>
+      <div className="px-3 py-2 bg-neutral-800 text-xs text-neutral-400 font-mono shrink-0">{filePath}</div>
+      <pre className={`p-3 text-xs text-neutral-300 font-mono overflow-auto whitespace-pre-wrap break-all ${fullscreen ? 'flex-1' : 'max-h-64'}`}>
         {content === null ? 'Loading...' : content}
       </pre>
     </div>

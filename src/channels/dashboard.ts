@@ -800,14 +800,14 @@ export class DashboardChannel implements Channel {
 
     // User profile JSON
     this.app.get("/api/memory/profile", (req, res) => {
-      const profilePath = path.join(process.cwd(), "user", "profile.json");
+      const profilePath = path.join(process.cwd(), "user", "profile.md");
       if (!existsSync(profilePath)) {
-        res.json(null);
+        res.json({ content: null });
         return;
       }
       try {
-        const profile = JSON.parse(readFileSync(profilePath, "utf-8"));
-        res.json(profile);
+        const content = readFileSync(profilePath, "utf-8");
+        res.json({ content });
       } catch (err: any) {
         res.status(500).json({ error: err.message });
       }

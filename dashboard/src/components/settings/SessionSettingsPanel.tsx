@@ -58,6 +58,11 @@ const PERMISSION_MODES = [
   { value: 'plan', label: 'Plan Only' },
 ];
 
+// System sessions that always appear in the list (no message history required)
+const SYSTEM_SESSIONS = [
+  { id: 'system:profile-updater', label: 'Profile Updater', description: 'Background process that updates user/profile.md when new facts are revealed' },
+];
+
 export default function SessionSettingsPanel({ config, onSave, initialSessionId }: SessionSettingsPanelProps) {
   const [sessions, setSessions] = useState<SessionInfo[]>([]);
   const [loading, setLoading] = useState(true);
@@ -511,116 +516,185 @@ export default function SessionSettingsPanel({ config, onSave, initialSessionId 
     );
   };
 
+  // Separate system sessions from regular ones
+  const regularSessionIds = sessionIds.filter(id => !id.startsWith('system:'));
+  const systemSessionIds = SYSTEM_SESSIONS.map(s => s.id);
+
   return (
-    <div className="space-y-3">
-      <div className="flex items-center justify-between mb-2">
-        <p className="text-xs text-neutral-600">Per-session setting overrides. Most specific level in the cascade.</p>
-        <button
-          onClick={() => setShowPicker(!showPicker)}
-          className="px-3 py-1.5 text-xs bg-blue-600 hover:bg-blue-700 text-white rounded-md transition-colors"
-        >
-          + Add Override
-        </button>
+    <div className="space-y-6">
+      {/* System Sessions - always visible */}
+      <div>
+        <div className="flex items-center gap-2 mb-3">
+          <span className="text-xs font-semibold text-neutral-500 uppercase tracking-wide">System Sessions</span>
+          <span className="text-xs text-neutral-600">— background processes</span>
+        </div>
+        <div className="space-y-3">
+          {SYSTEM_SESSIONS.map((systemSession) => {
+            const overrideCount = Object.keys(sessionOverrides[systemSession.id] || {}).length;
+            const isExpanded = expandedSession === systemSession.id;
+
+            return (
+              <div key={systemSession.id} className="bg-[#151515] border border-purple-900/50 rounded-xl overflow-hidden">
+                <button
+                  className="w-full p-4 text-left hover:bg-neutral-800/30 transition-colors"
+                  onClick={() => setExpandedSession(isExpanded ? null : systemSession.id)}
+                >
+                  {/* Top row: system badge + metadata */}
+                  <div className="flex items-center justify-between mb-2">
+                    <span className="text-purple-400 text-xs font-medium uppercase tracking-wide">
+                      ⚙️ System
+                    </span>
+                    <div className="flex items-center gap-3">
+                      {overrideCount > 0 && (
+                        <span className="text-xs bg-purple-900/40 text-purple-400 px-2 py-0.5 rounded-full">
+                          {overrideCount} override{overrideCount !== 1 ? 's' : ''}
+                        </span>
+                      )}
+                      <span className={`text-neutral-500 transition-transform ${isExpanded ? 'rotate-180' : ''}`}>
+                        ▼
+                      </span>
+                    </div>
+                  </div>
+                  
+                  {/* Main content: label prominently displayed */}
+                  <div className="text-neutral-200 text-base font-medium">
+                    {systemSession.label}
+                  </div>
+                  
+                  {/* Description */}
+                  <div className="text-neutral-500 text-xs mt-1">
+                    {systemSession.description}
+                  </div>
+                  
+                  {/* Session ID */}
+                  <div className="text-neutral-600 text-xs font-mono mt-1">
+                    {systemSession.id}
+                  </div>
+                </button>
+
+                {isExpanded && renderSessionOverrides(systemSession.id)}
+              </div>
+            );
+          })}
+        </div>
       </div>
 
-      {/* Session picker */}
-      {showPicker && (
-        <div className="bg-neutral-900 border border-neutral-800 rounded-xl p-4">
-          <h4 className="text-sm font-semibold text-white mb-3">Select a session to configure</h4>
-          {loading ? (
-            <span className="text-xs text-neutral-500">Loading sessions...</span>
-          ) : (
-            <div className="max-h-64 overflow-y-auto space-y-2">
-              {sessions
-                .filter((s) => !sessionIds.includes(s.id))
-                .map((s) => (
-                  <button
-                    key={s.id}
-                    onClick={() => addSessionOverride(s.id)}
-                    className="w-full text-left px-3 py-3 rounded-lg hover:bg-neutral-800 transition-colors border border-transparent hover:border-neutral-700"
-                  >
-                    <div className="flex items-center justify-between mb-1">
-                      <span className="text-blue-400 text-xs font-medium uppercase tracking-wide">{s.channel}</span>
-                      <span className="text-xs text-neutral-600">{formatRelativeTime(s.last_active_at)}</span>
-                    </div>
-                    <div className="text-neutral-200 text-sm font-medium">
-                      {s.alias || s.id.split(':')[1] || s.id}
-                    </div>
-                    {s.alias && (
-                      <div className="text-neutral-500 text-xs font-mono mt-0.5">{s.id}</div>
-                    )}
-                  </button>
-                ))}
-              {sessions.filter((s) => !sessionIds.includes(s.id)).length === 0 && (
-                <span className="text-xs text-neutral-500">All sessions already have overrides configured.</span>
-              )}
-            </div>
-          )}
+      {/* Regular Sessions */}
+      <div>
+        <div className="flex items-center justify-between mb-3">
+          <div className="flex items-center gap-2">
+            <span className="text-xs font-semibold text-neutral-500 uppercase tracking-wide">User Sessions</span>
+            <span className="text-xs text-neutral-600">— per-conversation overrides</span>
+          </div>
           <button
-            onClick={() => setShowPicker(false)}
-            className="mt-3 text-xs text-neutral-400 hover:text-neutral-300"
+            onClick={() => setShowPicker(!showPicker)}
+            className="px-3 py-1.5 text-xs bg-blue-600 hover:bg-blue-700 text-white rounded-md transition-colors"
           >
-            Cancel
+            + Add Override
           </button>
         </div>
-      )}
 
-      {/* Session override cards */}
-      {sessionIds.length === 0 && !showPicker && (
-        <div className="bg-neutral-900 border border-neutral-800 rounded-xl p-8 text-center">
-          <p className="text-sm text-neutral-500">No session overrides configured.</p>
-          <p className="text-xs text-neutral-600 mt-1">Click "+ Add Override" to configure settings for a specific session.</p>
-        </div>
-      )}
-
-      {sessionIds.map((sessionId) => {
-        const session = sessions.find((s) => s.id === sessionId);
-        const overrideCount = Object.keys(sessionOverrides[sessionId] || {}).length;
-        const isExpanded = expandedSession === sessionId;
-
-        return (
-          <div key={sessionId} className="bg-[#151515] border border-neutral-800 rounded-xl overflow-hidden">
+        {/* Session picker */}
+        {showPicker && (
+          <div className="bg-neutral-900 border border-neutral-800 rounded-xl p-4 mb-3">
+            <h4 className="text-sm font-semibold text-white mb-3">Select a session to configure</h4>
+            {loading ? (
+              <span className="text-xs text-neutral-500">Loading sessions...</span>
+            ) : (
+              <div className="max-h-64 overflow-y-auto space-y-2">
+                {sessions
+                  .filter((s) => !sessionIds.includes(s.id) && !s.id.startsWith('system:'))
+                  .map((s) => (
+                    <button
+                      key={s.id}
+                      onClick={() => addSessionOverride(s.id)}
+                      className="w-full text-left px-3 py-3 rounded-lg hover:bg-neutral-800 transition-colors border border-transparent hover:border-neutral-700"
+                    >
+                      <div className="flex items-center justify-between mb-1">
+                        <span className="text-blue-400 text-xs font-medium uppercase tracking-wide">{s.channel}</span>
+                        <span className="text-xs text-neutral-600">{formatRelativeTime(s.last_active_at)}</span>
+                      </div>
+                      <div className="text-neutral-200 text-sm font-medium">
+                        {s.alias || s.id.split(':')[1] || s.id}
+                      </div>
+                      {s.alias && (
+                        <div className="text-neutral-500 text-xs font-mono mt-0.5">{s.id}</div>
+                      )}
+                    </button>
+                  ))}
+                {sessions.filter((s) => !sessionIds.includes(s.id) && !s.id.startsWith('system:')).length === 0 && (
+                  <span className="text-xs text-neutral-500">All sessions already have overrides configured.</span>
+                )}
+              </div>
+            )}
             <button
-              className="w-full p-4 text-left hover:bg-neutral-800/30 transition-colors"
-              onClick={() => setExpandedSession(isExpanded ? null : sessionId)}
+              onClick={() => setShowPicker(false)}
+              className="mt-3 text-xs text-neutral-400 hover:text-neutral-300"
             >
-              {/* Top row: channel badge + metadata */}
-              <div className="flex items-center justify-between mb-2">
-                <span className="text-blue-400 text-xs font-medium uppercase tracking-wide">
-                  {getChannelFromSessionId(sessionId)}
-                </span>
-                <div className="flex items-center gap-3">
-                  {overrideCount > 0 && (
-                    <span className="text-xs bg-blue-900/40 text-blue-400 px-2 py-0.5 rounded-full">
-                      {overrideCount} override{overrideCount !== 1 ? 's' : ''}
-                    </span>
-                  )}
-                  {session && (
-                    <span className="text-xs text-neutral-600">{formatRelativeTime(session.last_active_at)}</span>
-                  )}
-                  <span className={`text-neutral-500 transition-transform ${isExpanded ? 'rotate-180' : ''}`}>
-                    ▼
-                  </span>
-                </div>
-              </div>
-              
-              {/* Main content: alias name prominently displayed */}
-              <div className="text-neutral-200 text-base font-medium">
-                {session?.alias || sessionId.split(':')[1] || sessionId}
-              </div>
-              
-              {/* Bottom row: full session ID (only if alias exists) */}
-              {session?.alias && (
-                <div className="text-neutral-500 text-xs font-mono mt-1">
-                  {sessionId}
-                </div>
-              )}
+              Cancel
             </button>
-
-            {isExpanded && renderSessionOverrides(sessionId)}
           </div>
-        );
-      })}
+        )}
+
+        {/* Session override cards */}
+        <div className="space-y-3">
+          {regularSessionIds.length === 0 && !showPicker && (
+            <div className="bg-neutral-900 border border-neutral-800 rounded-xl p-8 text-center">
+              <p className="text-sm text-neutral-500">No user session overrides configured.</p>
+              <p className="text-xs text-neutral-600 mt-1">Click "+ Add Override" to configure settings for a specific session.</p>
+            </div>
+          )}
+
+          {regularSessionIds.map((sessionId) => {
+            const session = sessions.find((s) => s.id === sessionId);
+            const overrideCount = Object.keys(sessionOverrides[sessionId] || {}).length;
+            const isExpanded = expandedSession === sessionId;
+
+            return (
+              <div key={sessionId} className="bg-[#151515] border border-neutral-800 rounded-xl overflow-hidden">
+                <button
+                  className="w-full p-4 text-left hover:bg-neutral-800/30 transition-colors"
+                  onClick={() => setExpandedSession(isExpanded ? null : sessionId)}
+                >
+                  {/* Top row: channel badge + metadata */}
+                  <div className="flex items-center justify-between mb-2">
+                    <span className="text-blue-400 text-xs font-medium uppercase tracking-wide">
+                      {getChannelFromSessionId(sessionId)}
+                    </span>
+                    <div className="flex items-center gap-3">
+                      {overrideCount > 0 && (
+                        <span className="text-xs bg-blue-900/40 text-blue-400 px-2 py-0.5 rounded-full">
+                          {overrideCount} override{overrideCount !== 1 ? 's' : ''}
+                        </span>
+                      )}
+                      {session && (
+                        <span className="text-xs text-neutral-600">{formatRelativeTime(session.last_active_at)}</span>
+                      )}
+                      <span className={`text-neutral-500 transition-transform ${isExpanded ? 'rotate-180' : ''}`}>
+                        ▼
+                      </span>
+                    </div>
+                  </div>
+                  
+                  {/* Main content: alias name prominently displayed */}
+                  <div className="text-neutral-200 text-base font-medium">
+                    {session?.alias || sessionId.split(':')[1] || sessionId}
+                  </div>
+                  
+                  {/* Bottom row: full session ID (only if alias exists) */}
+                  {session?.alias && (
+                    <div className="text-neutral-500 text-xs font-mono mt-1">
+                      {sessionId}
+                    </div>
+                  )}
+                </button>
+
+                {isExpanded && renderSessionOverrides(sessionId)}
+              </div>
+            );
+          })}
+        </div>
+      </div>
     </div>
   );
 }

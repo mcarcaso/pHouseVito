@@ -84,13 +84,28 @@ interface TraceEmbeddingResult {
 interface TraceProfileUpdate {
   type: "profile_update";
   skipped?: string;
-  updates_applied: number;
-  updates: {
+  updated?: boolean;
+  updates_applied?: number;
+  updates?: {
     path: string;
     action: string;
     value: unknown;
   }[];
   duration_ms: number;
+  traceFile?: string;  // Path to the dedicated profile update trace file
+  events?: NormalizedEvent[];  // Legacy: inline events (for old traces)
+}
+
+// Normalized event types from the harness
+interface NormalizedEvent {
+  kind: string;
+  tool?: string;
+  callId?: string;
+  args?: Record<string, unknown>;
+  result?: string;
+  success?: boolean;
+  content?: string;
+  message?: string;
 }
 
 interface TraceFooter {
@@ -139,6 +154,10 @@ function Traces() {
   const [autoRefresh, setAutoRefresh] = useState(true);
   const [expandedSections, setExpandedSections] = useState<Set<string>>(new Set());
   const [showRaw, setShowRaw] = useState(false); // Hide raw events by default
+  
+  // Filters
+  const [hideProfileUpdates, setHideProfileUpdates] = useState(false);
+  const [sessionFilter, setSessionFilter] = useState<string>("all");
 
   const fetchLogs = useCallback(async () => {
     try {
@@ -460,6 +479,98 @@ function Traces() {
           </div>
         )}
 
+        {/* Profile Update */}
+        {profileUpdate && (
+          <div className="bg-neutral-900 border border-neutral-800 rounded-lg overflow-hidden">
+            <div className="px-4 py-2 flex items-center justify-between bg-neutral-800/50">
+              <span className="text-sm font-medium text-neutral-300 flex items-center gap-2">
+                👤 Profile Update
+                {profileUpdate.skipped ? (
+                  <span className="text-neutral-500 font-normal text-xs">skipped — {profileUpdate.skipped}</span>
+                ) : profileUpdate.updated ? (
+                  <>
+                    <span className="text-emerald-400 font-normal text-xs">✓ Updated</span>
+                    <span className="text-neutral-600 font-normal text-xs">
+                      ({formatMs(profileUpdate.duration_ms)})
+                    </span>
+                  </>
+                ) : (
+                  <>
+                    <span className="text-neutral-500 font-normal text-xs">no changes</span>
+                    <span className="text-neutral-600 font-normal text-xs">
+                      ({formatMs(profileUpdate.duration_ms)})
+                    </span>
+                  </>
+                )}
+              </span>
+              {/* Link to dedicated trace file */}
+              {profileUpdate.traceFile && (
+                <button
+                  className="text-xs text-blue-400 hover:text-blue-300 font-mono bg-blue-500/10 hover:bg-blue-500/20 px-2 py-1 rounded transition-colors"
+                  onClick={() => {
+                    // Extract just the filename from the path (e.g., "logs/trace-profile-xxx.jsonl" -> "trace-profile-xxx.jsonl")
+                    const filename = profileUpdate.traceFile!.split('/').pop() || profileUpdate.traceFile!;
+                    setSearchParams({ file: filename });
+                  }}
+                >
+                  View Trace →
+                </button>
+              )}
+            </div>
+            
+            {/* Legacy: inline events for old traces that don't have traceFile */}
+            {!profileUpdate.traceFile && profileUpdate.events && profileUpdate.events.length > 0 && (
+              <div className="p-4 space-y-3 border-t border-neutral-800">
+                <div className="text-xs font-medium text-neutral-400 mb-2">Event Stream ({profileUpdate.events.length} events)</div>
+                <div className="space-y-2">
+                  {profileUpdate.events.map((event, i) => (
+                    <div key={i} className="bg-neutral-800/50 rounded p-2">
+                      <div className="flex items-center gap-2 mb-1">
+                        <span className={`text-xs px-1.5 py-0.5 rounded font-mono ${
+                          event.kind === 'tool_start' ? 'bg-blue-500/20 text-blue-400' :
+                          event.kind === 'tool_end' ? (event.success ? 'bg-emerald-500/20 text-emerald-400' : 'bg-red-500/20 text-red-400') :
+                          event.kind === 'assistant' ? 'bg-violet-500/20 text-violet-400' :
+                          event.kind === 'error' ? 'bg-red-500/20 text-red-400' :
+                          'bg-neutral-700 text-neutral-400'
+                        }`}>
+                          {event.kind}
+                        </span>
+                        {event.tool && (
+                          <span className="text-xs text-neutral-500 font-mono">{event.tool}</span>
+                        )}
+                      </div>
+                      
+                      {/* Tool Start — show args */}
+                      {event.kind === 'tool_start' && event.args && (
+                        <pre className="text-xs text-neutral-400 bg-neutral-900 rounded p-2 overflow-x-auto whitespace-pre-wrap max-h-40">
+                          {JSON.stringify(event.args, null, 2)}
+                        </pre>
+                      )}
+                      
+                      {/* Tool End — show result (truncated) */}
+                      {event.kind === 'tool_end' && event.result && (
+                        <pre className="text-xs text-neutral-400 bg-neutral-900 rounded p-2 overflow-x-auto whitespace-pre-wrap max-h-40">
+                          {event.result.length > 1000 ? event.result.slice(0, 1000) + '\n... (truncated)' : event.result}
+                        </pre>
+                      )}
+                      
+                      {/* Assistant — show content */}
+                      {event.kind === 'assistant' && event.content && (
+                        <div className="text-xs text-neutral-300 mt-1">{event.content}</div>
+                      )}
+                      
+                      {/* Error — show message */}
+                      {event.kind === 'error' && event.message && (
+                        <div className="text-xs text-red-400 mt-1">{event.message}</div>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
+        )}
+
         {/* System Prompt */}
         {prompt && (
           <div className="bg-neutral-900 border border-neutral-800 rounded-lg overflow-hidden">
@@ -635,11 +746,36 @@ function Traces() {
     return <div className="flex flex-col pb-8 text-neutral-400 p-4">Loading traces...</div>;
   }
 
+  // Compute filtered logs
+  const filteredLogs = logs.filter(log => {
+    // Hide profile updates if toggle is on
+    if (hideProfileUpdates && log.filename.startsWith("trace-profile-")) {
+      return false;
+    }
+    // Filter by session if not "all"
+    if (sessionFilter !== "all") {
+      const info = parsePreview(log.preview);
+      const logSession = log.sessionId || info.session || "";
+      if (logSession !== sessionFilter) {
+        return false;
+      }
+    }
+    return true;
+  });
+
+  // Get unique sessions for dropdown (from unfiltered logs)
+  const uniqueSessions = [...new Set(logs.map(log => {
+    const info = parsePreview(log.preview);
+    return log.sessionId || info.session || "";
+  }).filter(Boolean))].sort();
+
   return (
     <div className="flex flex-col pb-8">
       {/* Header */}
       <div className="flex items-center gap-3 px-4 py-3 border-b border-neutral-800 sticky top-0 bg-black/95 backdrop-blur z-10">
-        <h2 className="text-lg font-semibold text-white flex-1">Traces ({logs.length})</h2>
+        <h2 className="text-lg font-semibold text-white flex-1">
+          Traces ({filteredLogs.length}{filteredLogs.length !== logs.length ? ` / ${logs.length}` : ''})
+        </h2>
         <div className="flex items-center gap-2">
           <label className="flex items-center gap-1.5 text-sm text-neutral-500 cursor-pointer select-none">
             <input
@@ -669,8 +805,34 @@ function Traces() {
         </div>
       </div>
 
+      {/* Filter bar */}
+      <div className="flex items-center gap-4 px-4 py-2 border-b border-neutral-800 bg-neutral-950/50">
+        <div className="flex items-center gap-2">
+          <span className="text-xs text-neutral-500">Session:</span>
+          <select
+            value={sessionFilter}
+            onChange={(e) => setSessionFilter(e.target.value)}
+            className="bg-neutral-900 border border-neutral-700 rounded px-2 py-1 text-xs text-neutral-300 cursor-pointer focus:outline-none focus:border-blue-600"
+          >
+            <option value="all">All</option>
+            {uniqueSessions.map(session => (
+              <option key={session} value={session}>{session}</option>
+            ))}
+          </select>
+        </div>
+        <label className="flex items-center gap-1.5 text-xs text-neutral-500 cursor-pointer select-none">
+          <input
+            type="checkbox"
+            checked={hideProfileUpdates}
+            onChange={(e) => setHideProfileUpdates(e.target.checked)}
+            className="accent-blue-600 cursor-pointer w-3 h-3"
+          />
+          Hide profile updates
+        </label>
+      </div>
+
       <div className="p-4 space-y-2">
-        {logs.map((log) => {
+        {filteredLogs.map((log) => {
           const info = parsePreview(log.preview);
           const isJsonl = log.format === 'jsonl';
           return (
@@ -721,6 +883,11 @@ function Traces() {
             </div>
           );
         })}
+        {filteredLogs.length === 0 && logs.length > 0 && (
+          <div className="text-center text-neutral-500 py-12">
+            No traces match your filters.
+          </div>
+        )}
         {logs.length === 0 && (
           <div className="text-center text-neutral-500 py-12">
             No traces yet. Send a message to start logging.

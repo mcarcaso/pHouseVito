@@ -1,469 +1,207 @@
 /**
- * USER PROFILE — Semantic Memory Layer
+ * USER PROFILE — Freeform Markdown Memory
  * 
- * A structured JSON profile that captures WHO the user is.
+ * A markdown file that captures WHO the user is.
  * Small enough to always inject into the system prompt.
- * Updated passively after every assistant message.
+ * Updated passively after every assistant message via a lightweight harness call.
  * 
- * - `loadProfile()` → reads user/profile.json, returns formatted string for system prompt
- * - `maybeUpdateProfile()` → fires after every assistant message, uses a cheap LLM call
- *   to check if any profile-worthy facts were revealed, applies surgical updates
- * - All writes validated against the schema before saving
+ * - `loadProfileForPrompt()` → reads user/profile.md, returns the raw content
+ * - `maybeUpdateProfile()` → fires after every assistant message, uses a harness
+ *   (configurable via session "system:profile-updater") with Read/Edit tools
+ *   to check if any profile-worthy facts were revealed and surgically edit the file
  */
 
-import { readFileSync, writeFileSync, existsSync } from "fs";
+import { readFileSync, existsSync } from "fs";
 import { join, resolve } from "path";
-import AjvModule from "ajv";
-const Ajv = AjvModule.default || AjvModule;
-import { getClient, resolveModel } from "./client.js";
+import { PiHarness } from "../harnesses/pi-coding-agent/index.js";
+import { withTracing, type TracingOptions } from "../harnesses/tracing.js";
+import type { HarnessCallbacks, NormalizedEvent } from "../harnesses/types.js";
+import { getEffectiveSettings } from "../settings.js";
+import type { VitoConfig } from "../types.js";
 
 // ── Config ─────────────────────────────────────────────────
 
 const ROOT = resolve(process.cwd());
-const PROFILE_PATH = join(ROOT, "user", "profile.json");
-const SCHEMA_PATH = join(ROOT, "src", "memory", "profile.schema.json");
-const EXTRACTION_MODEL = "openai/gpt-5-nano";
+const PROFILE_PATH = join(ROOT, "user", "profile.md");
 
-// ── Schema Validation ──────────────────────────────────────
-
-let ajvValidate: any = null;
-
-function getValidator(): any {
-  if (!ajvValidate) {
-    const ajv = new Ajv({ allErrors: true });
-    const schema = JSON.parse(readFileSync(SCHEMA_PATH, "utf-8"));
-    ajvValidate = ajv.compile(schema);
-  }
-  return ajvValidate;
-}
-
-function validateProfile(profile: any): { valid: boolean; errors: string[] } {
-  const validate = getValidator();
-  const valid = validate(profile);
-  if (!valid) {
-    const errors = (validate.errors || []).map(
-      (e: any) => `${e.instancePath || "/"}: ${e.message}`
-    );
-    return { valid: false, errors };
-  }
-  return { valid: true, errors: [] };
-}
+// The special session used for profile updates — configurable via vito.config.json
+const PROFILE_UPDATER_SESSION = "system:profile-updater";
 
 // ── Profile I/O ────────────────────────────────────────────
 
-export interface UserProfile {
-  basics?: {
-    name?: string;
-    email?: string;
-    phone?: string;
-    timezone?: string;
-    location?: string;
-    faith?: string;
-  };
-  people?: Array<{
-    name: string;
-    relation: string;
-    email?: string;
-    phone?: string;
-    notes?: string[];
-  }>;
-  interests?: Array<{
-    topic: string;
-    level?: "obsessed" | "active" | "casual" | "learning";
-    notes?: string[];
-  }>;
-  preferences?: {
-    communication?: string[];
-    code?: string[];
-    design?: string[];
-  };
-  work?: {
-    employer?: string;
-    role?: string;
-    side_projects?: string[];
-  };
-  notes?: Array<{
-    key: string;
-    value: string;
-  }>;
-}
-
-function loadProfileJSON(): UserProfile | null {
+function loadProfileMarkdown(): string | null {
   if (!existsSync(PROFILE_PATH)) return null;
   try {
-    return JSON.parse(readFileSync(PROFILE_PATH, "utf-8"));
+    return readFileSync(PROFILE_PATH, "utf-8");
   } catch (err) {
-    console.error("[Profile] Failed to parse profile.json:", err);
+    console.error("[Profile] Failed to read profile.md:", err);
     return null;
   }
-}
-
-function saveProfile(profile: UserProfile): boolean {
-  const { valid, errors } = validateProfile(profile);
-  if (!valid) {
-    console.error("[Profile] Validation failed, NOT saving:", errors);
-    return false;
-  }
-  writeFileSync(PROFILE_PATH, JSON.stringify(profile, null, 2), "utf-8");
-  return true;
 }
 
 // ── System Prompt Formatting ───────────────────────────────
 
 /**
- * Load the user profile and format it for injection into the system prompt.
- * Returns a concise, readable summary — NOT raw JSON.
+ * Load the user profile and return it for injection into the system prompt.
+ * Returns the raw markdown content.
  */
 export function loadProfileForPrompt(): string {
-  const profile = loadProfileJSON();
-  if (!profile) return "";
-
-  const lines: string[] = [];
-
-  // Basics
-  if (profile.basics) {
-    const b = profile.basics;
-    const parts = [b.name, b.email, b.phone, b.location, b.timezone].filter(Boolean);
-    if (parts.length) lines.push(`**User:** ${parts.join(" | ")}`);
-    if (b.faith) lines.push(`**Faith:** ${b.faith}`);
-  }
-
-  // People
-  if (profile.people && profile.people.length > 0) {
-    lines.push(`**People:**`);
-    for (const p of profile.people) {
-      let line = `- ${p.name} (${p.relation})`;
-      const extras: string[] = [];
-      if (p.phone) extras.push(p.phone);
-      if (p.email) extras.push(p.email);
-      if (extras.length) line += ` — ${extras.join(", ")}`;
-      if (p.notes && p.notes.length) line += ` [${p.notes.join("; ")}]`;
-      lines.push(line);
-    }
-  }
-
-  // Interests
-  if (profile.interests && profile.interests.length > 0) {
-    lines.push(`**Interests:**`);
-    for (const i of profile.interests) {
-      let line = `- ${i.topic}`;
-      if (i.level) line += ` (${i.level})`;
-      if (i.notes && i.notes.length) line += `: ${i.notes.join("; ")}`;
-      lines.push(line);
-    }
-  }
-
-  // Preferences
-  if (profile.preferences) {
-    const { communication, code, design } = profile.preferences;
-    if (communication?.length || code?.length || design?.length) {
-      lines.push(`**Preferences:**`);
-      if (communication?.length) lines.push(`- Communication: ${communication.join("; ")}`);
-      if (code?.length) lines.push(`- Code: ${code.join("; ")}`);
-      if (design?.length) lines.push(`- Design: ${design.join("; ")}`);
-    }
-  }
-
-  // Work
-  if (profile.work) {
-    const { employer, role, side_projects } = profile.work;
-    if (employer || role) {
-      lines.push(`**Work:** ${role || ""} @ ${employer || ""}`);
-    }
-    if (side_projects?.length) {
-      lines.push(`- Side projects: ${side_projects.join(", ")}`);
-    }
-  }
-
-  // Notes (freeform)
-  if (profile.notes && profile.notes.length > 0) {
-    lines.push(`**Notes:**`);
-    for (const n of profile.notes) {
-      lines.push(`- ${n.key}: ${n.value}`);
-    }
-  }
-
-  return lines.join("\n");
+  return loadProfileMarkdown() || "";
 }
 
 // ── Global Lock ────────────────────────────────────────────
 
 let isUpdating = false;
 
-// ── Passive Update ─────────────────────────────────────────
+// ── Config Access ──────────────────────────────────────────
 
-interface ConversationMessage {
-  role: "user" | "assistant";
-  text: string;
+let _config: VitoConfig | null = null;
+
+/**
+ * Set the config reference for the profile updater.
+ * Called from the orchestrator on startup and config reload.
+ */
+export function setProfileUpdaterConfig(config: VitoConfig): void {
+  _config = config;
+}
+
+// ── The System Prompt ──────────────────────────────────────
+
+const PROFILE_UPDATER_SYSTEM_PROMPT = `You are a profile updater. Your ONLY job is to update the file user/profile.md when new personal facts about Mike (the user) are revealed.
+
+**Instructions:**
+1. Read the user's message below
+2. Decide if it contains ANY profile-worthy information (people, interests, preferences, contact info, life events, etc.)
+3. If YES: Use the Read tool to see the current profile, then use Edit to surgically add/update the relevant section
+4. If NO: Just respond "No update needed." and do nothing else
+
+**Rules:**
+- Only extract facts ABOUT Mike. Ignore facts about the AI, system operations, debugging.
+- Don't add transient things (current tasks, what he's doing right now).
+- DO add: new people, relationships, contact info, interests, preferences, experiences, opinions, pets, etc.
+- Use Edit for surgical changes — don't rewrite the whole file.
+- If adding a new section, use Write.
+- Be concise — one-liner notes are fine.
+- Don't duplicate info that's already there.
+
+**Profile path:** user/profile.md`;
+
+// ── Harness-Based Update ───────────────────────────────────
+
+export interface ProfileUpdateResult {
+  skipped?: string;
+  updated: boolean;
+  duration_ms: number;
+  traceFile?: string;  // Path to the trace file (if created)
 }
 
 /**
- * Check if the recent exchange revealed any profile-worthy facts,
- * and if so, apply surgical updates.
+ * Check if the user's message revealed any profile-worthy facts,
+ * and if so, use the harness to surgically edit the profile.
  * 
  * Fire-and-forget — errors are logged but never thrown.
- * Called after every assistant message, same as maybeEmbedNewChunks.
+ * Called after every assistant message.
+ * 
+ * @param currentUserMessage - The current user message (directly from the event, not from DB)
  */
-export interface ProfileUpdateResult {
-  skipped?: string;
-  updates_applied: number;
-  updates: Array<{ path: string; action: string; value: any }>;
-  duration_ms: number;
-}
-
-export async function maybeUpdateProfile(recentMessages: ConversationMessage[]): Promise<ProfileUpdateResult> {
+export async function maybeUpdateProfile(currentUserMessage: string): Promise<ProfileUpdateResult> {
   const start = Date.now();
-  if (isUpdating) return { skipped: "lock_held", updates_applied: 0, updates: [], duration_ms: Date.now() - start };
+  if (isUpdating) return { skipped: "lock_held", updated: false, duration_ms: Date.now() - start };
   isUpdating = true;
 
   try {
-    return await _doProfileUpdate(recentMessages, start);
+    return await _doProfileUpdate(currentUserMessage, start);
   } catch (err) {
     console.error("[Profile] Error during passive update:", err);
-    return { skipped: `error: ${err instanceof Error ? err.message : String(err)}`, updates_applied: 0, updates: [], duration_ms: Date.now() - start };
+    return { skipped: `error: ${err instanceof Error ? err.message : String(err)}`, updated: false, duration_ms: Date.now() - start };
   } finally {
     isUpdating = false;
   }
 }
 
-async function _doProfileUpdate(recentMessages: ConversationMessage[], start: number): Promise<ProfileUpdateResult> {
-  if (recentMessages.length === 0) return { skipped: "no_messages", updates_applied: 0, updates: [], duration_ms: Date.now() - start };
+async function _doProfileUpdate(currentUserMessage: string, start: number): Promise<ProfileUpdateResult> {
+  // Validate input
+  if (!currentUserMessage || !currentUserMessage.trim()) {
+    return { skipped: "empty_message", updated: false, duration_ms: Date.now() - start };
+  }
 
-  const profile = loadProfileJSON();
-  if (!profile) return { skipped: "no_profile", updates_applied: 0, updates: [], duration_ms: Date.now() - start };
+  // Need config to resolve harness settings
+  if (!_config) return { skipped: "no_config", updated: false, duration_ms: Date.now() - start };
 
-  // Format recent messages for the extraction prompt
-  const conversationText = recentMessages
-    .map((m) => `${m.role === "user" ? "User" : "Assistant"}: ${m.text}`)
-    .join("\n");
+  // Check if profile exists
+  if (!existsSync(PROFILE_PATH)) return { skipped: "no_profile", updated: false, duration_ms: Date.now() - start };
 
-  const openai = getClient();
+  // Get effective settings for the profile-updater session
+  // Session format: "system:profile-updater" → channel = "system", sessionKey = full string
+  const effectiveSettings = getEffectiveSettings(_config, "system", PROFILE_UPDATER_SESSION);
 
-  const response = await openai.chat.completions.create({
-    model: resolveModel(EXTRACTION_MODEL),
-    max_tokens: 500,
-    temperature: 0,
-    response_format: { type: "json_object" },
-    messages: [
-      {
-        role: "system",
-        content: `You analyze conversations to extract personal facts about the user that should be stored in their profile. The profile has this structure:
-
-- basics: { name, email, phone, timezone, location, faith }
-- people: [{ name, relation, email, phone, notes[] }]
-- interests: [{ topic, level (obsessed|active|casual|learning), notes[] }]
-- preferences: { communication[], code[], design[] }
-- work: { employer, role, side_projects[] }
-- notes: [{ key, value }] — freeform catch-all for anything else
-
-Current profile:
-${JSON.stringify(profile, null, 2)}
-
-Rules:
-- Only extract NEW or CHANGED facts about the user. If the info is already in the profile, skip it.
-- Don't extract facts about the AI assistant, system operations, or technical debugging.
-- Don't extract transient/ephemeral things (what they're doing right now, current mood).
-- DO extract: new people, changed contact info, new interests, changed preferences, life events, relationships.
-- Return a JSON object with an "updates" array. Each update has:
-  - "path": JSON path to update (e.g., "basics.phone", "people[name=Norma].phone", "notes[key=tickers].value", "interests[topic=Chess].notes")
-  - "action": "set" | "add" | "remove" | "add_item" (add_item = append to an array)
-  - "value": the new value
-- If there's nothing to update, return: { "updates": [] }
-- Be conservative — only extract facts you're confident about.`
-      },
-      {
-        role: "user",
-        content: `Recent conversation:\n\n${conversationText}\n\nExtract any profile updates.`
-      }
-    ]
+  // Create harness based on settings
+  // For now, we only support pi-coding-agent for profile updates (it has Read/Edit tools)
+  // Claude Code could work too, but Pi is simpler and we can use a cheap model
+  const piConfig = effectiveSettings["pi-coding-agent"] || _config.harnesses?.["pi-coding-agent"];
+  const model = piConfig?.model || { provider: "openai", name: "gpt-4o-mini" };
+  const baseHarness = new PiHarness({
+    model,
+    thinkingLevel: piConfig?.thinkingLevel || "off",
+    // No skills needed — just the builtin Read/Edit/Write tools
+    skillsDir: undefined,
   });
 
-  const content = response.choices[0].message.content;
-  if (!content) return { skipped: "empty_llm_response", updates_applied: 0, updates: [], duration_ms: Date.now() - start };
+  // Wrap with TracingHarness — it handles trace file creation, header, footer, all events
+  const tracingOptions: TracingOptions = {
+    session_id: PROFILE_UPDATER_SESSION,
+    channel: "system",
+    target: "profile-updater",
+    model: `${model.provider}/${model.name}`,
+    // Don't trace message_update events — too noisy
+    traceMessageUpdates: false,
+    // Use "profile" prefix so files are named trace-profile-...
+    tracePrefix: "profile",
+  };
+  const harness = withTracing(baseHarness, tracingOptions);
 
-  let result: { updates: Array<{ path: string; action: string; value: any }> };
-  try {
-    result = JSON.parse(content);
-  } catch {
-    console.error("[Profile] Failed to parse LLM response:", content);
-    return { skipped: "parse_error", updates_applied: 0, updates: [], duration_ms: Date.now() - start };
-  }
+  const userPrompt = `Mike just said: "${currentUserMessage}"`;
 
-  if (!result.updates || result.updates.length === 0) return { skipped: "no_updates_found", updates_applied: 0, updates: [], duration_ms: Date.now() - start };
-
-  console.log(`[Profile] Applying ${result.updates.length} update(s)...`);
-
-  // Apply updates surgically
-  let modified = JSON.parse(JSON.stringify(profile)); // deep clone
-  const appliedUpdates: ProfileUpdateResult["updates"] = [];
-
-  for (const update of result.updates) {
-    try {
-      modified = applyUpdate(modified, update.path, update.action, update.value);
-      appliedUpdates.push(update);
-      console.log(`[Profile] ✅ ${update.action} ${update.path} = ${JSON.stringify(update.value).slice(0, 100)}`);
-    } catch (err) {
-      console.error(`[Profile] ❌ Failed to apply update ${update.path}:`, err);
-    }
-  }
-
-  // Validate and save
-  if (saveProfile(modified)) {
-    console.log(`[Profile] Profile updated and saved.`);
-  }
-
-  return { updates_applied: appliedUpdates.length, updates: appliedUpdates, duration_ms: Date.now() - start };
-}
-
-// ── Surgical Update Logic ──────────────────────────────────
-
-/**
- * Apply a single update to the profile object.
- * 
- * Supports paths like:
- * - "basics.phone" → set a simple field
- * - "people[name=Norma].phone" → find an array item by a field, then set a property
- * - "people[name=Norma].notes" → with action "add_item", append to the notes array
- * - "notes[key=tickers].value" → find a note by key, update its value
- * - "people" → with action "add", push a new object to the array
- * - "interests" → with action "add", push a new interest
- */
-function applyUpdate(profile: any, path: string, action: string, value: any): any {
-  // Parse the path into segments
-  const segments = parsePath(path);
-
-  if (action === "add" && segments.length === 1) {
-    // Adding a new item to a top-level array
-    const key = segments[0].key;
-    if (!Array.isArray(profile[key])) {
-      profile[key] = [];
-    }
-    profile[key].push(value);
-    return profile;
-  }
-
-  if (action === "remove" && segments.length === 1) {
-    // Removing from a top-level field
-    delete profile[segments[0].key];
-    return profile;
-  }
-
-  // Navigate to the target
-  let target = profile;
-  for (let i = 0; i < segments.length - 1; i++) {
-    target = resolveSegment(target, segments[i]);
-    if (target === undefined) {
-      throw new Error(`Path segment not found: ${segments[i].key}`);
-    }
-  }
-
-  const lastSegment = segments[segments.length - 1];
-  const finalTarget = segments.length > 1 ? target : profile;
-
-  if (lastSegment.filter) {
-    // Resolve the filtered array item
-    const arr = finalTarget[lastSegment.key];
-    if (!Array.isArray(arr)) throw new Error(`${lastSegment.key} is not an array`);
-    const item = arr.find((el: any) => el[lastSegment.filter!.field] === lastSegment.filter!.value);
-    if (!item) throw new Error(`No item found where ${lastSegment.filter!.field}=${lastSegment.filter!.value}`);
-    
-    if (lastSegment.subKey) {
-      if (action === "add_item" && Array.isArray(item[lastSegment.subKey])) {
-        if (!item[lastSegment.subKey].includes(value)) {
-          item[lastSegment.subKey].push(value);
-        }
-      } else if (action === "remove" && Array.isArray(item[lastSegment.subKey])) {
-        item[lastSegment.subKey] = item[lastSegment.subKey].filter((v: any) => v !== value);
-      } else {
-        item[lastSegment.subKey] = value;
-      }
-    } else {
-      // Action on the matched item itself
-      if (action === "remove") {
-        const idx = arr.indexOf(item);
-        if (idx >= 0) arr.splice(idx, 1);
-      } else {
-        Object.assign(item, value);
-      }
-    }
-  } else {
-    // Simple key path
-    if (action === "add_item" && Array.isArray(finalTarget[lastSegment.key])) {
-      if (!finalTarget[lastSegment.key].includes(value)) {
-        finalTarget[lastSegment.key].push(value);
-      }
-    } else if (action === "set") {
-      finalTarget[lastSegment.key] = value;
-    } else if (action === "remove") {
-      delete finalTarget[lastSegment.key];
-    }
-  }
-
-  return profile;
-}
-
-interface PathSegment {
-  key: string;
-  filter?: { field: string; value: string };
-  subKey?: string;
-}
-
-/**
- * Parse a path like "people[name=Norma].phone" into segments:
- * [{ key: "people", filter: { field: "name", value: "Norma" }, subKey: "phone" }]
- */
-function parsePath(path: string): PathSegment[] {
-  const segments: PathSegment[] = [];
-
-  // Split on dots but respect brackets
-  const parts = path.match(/[^.[\]]+|\[[^\]]*\]/g) || [];
+  // Track if an Edit or Write tool was used
+  let updated = false;
   
-  let i = 0;
-  while (i < parts.length) {
-    const part = parts[i];
-    
-    if (part.startsWith("[") && part.includes("=")) {
-      // This is a filter — attach to previous segment
-      const inner = part.slice(1, -1); // remove [ ]
-      const [field, ...rest] = inner.split("=");
-      const val = rest.join("="); // handle values with = in them
-      
-      if (segments.length > 0) {
-        segments[segments.length - 1].filter = { field, value: val };
+  const callbacks: HarnessCallbacks = {
+    onRawEvent: () => {}, // TracingHarness handles this
+    onNormalizedEvent: (event: NormalizedEvent) => {
+      if (event.kind === "tool_end" && (event.tool === "Edit" || event.tool === "Write")) {
+        updated = true;
       }
-    } else {
-      // Regular key
-      const segment: PathSegment = { key: part };
-      segments.push(segment);
-      
-      // Peek ahead for filter
-      if (i + 1 < parts.length && parts[i + 1].startsWith("[")) {
-        const filterPart = parts[i + 1].slice(1, -1);
-        const [field, ...rest] = filterPart.split("=");
-        segment.filter = { field, value: rest.join("=") };
-        i++; // skip the filter part
-        
-        // And peek for subKey after filter
-        if (i + 1 < parts.length && !parts[i + 1].startsWith("[")) {
-          segment.subKey = parts[i + 1];
-          i++;
-        }
-      }
-    }
-    
-    i++;
+    },
+  };
+
+  // Run the harness — TracingHarness handles all tracing automatically
+  try {
+    await harness.run(PROFILE_UPDATER_SYSTEM_PROMPT, userPrompt, callbacks);
+  } catch (err) {
+    console.error("[Profile] Harness run failed:", err);
   }
 
-  return segments;
+  // Get the trace file path from the harness
+  const traceFile = harness.tracePath;
+
+  if (updated) {
+    console.log(`[Profile] Profile updated via harness. Trace: ${traceFile}`);
+  }
+
+  return {
+    updated,
+    duration_ms: Date.now() - start,
+    traceFile,
+  };
 }
 
-function resolveSegment(target: any, segment: PathSegment): any {
-  let result = target[segment.key];
-  if (segment.filter && Array.isArray(result)) {
-    result = result.find((el: any) => el[segment.filter!.field] === segment.filter!.value);
-  }
-  if (segment.subKey && result) {
-    result = result[segment.subKey];
-  }
-  return result;
+// ── Legacy Exports (for compatibility) ─────────────────────
+
+export interface UserProfile {
+  basics?: Record<string, any>;
+  people?: Array<Record<string, any>>;
+  interests?: Array<Record<string, any>>;
+  preferences?: Record<string, any>;
+  work?: Record<string, any>;
+  notes?: Array<Record<string, any>>;
 }

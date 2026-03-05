@@ -18,6 +18,8 @@ export interface TracingOptions {
   target: string;
   model: string;
   traceMessageUpdates?: boolean;
+  /** Optional prefix for trace file name (e.g., "profile" → trace-profile-...) */
+  tracePrefix?: string;
 }
 
 type TraceLine =
@@ -29,7 +31,7 @@ type TraceLine =
   | { type: "normalized_event"; ts: number; event: NormalizedEvent }
   | { type: "memory_search"; query: string; duration_ms: number; results_found: number; results_injected: number; results: unknown[]; skipped?: string }
   | { type: "embedding_result"; skipped?: string; chunks_created: number; chunks: unknown[]; unembedded_messages: number; unembedded_chars: number; duration_ms: number }
-  | { type: "profile_update"; skipped?: string; updates_applied: number; updates: unknown[]; duration_ms: number }
+  | { type: "profile_update"; skipped?: string; updated: boolean; duration_ms: number; traceFile?: string }
   | { type: "footer"; duration_ms: number; message_count: number; tool_calls: number; success: boolean; error?: string };
 
 export class TracingHarness extends ProxyHarness {
@@ -104,7 +106,8 @@ export class TracingHarness extends ProxyHarness {
     // Create a fresh trace file for each run
     const timestamp = new Date().toISOString().replace(/:/g, "-");
     const suffix = Math.random().toString(36).slice(2, 8); // 6 random chars for uniqueness
-    this.traceFile = join("logs", `trace-${timestamp}-${suffix}.jsonl`);
+    const prefix = this.options.tracePrefix ? `trace-${this.options.tracePrefix}` : "trace";
+    this.traceFile = join("logs", `${prefix}-${timestamp}-${suffix}.jsonl`);
     mkdirSync(dirname(this.traceFile), { recursive: true });
 
     const startTime = Date.now();

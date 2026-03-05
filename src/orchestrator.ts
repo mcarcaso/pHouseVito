@@ -5,7 +5,7 @@ import { withNoReplyCheck } from "./harness/decorators/index.js";
 
 import { assembleContext, formatContextForPrompt } from "./memory/context.js";
 import { maybeEmbedNewChunks } from "./memory/embeddings.js";
-import { loadProfileForPrompt, maybeUpdateProfile } from "./memory/profile.js";
+import { loadProfileForPrompt, maybeUpdateProfile, setProfileUpdaterConfig } from "./memory/profile.js";
 import { autoSearchForContext, type AutoSearchResult } from "./memory/search.js";
 import { SessionManager } from "./sessions/manager.js";
 import { getEffectiveSettings } from "./settings.js";
@@ -101,6 +101,9 @@ export class Orchestrator {
       }
     );
 
+    // Initialize profile updater with config reference
+    setProfileUpdaterConfig(config);
+
     const skills = this.getSkills();
     if (skills.length > 0) {
       console.log(
@@ -132,6 +135,7 @@ export class Orchestrator {
   /** Hot-reload the full config (model, memory, etc.) */
   reloadConfig(config: VitoConfig): void {
     this.config = config;
+    setProfileUpdaterConfig(config);  // Keep profile updater in sync
     const defaultHarness = config.settings?.harness || "claude-code";
     console.log(`[Orchestrator] Config reloaded — default harness: ${defaultHarness}`);
   }
@@ -689,37 +693,21 @@ export class Orchestrator {
     });
 
     // Background: check if the conversation revealed profile-worthy facts
-    try {
-      const recentMsgs = this.queries.getRecentMessages(vitoSession.id, 6, false, false, false);
-      const profileMessages = recentMsgs
-        .filter((m) => m.type === "user" || m.type === "assistant")
-        .map((m) => {
-          const text = (() => {
-            try {
-              const content = JSON.parse(m.content);
-              return typeof content === "string" ? content : content.text || "";
-            } catch {
-              return String(m.content);
-            }
-          })();
-          return { role: m.type as "user" | "assistant", text };
+    // Pass the current user message directly — no DB query needed
+    const currentUserMessage = event.content || "";
+    maybeUpdateProfile(currentUserMessage).then((profResult) => {
+      if (profResult) {
+        tracedHarness.writePostRunLine({
+          type: "profile_update",
+          skipped: profResult.skipped,
+          updated: profResult.updated,
+          duration_ms: profResult.duration_ms,
+          traceFile: profResult.traceFile,  // Link to the separate trace file
         });
-      maybeUpdateProfile(profileMessages).then((profResult) => {
-        if (profResult) {
-          tracedHarness.writePostRunLine({
-            type: "profile_update",
-            skipped: profResult.skipped,
-            updates_applied: profResult.updates_applied,
-            updates: profResult.updates,
-            duration_ms: profResult.duration_ms,
-          });
-        }
-      }).catch((err) => {
-        console.error(`[Profile] Background profile update failed:`, err);
-      });
-    } catch (err) {
-      console.error(`[Profile] Failed to prepare messages for profile update:`, err);
-    }
+      }
+    }).catch((err) => {
+      console.error(`[Profile] Background profile update failed:`, err);
+    });
 
   }
 

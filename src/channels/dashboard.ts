@@ -173,7 +173,14 @@ export class DashboardChannel implements Channel {
     // Must be before express.json() so request body can be piped to the upstream app
     this.app.use((req, res, next) => {
       const host = (req.headers.host || "").split(":")[0]; // strip port
-      const baseDomain = process.env.AI_BASE_DOMAIN;
+      // Read baseDomain from config or env var
+      let baseDomain = process.env.AI_BASE_DOMAIN;
+      if (!baseDomain) {
+        try {
+          const config = JSON.parse(readFileSync(CONFIG_PATH, "utf-8"));
+          baseDomain = config.apps?.baseDomain;
+        } catch {}
+      }
       if (!baseDomain || !host.endsWith(baseDomain)) return next();
 
       const prefix = host.slice(0, -(baseDomain.length + 1)); // e.g. "myapp"

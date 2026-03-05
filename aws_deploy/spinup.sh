@@ -272,7 +272,7 @@ echo ">>> Installing certbot with Route53 plugin …"
 sudo pip3 install certbot certbot-dns-route53
 
 echo ">>> Cloning repo …"
-sudo git clone -b ec2-deploy "$REPO_URL" /opt/vito
+sudo git clone -b main "$REPO_URL" /opt/vito
 sudo chown -R ubuntu:ubuntu /opt/vito
 cd /opt/vito
 

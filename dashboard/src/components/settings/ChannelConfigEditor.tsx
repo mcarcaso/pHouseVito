@@ -2,6 +2,7 @@ import { useState } from 'react';
 import type { ChannelConfig, VitoConfig, Settings } from '../../utils/settingsResolution';
 import { getEffectiveSettings } from '../../utils/settingsResolution';
 import SettingRow, { renderSelect, renderSegmented, renderNumberInput, renderToggle } from './SettingRow';
+import { channelConfigComponents, CHANNEL_ICONS } from './channels';
 
 interface ChannelConfigEditorProps {
   name: string;
@@ -9,12 +10,6 @@ interface ChannelConfigEditorProps {
   config: VitoConfig;
   onSave: (updates: Partial<VitoConfig>) => Promise<void>;
 }
-
-const CHANNEL_ICONS: Record<string, string> = {
-  dashboard: '\uD83D\uDDA5\uFE0F',
-  telegram: '\uD83D\uDCF1',
-  discord: '\uD83C\uDFAE',
-};
 
 const STREAM_MODES = [
   { value: 'stream', label: 'Stream' },
@@ -31,13 +26,9 @@ export default function ChannelConfigEditor({ name, channelConfig, config, onSav
   const [expanded, setExpanded] = useState(false);
   const [newId, setNewId] = useState<Record<string, string>>({});
   const [needsRestart, setNeedsRestart] = useState(false);
-  const [registeringCommands, setRegisteringCommands] = useState(false);
-  const [commandsResult, setCommandsResult] = useState<{ success: boolean; message: string } | null>(null);
-  const [autoAliasing, setAutoAliasing] = useState(false);
-  const [aliasResult, setAliasResult] = useState<{ success: boolean; message: string } | null>(null);
 
-  const isTelegram = name === 'telegram';
-  const isDiscord = name === 'discord';
+  // Get the channel-specific config component (if one exists)
+  const ChannelSpecificConfig = channelConfigComponents[name];
 
   // Get what the global settings resolve to (for showing inheritance)
   const globalResolved = getEffectiveSettings(config);
@@ -99,6 +90,7 @@ export default function ChannelConfigEditor({ name, channelConfig, config, onSav
     updateChannelField(field, current.filter((c: string) => c !== id));
   };
 
+  // Shared ID list renderer — passed to channel-specific components
   const renderIdList = (field: string, label: string, emptyText: string, placeholder: string) => {
     const ids: string[] = (channelConfig as any)[field] || [];
     const inputKey = `${name}-${field}`;
@@ -145,8 +137,8 @@ export default function ChannelConfigEditor({ name, channelConfig, config, onSav
         onClick={() => setExpanded(!expanded)}
       >
         <div className="flex items-center gap-3">
-          <span className="text-xl">{CHANNEL_ICONS[name] || '\uD83D\uDCE1'}</span>
-          <h4 className="text-base font-semibold text-white">{name.charAt(0).toUpperCase() + name.slice(1)}</h4>
+          <span className="text-xl">{CHANNEL_ICONS[name] || '📡'}</span>
+          <h4 className="text-base font-semibold text-white">{name.charAt(0).toUpperCase() + name.slice(1).replace('-', ' ')}</h4>
           {channelConfig.enabled ? (
             <span className="text-xs bg-green-900/40 text-green-400 px-2 py-0.5 rounded-full">enabled</span>
           ) : (
@@ -176,7 +168,7 @@ export default function ChannelConfigEditor({ name, channelConfig, config, onSav
           <div className="mt-4">
             <h5 className="text-xs font-semibold text-neutral-500 uppercase tracking-wider mb-3">Channel Config</h5>
 
-            {/* Enabled toggle */}
+            {/* Enabled toggle — always present for all channels */}
             <div className="flex items-center justify-between py-2.5 border-b border-neutral-800/50">
               <span className="text-sm text-neutral-300">Enabled</span>
               <label className="relative inline-block w-11 h-6 cursor-pointer">
@@ -191,100 +183,18 @@ export default function ChannelConfigEditor({ name, channelConfig, config, onSav
               </label>
             </div>
 
-            {/* Telegram-specific */}
-            {isTelegram && (
-              <div className="py-2.5 border-b border-neutral-800/50">
-                <div className="flex items-center gap-2 text-sm text-neutral-500">
-                  <span>🔑</span>
-                  <span>Bot Token via <code className="bg-neutral-900 text-purple-400 px-1.5 py-0.5 rounded text-xs">TELEGRAM_BOT_TOKEN</code> in <a href="/secrets" className="text-blue-400 hover:underline">Secrets</a></span>
-                </div>
-              </div>
+            {/* Channel-specific config (Discord, Telegram, Google Chat, etc.) */}
+            {ChannelSpecificConfig && (
+              <ChannelSpecificConfig
+                channelConfig={channelConfig}
+                config={config}
+                onSave={onSave}
+                renderIdList={renderIdList}
+              />
             )}
-            {isTelegram && renderIdList('allowedChatIds', 'Allowed Chat IDs', 'No chat IDs — all chats allowed', 'Chat ID')}
-
-            {/* Discord-specific */}
-            {isDiscord && (
-              <div className="py-2.5 border-b border-neutral-800/50">
-                <div className="flex items-center gap-2 text-sm text-neutral-500">
-                  <span>🔑</span>
-                  <span>Bot Token via <code className="bg-neutral-900 text-purple-400 px-1.5 py-0.5 rounded text-xs">DISCORD_BOT_TOKEN</code> in <a href="/secrets" className="text-blue-400 hover:underline">Secrets</a></span>
-                </div>
-              </div>
-            )}
-
-            {isDiscord && (
-              <div className="flex flex-col gap-2 py-2.5 border-b border-neutral-800/50">
-                <label className="text-sm text-neutral-300">Slash Commands</label>
-                <div className="flex items-center gap-3">
-                  <button
-                    className="bg-green-950/40 text-green-400 border border-green-800/40 rounded-md px-3 py-1.5 text-sm cursor-pointer hover:bg-green-900/40 disabled:opacity-40"
-                    disabled={registeringCommands}
-                    onClick={async () => {
-                      setRegisteringCommands(true);
-                      setCommandsResult(null);
-                      try {
-                        const res = await fetch('/api/discord/register-commands', { method: 'POST' });
-                        const data = await res.json();
-                        setCommandsResult(data.success
-                          ? { success: true, message: `Registered ${data.count} command(s)` }
-                          : { success: false, message: data.error || 'Failed' });
-                      } catch (err: any) {
-                        setCommandsResult({ success: false, message: err.message });
-                      }
-                      setRegisteringCommands(false);
-                      setTimeout(() => setCommandsResult(null), 5000);
-                    }}
-                  >
-                    {registeringCommands ? 'Registering...' : 'Register Slash Commands'}
-                  </button>
-                  {commandsResult && (
-                    <span className={`text-sm ${commandsResult.success ? 'text-green-400' : 'text-red-400'}`}>
-                      {commandsResult.success ? '\u2713' : '\u2717'} {commandsResult.message}
-                    </span>
-                  )}
-                </div>
-                <span className="text-xs text-neutral-600">Only needed once (or when commands change).</span>
-              </div>
-            )}
-            {isDiscord && (
-              <div className="flex flex-col gap-2 py-2.5 border-b border-neutral-800/50">
-                <label className="text-sm text-neutral-300">Auto-Generate Aliases</label>
-                <div className="flex items-center gap-3">
-                  <button
-                    className="bg-purple-950/40 text-purple-400 border border-purple-800/40 rounded-md px-3 py-1.5 text-sm cursor-pointer hover:bg-purple-900/40 disabled:opacity-40"
-                    disabled={autoAliasing}
-                    onClick={async () => {
-                      setAutoAliasing(true);
-                      setAliasResult(null);
-                      try {
-                        const res = await fetch('/api/discord/auto-alias', { method: 'POST' });
-                        const data = await res.json();
-                        setAliasResult(data.success
-                          ? { success: true, message: `Updated ${data.updated} session(s)${data.failed > 0 ? `, ${data.failed} failed` : ''}` }
-                          : { success: false, message: data.error || 'Failed' });
-                      } catch (err: any) {
-                        setAliasResult({ success: false, message: err.message });
-                      }
-                      setAutoAliasing(false);
-                      setTimeout(() => setAliasResult(null), 5000);
-                    }}
-                  >
-                    {autoAliasing ? 'Generating...' : 'Set Default Aliases'}
-                  </button>
-                  {aliasResult && (
-                    <span className={`text-sm ${aliasResult.success ? 'text-purple-400' : 'text-red-400'}`}>
-                      {aliasResult.success ? '\u2713' : '\u2717'} {aliasResult.message}
-                    </span>
-                  )}
-                </div>
-                <span className="text-xs text-neutral-600">Sets "Server / Channel" as alias for sessions without one.</span>
-              </div>
-            )}
-            {isDiscord && renderIdList('allowedGuildIds', 'Allowed Server IDs', 'No server IDs — all servers allowed', 'Server (Guild) ID')}
-            {isDiscord && renderIdList('allowedChannelIds', 'Allowed Channel IDs', 'No channel IDs — all channels allowed', 'Channel ID')}
           </div>
 
-          {/* ── Setting Overrides (cascading) ── */}
+          {/* ── Setting Overrides (cascading) — ALWAYS shown for all channels ── */}
           <div className="mt-6">
             <h5 className="text-xs font-semibold text-neutral-500 uppercase tracking-wider mb-3">Setting Overrides</h5>
             <p className="text-xs text-neutral-600 mb-3">Override global defaults for this channel. Unset values inherit from Global.</p>

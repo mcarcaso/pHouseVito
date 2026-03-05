@@ -872,12 +872,12 @@ export class Orchestrator {
       parts.push(`<user-profile>\n${profilePrompt}\n</user-profile>`);
     }
 
-    if (contextPrompt) {
-      parts.push(`<memory>\n${contextPrompt}\n</memory>`);
-    }
-
     if (recalledMemories) {
       parts.push(`<recalled-memories>\nThese are historical conversation chunks retrieved from long-term memory via semantic search. They may contain relevant context for the current conversation.\n\n${recalledMemories}\n</recalled-memories>`);
+    }
+
+    if (contextPrompt) {
+      parts.push(`<memory>\n${contextPrompt}\n</memory>`);
     }
 
     return parts.join("\n\n");

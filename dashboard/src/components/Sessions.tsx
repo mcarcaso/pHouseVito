@@ -120,7 +120,7 @@ function Sessions() {
         if (!filter.showTools) params.set('hideTools', 'true');
       }
 
-      const res = await fetch(`/api/sessions/${sessionId}/messages?${params}`);
+      const res = await fetch(`/api/sessions/${encodeURIComponent(sessionId)}/messages?${params}`);
       const data = await res.json();
 
       if (loadMore) {
@@ -172,7 +172,7 @@ function Sessions() {
 
   const saveAlias = async (sessionId: string) => {
     try {
-      await fetch(`/api/sessions/${sessionId}/alias`, {
+      await fetch(`/api/sessions/${encodeURIComponent(sessionId)}/alias`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ alias: aliasInput.trim() || null }),
@@ -204,7 +204,7 @@ function Sessions() {
 
   useEffect(() => {
     if (selectedSession) {
-      fetch(`/api/sessions/${selectedSession}/config`)
+      fetch(`/api/sessions/${encodeURIComponent(selectedSession)}/config`)
         .then(r => r.json())
         .then(setSessionConfig)
         .catch(err => console.error('Failed to load session config:', err));

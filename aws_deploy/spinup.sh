@@ -290,8 +290,8 @@ node -e "
   const p = 'user/vito.config.json';
   const cfg = JSON.parse(fs.readFileSync(p, 'utf-8'));
   cfg.apps = { ...cfg.apps, baseDomain: '$FQDN' };
-  cfg.settings = { ...cfg.settings, harness: 'pi' };
-  cfg.harnesses = { ...cfg.harnesses, pi: { model: { provider: 'openrouter', name: 'z-ai/glm-5' } } };
+  cfg.settings = { ...cfg.settings, harness: 'pi-coding-agent' };
+  cfg.harnesses = { ...cfg.harnesses, 'pi-coding-agent': { model: { provider: 'openrouter', name: 'z-ai/glm-5' } } };
   fs.writeFileSync(p, JSON.stringify(cfg, null, 2) + '\n');
 "
 

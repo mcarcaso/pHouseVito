@@ -22,7 +22,7 @@ import { getClient, resolveModel } from "./client.js";
 const ROOT = resolve(process.cwd());
 const PROFILE_PATH = join(ROOT, "user", "profile.json");
 const SCHEMA_PATH = join(ROOT, "src", "memory", "profile.schema.json");
-const EXTRACTION_MODEL = "openai/gpt-4o-mini";
+const EXTRACTION_MODEL = "openai/gpt-5-nano";
 
 // ── Schema Validation ──────────────────────────────────────
 

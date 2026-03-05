@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
+import { useNavigate, useLocation } from 'react-router-dom';
 
 interface DirListing {
   path: string;
@@ -16,9 +17,18 @@ function formatBytes(bytes: number): string {
 }
 
 export default function Drive() {
+  const navigate = useNavigate();
+  const location = useLocation();
+  
+  // Extract path from URL: /drive/foo/bar -> foo/bar
+  const getPathFromUrl = () => {
+    const match = location.pathname.match(/^\/drive\/?(.*)$/);
+    return match?.[1] || '';
+  };
+  
   const [listing, setListing] = useState<DirListing | null>(null);
   const [loading, setLoading] = useState(true);
-  const [currentPath, setCurrentPath] = useState('');
+  const currentPath = getPathFromUrl();
   const [selectedFile, setSelectedFile] = useState<string | null>(null);
   const [deleteConfirm, setDeleteConfirm] = useState<string | null>(null);
   const [actionLoading, setActionLoading] = useState<string | null>(null);
@@ -41,32 +51,31 @@ export default function Drive() {
     setTimeout(() => setToast(null), 3000);
   };
 
-  const fetchListing = (p?: string) => {
-    const target = p !== undefined ? p : currentPath;
+  const fetchListing = () => {
     setLoading(true);
-    fetch(`/api/drive/ls?path=${encodeURIComponent(target)}`)
+    fetch(`/api/drive/ls?path=${encodeURIComponent(currentPath)}`)
       .then(r => r.json())
       .then(data => { setListing(data); setLoading(false); })
       .catch(() => setLoading(false));
   };
 
-  useEffect(() => { fetchListing(); }, [currentPath]);
+  useEffect(() => { fetchListing(); }, [location.pathname]);
 
-  const navigate = (folder: string) => {
-    setCurrentPath(folder);
+  const navigateTo = (folder: string) => {
     setSelectedFile(null);
     setDeleteConfirm(null);
+    navigate(folder ? `/drive/${folder}` : '/drive');
   };
 
   const navigateUp = () => {
     if (!currentPath) return;
     const parts = currentPath.split('/');
     parts.pop();
-    navigate(parts.join('/'));
+    navigateTo(parts.join('/'));
   };
 
   const navigateInto = (dirName: string) => {
-    navigate(currentPath ? `${currentPath}/${dirName}` : dirName);
+    navigateTo(currentPath ? `${currentPath}/${dirName}` : dirName);
   };
 
   const togglePublic = async () => {
@@ -246,11 +255,11 @@ export default function Drive() {
         </div>
       </div>
 
-      <div className="p-4 sm:p-6 max-w-[700px] mx-auto w-full">
+      <div className="p-4 sm:p-6">
         {/* Breadcrumb */}
         <div className="flex items-center gap-1 mb-3 text-sm">
           <button
-            onClick={() => navigate('')}
+            onClick={() => navigateTo('')}
             className={currentPath ? 'text-blue-400 hover:underline' : 'text-white font-medium'}
           >
             drive
@@ -264,7 +273,7 @@ export default function Drive() {
                 {isLast ? (
                   <span className="text-white font-medium">{part}</span>
                 ) : (
-                  <button onClick={() => navigate(folderPath)} className="text-blue-400 hover:underline">{part}</button>
+                  <button onClick={() => navigateTo(folderPath)} className="text-blue-400 hover:underline">{part}</button>
                 )}
               </span>
             );
@@ -366,129 +375,143 @@ export default function Drive() {
           </div>
         )}
 
-        {/* Directory listing */}
-        {loading ? (
-          <div className="text-center text-neutral-500 py-12">Loading...</div>
-        ) : !listing ? (
-          <div className="text-center text-neutral-500 py-12">Failed to load</div>
-        ) : (
-          <div className="flex flex-col gap-1">
-            {/* Back */}
-            {currentPath && (
-              <button
-                onClick={navigateUp}
-                className="flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm text-neutral-400 hover:bg-neutral-800 hover:text-white transition-colors"
-              >
-                <span className="w-5 text-center">..</span>
-              </button>
-            )}
-
-            {/* Folders */}
-            {listing.dirs.map(dir => (
-              <div key={dir.name} className="group flex items-center rounded-lg hover:bg-neutral-800 transition-colors">
-                <button
-                  onClick={() => navigateInto(dir.name)}
-                  className="flex-1 flex items-center gap-3 px-3 py-2.5 text-left text-sm"
-                >
-                  <span className="w-5 text-center text-neutral-500">&#x1F4C1;</span>
-                  <span className="text-white font-medium">{dir.name}</span>
-                  {dir.meta?.isPublic && (
-                    <span className="text-[10px] font-semibold uppercase tracking-wide px-1.5 py-0.5 rounded text-green-400 bg-green-400/10">public</span>
-                  )}
-                </button>
-                {deleteConfirm === dir.name ? (
-                  <div className="flex items-center gap-1 pr-2">
-                    <button
-                      onClick={() => handleDelete(dir.name, true)}
-                      disabled={actionLoading === `delete-${dir.name}`}
-                      className="text-xs px-2 py-1 rounded bg-red-600 text-white hover:bg-red-500 disabled:opacity-50"
-                    >
-                      {actionLoading === `delete-${dir.name}` ? '...' : 'Delete'}
-                    </button>
-                    <button onClick={() => setDeleteConfirm(null)} className="text-xs px-2 py-1 rounded bg-neutral-700 text-white hover:bg-neutral-600">No</button>
-                  </div>
-                ) : (
+        {/* Main content: file list + preview side by side */}
+        <div className="flex gap-4">
+          {/* Directory listing - left side */}
+          <div className={`${selectedFile ? 'w-1/2' : 'w-full max-w-[700px]'} transition-all`}>
+            {loading ? (
+              <div className="text-center text-neutral-500 py-12">Loading...</div>
+            ) : !listing ? (
+              <div className="text-center text-neutral-500 py-12">Failed to load</div>
+            ) : (
+              <div className="flex flex-col gap-1">
+                {/* Back */}
+                {currentPath && (
                   <button
-                    onClick={() => setDeleteConfirm(dir.name)}
-                    className="text-neutral-700 hover:text-red-400 px-2 py-1 opacity-0 group-hover:opacity-100 transition-opacity text-xs"
+                    onClick={navigateUp}
+                    className="flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm text-neutral-400 hover:bg-neutral-800 hover:text-white transition-colors"
                   >
-                    &#x2715;
+                    <span className="w-5 text-center">..</span>
                   </button>
+                )}
+
+                {/* Folders */}
+                {listing.dirs.map(dir => (
+                  <div key={dir.name} className="group flex items-center rounded-lg hover:bg-neutral-800 transition-colors">
+                    <button
+                      onClick={() => navigateInto(dir.name)}
+                      className="flex-1 flex items-center gap-3 px-3 py-2.5 text-left text-sm"
+                    >
+                      <span className="w-5 text-center text-neutral-500">&#x1F4C1;</span>
+                      <span className="text-white font-medium">{dir.name}</span>
+                      {dir.meta?.isPublic && (
+                        <span className="text-[10px] font-semibold uppercase tracking-wide px-1.5 py-0.5 rounded text-green-400 bg-green-400/10">public</span>
+                      )}
+                    </button>
+                    {deleteConfirm === dir.name ? (
+                      <div className="flex items-center gap-1 pr-2">
+                        <button
+                          onClick={() => handleDelete(dir.name, true)}
+                          disabled={actionLoading === `delete-${dir.name}`}
+                          className="text-xs px-2 py-1 rounded bg-red-600 text-white hover:bg-red-500 disabled:opacity-50"
+                        >
+                          {actionLoading === `delete-${dir.name}` ? '...' : 'Delete'}
+                        </button>
+                        <button onClick={() => setDeleteConfirm(null)} className="text-xs px-2 py-1 rounded bg-neutral-700 text-white hover:bg-neutral-600">No</button>
+                      </div>
+                    ) : (
+                      <button
+                        onClick={() => setDeleteConfirm(dir.name)}
+                        className="text-neutral-700 hover:text-red-400 px-2 py-1 opacity-0 group-hover:opacity-100 transition-opacity text-xs"
+                      >
+                        &#x2715;
+                      </button>
+                    )}
+                  </div>
+                ))}
+
+                {/* Files */}
+                {listing.files.map(file => (
+                  <div key={file.name} className="group flex items-center rounded-lg hover:bg-neutral-800 transition-colors">
+                    <button
+                      onClick={() => setSelectedFile(selectedFile === file.name ? null : file.name)}
+                      className={`flex-1 flex items-center gap-3 px-3 py-2.5 text-left text-sm ${
+                        selectedFile === file.name ? 'bg-blue-600/20' : ''
+                      }`}
+                    >
+                      <span className="w-5 text-center text-neutral-600">&#x1F4C4;</span>
+                      <span className="text-neutral-200 truncate">{file.name}</span>
+                      <span className="text-xs text-neutral-600 shrink-0">{formatBytes(file.size)}</span>
+                    </button>
+                    <button
+                      onClick={() => toggleFilePublic(file.name, file.isPublic)}
+                      disabled={actionLoading === `toggle-${file.name}`}
+                      className={`text-[10px] font-semibold uppercase tracking-wide px-1.5 py-0.5 rounded cursor-pointer transition-colors shrink-0 ${
+                        file.isPublic
+                          ? 'text-green-400 bg-green-400/10 hover:bg-green-400/20'
+                          : 'text-neutral-600 bg-neutral-600/10 hover:bg-neutral-600/20'
+                      }`}
+                      title={file.isPublic ? 'Click to make private' : 'Click to make public'}
+                    >
+                      {actionLoading === `toggle-${file.name}` ? '...' : file.isPublic ? 'public' : 'private'}
+                    </button>
+                    {file.isPublic && (
+                      <button
+                        onClick={() => { navigator.clipboard.writeText(publicFileUrl(file.name)); showToast('URL copied', 'success'); }}
+                        className="text-xs text-neutral-600 hover:text-blue-400 px-2 opacity-0 group-hover:opacity-100 transition-opacity"
+                        title="Copy public URL"
+                      >
+                        link
+                      </button>
+                    )}
+                    {deleteConfirm === file.name ? (
+                      <div className="flex items-center gap-1 pr-2">
+                        <button
+                          onClick={() => handleDelete(file.name, false)}
+                          disabled={actionLoading === `delete-${file.name}`}
+                          className="text-xs px-2 py-1 rounded bg-red-600 text-white hover:bg-red-500 disabled:opacity-50"
+                        >
+                          {actionLoading === `delete-${file.name}` ? '...' : 'Delete'}
+                        </button>
+                        <button onClick={() => setDeleteConfirm(null)} className="text-xs px-2 py-1 rounded bg-neutral-700 text-white hover:bg-neutral-600">No</button>
+                      </div>
+                    ) : (
+                      <button
+                        onClick={() => setDeleteConfirm(file.name)}
+                        className="text-neutral-700 hover:text-red-400 px-2 py-1 opacity-0 group-hover:opacity-100 transition-opacity text-xs"
+                      >
+                        &#x2715;
+                      </button>
+                    )}
+                  </div>
+                ))}
+
+                {listing.dirs.length === 0 && listing.files.length === 0 && !currentPath && (
+                  <div className="text-center text-neutral-500 py-12">Drive is empty. Upload a file or create a folder.</div>
+                )}
+                {listing.dirs.length === 0 && listing.files.length === 0 && currentPath && (
+                  <div className="text-center text-neutral-500 py-8">Empty folder</div>
                 )}
               </div>
-            ))}
+            )}
+          </div>
 
-            {/* Files */}
-            {listing.files.map(file => (
-              <div key={file.name} className="group flex items-center rounded-lg hover:bg-neutral-800 transition-colors">
+          {/* File preview - right side */}
+          {selectedFile && (
+            <div className="w-1/2 sticky top-20">
+              <div className="flex items-center justify-between mb-2">
+                <span className="text-sm text-neutral-400 truncate">{selectedFile}</span>
                 <button
-                  onClick={() => setSelectedFile(selectedFile === file.name ? null : file.name)}
-                  className={`flex-1 flex items-center gap-3 px-3 py-2.5 text-left text-sm ${
-                    selectedFile === file.name ? 'bg-blue-600/20' : ''
-                  }`}
+                  onClick={() => setSelectedFile(null)}
+                  className="text-neutral-500 hover:text-white text-sm px-2"
                 >
-                  <span className="w-5 text-center text-neutral-600">&#x1F4C4;</span>
-                  <span className="text-neutral-200">{file.name}</span>
-                  <span className="text-xs text-neutral-600">{formatBytes(file.size)}</span>
+                  ✕
                 </button>
-                <button
-                  onClick={() => toggleFilePublic(file.name, file.isPublic)}
-                  disabled={actionLoading === `toggle-${file.name}`}
-                  className={`text-[10px] font-semibold uppercase tracking-wide px-1.5 py-0.5 rounded cursor-pointer transition-colors shrink-0 ${
-                    file.isPublic
-                      ? 'text-green-400 bg-green-400/10 hover:bg-green-400/20'
-                      : 'text-neutral-600 bg-neutral-600/10 hover:bg-neutral-600/20'
-                  }`}
-                  title={file.isPublic ? 'Click to make private' : 'Click to make public'}
-                >
-                  {actionLoading === `toggle-${file.name}` ? '...' : file.isPublic ? 'public' : 'private'}
-                </button>
-                {file.isPublic && (
-                  <button
-                    onClick={() => { navigator.clipboard.writeText(publicFileUrl(file.name)); showToast('URL copied', 'success'); }}
-                    className="text-xs text-neutral-600 hover:text-blue-400 px-2 opacity-0 group-hover:opacity-100 transition-opacity"
-                    title="Copy public URL"
-                  >
-                    link
-                  </button>
-                )}
-                {deleteConfirm === file.name ? (
-                  <div className="flex items-center gap-1 pr-2">
-                    <button
-                      onClick={() => handleDelete(file.name, false)}
-                      disabled={actionLoading === `delete-${file.name}`}
-                      className="text-xs px-2 py-1 rounded bg-red-600 text-white hover:bg-red-500 disabled:opacity-50"
-                    >
-                      {actionLoading === `delete-${file.name}` ? '...' : 'Delete'}
-                    </button>
-                    <button onClick={() => setDeleteConfirm(null)} className="text-xs px-2 py-1 rounded bg-neutral-700 text-white hover:bg-neutral-600">No</button>
-                  </div>
-                ) : (
-                  <button
-                    onClick={() => setDeleteConfirm(file.name)}
-                    className="text-neutral-700 hover:text-red-400 px-2 py-1 opacity-0 group-hover:opacity-100 transition-opacity text-xs"
-                  >
-                    &#x2715;
-                  </button>
-                )}
               </div>
-            ))}
-
-            {listing.dirs.length === 0 && listing.files.length === 0 && !currentPath && (
-              <div className="text-center text-neutral-500 py-12">Drive is empty. Upload a file or create a folder.</div>
-            )}
-            {listing.dirs.length === 0 && listing.files.length === 0 && currentPath && (
-              <div className="text-center text-neutral-500 py-8">Empty folder</div>
-            )}
-          </div>
-        )}
-
-        {/* File preview */}
-        {selectedFile && (
-          <div className="mt-4">
-            <FilePreview url={fileUrl(selectedFile)} filePath={selectedFile} />
-          </div>
-        )}
+              <FilePreview url={fileUrl(selectedFile)} filePath={selectedFile} />
+            </div>
+          )}
+        </div>
       </div>
 
       <style>{`
@@ -504,12 +527,40 @@ export default function Drive() {
 function FilePreview({ url, filePath }: { url: string; filePath: string }) {
   const ext = filePath.split('.').pop()?.toLowerCase() || '';
   const imageExts = ['png', 'jpg', 'jpeg', 'gif', 'webp', 'svg', 'bmp'];
+  const audioExts = ['mp3', 'wav', 'ogg', 'm4a', 'aac', 'flac', 'webm'];
+  const videoExts = ['mp4', 'webm', 'mov', 'avi', 'mkv'];
   const textExts = ['html', 'css', 'js', 'ts', 'json', 'txt', 'md', 'xml', 'csv', 'yml', 'yaml'];
 
   if (imageExts.includes(ext)) {
     return (
       <div className="bg-neutral-900 border border-neutral-800 rounded-lg overflow-hidden p-2">
         <img src={url} alt={filePath} className="max-w-full max-h-64 object-contain mx-auto" />
+      </div>
+    );
+  }
+
+  if (audioExts.includes(ext)) {
+    return (
+      <div className="bg-neutral-900 border border-neutral-800 rounded-lg overflow-hidden p-4">
+        <div className="flex items-center gap-3 mb-3">
+          <span className="text-2xl">🎵</span>
+          <span className="text-sm text-neutral-300 truncate">{filePath.split('/').pop()}</span>
+        </div>
+        <audio controls className="w-full" preload="metadata">
+          <source src={url} type={`audio/${ext === 'mp3' ? 'mpeg' : ext}`} />
+          Your browser does not support the audio element.
+        </audio>
+      </div>
+    );
+  }
+
+  if (videoExts.includes(ext)) {
+    return (
+      <div className="bg-neutral-900 border border-neutral-800 rounded-lg overflow-hidden p-2">
+        <video controls className="w-full max-h-64" preload="metadata">
+          <source src={url} type={`video/${ext === 'mov' ? 'quicktime' : ext}`} />
+          Your browser does not support the video element.
+        </video>
       </div>
     );
   }

@@ -230,7 +230,7 @@ function App() {
           <Route path="/system" element={<System />} />
           <Route path="/server" element={<Server />} />
           <Route path="/apps" element={<Apps />} />
-          <Route path="/drive" element={<Drive />} />
+          <Route path="/drive/*" element={<Drive />} />
           <Route path="/traces" element={<Traces />} />
           {/* Redirects for old routes */}
           <Route path="/channels" element={<Navigate to="/settings?tab=channels" replace />} />

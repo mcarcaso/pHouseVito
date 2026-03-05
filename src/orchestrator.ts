@@ -334,7 +334,7 @@ export class Orchestrator {
   private async downloadAttachments(event: InboundEvent): Promise<void> {
     if (!event.attachments?.length) return;
     
-    const imagesDir = resolve(process.cwd(), "user/images");
+    const imagesDir = resolve(process.cwd(), "user/drive/images");
     mkdirSync(imagesDir, { recursive: true });
     
     for (const attachment of event.attachments) {

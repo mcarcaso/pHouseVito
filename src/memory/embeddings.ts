@@ -17,10 +17,8 @@
  */
 
 import Database from "better-sqlite3";
-import OpenAI from "openai";
-import { readFileSync } from "fs";
 import { join, resolve } from "path";
-import { EMBEDDING_MODEL } from "./models.js";
+import { getClient, resolveModel, createEmbedding } from "./client.js";
 
 // ── Config ─────────────────────────────────────────────────
 
@@ -32,15 +30,6 @@ const MAX_CHUNK_CHARS = 4000;  // Hard cap per chunk
 const ASSISTANT_LABEL = "assistant";
 const CONTEXTUAL_MODEL = "openai/gpt-4o-mini";
 
-let openrouterApiKey: string | null = null;
-
-function getOpenRouterKey(): string {
-  if (!openrouterApiKey) {
-    const secrets = JSON.parse(readFileSync(join(ROOT, "user", "secrets.json"), "utf-8"));
-    openrouterApiKey = secrets.OPENROUTER_API_KEY;
-  }
-  return openrouterApiKey!;
-}
 
 // ── Global Lock ────────────────────────────────────────────
 
@@ -245,10 +234,7 @@ function produceCompleteChunks(
 // ── OpenAI Calls ───────────────────────────────────────────
 
 async function generateContext(currentText: string, previousText: string | null): Promise<string> {
-  const openai = new OpenAI({ 
-    apiKey: getOpenRouterKey(),
-    baseURL: "https://openrouter.ai/api/v1",
-  });
+  const openai = getClient();
 
   const prevSection = previousText
     ? `<previous_chunk>\n${previousText}\n</previous_chunk>\n\n`
@@ -264,7 +250,7 @@ Write a short, succinct context (1-2 sentences max) to situate this conversation
 Do NOT summarize the full conversation. Just provide enough context so that if someone searches for related topics, this chunk can be found. Respond with ONLY the context sentence(s), nothing else.`;
 
   const response = await openai.chat.completions.create({
-    model: CONTEXTUAL_MODEL,
+    model: resolveModel(CONTEXTUAL_MODEL),
     max_tokens: 200,
     messages: [{ role: "user", content: prompt }],
   });
@@ -272,19 +258,6 @@ Do NOT summarize the full conversation. Just provide enough context so that if s
   return response.choices[0].message.content?.trim() || "";
 }
 
-async function embedText(text: string): Promise<Float32Array> {
-  const openai = new OpenAI({ 
-    apiKey: getOpenRouterKey(),
-    baseURL: "https://openrouter.ai/api/v1",
-  });
-
-  const response = await openai.embeddings.create({
-    model: EMBEDDING_MODEL,
-    input: text,
-  });
-
-  return new Float32Array(response.data[0].embedding);
-}
 
 // ── Main Entry Point ───────────────────────────────────────
 
@@ -438,7 +411,7 @@ async function _doEmbedding(
       const embeddedText = `${context}\n\n${chunk.text}`;
 
       // Embed
-      const vector = await embedText(embeddedText);
+      const vector = await createEmbedding(embeddedText);
 
       // Store chunk
       const msgIdStart = chunk.messages[0].id;

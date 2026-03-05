@@ -15,10 +15,8 @@
  */
 
 import Database from "better-sqlite3";
-import OpenAI from "openai";
-import { readFileSync } from "fs";
 import { join, resolve } from "path";
-import { EMBEDDING_MODEL } from "./models.js";
+import { createEmbedding } from "./client.js";
 import type { ResolvedMemorySettings } from "../types.js";
 
 // ── Config ─────────────────────────────────────────────────
@@ -31,15 +29,6 @@ const DEFAULT_AUTO_SEARCH_LIMIT = 3;           // Max chunks to inject
 const DEFAULT_AUTO_SEARCH_RRF_THRESHOLD = 0.005; // Minimum RRF score to include (filters noise)
 const RRF_K = 60;                              // RRF constant
 
-let openrouterApiKey: string | null = null;
-
-function getOpenRouterKey(): string {
-  if (!openrouterApiKey) {
-    const secrets = JSON.parse(readFileSync(join(ROOT, "user", "secrets.json"), "utf-8"));
-    openrouterApiKey = secrets.OPENROUTER_API_KEY;
-  }
-  return openrouterApiKey!;
-}
 
 // ── Shared DB ──────────────────────────────────────────────
 
@@ -69,19 +58,6 @@ function cosineSimilarity(a: Float32Array, b: Float32Array): number {
   return dot / (Math.sqrt(normA) * Math.sqrt(normB));
 }
 
-// ── Embed Query ────────────────────────────────────────────
-
-async function embedQuery(text: string): Promise<Float32Array> {
-  const openai = new OpenAI({ 
-    apiKey: getOpenRouterKey(),
-    baseURL: "https://openrouter.ai/api/v1",
-  });
-  const response = await openai.embeddings.create({
-    model: EMBEDDING_MODEL,
-    input: text,
-  });
-  return new Float32Array(response.data[0].embedding);
-}
 
 // ── Search Interfaces ──────────────────────────────────────
 
@@ -146,7 +122,7 @@ export async function searchMemory(
   // ── Embedding search ──
   let embeddingResults: { id: number; score: number }[] = [];
   if (mode === "hybrid" || mode === "embedding") {
-    const queryVector = await embedQuery(query);
+    const queryVector = await createEmbedding(query);
     embeddingResults = rows.map((row) => {
       const vector = new Float32Array(
         row.vector.buffer,

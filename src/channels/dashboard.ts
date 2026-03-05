@@ -15,9 +15,8 @@ import { fileURLToPath } from "url";
 import crypto from "crypto";
 import { readSecrets, writeSecrets, loadSecrets, getSecretsForDashboard, SYSTEM_KEYS, PROVIDER_API_KEYS, getProviderKeyStatus, getProviderAuthStatus } from "../secrets.js";
 import Database from "better-sqlite3";
-import OpenAI from "openai";
 import { getProviders, getModels } from "@mariozechner/pi-ai";
-import { EMBEDDING_MODEL } from "../memory/models.js";
+import { createEmbedding } from "../memory/client.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const ATTACHMENTS_DIR = path.join(process.cwd(), "data", "attachments");
@@ -876,12 +875,6 @@ export class DashboardChannel implements Channel {
       const start = Date.now();
 
       try {
-        const secrets = readSecrets();
-        const openai = new OpenAI({
-          apiKey: secrets.OPENROUTER_API_KEY,
-          baseURL: "https://openrouter.ai/api/v1",
-        });
-
         const db = new Database(dbPath, { readonly: true });
 
         // Load all chunks + embeddings
@@ -895,11 +888,7 @@ export class DashboardChannel implements Channel {
         // ── Embedding search ──
         let embeddingResults: { id: number; score: number }[] = [];
         if (mode === "hybrid" || mode === "embedding") {
-          const embResponse = await openai.embeddings.create({
-            model: EMBEDDING_MODEL,
-            input: query,
-          });
-          const queryVector = new Float32Array(embResponse.data[0].embedding);
+          const queryVector = await createEmbedding(query);
 
           embeddingResults = rows.map((row: any) => {
             const vector = new Float32Array(row.vector.buffer, row.vector.byteOffset, row.vector.byteLength / 4);

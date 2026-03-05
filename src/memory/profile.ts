@@ -13,9 +13,9 @@
 
 import { readFileSync, writeFileSync, existsSync } from "fs";
 import { join, resolve } from "path";
-import OpenAI from "openai";
 import AjvModule from "ajv";
 const Ajv = AjvModule.default || AjvModule;
+import { getClient, resolveModel } from "./client.js";
 
 // ── Config ─────────────────────────────────────────────────
 
@@ -23,16 +23,6 @@ const ROOT = resolve(process.cwd());
 const PROFILE_PATH = join(ROOT, "user", "profile.json");
 const SCHEMA_PATH = join(ROOT, "src", "memory", "profile.schema.json");
 const EXTRACTION_MODEL = "openai/gpt-4o-mini";
-
-let openrouterApiKey: string | null = null;
-
-function getOpenRouterKey(): string {
-  if (!openrouterApiKey) {
-    const secrets = JSON.parse(readFileSync(join(ROOT, "user", "secrets.json"), "utf-8"));
-    openrouterApiKey = secrets.OPENROUTER_API_KEY;
-  }
-  return openrouterApiKey!;
-}
 
 // ── Schema Validation ──────────────────────────────────────
 
@@ -247,10 +237,10 @@ async function _doProfileUpdate(recentMessages: ConversationMessage[], start: nu
     .map((m) => `${m.role === "user" ? "User" : "Assistant"}: ${m.text}`)
     .join("\n");
 
-  const openai = new OpenAI({ apiKey: getOpenRouterKey(), baseURL: "https://openrouter.ai/api/v1" });
+  const openai = getClient();
 
   const response = await openai.chat.completions.create({
-    model: EXTRACTION_MODEL,
+    model: resolveModel(EXTRACTION_MODEL),
     max_tokens: 500,
     temperature: 0,
     response_format: { type: "json_object" },

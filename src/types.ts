@@ -118,6 +118,8 @@ export interface MemorySettings {
   recalledMemoryLimit?: number;
   /** Minimum RRF score to include (default 0.005) */
   recalledMemoryThreshold?: number;
+  /** Number of recent messages to include as context for profile updates (default 2) */
+  profileUpdateContext?: number;
 }
 
 export interface Settings {
@@ -153,6 +155,7 @@ export interface ResolvedContextSettings {
 export interface ResolvedMemorySettings {
   recalledMemoryLimit: number;
   recalledMemoryThreshold: number;
+  profileUpdateContext: number;
 }
 
 /** Deep merge helper type for settings resolution */

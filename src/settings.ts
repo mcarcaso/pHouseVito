@@ -26,6 +26,7 @@ const DEFAULT_CROSS_CONTEXT: ResolvedContextSettings = {
 const DEFAULT_MEMORY: ResolvedMemorySettings = {
   recalledMemoryLimit: 3,
   recalledMemoryThreshold: 0.005,
+  profileUpdateContext: 2,
 };
 
 /** Default settings when nothing is specified */
@@ -128,6 +129,7 @@ export function getEffectiveSettings(
     memory: {
       recalledMemoryLimit: settings.memory?.recalledMemoryLimit ?? DEFAULT_MEMORY.recalledMemoryLimit,
       recalledMemoryThreshold: settings.memory?.recalledMemoryThreshold ?? DEFAULT_MEMORY.recalledMemoryThreshold,
+      profileUpdateContext: settings.memory?.profileUpdateContext ?? DEFAULT_MEMORY.profileUpdateContext,
     },
     requireMention: settings.requireMention,
     traceMessageUpdates: settings.traceMessageUpdates ?? false,

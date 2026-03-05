@@ -5,7 +5,7 @@ import { withNoReplyCheck } from "./harness/decorators/index.js";
 
 import { assembleContext, formatContextForPrompt } from "./memory/context.js";
 import { maybeEmbedNewChunks } from "./memory/embeddings.js";
-import { loadProfileForPrompt, maybeUpdateProfile, setProfileUpdaterConfig } from "./memory/profile.js";
+import { loadProfileForPrompt, maybeUpdateProfile, setProfileUpdaterConfig, setProfileUpdaterQueries } from "./memory/profile.js";
 import { autoSearchForContext, type AutoSearchResult } from "./memory/search.js";
 import { SessionManager } from "./sessions/manager.js";
 import { getEffectiveSettings } from "./settings.js";
@@ -101,8 +101,9 @@ export class Orchestrator {
       }
     );
 
-    // Initialize profile updater with config reference
+    // Initialize profile updater with config and queries reference
     setProfileUpdaterConfig(config);
+    setProfileUpdaterQueries(queries);
 
     const skills = this.getSkills();
     if (skills.length > 0) {
@@ -693,9 +694,9 @@ export class Orchestrator {
     });
 
     // Background: check if the conversation revealed profile-worthy facts
-    // Pass the current user message directly — no DB query needed
+    // Pass the session ID so the profile updater can fetch recent conversation context
     const currentUserMessage = event.content || "";
-    maybeUpdateProfile(currentUserMessage).then((profResult) => {
+    maybeUpdateProfile(vitoSession.id, currentUserMessage).then((profResult) => {
       if (profResult) {
         tracedHarness.writePostRunLine({
           type: "profile_update",

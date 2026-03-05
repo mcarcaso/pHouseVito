@@ -292,6 +292,7 @@ node -e "
   cfg.apps = { ...cfg.apps, baseDomain: '$FQDN' };
   cfg.settings = { ...cfg.settings, harness: 'pi-coding-agent' };
   cfg.harnesses = { ...cfg.harnesses, 'pi-coding-agent': { model: { provider: 'openrouter', name: 'google/gemini-3-flash-preview' } } };
+  cfg.sessions = { ...cfg.sessions, 'system:profile-updater': { harness: 'pi-coding-agent', 'pi-coding-agent': { model: { provider: 'openrouter', name: 'openai/gpt-5-nano' }, thinkingLevel: 'off' } } };
   fs.writeFileSync(p, JSON.stringify(cfg, null, 2) + '\n');
 "
 

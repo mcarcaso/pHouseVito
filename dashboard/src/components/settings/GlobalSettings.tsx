@@ -240,7 +240,7 @@ export default function GlobalSettings({ config, onSave }: GlobalSettingsProps) 
           hint="Max memory chunks to inject (0 to disable)"
         />
 
-        <div className="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-4 py-3">
+        <div className="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-4 py-3 border-b border-neutral-800/50">
           <label className="text-sm text-neutral-400 sm:w-48 sm:shrink-0">Relevance Threshold</label>
           <input
             type="number"
@@ -256,6 +256,15 @@ export default function GlobalSettings({ config, onSave }: GlobalSettingsProps) 
           />
           <span className="text-xs text-neutral-600">Min RRF score (lower = more results)</span>
         </div>
+
+        <NumberInput
+          label="Profile Update Context"
+          value={settings.memory?.profileUpdateContext ?? 2}
+          onChange={(val) => updateSetting('memory.profileUpdateContext', val)}
+          min={1}
+          max={10}
+          hint="Messages of context for profile updates"
+        />
       </section>
 
       {/* ── Harness Configurations ── */}

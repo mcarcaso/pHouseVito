@@ -257,6 +257,60 @@ export class Queries {
       .run(sessionId);
   }
 
+  /** Get the last assistant message for a session (for profile update context) */
+  getLastAssistantMessage(sessionId: string): string | null {
+    const row = this.db
+      .prepare(
+        `SELECT content FROM messages 
+         WHERE session_id = ? AND type = 'assistant' AND archived = 0
+         ORDER BY timestamp DESC 
+         LIMIT 1`
+      )
+      .get(sessionId) as { content: string } | undefined;
+    
+    if (!row) return null;
+    
+    // Content is stored as JSON string
+    try {
+      return JSON.parse(row.content);
+    } catch {
+      return row.content;
+    }
+  }
+
+  /** 
+   * Get the last N user/assistant messages for a session (for profile update context).
+   * Returns messages in chronological order (oldest first).
+   * Only includes user and assistant types — excludes thoughts/tools.
+   */
+  getLastNMessages(sessionId: string, limit: number): Array<{ type: string; content: string }> {
+    const rows = this.db
+      .prepare(
+        `SELECT type, content FROM (
+           SELECT type, content, timestamp FROM messages 
+           WHERE session_id = ? AND type IN ('user', 'assistant') AND archived = 0
+           ORDER BY timestamp DESC 
+           LIMIT ?
+         ) ORDER BY timestamp ASC`
+      )
+      .all(sessionId, limit) as Array<{ type: string; content: string }>;
+    
+    // Parse JSON content
+    return rows.map(row => {
+      let content: string;
+      try {
+        content = JSON.parse(row.content);
+      } catch {
+        content = row.content;
+      }
+      // Handle content that may be an object (e.g., with attachments)
+      if (typeof content === "object" && content !== null) {
+        content = (content as any).text || JSON.stringify(content);
+      }
+      return { type: row.type, content };
+    });
+  }
+
   // ── Traces ──
 
   insertTrace(trace: Omit<TraceRow, "id">): void {

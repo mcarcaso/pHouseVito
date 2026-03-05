@@ -501,12 +501,33 @@ export default function Drive() {
             <div className="hidden xl:block xl:w-1/2 sticky top-20">
               <div className="flex items-center justify-between mb-2">
                 <span className="text-sm text-neutral-400 truncate">{selectedFile}</span>
-                <button
-                  onClick={() => setSelectedFile(null)}
-                  className="text-neutral-500 hover:text-white text-sm px-2"
-                >
-                  ✕
-                </button>
+                <div className="flex items-center gap-2 shrink-0">
+                  <button
+                    onClick={() => window.open(fileUrl(selectedFile), '_blank')}
+                    className="text-xs px-2 py-1 rounded bg-neutral-700 hover:bg-neutral-600 text-neutral-300 hover:text-white transition-colors"
+                    title="Open in new tab"
+                  >
+                    Open ↗
+                  </button>
+                  <button
+                    onClick={() => {
+                      const file = listing?.files.find(f => f.name === selectedFile);
+                      const url = file?.isPublic ? publicFileUrl(selectedFile) : fileUrl(selectedFile);
+                      navigator.clipboard.writeText(file?.isPublic ? url : `${window.location.origin}${url}`);
+                      showToast('Link copied', 'success');
+                    }}
+                    className="text-xs px-2 py-1 rounded bg-neutral-700 hover:bg-neutral-600 text-neutral-300 hover:text-white transition-colors"
+                    title="Copy link"
+                  >
+                    Copy link
+                  </button>
+                  <button
+                    onClick={() => setSelectedFile(null)}
+                    className="text-neutral-500 hover:text-white text-sm px-2"
+                  >
+                    ✕
+                  </button>
+                </div>
               </div>
               <FilePreview url={fileUrl(selectedFile)} filePath={selectedFile} />
             </div>
@@ -519,8 +540,25 @@ export default function Drive() {
       {selectedFile && (
         <div className="xl:hidden fixed inset-0 z-[250] bg-black flex flex-col">
           {/* Overlay header with close button */}
-          <div className="flex items-center gap-3 px-4 py-3 border-b border-neutral-800 bg-black shrink-0">
+          <div className="flex items-center gap-2 px-4 py-3 border-b border-neutral-800 bg-black shrink-0">
             <span className="text-sm text-neutral-300 truncate min-w-0 flex-1">{selectedFile}</span>
+            <button
+              onClick={() => window.open(fileUrl(selectedFile), '_blank')}
+              className="px-3 py-2 rounded-lg bg-neutral-800 hover:bg-neutral-700 text-neutral-300 hover:text-white text-sm font-medium transition-colors flex-none"
+            >
+              Open ↗
+            </button>
+            <button
+              onClick={() => {
+                const file = listing?.files.find(f => f.name === selectedFile);
+                const url = file?.isPublic ? publicFileUrl(selectedFile) : fileUrl(selectedFile);
+                navigator.clipboard.writeText(file?.isPublic ? url : `${window.location.origin}${url}`);
+                showToast('Link copied', 'success');
+              }}
+              className="px-3 py-2 rounded-lg bg-neutral-800 hover:bg-neutral-700 text-neutral-300 hover:text-white text-sm font-medium transition-colors flex-none"
+            >
+              Link
+            </button>
             <button
               onClick={() => setSelectedFile(null)}
               className="w-10 h-10 flex items-center justify-center rounded-full bg-neutral-800 hover:bg-neutral-700 text-white text-xl font-bold transition-colors flex-none"

@@ -20,11 +20,13 @@ export interface ResolvedContextSettings {
 export interface MemorySettings {
   recalledMemoryLimit?: number;
   recalledMemoryThreshold?: number;
+  profileUpdateContext?: number;
 }
 
 export interface ResolvedMemorySettings {
   recalledMemoryLimit: number;
   recalledMemoryThreshold: number;
+  profileUpdateContext: number;
 }
 
 export interface Settings {
@@ -106,6 +108,7 @@ const DEFAULT_CROSS_CONTEXT: ResolvedContextSettings = {
 const DEFAULT_MEMORY: ResolvedMemorySettings = {
   recalledMemoryLimit: 3,
   recalledMemoryThreshold: 0.005,
+  profileUpdateContext: 2,
 };
 
 const DEFAULTS: ResolvedSettings = {
@@ -197,6 +200,7 @@ export function getEffectiveSettings(
     memory: {
       recalledMemoryLimit: settings.memory?.recalledMemoryLimit ?? DEFAULT_MEMORY.recalledMemoryLimit,
       recalledMemoryThreshold: settings.memory?.recalledMemoryThreshold ?? DEFAULT_MEMORY.recalledMemoryThreshold,
+      profileUpdateContext: settings.memory?.profileUpdateContext ?? DEFAULT_MEMORY.profileUpdateContext,
     },
     requireMention: settings.requireMention,
     traceMessageUpdates: settings.traceMessageUpdates ?? false,
@@ -269,4 +273,5 @@ export const CASCADING_FIELDS = [
   // Memory settings
   { key: 'memory.recalledMemoryLimit', label: 'Recalled Memory Limit', type: 'number' as const },
   { key: 'memory.recalledMemoryThreshold', label: 'Recalled Memory Threshold', type: 'number' as const },
+  { key: 'memory.profileUpdateContext', label: 'Profile Update Context', type: 'number' as const },
 ] as const;

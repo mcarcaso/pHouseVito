@@ -27,7 +27,7 @@ In your `vito.config.json`:
 }
 ```
 
-Or set the `AI_BASE_DOMAIN` environment variable. If neither is set, apps will be accessible at `http://localhost:<port>`.
+If not set, apps will be accessible at `http://localhost:<port>`.
 
 ## Lifecycle
 

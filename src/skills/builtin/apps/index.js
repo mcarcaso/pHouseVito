@@ -23,7 +23,7 @@ function getConfig() {
 
 function getBaseDomain() {
   const config = getConfig();
-  return config.apps?.baseDomain || process.env.AI_BASE_DOMAIN || null;
+  return config.apps?.baseDomain || null;
 }
 
 function getPortStart() {

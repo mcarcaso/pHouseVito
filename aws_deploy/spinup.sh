@@ -11,6 +11,10 @@ set -euo pipefail
 NAME="${1:?Usage: spinup.sh <name> <domain>}"
 DOMAIN="${2:?Usage: spinup.sh <name> <domain>}"
 
+# Prompt for OpenRouter API key (used by pi harness)
+read -rp "OpenRouter API key: " OPENROUTER_API_KEY
+[ -z "$OPENROUTER_API_KEY" ] && die "OpenRouter API key is required"
+
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 STATE_DIR="$SCRIPT_DIR/state"
 STATE_FILE="$STATE_DIR/$NAME.json"
@@ -234,11 +238,12 @@ ok "State saved to $STATE_FILE"
 
 log "Running remote setup (this takes a few minutes) …"
 
-ssh $SSH_OPTS "ubuntu@$ELASTIC_IP" bash -s "$NAME" "$DOMAIN" "$REPO_URL" << 'REMOTE_SCRIPT'
+ssh $SSH_OPTS "ubuntu@$ELASTIC_IP" bash -s "$NAME" "$DOMAIN" "$REPO_URL" "$OPENROUTER_API_KEY" << 'REMOTE_SCRIPT'
 set -euo pipefail
 NAME="$1"
 DOMAIN="$2"
 REPO_URL="$3"
+OPENROUTER_API_KEY="$4"
 FQDN="${NAME}.${DOMAIN}"
 
 export DEBIAN_FRONTEND=noninteractive
@@ -279,6 +284,26 @@ npm run build
 echo ">>> Setting up user directory …"
 cp -r user.example/* user/ 2>/dev/null || cp -r user.example/. user/
 
+echo ">>> Configuring vito.config.json …"
+node -e "
+  const fs = require('fs');
+  const p = 'user/vito.config.json';
+  const cfg = JSON.parse(fs.readFileSync(p, 'utf-8'));
+  cfg.apps = { ...cfg.apps, baseDomain: '$FQDN' };
+  cfg.settings = { ...cfg.settings, harness: 'pi' };
+  cfg.harnesses = { ...cfg.harnesses, pi: { model: { provider: 'openrouter', name: 'z-ai/glm-5' } } };
+  fs.writeFileSync(p, JSON.stringify(cfg, null, 2) + '\n');
+"
+
+echo ">>> Writing secrets …"
+node -e "
+  const fs = require('fs');
+  const p = 'user/secrets.json';
+  const secrets = JSON.parse(fs.readFileSync(p, 'utf-8'));
+  secrets.OPENROUTER_API_KEY = '$OPENROUTER_API_KEY';
+  fs.writeFileSync(p, JSON.stringify(secrets, null, 2) + '\n');
+"
+
 echo ">>> Generating ecosystem.config.cjs …"
 cat > user/ecosystem.config.cjs << ECOEOF
 module.exports = {
@@ -293,7 +318,6 @@ module.exports = {
       env: {
         NODE_ENV: 'production',
         PORT: '3000',
-        AI_BASE_DOMAIN: '$FQDN',
         CUSTOMER_NAME: '$NAME',
       },
       error_file: 'user/logs/pm2-error.log',

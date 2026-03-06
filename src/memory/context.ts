@@ -36,7 +36,6 @@ export async function assembleContext(
     includeArchived: false,
   };
 
-  // Memories block is unused — profile.json + embeddings handle long-term memory now
   const memoriesBlock = "";
 
   // Load session aliases for human-readable display

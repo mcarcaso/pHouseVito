@@ -37,6 +37,24 @@ const HARNESS_OPTIONS = [
   { value: 'pi-coding-agent', label: 'Pi Coding Agent' },
 ];
 
+const TIMEZONE_OPTIONS = [
+  { value: 'America/Toronto', label: 'Eastern (Toronto)' },
+  { value: 'America/New_York', label: 'Eastern (New York)' },
+  { value: 'America/Chicago', label: 'Central (Chicago)' },
+  { value: 'America/Denver', label: 'Mountain (Denver)' },
+  { value: 'America/Los_Angeles', label: 'Pacific (Los Angeles)' },
+  { value: 'America/Vancouver', label: 'Pacific (Vancouver)' },
+  { value: 'Europe/London', label: 'London (GMT/BST)' },
+  { value: 'Europe/Paris', label: 'Central Europe (Paris)' },
+  { value: 'Europe/Berlin', label: 'Central Europe (Berlin)' },
+  { value: 'Asia/Tokyo', label: 'Japan (Tokyo)' },
+  { value: 'Asia/Shanghai', label: 'China (Shanghai)' },
+  { value: 'Asia/Singapore', label: 'Singapore' },
+  { value: 'Australia/Sydney', label: 'Sydney' },
+  { value: 'Australia/Melbourne', label: 'Melbourne' },
+  { value: 'UTC', label: 'UTC' },
+];
+
 // NumberInput that allows clearing the field while typing (borrowed from old Settings.tsx)
 function NumberInput({
   label, value, onChange, min, max, step, hint,
@@ -118,6 +136,18 @@ export default function GlobalSettings({ config, onSave }: GlobalSettingsProps) 
             className="w-full sm:w-48 bg-neutral-950 border border-neutral-700 rounded-md px-3 py-2 text-neutral-200 text-sm focus:outline-none focus:border-blue-600 transition-colors"
           />
           <span className="text-xs text-neutral-600">@mentions become @{botName}</span>
+        </div>
+      </section>
+
+      {/* ── System ── */}
+      <section className="bg-neutral-900 border border-neutral-800 rounded-xl p-5">
+        <h3 className="text-base font-semibold text-white mb-1">System</h3>
+        <p className="text-xs text-neutral-600 mb-4">Core system settings for scheduling and datetime display.</p>
+
+        <div className="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-4 py-3">
+          <label className="text-sm text-neutral-400 sm:w-48 sm:shrink-0">Timezone</label>
+          {renderSelect(settings.timezone || 'America/Toronto', (val) => updateSetting('timezone', val), TIMEZONE_OPTIONS)}
+          <span className="text-xs text-neutral-600">Used for scheduler + datetime in prompts</span>
         </div>
       </section>
 

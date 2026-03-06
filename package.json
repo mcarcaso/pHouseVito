@@ -15,8 +15,8 @@
     "dev:dashboard": "cd dashboard && npm run dev"
   },
   "dependencies": {
-    "@mariozechner/pi-ai": "^0.54.0",
-    "@mariozechner/pi-coding-agent": "latest",
+    "@mariozechner/pi-ai": "^0.56.2",
+    "@mariozechner/pi-coding-agent": "^0.56.2",
     "ajv": "^8.18.0",
     "axios": "^1.13.5",
     "better-sqlite3": "^11.0.0",

@@ -1,12 +1,14 @@
 import { parseCronExpression } from "cron-schedule";
 import { IntervalBasedCronScheduler } from "cron-schedule/schedulers/interval-based.js";
 import type { CronJobConfig, InboundEvent } from "../types.js";
+import { DEFAULT_TIMEZONE } from "../system-instructions.js";
 
 export class CronScheduler {
   private scheduler: IntervalBasedCronScheduler;
   private taskIds = new Map<string, number>(); // job name -> scheduler task id
   private timeouts = new Map<string, ReturnType<typeof setTimeout>>(); // for ISO date one-time jobs
   private jobConfigs = new Map<string, CronJobConfig>();
+  private globalTimezone: string = DEFAULT_TIMEZONE;
 
   constructor(
     private onJob: (event: InboundEvent, channelName: string | null) => Promise<void>,
@@ -17,8 +19,23 @@ export class CronScheduler {
     this.scheduler = new IntervalBasedCronScheduler(60 * 1000);
   }
 
+  /** Set the global timezone (from config) */
+  setTimezone(tz: string): void {
+    this.globalTimezone = tz;
+    console.log(`[Cron] Global timezone set to: ${tz}`);
+  }
+
+  /** Get the effective timezone for a job (job-specific > global > default) */
+  private getJobTimezone(job: CronJobConfig): string {
+    return job.timezone || this.globalTimezone || DEFAULT_TIMEZONE;
+  }
+
   /** Start all jobs from config */
-  start(jobs: CronJobConfig[]): void {
+  start(jobs: CronJobConfig[], globalTimezone?: string): void {
+    if (globalTimezone) {
+      this.globalTimezone = globalTimezone;
+      console.log(`[Cron] Using timezone: ${globalTimezone}`);
+    }
     for (const job of jobs) {
       this.scheduleJob(job);
     }
@@ -99,7 +116,8 @@ export class CronScheduler {
         return;
       }
 
-      console.log(`Scheduled one-time job: ${job.name} for ${job.schedule} (in ${Math.round(delay / 1000)}s)`);
+      const tz = this.getJobTimezone(job);
+      console.log(`Scheduled one-time job: ${job.name} for ${job.schedule} [${tz}] (in ${Math.round(delay / 1000)}s)`);
 
       const timeout = setTimeout(async () => {
         console.log(`[Cron] Triggering one-time job: ${job.name}`);
@@ -121,6 +139,9 @@ export class CronScheduler {
     }
 
     // Parse the cron expression
+    // Note: cron-schedule uses system timezone. For cross-TZ scheduling,
+    // set TZ env var or use per-job timezone field (TODO: full timezone support)
+    const tz = this.getJobTimezone(job);
     let cron;
     try {
       cron = parseCronExpression(job.schedule);
@@ -158,7 +179,7 @@ export class CronScheduler {
 
     this.taskIds.set(job.name, taskId);
     this.jobConfigs.set(job.name, job);
-    console.log(`Scheduled cron job: ${job.name} (${job.schedule})${job.oneTime ? " [ONE-TIME]" : ""}`);
+    console.log(`Scheduled cron job: ${job.name} (${job.schedule}) [${tz}]${job.oneTime ? " [ONE-TIME]" : ""}`);
   }
 
   /** Remove a job by name */

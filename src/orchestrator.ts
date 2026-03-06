@@ -38,11 +38,12 @@ export function buildTestSystemPrompt(
   soul: string,
   skillsDir: string,
   channelPrompt: string = "",
-  botName?: string
+  botName?: string,
+  timezone?: string
 ): string {
   const parts: string[] = [];
 
-  parts.push(getDateTimeString());
+  parts.push(getDateTimeString(timezone));
 
   if (soul) {
     parts.push(`<personality>\n${soul}\n</personality>`);
@@ -129,7 +130,10 @@ export class Orchestrator {
   }
 
   /** Reload cron jobs from updated config (hot-reload) */
-  reloadCronJobs(jobs: CronJobConfig[]): void {
+  reloadCronJobs(jobs: CronJobConfig[], timezone?: string): void {
+    if (timezone) {
+      this.cronScheduler.setTimezone(timezone);
+    }
     this.cronScheduler.reload(jobs);
   }
 
@@ -284,7 +288,7 @@ export class Orchestrator {
   buildTestSystemPrompt(channelPrompt: string = ""): string {
     const parts: string[] = [];
 
-    parts.push(getDateTimeString());
+    parts.push(getDateTimeString(this.config.settings?.timezone));
 
     if (this.soul) {
       parts.push(`<personality>\n${this.soul}\n</personality>`);
@@ -410,8 +414,9 @@ export class Orchestrator {
       }
     }
     
-    // Start cron scheduler
-    this.cronScheduler.start(this.config.cron.jobs);
+    // Start cron scheduler with configured timezone
+    const timezone = this.config.settings?.timezone;
+    this.cronScheduler.start(this.config.cron.jobs, timezone);
   }
 
   /** Stop all channels */
@@ -833,7 +838,7 @@ export class Orchestrator {
   ): string {
     const parts: string[] = [];
 
-    parts.push(getDateTimeString());
+    parts.push(getDateTimeString(this.config.settings?.timezone));
 
     if (this.soul) {
       parts.push(`<personality>\n${this.soul}\n</personality>`);

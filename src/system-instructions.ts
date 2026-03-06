@@ -10,6 +10,9 @@ import { join } from "path";
 
 const COMMANDS_SECTION = `Available commands: /new (embed + archive session), /stop (abort current request + clear queue)`;
 
+/** Default timezone — used when config doesn't specify one */
+export const DEFAULT_TIMEZONE = "America/Toronto";
+
 /**
  * Build the <system> block by reading SYSTEM.md.
  */
@@ -37,21 +40,29 @@ export function buildSystemBlock(includeCommands: boolean = true, botName?: stri
 
 /**
  * Get the current date/time string for prompt headers.
- * Always returns ET timezone.
+ * Uses the configured timezone, falling back to America/Toronto.
  */
-export function getDateTimeString(): string {
+export function getDateTimeString(timezone?: string): string {
+  const tz = timezone || DEFAULT_TIMEZONE;
   const now = new Date();
+  
+  // Get timezone abbreviation (e.g., "EST", "PST")
+  const tzAbbr = now.toLocaleTimeString("en-US", {
+    timeZone: tz,
+    timeZoneName: "short",
+  }).split(" ").pop() || "ET";
+  
   const dateStr = now.toLocaleDateString("en-US", {
     weekday: "long",
     year: "numeric",
     month: "long",
     day: "numeric",
-    timeZone: "America/Toronto",
+    timeZone: tz,
   });
   const timeStr = now.toLocaleTimeString("en-US", {
     hour: "numeric",
     minute: "2-digit",
-    timeZone: "America/Toronto",
+    timeZone: tz,
   });
-  return `Today is ${dateStr}. Current time: ${timeStr} ET.`;
+  return `Today is ${dateStr}. Current time: ${timeStr} ${tzAbbr}.`;
 }

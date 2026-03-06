@@ -137,6 +137,8 @@ export interface Settings {
   requireMention?: boolean;
   /** Log message_update raw events to trace files (noisy). Default false */
   traceMessageUpdates?: boolean;
+  /** Timezone for cron jobs and datetime display (e.g., "America/Toronto"). Defaults to America/Toronto */
+  timezone?: string;
   /** Pi Coding Agent harness overrides */
   "pi-coding-agent"?: Partial<PiHarnessConfig>;
   /** Claude Code CLI harness overrides */

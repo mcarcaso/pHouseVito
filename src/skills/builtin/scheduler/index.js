@@ -12,8 +12,30 @@
  */
 
 import axios from 'axios';
+import { readFileSync, existsSync } from 'fs';
+import { resolve, dirname } from 'path';
+import { fileURLToPath } from 'url';
 
+const __dirname = dirname(fileURLToPath(import.meta.url));
 const API_URL = 'http://localhost:3030/api/cron/jobs';
+const DEFAULT_TIMEZONE = 'America/Toronto';
+
+/**
+ * Get the configured timezone from vito.config.json
+ */
+function getTimezone() {
+  try {
+    // Navigate from skills/builtin/scheduler to project root
+    const configPath = resolve(__dirname, '../../../../user/vito.config.json');
+    if (existsSync(configPath)) {
+      const config = JSON.parse(readFileSync(configPath, 'utf-8'));
+      return config.settings?.timezone || DEFAULT_TIMEZONE;
+    }
+  } catch {
+    // Ignore errors, use default
+  }
+  return DEFAULT_TIMEZONE;
+}
 
 const [,, command, ...rest] = process.argv;
 
@@ -52,7 +74,10 @@ async function main() {
 
         await axios.post(API_URL, jobData);
         const jobType = jobData.oneTime ? 'one-time job' : 'recurring job';
-        console.log(`Scheduled ${jobType} "${args.name}" — will execute: ${args.prompt}`);
+        const tz = getTimezone();
+        console.log(`Scheduled ${jobType} "${args.name}" (timezone: ${tz})`);
+        console.log(`  → schedule: ${args.schedule}`);
+        console.log(`  → will execute: "${args.prompt}"`);
         break;
       }
 
@@ -73,6 +98,8 @@ async function main() {
         if (jobs.length === 0) {
           console.log('No scheduled jobs');
         } else {
+          const tz = getTimezone();
+          console.log(`All times in: ${tz}\n`);
           for (const job of jobs) {
             const type = job.oneTime ? '[ONE-TIME]' : '[RECURRING]';
             console.log(`${type} ${job.name}: "${job.prompt}" (schedule: ${job.schedule}, session: ${job.session})`);

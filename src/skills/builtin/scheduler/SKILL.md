@@ -2,6 +2,12 @@
 
 **Description:** Schedule and manage cron jobs to trigger AI actions at specific times. Create one-time or recurring jobs with natural language prompts.
 
+## Timezone
+
+Jobs are scheduled using the **global timezone** from `settings.timezone` in `vito.config.json`. If not set, defaults to `America/Toronto`.
+
+The output will confirm which timezone is being used when you schedule or list jobs.
+
 ## How to Use
 
 Run the CLI script at `src/skills/builtin/scheduler/index.js`:
@@ -27,4 +33,11 @@ node src/skills/builtin/scheduler/index.js cancel --name "morning-standup"
 ### List all jobs
 ```bash
 node src/skills/builtin/scheduler/index.js list
+```
+
+## Example Output
+
+```
+Scheduled recurring job "morning-standup" (timezone: America/Toronto)
+  → will execute: "Give me a motivational quote to start the day"
 ```

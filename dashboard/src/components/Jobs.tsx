@@ -130,12 +130,16 @@ export default function Jobs() {
   };
 
   const checkHealth = async () => {
+    console.log("[Jobs] checkHealth called");
     try {
       const res = await fetch("/api/cron/health");
+      console.log("[Jobs] health response status:", res.status);
       const data = await res.json();
+      console.log("[Jobs] health data:", data);
       setHealthData(data);
       setShowHealth(true);
     } catch (err) {
+      console.error("[Jobs] health error:", err);
       setHealthData({ error: "Failed to fetch health data" });
       setShowHealth(true);
     }

@@ -87,7 +87,7 @@ export function formatSkillsForPrompt(skills: SkillMeta[]): string {
     })
     .join("\n");
 
-  return `Skills are installed in user/skills/ and src/skills/builtin/. When the user asks you to do something, check if a skill exists for it before trying to do it yourself. Skills have a SKILL.md that tells you exactly how to use them — always read it first.
+  return `The following skills are available. IMPORTANT: Before using ANY skill, you MUST read its SKILL.md file first. Do NOT assume how a skill works — the SKILL.md contains the exact commands, parameters, and usage patterns. Skipping this step leads to errors.
 
 ${skillList}`;
 }

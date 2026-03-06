@@ -1,3 +1,14 @@
+#!/usr/bin/env node
+
+/**
+ * Apps skill CLI
+ *
+ * Usage:
+ *   node index.js create --name "my-app" --description "My app" --files '[{"path":"index.html","content":"<h1>Hello</h1>"}]'
+ *   node index.js list
+ *   node index.js delete --name "my-app"
+ */
+
 import { existsSync, mkdirSync, writeFileSync, readFileSync, readdirSync, rmSync } from 'fs';
 import { join } from 'path';
 import { execSync } from 'child_process';
@@ -15,7 +26,7 @@ function getConfig() {
     if (existsSync(configPath)) {
       return JSON.parse(readFileSync(configPath, 'utf-8'));
     }
-  } catch (e) {
+  } catch {
     // Fall back to defaults
   }
   return {};
@@ -84,9 +95,6 @@ function getAppUrl(appName, port) {
   return `http://localhost:${port}`;
 }
 
-/**
- * Detect the app type and start the appropriate server
- */
 function startAppServer(appName, port, appDir) {
   const pm2Name = `app-${appName}`;
   const hasNodeServer = existsSync(join(appDir, 'server.js'));
@@ -94,7 +102,6 @@ function startAppServer(appName, port, appDir) {
   const hasPackageJson = existsSync(join(appDir, 'package.json'));
   const hasRequirementsTxt = existsSync(join(appDir, 'requirements.txt'));
 
-  // Install dependencies if needed
   if (hasPackageJson) {
     try {
       execSync('npm install', { cwd: appDir, stdio: 'pipe', timeout: 120000 });
@@ -112,17 +119,11 @@ function startAppServer(appName, port, appDir) {
   }
 
   if (hasNodeServer) {
-    execSync(`pm2 start server.js --name "${pm2Name}" --cwd "${appDir}" -- --port ${port}`, {
-      stdio: 'pipe',
-    });
+    execSync(`pm2 start server.js --name "${pm2Name}" --cwd "${appDir}" -- --port ${port}`, { stdio: 'pipe' });
   } else if (hasPythonServer) {
-    execSync(`pm2 start server.py --name "${pm2Name}" --interpreter python3 --cwd "${appDir}" -- --port ${port}`, {
-      stdio: 'pipe',
-    });
+    execSync(`pm2 start server.py --name "${pm2Name}" --interpreter python3 --cwd "${appDir}" -- --port ${port}`, { stdio: 'pipe' });
   } else {
-    execSync(`pm2 start npx --name "${pm2Name}" -- serve "${appDir}" -l ${port} --no-clipboard`, {
-      stdio: 'pipe',
-    });
+    execSync(`pm2 start npx --name "${pm2Name}" -- serve "${appDir}" -l ${port} --no-clipboard`, { stdio: 'pipe' });
   }
 
   execSync('pm2 save', { stdio: 'pipe' });
@@ -133,46 +134,40 @@ function stopAppServer(appName) {
   try {
     execSync(`pm2 delete "${pm2Name}"`, { stdio: 'pipe' });
     execSync('pm2 save', { stdio: 'pipe' });
-  } catch (e) {
+  } catch {
     // App might not be running
   }
 }
 
-async function createApp(name, description, files) {
+function createApp(name, description, files) {
   ensureAppsDir();
 
   const appDir = join(getAppsDir(), name);
   const isUpdate = existsSync(appDir);
 
   if (isUpdate) {
-    // Update existing app — write new files
     for (const file of files) {
       const filePath = join(appDir, file.path);
       const fileDir = join(filePath, '..');
-      if (!existsSync(fileDir)) {
-        mkdirSync(fileDir, { recursive: true });
-      }
+      if (!existsSync(fileDir)) mkdirSync(fileDir, { recursive: true });
       writeFileSync(filePath, file.content);
     }
 
     const meta = getAppMeta(name);
     if (meta) {
-      // Stop and restart to pick up any new deps or server changes
       stopAppServer(name);
       startAppServer(name, meta.port, appDir);
-      return `Updated app "${name}" — live at ${meta.url} (port ${meta.port})`;
+      console.log(`Updated app "${name}" — live at ${meta.url} (port ${meta.port})`);
+      return;
     }
   }
 
-  // New app
   mkdirSync(appDir, { recursive: true });
 
   for (const file of files) {
     const filePath = join(appDir, file.path);
     const fileDir = join(filePath, '..');
-    if (!existsSync(fileDir)) {
-      mkdirSync(fileDir, { recursive: true });
-    }
+    if (!existsSync(fileDir)) mkdirSync(fileDir, { recursive: true });
     writeFileSync(filePath, file.content);
   }
 
@@ -187,13 +182,11 @@ async function createApp(name, description, files) {
     url,
   });
 
-  // Start the server (handles deps install, detects server type)
   startAppServer(name, port, appDir);
-
-  return `App "${name}" deployed!\nURL: ${url}\nPort: ${port}\nFiles: ${files.map(f => f.path).join(', ')}`;
+  console.log(`App "${name}" deployed!\nURL: ${url}\nPort: ${port}\nFiles: ${files.map(f => f.path).join(', ')}`);
 }
 
-async function listApps() {
+function listApps() {
   ensureAppsDir();
 
   const dirs = readdirSync(getAppsDir(), { withFileTypes: true })
@@ -201,12 +194,17 @@ async function listApps() {
     .map(d => d.name);
 
   if (dirs.length === 0) {
-    return 'No apps deployed.';
+    console.log('No apps deployed.');
+    return;
   }
 
-  const apps = dirs.map(name => {
+  console.log('Deployed Apps:');
+  for (const name of dirs) {
     const meta = getAppMeta(name);
-    if (!meta) return `${name} (no metadata)`;
+    if (!meta) {
+      console.log(`${name} (no metadata)`);
+      continue;
+    }
 
     let status = 'unknown';
     try {
@@ -214,115 +212,76 @@ async function listApps() {
       const processes = JSON.parse(result);
       const proc = processes.find(p => p.name === `app-${name}`);
       status = proc ? proc.pm2_env.status : 'stopped';
-    } catch (e) {
+    } catch {
       status = 'unknown';
     }
 
-    return `${name} | ${meta.url} | Port ${meta.port} | ${status} | ${meta.description}`;
-  });
-
-  return `Deployed Apps:\n${apps.join('\n')}`;
+    console.log(`${name} | ${meta.url} | Port ${meta.port} | ${status} | ${meta.description}`);
+  }
 }
 
-async function deleteApp(name) {
+function deleteApp(name) {
   const appDir = join(getAppsDir(), name);
 
   if (!existsSync(appDir)) {
-    return `App "${name}" not found.`;
+    console.error(`App "${name}" not found.`);
+    process.exit(1);
   }
 
   stopAppServer(name);
   rmSync(appDir, { recursive: true, force: true });
-
-  return `App "${name}" deleted. Server stopped, files cleaned up.`;
+  console.log(`App "${name}" deleted. Server stopped, files cleaned up.`);
 }
 
-export const skill = {
-  name: 'apps',
-  description: 'Create, deploy, and manage web apps accessible at subdomains of your configured base domain',
+// --- CLI ---
+const [,, command, ...rest] = process.argv;
 
-  tools: [
-    {
-      name: 'create_app',
-      description: 'Create and deploy a new web app. Write files to apps/<name>/, start a server, and register with PM2. Files should be provided as an array of {path, content} objects. For static sites, just provide HTML/CSS/JS. For Node.js apps, include a server.js that accepts --port flag.',
-      input_schema: {
-        type: 'object',
-        properties: {
-          name: {
-            type: 'string',
-            description: 'App name (lowercase, letters/numbers/hyphens only). Used as subdomain if baseDomain is configured.',
-          },
-          description: {
-            type: 'string',
-            description: 'Short description of the app',
-          },
-          files: {
-            type: 'array',
-            description: 'Array of files to create. Each file has a path (relative to app dir) and content.',
-            items: {
-              type: 'object',
-              properties: {
-                path: {
-                  type: 'string',
-                  description: 'File path relative to app directory (e.g., "index.html", "css/style.css")',
-                },
-                content: {
-                  type: 'string',
-                  description: 'File content',
-                },
-              },
-              required: ['path', 'content'],
-            },
-          },
-        },
-        required: ['name', 'description', 'files'],
-      },
-      async execute({ name, description, files }) {
-        try {
-          return await createApp(name, description, files);
-        } catch (error) {
-          return `Failed to create app: ${error.message}`;
-        }
-      },
-    },
-    {
-      name: 'list_apps',
-      description: 'List all deployed apps with their URLs, ports, and status.',
-      input_schema: {
-        type: 'object',
-        properties: {},
-        required: [],
-      },
-      async execute() {
-        try {
-          return await listApps();
-        } catch (error) {
-          return `Failed to list apps: ${error.message}`;
-        }
-      },
-    },
-    {
-      name: 'delete_app',
-      description: 'Delete a deployed app. Stops the server and deletes all files.',
-      input_schema: {
-        type: 'object',
-        properties: {
-          name: {
-            type: 'string',
-            description: 'Name of the app to delete',
-          },
-        },
-        required: ['name'],
-      },
-      async execute({ name }) {
-        try {
-          return await deleteApp(name);
-        } catch (error) {
-          return `Failed to delete app: ${error.message}`;
-        }
-      },
-    },
-  ],
-};
+function parseArgs(args) {
+  const result = {};
+  for (let i = 0; i < args.length; i++) {
+    if (args[i].startsWith('--')) {
+      const key = args[i].slice(2);
+      const val = args[i + 1];
+      result[key] = val;
+      i++;
+    }
+  }
+  return result;
+}
 
-export default skill;
+try {
+  switch (command) {
+    case 'create': {
+      const args = parseArgs(rest);
+      if (!args.name || !args.description || !args.files) {
+        console.error('Required: --name, --description, --files (JSON array)');
+        process.exit(1);
+      }
+      const files = JSON.parse(args.files);
+      createApp(args.name, args.description, files);
+      break;
+    }
+
+    case 'list':
+      listApps();
+      break;
+
+    case 'delete': {
+      const args = parseArgs(rest);
+      if (!args.name) {
+        console.error('Required: --name');
+        process.exit(1);
+      }
+      deleteApp(args.name);
+      break;
+    }
+
+    default:
+      console.error(`Unknown command: ${command}`);
+      console.error('Usage: node index.js <create|list|delete> [options]');
+      process.exit(1);
+  }
+} catch (error) {
+  console.error(`Error: ${error.message}`);
+  process.exit(1);
+}

@@ -64,17 +64,29 @@ Use this skill when you need to:
 - The server MUST listen on the port passed via `--port` flag
 - Keep app names short, lowercase, URL-friendly (letters, numbers, hyphens)
 
-## Tools
+## CLI Usage
 
-### create_app
-Creates app with provided files, installs deps, starts server.
-- Updates existing apps if the name already exists (restarts server after update)
+Run the CLI script at `src/skills/builtin/apps/index.js`:
 
-### list_apps
-Lists all deployed apps with URLs, ports, and PM2 status.
+### Create/update an app
+```bash
+node src/skills/builtin/apps/index.js create \
+  --name "my-app" \
+  --description "My cool app" \
+  --files '[{"path":"index.html","content":"<h1>Hello</h1>"},{"path":"style.css","content":"body{margin:0}"}]'
+```
+- If the app already exists, files are overwritten and the server is restarted.
+- The `--files` flag takes a JSON array of `{path, content}` objects.
 
-### delete_app
-Stops server, removes PM2 process, deletes files.
+### List all apps
+```bash
+node src/skills/builtin/apps/index.js list
+```
+
+### Delete an app
+```bash
+node src/skills/builtin/apps/index.js delete --name "my-app"
+```
 
 ## Examples
 

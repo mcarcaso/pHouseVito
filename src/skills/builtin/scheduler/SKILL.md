@@ -2,42 +2,29 @@
 
 **Description:** Schedule and manage cron jobs to trigger AI actions at specific times. Create one-time or recurring jobs with natural language prompts.
 
-Schedule cron jobs to trigger AI actions at specific times.
+## How to Use
 
-## Functions
+Run the CLI script at `src/skills/builtin/scheduler/index.js`:
 
-### schedule
-Create a new cron job (one-time or recurring).
-
-**Parameters:**
-- `name` (string, required): Unique name for the job
-- `schedule` (string, required): Cron expression (e.g., "*/5 * * * *" for every 5 mins) OR ISO timestamp for one-time jobs
-- `prompt` (string, required): The AI prompt to execute when job triggers
-- `session` (string, optional): Session ID to send response to (default: "dashboard")
-- `oneTime` (boolean, optional): If true, job auto-deletes after running (default: false)
-- `sendCondition` (string, optional): Condition that must be met for the response to be sent. If the AI determines the condition is NOT met, it responds with NO_REPLY and the message is suppressed.
-
-**Returns:** Confirmation message with job details
-
-**Example usage:**
-```
-schedule({
-  name: "morning-standup",
-  schedule: "0 9 * * 1-5",
-  prompt: "Give me a motivational quote to start the day",
-  session: "dashboard"
-})
+### Schedule a job
+```bash
+node src/skills/builtin/scheduler/index.js schedule \
+  --name "morning-standup" \
+  --schedule "0 9 * * 1-5" \
+  --prompt "Give me a motivational quote to start the day"
 ```
 
-### cancel
-Delete an existing cron job.
+Optional flags:
+- `--session "dashboard:default"` — session to route the response to (default: "dashboard:default")
+- `--oneTime true` — job runs once and is auto-deleted
+- `--sendCondition "Only send if temperature is below 10°C"` — suppress response if condition not met
 
-**Parameters:**
-- `name` (string, required): Name of the job to cancel
+### Cancel a job
+```bash
+node src/skills/builtin/scheduler/index.js cancel --name "morning-standup"
+```
 
-**Returns:** Confirmation message
-
-### list
-List all scheduled cron jobs.
-
-**Returns:** Array of job objects with their details
+### List all jobs
+```bash
+node src/skills/builtin/scheduler/index.js list
+```

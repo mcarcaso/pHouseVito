@@ -11,14 +11,7 @@ import {
   SessionManager as PiSessionManager,
   type AgentSession,
   type AgentSessionEvent,
-  type ToolDefinition,
-  type AgentToolResult,
 } from "@mariozechner/pi-coding-agent";
-import { Type } from "@sinclair/typebox";
-import { resolve, dirname } from "path";
-import { fileURLToPath } from "url";
-import { existsSync, readdirSync } from "fs";
-import { pathToFileURL } from "url";
 import type { Harness, HarnessCallbacks, HarnessFactory, NormalizedEvent } from "../types.js";
 
 // ════════════════════════════════════════════════════════════════════════════
@@ -41,119 +34,6 @@ const DEFAULT_CONFIG: PiHarnessConfig = {
   },
   thinkingLevel: "off",
 };
-
-// ════════════════════════════════════════════════════════════════════════════
-// SKILL LOADING (simplified from skills/loader.ts)
-// ════════════════════════════════════════════════════════════════════════════
-
-interface SkillTool {
-  name: string;
-  description?: string;
-  input_schema: unknown;
-  execute: (input: unknown) => Promise<string>;
-}
-
-interface LoadedSkill {
-  name: string;
-  tools: SkillTool[];
-}
-
-async function loadSkillsFromDirectory(skillsDir: string): Promise<LoadedSkill[]> {
-  if (!existsSync(skillsDir)) return [];
-
-  const skills: LoadedSkill[] = [];
-  let entries: string[];
-
-  try {
-    entries = readdirSync(skillsDir, { withFileTypes: true })
-      .filter((d) => d.isDirectory())
-      .map((d) => d.name);
-  } catch {
-    return [];
-  }
-
-  for (const dir of entries) {
-    const indexPath = resolve(skillsDir, dir, "index.js");
-    if (!existsSync(indexPath)) continue;
-
-    try {
-      const fileUrl = pathToFileURL(indexPath).href;
-      const cacheBustedUrl = `${fileUrl}?t=${Date.now()}`;
-
-      // Guard against skill files that call process.exit() on import
-      const originalExit = process.exit;
-      process.exit = ((code?: number) => {
-        throw new Error(`Skill "${dir}" called process.exit(${code}) during import`);
-      }) as never;
-
-      let module: any;
-      try {
-        module = await import(cacheBustedUrl);
-      } finally {
-        process.exit = originalExit;
-      }
-
-      const skill = module.skill || module.default;
-
-      if (!skill || !skill.name) continue;
-
-      skills.push({
-        name: skill.name,
-        tools: skill.tools || [],
-      });
-    } catch (err) {
-      console.error(`[PiHarness] Failed to load skill ${dir}:`, err);
-    }
-  }
-
-  return skills;
-}
-
-async function loadAllSkills(skillsDir?: string): Promise<LoadedSkill[]> {
-  const __dirname = dirname(fileURLToPath(import.meta.url));
-  const builtinDir = resolve(__dirname, "../../skills/builtin");
-  
-  const builtinSkills = await loadSkillsFromDirectory(builtinDir);
-  const userSkills = skillsDir ? await loadSkillsFromDirectory(skillsDir) : [];
-
-  // Merge: user skills override built-in
-  const skillMap = new Map<string, LoadedSkill>();
-  for (const skill of builtinSkills) skillMap.set(skill.name, skill);
-  for (const skill of userSkills) skillMap.set(skill.name, skill);
-
-  return Array.from(skillMap.values());
-}
-
-function convertToolsForPi(
-  skills: LoadedSkill[],
-  callbacks: HarnessCallbacks
-): ToolDefinition[] {
-  const tools: ToolDefinition[] = [];
-
-  for (const skill of skills) {
-    for (const tool of skill.tools) {
-      tools.push({
-        name: tool.name,
-        label: tool.name,
-        description: tool.description ?? "",
-        parameters: Type.Unsafe(tool.input_schema as Record<string, unknown>),
-        async execute(
-          toolCallId: string,
-          params: unknown,
-        ): Promise<AgentToolResult<unknown>> {
-          // Tool start is emitted by the harness via subscribe, not here
-          const result = await tool.execute(params);
-          return {
-            content: [{ type: "text" as const, text: result }],
-            details: {},
-          };
-        },
-      });
-    }
-  }
-
-  return tools;
-}
 
 // ════════════════════════════════════════════════════════════════════════════
 // HARNESS IMPLEMENTATION
@@ -206,10 +86,6 @@ export class PiHarness implements Harness {
       });
     }
 
-    // Load skills and create tools
-    const skills = await loadAllSkills(this.config.skillsDir);
-    const customTools = convertToolsForPi(skills, callbacks);
-
     // Create resource loader with system prompt
     const resourceLoader = new DefaultResourceLoader({
       cwd: process.cwd(),
@@ -230,7 +106,6 @@ export class PiHarness implements Harness {
       sessionManager: PiSessionManager.inMemory(),
       model,
       resourceLoader,
-      customTools,
       thinkingLevel: this.config.thinkingLevel || "off",
     });
 

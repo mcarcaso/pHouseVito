@@ -318,7 +318,7 @@ module.exports = {
       watch: false,
       env: {
         NODE_ENV: 'production',
-        PORT: '3000',
+        PORT: '3030',
         CUSTOMER_NAME: '$NAME',
       },
       error_file: 'user/logs/pm2-error.log',
@@ -345,7 +345,7 @@ CERT_DIR="/etc/letsencrypt/live/$FQDN"
 sudo tee /etc/caddy/Caddyfile > /dev/null << CADDYEOF
 $FQDN, *.$FQDN {
   tls $CERT_DIR/fullchain.pem $CERT_DIR/privkey.pem
-  reverse_proxy localhost:3000
+  reverse_proxy localhost:3030
 }
 CADDYEOF
 

@@ -62,6 +62,7 @@ export default function HarnessConfigEditor({ config, onSave }: HarnessConfigEdi
   const [loadingModels, setLoadingModels] = useState(false);
   const [selectedProvider, setSelectedProvider] = useState('');
   const [selectedModel, setSelectedModel] = useState('');
+  const [selectedThinking, setSelectedThinking] = useState('off');
   const [savingPi, setSavingPi] = useState(false);
 
   // Claude Code state
@@ -90,6 +91,9 @@ export default function HarnessConfigEditor({ config, onSave }: HarnessConfigEdi
       setSelectedProvider(piConfig.model.provider || '');
       setSelectedModel(piConfig.model.name || '');
       if (piConfig.model.provider) loadModelsForProvider(piConfig.model.provider);
+    }
+    if (piConfig?.thinkingLevel) {
+      setSelectedThinking(piConfig.thinkingLevel);
     }
     const cc = config.harnesses?.['claude-code'];
     if (cc) {
@@ -122,6 +126,7 @@ export default function HarnessConfigEditor({ config, onSave }: HarnessConfigEdi
     const piConfig: any = {
       ...config.harnesses?.['pi-coding-agent'],
       model: { provider: selectedProvider, name: selectedModel },
+      thinkingLevel: selectedThinking,
     };
     await onSave({ harnesses: { ...config.harnesses, 'pi-coding-agent': piConfig } });
     setEditingPi(false);
@@ -239,7 +244,7 @@ export default function HarnessConfigEditor({ config, onSave }: HarnessConfigEdi
             </div>
             <div className="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-4">
               <label className="text-sm text-neutral-400 sm:w-24 shrink-0">Thinking</label>
-              <select className={selectClass} value={piConfig?.thinkingLevel || 'off'} onChange={() => {}}>
+              <select className={selectClass} value={selectedThinking} onChange={(e) => setSelectedThinking(e.target.value)}>
                 {THINKING_LEVELS.map((t) => <option key={t.id} value={t.id}>{t.label}</option>)}
               </select>
             </div>

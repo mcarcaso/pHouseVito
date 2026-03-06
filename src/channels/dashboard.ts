@@ -313,6 +313,11 @@ export class DashboardChannel implements Channel {
       // /api/ask has its own Bearer token auth via VITO_ASK_API_KEY
       if (req.path === "/ask") return next();
 
+      // Localhost bypass — internal calls (skills, cron, etc.) are trusted
+      const remoteAddr = req.ip || req.socket.remoteAddress || "";
+      const isLocalhost = remoteAddr === "127.0.0.1" || remoteAddr === "::1" || remoteAddr === "::ffff:127.0.0.1";
+      if (isLocalhost) return next();
+
       // If no password set, allow all (first-time setup)
       const secrets = readSecrets();
       if (!secrets.DASHBOARD_PASSWORD_HASH) return next();

@@ -43,11 +43,23 @@ async function loadSkillsFromDirectory(skillsDir: string): Promise<LoadedSkill[]
       const fileUrl = pathToFileURL(indexPath).href;
       const cacheBustedUrl = `${fileUrl}?t=${Date.now()}`;
 
-      const module = await import(cacheBustedUrl);
+      // Guard against skill files that call process.exit() on import
+      const originalExit = process.exit;
+      process.exit = ((code?: number) => {
+        throw new Error(`Skill "${dir}" called process.exit(${code}) during import`);
+      }) as never;
+
+      let module: any;
+      try {
+        module = await import(cacheBustedUrl);
+      } finally {
+        process.exit = originalExit;
+      }
+
       const skill = module.skill || module.default;
 
       if (!skill || !skill.name) {
-        console.warn(`Skill ${dir} doesn't export a valid skill object`);
+        console.warn(`Skill ${dir} doesn't export a valid skill object (missing skill.name). Skills must export a { name, tools } object.`);
         continue;
       }
 

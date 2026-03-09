@@ -100,12 +100,29 @@ async function main() {
         try {
           console.log("\n[Config] Detected changes, reloading...");
           const newConfig = loadConfig();
-          orchestrator.reloadConfig(newConfig);
-          orchestrator.reloadCronJobs(newConfig.cron.jobs);
-          dashboard.reloadConfig(newConfig);
-          console.log("[Config] Reloaded successfully\n");
+          
+          // Reload each component separately so one failure doesn't block others
+          try {
+            orchestrator.reloadConfig(newConfig);
+          } catch (err) {
+            console.error("[Config] Failed to reload orchestrator config:", err);
+          }
+          
+          try {
+            orchestrator.reloadCronJobs(newConfig.cron.jobs);
+          } catch (err) {
+            console.error("[Config] Failed to reload cron jobs:", err);
+          }
+          
+          try {
+            dashboard.reloadConfig(newConfig);
+          } catch (err) {
+            console.error("[Config] Failed to reload dashboard config:", err);
+          }
+          
+          console.log("[Config] Reload complete\n");
         } catch (err) {
-          console.error("[Config] Failed to reload:", err);
+          console.error("[Config] Failed to load config file:", err);
         }
       }, 500); // Wait 500ms for file write to complete
     }

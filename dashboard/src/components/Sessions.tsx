@@ -76,7 +76,8 @@ function Sessions() {
     if (!autoRefresh) return;
     const interval = setInterval(() => {
       if (selectedSession) {
-        fetchMessages(selectedSession, false, filterState);
+        // Poll for NEW messages only - don't blow away what's already loaded
+        fetchMessages(selectedSession, false, filterState, true);
       } else {
         fetchSessionsSilent();
       }
@@ -102,19 +103,30 @@ function Sessions() {
     }
   };
 
-  const fetchMessages = async (sessionId: string, loadMore = false, filter?: FilterState) => {
+  const fetchMessages = async (sessionId: string, loadMore = false, filter?: FilterState, isPolling = false) => {
     try {
       if (loadMore) {
         setLoadingMore(true);
       }
 
       const beforeId = loadMore && allMessages.length > 0 ? allMessages[0].id : undefined;
+      
+      // For polling: only fetch messages AFTER the last one we have
+      const afterId = isPolling && allMessages.length > 0 ? allMessages[allMessages.length - 1].id : undefined;
 
       const params = new URLSearchParams();
-      params.set('limit', String(MESSAGES_PER_PAGE));
       if (beforeId) {
+        // Loading earlier messages
         params.set('before', String(beforeId));
+        params.set('limit', String(MESSAGES_PER_PAGE));
+      } else if (afterId) {
+        // Polling for new messages - just get what's new
+        params.set('after', String(afterId));
+      } else {
+        // Initial load
+        params.set('limit', String(MESSAGES_PER_PAGE));
       }
+      
       if (filter) {
         if (!filter.showThoughts) params.set('hideThoughts', 'true');
         if (!filter.showTools) params.set('hideTools', 'true');
@@ -124,8 +136,15 @@ function Sessions() {
       const data = await res.json();
 
       if (loadMore) {
+        // Prepend older messages
         setAllMessages(prev => [...data.messages, ...prev]);
+      } else if (isPolling && afterId) {
+        // Append only NEW messages from polling
+        if (data.messages.length > 0) {
+          setAllMessages(prev => [...prev, ...data.messages]);
+        }
       } else {
+        // Initial load - replace all
         setAllMessages(data.messages);
       }
 
@@ -133,7 +152,8 @@ function Sessions() {
 
       if (loadMore) {
         setHasMoreMessages(data.messages.length >= MESSAGES_PER_PAGE);
-      } else {
+      } else if (!isPolling) {
+        // Only update hasMore on initial load, not polling
         setHasMoreMessages(data.messages.length < data.total);
       }
 

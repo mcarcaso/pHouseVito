@@ -447,9 +447,10 @@ export class DashboardChannel implements Channel {
     this.app.get("/api/sessions/:id/messages", (req, res) => {
       const limit = req.query.limit ? parseInt(req.query.limit as string) : undefined;
       const beforeId = req.query.before ? parseInt(req.query.before as string) : undefined;
+      const afterId = req.query.after ? parseInt(req.query.after as string) : undefined;
       const hideThoughts = req.query.hideThoughts === 'true';
       const hideTools = req.query.hideTools === 'true';
-      const messages = this.queries.getAllMessagesForSession(req.params.id, limit, beforeId, hideThoughts, hideTools);
+      const messages = this.queries.getAllMessagesForSession(req.params.id, limit, beforeId, hideThoughts, hideTools, afterId);
       const total = this.queries.countMessagesForSession(req.params.id, hideThoughts, hideTools);
       res.json({ messages, total });
     });

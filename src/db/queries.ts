@@ -115,7 +115,7 @@ export class Queries {
   }
 
   /** Get all messages for a session (including archived) for dashboard */
-  getAllMessagesForSession(sessionId: string, limit?: number, beforeId?: number, hideThoughts?: boolean, hideTools?: boolean): MessageRow[] {
+  getAllMessagesForSession(sessionId: string, limit?: number, beforeId?: number, hideThoughts?: boolean, hideTools?: boolean, afterId?: number): MessageRow[] {
     // Build filter clause based on filter options
     let filterClause = "";
     if (hideThoughts) {
@@ -125,7 +125,16 @@ export class Queries {
       filterClause += " AND type NOT IN ('tool_start', 'tool_end')";
     }
     
-    if (limit && beforeId) {
+    if (afterId) {
+      // Polling: get messages AFTER a specific ID (newest messages only)
+      return this.db
+        .prepare(
+          `SELECT * FROM messages
+           WHERE session_id = ? AND id > ?${filterClause}
+           ORDER BY id ASC`
+        )
+        .all(sessionId, afterId) as MessageRow[];
+    } else if (limit && beforeId) {
       // Paginated: get N messages before a specific ID
       return this.db
         .prepare(

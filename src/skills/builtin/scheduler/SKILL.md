@@ -21,9 +21,16 @@ node src/skills/builtin/scheduler/index.js schedule \
 ```
 
 Optional flags:
-- `--session "dashboard:default"` — session to route the response to (default: "dashboard:default")
+- `--session "dashboard:default"` — session to route the response to
 - `--oneTime true` — job runs once and is auto-deleted
 - `--sendCondition "Only send if temperature is below 10°C"` — suppress response if condition not met
+
+## Session Handling — IMPORTANT
+
+**If the user doesn't specify which session to use, ALWAYS use the current session** (the one you're responding in). Never hallucinate or guess a session ID. You have access to the current session in your context — use it.
+
+❌ **Wrong:** Making up a session like `discord:1234567890` or defaulting to `dashboard:default` when unspecified
+✅ **Right:** Using the actual session from your current conversation context (e.g., `discord:1466899925127266325` if that's where you're talking)
 
 ### Cancel a job
 ```bash

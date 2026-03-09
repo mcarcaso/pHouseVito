@@ -13,7 +13,8 @@
       "Bash(git add:*)",
       "Bash(git commit:*)",
       "Bash(git push:*)",
-      "Bash(./aws_deploy/deploy.sh:*)"
+      "Bash(./aws_deploy/deploy.sh:*)",
+      "Bash(pm2 status:*)"
     ]
   }
 }

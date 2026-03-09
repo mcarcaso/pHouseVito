@@ -129,7 +129,7 @@ function ChatView({
   onFilterStateChange,
   serverSideFiltering = false,
 }: ChatViewProps) {
-  const [displayCount, setDisplayCount] = useState(50);
+  // Removed displayCount - we now show ALL messages in memory
   const [internalFilterState, setInternalFilterState] = useState<FilterState>({ showThoughts: true, showTools: true });
   const [expandedToolItems, setExpandedToolItems] = useState<Set<string>>(new Set());
   const messagesEndRef = useRef<HTMLDivElement>(null);
@@ -156,6 +156,55 @@ function ChatView({
       }
     }
     return JSON.stringify(value, null, 2);
+  };
+
+  // Check if content is plain text (not JSON/structured data)
+  // Extract plain text from various formats (including Claude content arrays)
+  const extractPlainText = (value: any): string | null => {
+    // Already a string
+    if (typeof value === 'string') {
+      const trimmed = value.trim();
+      // If it looks like JSON, try to parse and extract
+      if (trimmed.startsWith('{') || trimmed.startsWith('[')) {
+        try {
+          const parsed = JSON.parse(trimmed);
+          return extractPlainText(parsed);
+        } catch {
+          // Not valid JSON, it's plain text
+          return trimmed;
+        }
+      }
+      return trimmed;
+    }
+    
+    // Object with content array (Claude style: { content: [{ type: "text", text: "..." }] })
+    if (value && typeof value === 'object') {
+      // Check for { content: [...] } structure
+      if (Array.isArray(value.content)) {
+        const textParts = value.content
+          .filter((item: any) => item?.type === 'text' && typeof item?.text === 'string')
+          .map((item: any) => item.text);
+        if (textParts.length > 0) {
+          return textParts.join('\n');
+        }
+      }
+      // Check for [{ type: "text", text: "..." }] array directly
+      if (Array.isArray(value)) {
+        const textParts = value
+          .filter((item: any) => item?.type === 'text' && typeof item?.text === 'string')
+          .map((item: any) => item.text);
+        if (textParts.length > 0) {
+          return textParts.join('\n');
+        }
+      }
+    }
+    
+    return null; // Can't extract plain text
+  };
+
+  // Check if content is plain text (not JSON/structured data)
+  const isPlainText = (value: any): boolean => {
+    return extractPlainText(value) !== null;
   };
 
   // Use external state if provided, otherwise use internal state
@@ -192,12 +241,9 @@ function ChatView({
     }
   }, [messages, autoScroll]);
 
-  const visibleMessages = messages.slice(-displayCount);
-  const hasMoreMessages = messages.length > displayCount;
-
-  const loadMoreMessages = () => {
-    setDisplayCount((prev) => prev + 50);
-  };
+  // Show ALL messages in memory - no client-side pagination
+  // "Load More" only fetches from server
+  const visibleMessages = messages;
 
   const renderMessages = () => {
     const elements: JSX.Element[] = [];
@@ -247,8 +293,14 @@ function ChatView({
                 const content = t.toolPhase === 'start' 
                   ? t.toolArgs 
                   : t.toolResult;
-                const contentStr = formatJson(content);
-                const needsTruncation = contentStr.length > 200;
+                
+                // Try to extract plain text from the content
+                const plainText = t.toolPhase === 'end' ? extractPlainText(content) : null;
+                const isPlainTextContent = plainText !== null;
+                
+                // Use extracted plain text if available, otherwise format as JSON
+                const displayStr = isPlainTextContent ? plainText : formatJson(content);
+                const needsTruncation = displayStr.length > 200;
                 
                 return (
                   <div 
@@ -263,13 +315,30 @@ function ChatView({
                         {t.toolPhase === 'start' ? '▶' : t.isError ? '✗' : '✓'} <strong>{t.toolName}</strong>
                         {t.toolPhase === 'end' && ' →'}
                       </span>
-                      {needsTruncation ? (
+                      {isPlainTextContent ? (
+                        // Plain text result - render as readable text, not code
+                        <div className="ml-4 text-sm leading-relaxed text-neutral-200 whitespace-pre-wrap">
+                          {needsTruncation ? (
+                            <div 
+                              className="cursor-pointer"
+                              onClick={() => toggleToolItem(itemKey)}
+                            >
+                              {isItemExpanded ? displayStr : truncate(displayStr, 200)}
+                              <span className="block text-right text-[10px] text-blue-400 mt-1 opacity-70 hover:opacity-100">
+                                {isItemExpanded ? '▲ collapse' : '▼ expand'}
+                              </span>
+                            </div>
+                          ) : (
+                            displayStr
+                          )}
+                        </div>
+                      ) : needsTruncation ? (
                         <div 
                           className="ml-4 bg-neutral-900 rounded p-2 overflow-x-auto cursor-pointer transition-colors hover:bg-neutral-800"
                           onClick={() => toggleToolItem(itemKey)}
                         >
                           <pre className="m-0 whitespace-pre-wrap break-words text-xs leading-snug text-neutral-300">
-                            {isItemExpanded ? contentStr : truncate(contentStr, 200)}
+                            {isItemExpanded ? displayStr : truncate(displayStr, 200)}
                           </pre>
                           <span className="block text-right text-[10px] text-blue-400 mt-1 opacity-70 hover:opacity-100">
                             {isItemExpanded ? '▲ collapse' : '▼ expand'}
@@ -278,7 +347,7 @@ function ChatView({
                       ) : (
                         <div className="ml-4 bg-neutral-900 rounded p-2 overflow-x-auto">
                           <pre className="m-0 whitespace-pre-wrap break-words text-xs leading-snug text-neutral-300">
-                            {contentStr}
+                            {displayStr}
                           </pre>
                         </div>
                       )}
@@ -408,47 +477,29 @@ function ChatView({
               </div>
             )}
             {renderMessages().reverse()}
-            {(hasMoreMessages || hasMoreOnServer) && (
+            {hasMoreOnServer && onLoadMore && (
               <div className="text-center mb-6">
-                {hasMoreMessages ? (
-                  <button 
-                    className="bg-neutral-800 text-neutral-400 border border-neutral-700 rounded-md px-4 py-2 cursor-pointer text-sm transition-all hover:bg-neutral-700 hover:border-neutral-600 hover:text-neutral-200"
-                    onClick={loadMoreMessages}
-                  >
-                    Load More ({messages.length - displayCount} in memory)
-                  </button>
-                ) : hasMoreOnServer && onLoadMore ? (
-                  <button 
-                    className="bg-neutral-800 text-neutral-400 border border-neutral-700 rounded-md px-4 py-2 cursor-pointer text-sm transition-all hover:bg-neutral-700 hover:border-neutral-600 hover:text-neutral-200 disabled:opacity-50"
-                    onClick={onLoadMore}
-                    disabled={loadingMore}
-                  >
-                    {loadingMore ? 'Loading...' : `Load Earlier (${messages.length}${totalMessages ? ` of ${totalMessages}` : ''} loaded)`}
-                  </button>
-                ) : null}
+                <button 
+                  className="bg-neutral-800 text-neutral-400 border border-neutral-700 rounded-md px-4 py-2 cursor-pointer text-sm transition-all hover:bg-neutral-700 hover:border-neutral-600 hover:text-neutral-200 disabled:opacity-50"
+                  onClick={onLoadMore}
+                  disabled={loadingMore}
+                >
+                  {loadingMore ? 'Loading...' : `Load Earlier (${messages.length}${totalMessages ? ` of ${totalMessages}` : ''} loaded)`}
+                </button>
               </div>
             )}
           </>
         ) : (
           <>
-            {(hasMoreMessages || hasMoreOnServer) && (
+            {hasMoreOnServer && onLoadMore && (
               <div className="text-center mb-6">
-                {hasMoreOnServer && onLoadMore ? (
-                  <button 
-                    className="bg-neutral-800 text-neutral-400 border border-neutral-700 rounded-md px-4 py-2 cursor-pointer text-sm transition-all hover:bg-neutral-700 hover:border-neutral-600 hover:text-neutral-200 disabled:opacity-50"
-                    onClick={onLoadMore}
-                    disabled={loadingMore}
-                  >
-                    {loadingMore ? 'Loading...' : `Load Earlier (${messages.length}${totalMessages ? ` of ${totalMessages}` : ''} loaded)`}
-                  </button>
-                ) : hasMoreMessages ? (
-                  <button 
-                    className="bg-neutral-800 text-neutral-400 border border-neutral-700 rounded-md px-4 py-2 cursor-pointer text-sm transition-all hover:bg-neutral-700 hover:border-neutral-600 hover:text-neutral-200"
-                    onClick={loadMoreMessages}
-                  >
-                    Load More ({messages.length - displayCount} in memory)
-                  </button>
-                ) : null}
+                <button 
+                  className="bg-neutral-800 text-neutral-400 border border-neutral-700 rounded-md px-4 py-2 cursor-pointer text-sm transition-all hover:bg-neutral-700 hover:border-neutral-600 hover:text-neutral-200 disabled:opacity-50"
+                  onClick={onLoadMore}
+                  disabled={loadingMore}
+                >
+                  {loadingMore ? 'Loading...' : `Load Earlier (${messages.length}${totalMessages ? ` of ${totalMessages}` : ''} loaded)`}
+                </button>
               </div>
             )}
             {renderMessages()}

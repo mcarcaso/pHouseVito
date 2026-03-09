@@ -1,6 +1,10 @@
-import { useState, useEffect, useRef, useCallback, useLayoutEffect } from 'react';
+import { useState, useEffect, useRef, useCallback, useLayoutEffect, useMemo } from 'react';
 import ChatView, { parseDbMessage, type ParsedMessage, type Attachment, type FilterState } from './ChatView';
 import FilterButton from './FilterButton';
+import React from 'react';
+
+// Memoize ChatView to prevent re-renders when typing in the input
+const MemoizedChatView = React.memo(ChatView);
 
 function playNotificationSound() {
   try {
@@ -257,13 +261,28 @@ function Chat() {
               title={filterState.showTools ? 'Hide tools' : 'Show tools'}
               emoji="🔧"
             />
+            <button
+              onClick={async () => {
+                if (!confirm('Clear all messages in this chat?')) return;
+                try {
+                  await fetch('/api/sessions/dashboard:default/messages', { method: 'DELETE' });
+                  setAllMessages([]);
+                } catch (err) {
+                  console.error('Failed to clear messages:', err);
+                }
+              }}
+              className="p-2 rounded-lg bg-neutral-800 hover:bg-neutral-700 text-neutral-400 hover:text-red-400 transition-colors"
+              title="Clear messages"
+            >
+              🗑️
+            </button>
           </div>
         </div>
       </div>
 
       {/* Messages scroll naturally */}
       <div className="pt-[55px] md:pt-[60px] pb-[160px] md:pb-[180px] px-2 md:px-3">
-        <ChatView
+        <MemoizedChatView
           messages={allMessages}
           isTyping={isTyping}
           autoScroll={false}

@@ -97,6 +97,7 @@ export interface TraceMemorySearch {
     embedding_score: number;
     bm25_score: number;
     text_preview: string;       // First 200 chars of chunk text
+    full_text: string;          // Full chunk text (for expanded view)
   }[];
   skipped?: string;             // Reason if search was skipped (e.g., "too short", "skip pattern")
 }

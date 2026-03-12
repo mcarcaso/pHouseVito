@@ -61,6 +61,7 @@ interface TraceMemorySearch {
     embedding_score: number;
     bm25_score: number;
     text_preview: string;
+    full_text?: string;  // Full chunk text (for expanded view)
   }[];
   skipped?: string;
 }
@@ -208,6 +209,7 @@ function Traces() {
 
   useEffect(() => {
     if (selectedLog) {
+      setLogDetail(null);  // Clear stale data while loading new trace
       fetchLogDetail(selectedLog);
     } else {
       fetchLogs();
@@ -409,7 +411,7 @@ function Traces() {
                           <div className="text-xs text-violet-400/70 mb-1 italic">{r.context}</div>
                         )}
                         <div className="text-xs text-neutral-400 font-mono whitespace-pre-wrap break-words">
-                          {r.text_preview}{r.text_preview.length >= 200 ? '…' : ''}
+                          {r.full_text || r.text_preview}
                         </div>
                       </div>
                     ))}

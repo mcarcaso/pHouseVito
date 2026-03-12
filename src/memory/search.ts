@@ -58,6 +58,36 @@ function cosineSimilarity(a: Float32Array, b: Float32Array): number {
   return dot / (Math.sqrt(normA) * Math.sqrt(normB));
 }
 
+/**
+ * Apply a light recency bias to embedding scores.
+ * Recent chunks get a slight boost, but relevance still dominates.
+ * Decay factor of 0.01 means:
+ *   - Today: 100% score
+ *   - 1 week: ~93%
+ *   - 1 month: ~74%
+ *   - 6 months: ~45%
+ *   - 1 year: ~27%
+ */
+interface RecencyBiasResult {
+  biasedScore: number;
+  recencyFactor: number;
+  daysAgo: number;
+}
+
+function applyRecencyBias(score: number, dayString: string): RecencyBiasResult {
+  if (!dayString) return { biasedScore: score, recencyFactor: 1, daysAgo: 0 };
+  const chunkDate = new Date(dayString);
+  const today = new Date();
+  const daysAgo = Math.max(0, Math.floor((today.getTime() - chunkDate.getTime()) / (1000 * 60 * 60 * 24)));
+  const decayFactor = 0.01;
+  const recencyFactor = 1 / (1 + daysAgo * decayFactor);
+  return { 
+    biasedScore: score * recencyFactor, 
+    recencyFactor, 
+    daysAgo 
+  };
+}
+
 
 // ── Search Interfaces ──────────────────────────────────────
 
@@ -80,6 +110,9 @@ interface SearchResult {
   context: string | null;
   msgCount: number;
   embeddingScore: number;
+  rawEmbeddingScore: number;
+  recencyFactor: number;
+  daysAgo: number;
   bm25Score: number;
   rrfScore: number;
 }
@@ -119,8 +152,8 @@ export async function searchMemory(
   const rows = db.prepare(sql).all(...params) as ChunkRow[];
   if (rows.length === 0) return [];
 
-  // ── Embedding search ──
-  let embeddingResults: { id: number; score: number }[] = [];
+  // ── Embedding search (with recency bias) ──
+  let embeddingResults: { id: number; score: number; rawScore: number; recencyFactor: number; daysAgo: number }[] = [];
   if (mode === "hybrid" || mode === "embedding") {
     const queryVector = await createEmbedding(query);
     embeddingResults = rows.map((row) => {
@@ -129,7 +162,10 @@ export async function searchMemory(
         row.vector.byteOffset,
         row.vector.byteLength / 4
       );
-      return { id: row.id, score: cosineSimilarity(queryVector, vector) };
+      const rawScore = cosineSimilarity(queryVector, vector);
+      // Apply light recency bias — recent stuff gets a boost
+      const { biasedScore, recencyFactor, daysAgo } = applyRecencyBias(rawScore, row.day);
+      return { id: row.id, score: biasedScore, rawScore, recencyFactor, daysAgo };
     });
     embeddingResults.sort((a, b) => b.score - a.score);
     embeddingResults = embeddingResults.slice(0, Math.max(limit * 4, 20));
@@ -167,12 +203,22 @@ export async function searchMemory(
   }
 
   // ── RRF merge ──
-  const merged = new Map<number, { embeddingScore: number; bm25Score: number; rrfScore: number }>();
+  const merged = new Map<number, { 
+    embeddingScore: number; 
+    rawEmbeddingScore: number;
+    recencyFactor: number;
+    daysAgo: number;
+    bm25Score: number; 
+    rrfScore: number;
+  }>();
 
   for (let rank = 0; rank < embeddingResults.length; rank++) {
     const r = embeddingResults[rank];
     merged.set(r.id, {
       embeddingScore: r.score,
+      rawEmbeddingScore: r.rawScore,
+      recencyFactor: r.recencyFactor,
+      daysAgo: r.daysAgo,
       bm25Score: 0,
       rrfScore: 0.5 / (RRF_K + rank + 1),
     });
@@ -188,6 +234,9 @@ export async function searchMemory(
     } else {
       merged.set(r.id, {
         embeddingScore: 0,
+        rawEmbeddingScore: 0,
+        recencyFactor: 1,
+        daysAgo: 0,
         bm25Score: r.score,
         rrfScore,
       });
@@ -237,6 +286,9 @@ export interface AutoSearchResult {
       context: string | null;
       rrf_score: number;
       embedding_score: number;
+      raw_embedding_score: number;
+      recency_factor: number;
+      days_ago: number;
       bm25_score: number;
       text_preview: string;
     }[];
@@ -297,8 +349,12 @@ export async function autoSearchForContext(
       context: r.context,
       rrf_score: r.rrfScore,
       embedding_score: r.embeddingScore,
+      raw_embedding_score: r.rawEmbeddingScore,
+      recency_factor: r.recencyFactor,
+      days_ago: r.daysAgo,
       bm25_score: r.bm25Score,
       text_preview: r.text.slice(0, 200),
+      full_text: r.text,
     }));
 
     if (results.length === 0) return makeResult("", traceResults, 0);
@@ -307,22 +363,61 @@ export async function autoSearchForContext(
     const relevant = results.filter((r) => r.rrfScore >= threshold);
     if (relevant.length === 0) return makeResult("", traceResults, results.length);
 
-    // Format as recalled memories block
-    const chunks = relevant.map((r, i) => {
-      const header = `[Memory #${i + 1} — ${r.day} | ${r.sessionId}]`;
-      const contextLine = r.context ? `Context: ${r.context}` : "";
-      return [header, contextLine, r.text].filter(Boolean).join("\n");
+    // Group by session, then sort each group by date (chronological within session)
+    // Sessions themselves are sorted by their earliest chunk date
+    const sessionGroups = new Map<string, typeof relevant>();
+    for (const r of relevant) {
+      const group = sessionGroups.get(r.sessionId) || [];
+      group.push(r);
+      sessionGroups.set(r.sessionId, group);
+    }
+
+    // Sort chunks within each session by date (chronological)
+    for (const group of sessionGroups.values()) {
+      group.sort((a, b) => new Date(a.day).getTime() - new Date(b.day).getTime());
+    }
+
+    // Sort sessions by their earliest chunk date
+    const sortedSessions = [...sessionGroups.entries()].sort((a, b) => {
+      const aEarliest = new Date(a[1][0].day).getTime();
+      const bEarliest = new Date(b[1][0].day).getTime();
+      return aEarliest - bEarliest;
     });
 
-    const injectedResults = relevant.map(r => ({
+    // Format as recalled memories block — grouped by session, chronological
+    // No memory numbers, and don't repeat session ID for consecutive chunks
+    const chunks: string[] = [];
+    let lastSessionId: string | null = null;
+    
+    for (const [sessionId, group] of sortedSessions) {
+      for (const r of group) {
+        // Only show session ID header if it's different from the previous chunk
+        // Date is already in r.text, so don't duplicate it in the header
+        if (sessionId !== lastSessionId) {
+          chunks.push(`[${r.sessionId}]\n${r.text}`);
+        } else {
+          // Same session, just add the text (which has its own date header)
+          chunks.push(r.text);
+        }
+        lastSessionId = sessionId;
+      }
+    }
+
+    // Build injected results in the same grouped/sorted order
+    const orderedRelevant = sortedSessions.flatMap(([_, group]) => group);
+    const injectedResults = orderedRelevant.map(r => ({
       id: r.id,
       session_id: r.sessionId,
       day: r.day,
       context: r.context,
       rrf_score: r.rrfScore,
       embedding_score: r.embeddingScore,
+      raw_embedding_score: r.rawEmbeddingScore,
+      recency_factor: r.recencyFactor,
+      days_ago: r.daysAgo,
       bm25_score: r.bm25Score,
       text_preview: r.text.slice(0, 200),
+      full_text: r.text,
     }));
 
     return {

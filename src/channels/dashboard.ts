@@ -16,7 +16,7 @@ import crypto from "crypto";
 import { readSecrets, writeSecrets, loadSecrets, getSecretsForDashboard, SYSTEM_KEYS, PROVIDER_API_KEYS, getProviderKeyStatus, getProviderAuthStatus } from "../secrets.js";
 import Database from "better-sqlite3";
 import { getProviders, getModels } from "@mariozechner/pi-ai";
-import { createEmbedding } from "../memory/client.js";
+import { searchMemory } from "../memory/search.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const ATTACHMENTS_DIR = path.join(process.cwd(), "data", "attachments");
@@ -866,7 +866,7 @@ export class DashboardChannel implements Channel {
       }
     });
 
-    // Embeddings search (hybrid)
+    // Embeddings search (hybrid) — uses shared searchMemory() with recency bias
     this.app.get("/api/memory/embeddings/search", async (req, res) => {
       const query = req.query.q as string;
       const mode = (req.query.mode as string) || "hybrid";
@@ -886,121 +886,35 @@ export class DashboardChannel implements Channel {
       const start = Date.now();
 
       try {
-        const db = new Database(dbPath, { readonly: true });
-
-        // Load all chunks + embeddings
-        const rows = db.prepare(`
-          SELECT c.id, c.session_id, c.day, c.chunk_index, c.text, c.context, c.msg_count,
-                 e.vector
-          FROM chunks c
-          JOIN embeddings e ON e.chunk_id = c.id
-        `).all();
-
-        // ── Embedding search ──
-        let embeddingResults: { id: number; score: number }[] = [];
-        if (mode === "hybrid" || mode === "embedding") {
-          const queryVector = await createEmbedding(query);
-
-          embeddingResults = rows.map((row: any) => {
-            const vector = new Float32Array(row.vector.buffer, row.vector.byteOffset, row.vector.byteLength / 4);
-            // Cosine similarity
-            let dot = 0, normA = 0, normB = 0;
-            for (let i = 0; i < queryVector.length; i++) {
-              dot += queryVector[i] * vector[i];
-              normA += queryVector[i] * queryVector[i];
-              normB += vector[i] * vector[i];
-            }
-            const similarity = dot / (Math.sqrt(normA) * Math.sqrt(normB) || 1);
-            return { id: row.id, score: similarity };
-          });
-          embeddingResults.sort((a, b) => b.score - a.score);
-          embeddingResults = embeddingResults.slice(0, Math.max(limit * 4, 20));
-        }
-
-        // ── BM25 search (FTS5) ──
-        let bm25Results: { id: number; score: number }[] = [];
-        if (mode === "hybrid" || mode === "bm25") {
-          const ftsQuery = query
-            .replace(/[^\w\s'-]/g, "")
-            .split(/\s+/)
-            .filter((t: string) => t.length > 1)
-            .map((t: string) => `"${t}"`)
-            .join(" OR ");
-
-          if (ftsQuery) {
-            try {
-              const ftsRows = db.prepare(`
-                SELECT rowid as id, rank * -1 as score
-                FROM chunks_fts
-                WHERE chunks_fts MATCH ?
-                ORDER BY rank
-                LIMIT ?
-              `).all(ftsQuery, Math.max(limit * 4, 20));
-              bm25Results = ftsRows.map((r: any) => ({ id: r.id, score: r.score }));
-            } catch {
-              // FTS query might fail on weird syntax — graceful fallback
-            }
-          }
-        }
-
-        // ── Reciprocal Rank Fusion ──
-        const k = 60;
-        const scoreMap = new Map<number, { rrfScore: number; embeddingScore: number; bm25Score: number }>();
-
-        for (let i = 0; i < embeddingResults.length; i++) {
-          const r = embeddingResults[i];
-          const existing = scoreMap.get(r.id) || { rrfScore: 0, embeddingScore: 0, bm25Score: 0 };
-          existing.embeddingScore = r.score;
-          existing.rrfScore += 0.5 / (k + i + 1);
-          scoreMap.set(r.id, existing);
-        }
-        for (let i = 0; i < bm25Results.length; i++) {
-          const r = bm25Results[i];
-          const existing = scoreMap.get(r.id) || { rrfScore: 0, embeddingScore: 0, bm25Score: 0 };
-          existing.bm25Score = r.score;
-          existing.rrfScore += 0.5 / (k + i + 1);
-          scoreMap.set(r.id, existing);
-        }
-
-        // For single mode, just use raw scores
-        if (mode === "embedding") {
-          for (const [id, scores] of scoreMap) {
-            scores.rrfScore = scores.embeddingScore;
-          }
-        } else if (mode === "bm25") {
-          for (const [id, scores] of scoreMap) {
-            scores.rrfScore = scores.bm25Score;
-          }
-        }
-
-        // Sort by RRF score
-        const sorted = Array.from(scoreMap.entries())
-          .sort((a, b) => b[1].rrfScore - a[1].rrfScore)
-          .slice(0, limit);
-
-        // Build chunk lookup
-        const chunkMap = new Map<number, any>();
-        for (const row of rows) chunkMap.set((row as any).id, row);
-
-        const results = sorted.map(([id, scores]) => {
-          const chunk = chunkMap.get(id);
-          if (!chunk) return null;
-          return {
-            id: chunk.id,
-            session_id: chunk.session_id,
-            day: chunk.day,
-            chunk_index: chunk.chunk_index,
-            text: chunk.text,
-            context: chunk.context,
-            msg_count: chunk.msg_count,
-            ...scores,
-          };
-        }).filter(Boolean);
-
-        db.close();
+        // Use shared search function (includes recency bias)
+        const results = await searchMemory(query, { 
+          limit, 
+          mode: mode as "hybrid" | "embedding" | "bm25" 
+        });
 
         const duration_ms = Date.now() - start;
-        res.json({ query, mode, duration_ms, results });
+        
+        // Map to dashboard expected format
+        res.json({ 
+          query, 
+          mode, 
+          duration_ms, 
+          results: results.map(r => ({
+            id: r.id,
+            session_id: r.sessionId,
+            day: r.day,
+            chunk_index: 0, // Not tracked in shared function, but rarely used in UI
+            text: r.text,
+            context: r.context,
+            msg_count: r.msgCount,
+            rrfScore: r.rrfScore,
+            embeddingScore: r.embeddingScore,
+            rawEmbeddingScore: r.rawEmbeddingScore,
+            recencyFactor: r.recencyFactor,
+            daysAgo: r.daysAgo,
+            bm25Score: r.bm25Score,
+          }))
+        });
       } catch (err: any) {
         console.error("[Dashboard] Embeddings search error:", err);
         res.status(500).json({ error: err.message });

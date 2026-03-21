@@ -225,13 +225,23 @@ export default function GlobalSettings({ config, onSave }: GlobalSettingsProps) 
         <p className="text-xs text-neutral-600 mb-4">What to include from other sessions.</p>
 
         <div className="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-4 py-3 border-b border-neutral-800/50">
+          <label className="text-sm text-neutral-400 sm:w-48 sm:shrink-0">Max Sessions</label>
+          {renderNumberInput(
+            settings.crossContext?.maxSessions ?? 15,
+            (val) => updateSetting('crossContext.maxSessions', val),
+            { min: 0 }
+          )}
+          <span className="text-xs text-neutral-600">Sessions to pull from (0 = unlimited)</span>
+        </div>
+
+        <div className="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-4 py-3 border-b border-neutral-800/50">
           <label className="text-sm text-neutral-400 sm:w-48 sm:shrink-0">Num Messages</label>
           {renderNumberInput(
             settings.crossContext?.limit ?? 5,
             (val) => updateSetting('crossContext.limit', val),
             { min: 0 }
           )}
-          <span className="text-xs text-neutral-600">Messages per other session</span>
+          <span className="text-xs text-neutral-600">Messages per session</span>
         </div>
 
         <ToggleRow

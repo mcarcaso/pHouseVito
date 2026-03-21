@@ -28,12 +28,14 @@ export async function assembleContext(
     includeThoughts: true,
     includeTools: true,
     includeArchived: false,
+    maxSessions: 0,
   };
   const crossContext = effectiveSettings?.crossContext ?? {
     limit: 5,
     includeThoughts: false,
     includeTools: false,
     includeArchived: false,
+    maxSessions: 15,
   };
 
   const memoriesBlock = "";
@@ -47,7 +49,8 @@ export async function assembleContext(
     crossContext.limit,
     crossContext.includeTools,
     crossContext.includeThoughts,
-    crossContext.includeArchived
+    crossContext.includeArchived,
+    crossContext.maxSessions ?? 15 // Default to 15 if not set
   );
   const assistantLabel = config.bot?.name ? `@${config.bot.name}` : "assistant";
   const crossSessionBlock = formatCrossSessionMessages(crossSessionMessages, aliases, assistantLabel);

@@ -8,6 +8,8 @@ export interface ContextSettings {
   includeThoughts?: boolean;
   includeTools?: boolean;
   includeArchived?: boolean;
+  /** Max number of sessions to include for cross-session context (cross-session only) */
+  maxSessions?: number;
 }
 
 export interface ResolvedContextSettings {
@@ -15,6 +17,8 @@ export interface ResolvedContextSettings {
   includeThoughts: boolean;
   includeTools: boolean;
   includeArchived: boolean;
+  /** Max sessions to include for cross-session (only used by crossContext) */
+  maxSessions: number;
 }
 
 export interface MemorySettings {
@@ -96,6 +100,7 @@ const DEFAULT_CURRENT_CONTEXT: ResolvedContextSettings = {
   includeThoughts: true,
   includeTools: true,
   includeArchived: false,
+  maxSessions: 0, // Not used for current context
 };
 
 const DEFAULT_CROSS_CONTEXT: ResolvedContextSettings = {
@@ -103,6 +108,7 @@ const DEFAULT_CROSS_CONTEXT: ResolvedContextSettings = {
   includeThoughts: false,
   includeTools: false,
   includeArchived: false,
+  maxSessions: 15, // Cap at 15 most recent sessions
 };
 
 const DEFAULT_MEMORY: ResolvedMemorySettings = {
@@ -190,12 +196,14 @@ export function getEffectiveSettings(
       includeThoughts: settings.currentContext?.includeThoughts ?? DEFAULT_CURRENT_CONTEXT.includeThoughts,
       includeTools: settings.currentContext?.includeTools ?? DEFAULT_CURRENT_CONTEXT.includeTools,
       includeArchived: settings.currentContext?.includeArchived ?? DEFAULT_CURRENT_CONTEXT.includeArchived,
+      maxSessions: DEFAULT_CURRENT_CONTEXT.maxSessions, // Not used for current context
     },
     crossContext: {
       limit: settings.crossContext?.limit ?? DEFAULT_CROSS_CONTEXT.limit,
       includeThoughts: settings.crossContext?.includeThoughts ?? DEFAULT_CROSS_CONTEXT.includeThoughts,
       includeTools: settings.crossContext?.includeTools ?? DEFAULT_CROSS_CONTEXT.includeTools,
       includeArchived: settings.crossContext?.includeArchived ?? DEFAULT_CROSS_CONTEXT.includeArchived,
+      maxSessions: settings.crossContext?.maxSessions ?? DEFAULT_CROSS_CONTEXT.maxSessions,
     },
     memory: {
       recalledMemoryLimit: settings.memory?.recalledMemoryLimit ?? DEFAULT_MEMORY.recalledMemoryLimit,
@@ -267,6 +275,7 @@ export const CASCADING_FIELDS = [
   { key: 'traceMessageUpdates', label: 'Trace Message Updates', type: 'boolean' as const },
   // Cross context settings
   { key: 'crossContext.limit', label: 'Cross: Num Messages', type: 'number' as const },
+  { key: 'crossContext.maxSessions', label: 'Cross: Max Sessions', type: 'number' as const },
   { key: 'crossContext.includeThoughts', label: 'Cross: Thoughts', type: 'boolean' as const },
   { key: 'crossContext.includeTools', label: 'Cross: Tools', type: 'boolean' as const },
   { key: 'crossContext.includeArchived', label: 'Cross: Archived', type: 'boolean' as const },

@@ -213,13 +213,15 @@ export class Queries {
   /**
    * Get last N messages per OTHER session for cross-session context.
    * Filtered by context settings (tools, thoughts, archived).
+   * @param maxSessions - Max number of sessions to include (0 = unlimited)
    */
   getCrossSessionMessagesPerSession(
     excludeSessionId: string,
     perSessionLimit: number,
     includeTools = false,
     includeThoughts = false,
-    includeArchived = false
+    includeArchived = false,
+    maxSessions = 0
   ): MessageRow[] {
     const buildFilters = (prefix: string = "") => {
       const filters: string[] = [];
@@ -231,12 +233,14 @@ export class Queries {
     
     const filterClause = buildFilters();
     
-    // Get distinct other sessions that have qualifying messages
+    // Get distinct other sessions that have qualifying messages, ordered by most recent activity
+    // Apply maxSessions limit if specified
+    const sessionLimitClause = maxSessions > 0 ? ` LIMIT ${maxSessions}` : "";
     const sessions = this.db
       .prepare(
         `SELECT DISTINCT session_id FROM messages
          WHERE session_id != ?${filterClause}
-         ORDER BY (SELECT MAX(timestamp) FROM messages m2 WHERE m2.session_id = messages.session_id) DESC`
+         ORDER BY (SELECT MAX(timestamp) FROM messages m2 WHERE m2.session_id = messages.session_id) DESC${sessionLimitClause}`
       )
       .all(excludeSessionId) as Array<{ session_id: string }>;
 

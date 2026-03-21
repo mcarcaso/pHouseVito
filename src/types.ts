@@ -110,6 +110,8 @@ export interface ContextSettings {
   includeTools?: boolean;
   /** Include archived messages */
   includeArchived?: boolean;
+  /** Max number of sessions to include for cross-session context (cross-session only) */
+  maxSessions?: number;
 }
 
 /** Memory recall settings for semantic search */
@@ -151,6 +153,8 @@ export interface ResolvedContextSettings {
   includeThoughts: boolean;
   includeTools: boolean;
   includeArchived: boolean;
+  /** Max sessions to include for cross-session (only used by crossContext) */
+  maxSessions: number;
 }
 
 /** Resolved memory settings with all fields required */

@@ -177,7 +177,7 @@ ok "Elastic IP: $ELASTIC_IP"
 # ── 7. Route53 ─────────────────────────────────────────────────────
 
 log "Creating DNS records …"
-aws route53 change-resource-record-sets --hosted-zone-id "$HOSTED_ZONE_ID" \
+DNS_CHANGE_ID=$(aws route53 change-resource-record-sets --hosted-zone-id "$HOSTED_ZONE_ID" \
   --change-batch "{
     \"Changes\": [
       {
@@ -199,8 +199,12 @@ aws route53 change-resource-record-sets --hosted-zone-id "$HOSTED_ZONE_ID" \
         }
       }
     ]
-  }" >/dev/null
+  }" --query 'ChangeInfo.Id' --output text)
 ok "DNS: ${NAME}.${DOMAIN} + *.${NAME}.${DOMAIN} → $ELASTIC_IP"
+
+log "Waiting for DNS propagation …"
+aws route53 wait resource-record-sets-changed --id "$DNS_CHANGE_ID"
+ok "DNS propagated"
 
 # ── 8. Wait for SSH ────────────────────────────────────────────────
 

@@ -147,9 +147,8 @@ export class TelegramChannel implements Channel {
         content,
         raw: ctx,
         hasMention,
-        threadId: ctx.message.message_thread_id,
       };
-      console.log(`[Telegram] ✅ Firing onEvent for chat ${ctx.chat.id}${hasMention ? '' : ' (no @mention)'}${event.threadId ? ` (thread ${event.threadId})` : ''}`);
+      console.log(`[Telegram] ✅ Firing onEvent for chat ${ctx.chat.id}${hasMention ? '' : ' (no @mention)'}${threadId ? ` (thread ${threadId})` : ''}`);
       onEvent(event);
     });
 
@@ -200,7 +199,6 @@ export class TelegramChannel implements Channel {
           },
         ],
         raw: ctx,
-        threadId: ctx.message.message_thread_id,
       };
       onEvent(event);
     });
@@ -235,7 +233,6 @@ export class TelegramChannel implements Channel {
           },
         ],
         raw: ctx,
-        threadId: ctx.message.message_thread_id,
       };
       onEvent(event);
     });
@@ -271,7 +268,6 @@ export class TelegramChannel implements Channel {
           },
         ],
         raw: ctx,
-        threadId: ctx.message.message_thread_id,
       };
       onEvent(event);
     });
@@ -307,7 +303,6 @@ export class TelegramChannel implements Channel {
           },
         ],
         raw: ctx,
-        threadId: ctx.message.message_thread_id,
       };
       onEvent(event);
     });
@@ -346,7 +341,9 @@ class TelegramOutputHandler implements OutputHandler {
     private event: InboundEvent
   ) {
     this.chatId = event.target;
-    this.threadId = event.threadId;
+    // Extract threadId from session key: "telegram:chatId:threadId" or "telegram:chatId"
+    const parts = event.sessionKey.split(":");
+    this.threadId = parts.length > 2 ? parseInt(parts[2], 10) : undefined;
   }
 
   async relay(msg: OutboundMessage): Promise<void> {

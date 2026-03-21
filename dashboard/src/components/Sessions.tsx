@@ -401,11 +401,10 @@ function Sessions() {
           const hasConfig = config.streamMode || config.harness || config.model || config['pi-coding-agent'];
           const isEditingThis = editingAlias === session.id;
 
-          // Parse session ID for better display
-          const [channelPart, targetPart] = session.id.split(':');
-          const displayTarget = targetPart?.length > 16 
-            ? `${targetPart.slice(0, 8)}...${targetPart.slice(-6)}`
-            : targetPart;
+          // Truncate long session IDs in the middle
+          const displayId = session.id.length > 30 
+            ? `${session.id.slice(0, 14)}...${session.id.slice(-12)}`
+            : session.id;
 
           return (
             <div
@@ -459,7 +458,7 @@ function Sessions() {
                 ) : (
                   <div className="flex items-center gap-2">
                     <span className="text-base text-neutral-100 font-medium">
-                      {session.alias || displayTarget || session.id}
+                      {session.alias || displayId}
                     </span>
                     <button
                       className="text-neutral-600 hover:text-neutral-400 text-sm transition-colors"
@@ -475,14 +474,7 @@ function Sessions() {
               {/* Session ID - shown when there's an alias */}
               {session.alias && (
                 <div className="text-xs text-neutral-500 font-mono">
-                  {channelPart}:{displayTarget}
-                </div>
-              )}
-              
-              {/* Full ID on separate line if no alias - show it more prominently */}
-              {!session.alias && targetPart && (
-                <div className="text-xs text-neutral-600 font-mono">
-                  {targetPart}
+                  {displayId}
                 </div>
               )}
             </div>

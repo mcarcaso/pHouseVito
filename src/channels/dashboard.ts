@@ -344,8 +344,6 @@ export class DashboardChannel implements Channel {
       if (req.path === "/health") return next();
       // /api/ask has its own Bearer token auth via VITO_ASK_API_KEY
       if (req.path === "/ask") return next();
-      // /api/bland/inbound is called by Bland's dynamic_data (public webhook)
-      if (req.path === "/bland/inbound") return next();
 
       // Localhost bypass — internal calls (skills, cron, etc.) are trusted
       const remoteAddr = req.ip || req.socket.remoteAddress || "";
@@ -1207,71 +1205,6 @@ export class DashboardChannel implements Channel {
         console.error(`[Dashboard] /api/ask error:`, err);
         res.status(500).json({ error: "Failed to process question", answer: "I hit a snag. Try again." });
       }
-    });
-
-    // ── Bland AI Inbound Call Webhook ──
-    // Called by Bland's dynamic_data when someone calls the inbound number.
-    // Checks caller against whitelist — if not Mike, instructs the agent to reject/hang up.
-    // If Mike, requires passphrase verification before granting full brain access.
-    this.app.post("/api/bland/inbound", (req, res) => {
-      // Verify webhook secret if configured (set as query param in Bland's webhook URL)
-      const secrets = readSecrets();
-      const webhookSecret = secrets["BLAND_WEBHOOK_SECRET"];
-      if (webhookSecret) {
-        const provided = req.query.secret as string;
-        if (!provided || provided !== webhookSecret) {
-          res.status(401).json({ error: "Unauthorized — invalid or missing webhook secret" });
-          return;
-        }
-      }
-
-      const { phone_number, call_id, from, to } = req.body;
-      console.log(`[Bland Inbound] Call from ${phone_number || from} to ${to}, call_id=${call_id}`);
-      
-      // Whitelist of numbers that get passphrase challenge (potential access)
-      // Everyone else gets rejected immediately
-      const BRAIN_WHITELIST = [
-        "+14167959333",  // Mike's cell
-      ];
-      
-      const callerNumber = phone_number || from || "";
-      const isWhitelisted = BRAIN_WHITELIST.some(n => 
-        callerNumber.includes(n.replace(/\D/g, "")) || 
-        n.includes(callerNumber.replace(/\D/g, ""))
-      );
-      
-      if (!isWhitelisted) {
-        // Reject the call — tell the agent to hang up immediately
-        console.log(`[Bland Inbound] Rejecting call from ${callerNumber} (not whitelisted)`);
-        res.json({
-          reject_call: true,
-          require_passphrase: false,
-          prompt_override: "This number is not authorized. Say 'Sorry, this line is not accepting calls at this time. Goodbye.' then immediately hang up.",
-          max_duration: 0.1,  // End call almost immediately
-        });
-        return;
-      }
-      
-      // Whitelisted caller — but require passphrase first
-      // The passphrase is checked by the AI agent itself (prompt instructs it)
-      // We just tell it to ask for the passphrase before granting full access
-      console.log(`[Bland Inbound] Whitelisted caller ${callerNumber} — requiring passphrase verification`);
-      
-      // Read API key for AskVito endpoint (secrets already read above)
-      const askApiKey = secrets["VITO_ASK_API_KEY"] || "";
-      
-      res.json({
-        reject_call: false,
-        // Tell the agent to ask for passphrase before enabling brain
-        require_passphrase: true,
-        // Enable brain tool — but prompt tells AI to only use it after passphrase verified
-        enable_brain: true,
-        brain_url: "https://vito.theworstproductions.com/api/ask",
-        brain_api_key: askApiKey,
-        // Pass this context to the prompt — not authorized until passphrase verified
-        caller_authorized: false,
-        caller_name: "Mike",
-      });
     });
 
     // HTTP fallback for sending chat messages (when WebSocket is dead)

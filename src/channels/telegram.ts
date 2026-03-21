@@ -46,6 +46,51 @@ export class TelegramChannel implements Channel {
     this.bot = null;
   }
 
+  /**
+   * Register bot commands with Telegram's command menu
+   */
+  async setMyCommands(): Promise<{ success: boolean; count: number }> {
+    if (!this.bot) throw new Error("Bot not initialized");
+    
+    const commands = [
+      { command: "new", description: "Start a new conversation (archive current)" },
+      { command: "stop", description: "Abort the current request" },
+    ];
+    
+    await this.bot.api.setMyCommands(commands);
+    return { success: true, count: commands.length };
+  }
+
+  /**
+   * Get chat info for auto-aliasing
+   */
+  async getChatInfo(chatId: string): Promise<{ name: string; type: string } | null> {
+    if (!this.bot) return null;
+    
+    try {
+      const chat = await this.bot.api.getChat(chatId);
+      
+      let name: string;
+      let type: string;
+      
+      if (chat.type === "private") {
+        // DM - use username or first/last name
+        const user = chat as any;
+        name = user.username ? `@${user.username}` : `${user.first_name || ""} ${user.last_name || ""}`.trim();
+        type = "private";
+      } else {
+        // Group or channel - use title
+        name = (chat as any).title || "Unknown Chat";
+        type = chat.type;
+      }
+      
+      return { name, type };
+    } catch (err) {
+      console.error(`[Telegram] Failed to get chat info for ${chatId}:`, err);
+      return null;
+    }
+  }
+
   async listen(
     onEvent: (event: InboundEvent) => void
   ): Promise<() => void> {
@@ -84,8 +129,17 @@ export class TelegramChannel implements Channel {
         content = content.replace(new RegExp(`@${botUsername}`, "gi"), `@${botName}`);
       }
 
+      // Debug: log raw message_thread_id
+      console.log(`[Telegram] DEBUG: ctx.message.message_thread_id = ${ctx.message.message_thread_id}, ctx.chat.type = ${ctx.chat.type}, is_forum = ${(ctx.chat as any).is_forum}`);
+      
+      // Include thread ID in session key for forum topics (each topic = separate session)
+      const threadId = ctx.message.message_thread_id;
+      const sessionKey = threadId 
+        ? `telegram:${ctx.chat.id}:${threadId}` 
+        : `telegram:${ctx.chat.id}`;
+      
       const event: InboundEvent = {
-        sessionKey: `telegram:${ctx.chat.id}`,
+        sessionKey,
         channel: "telegram",
         target: String(ctx.chat.id),
         author: ctx.from?.username || ctx.from?.first_name || "user",
@@ -93,8 +147,9 @@ export class TelegramChannel implements Channel {
         content,
         raw: ctx,
         hasMention,
+        threadId: ctx.message.message_thread_id,
       };
-      console.log(`[Telegram] ✅ Firing onEvent for chat ${ctx.chat.id}${hasMention ? '' : ' (no @mention)'}`);
+      console.log(`[Telegram] ✅ Firing onEvent for chat ${ctx.chat.id}${hasMention ? '' : ' (no @mention)'}${event.threadId ? ` (thread ${event.threadId})` : ''}`);
       onEvent(event);
     });
 
@@ -123,9 +178,13 @@ export class TelegramChannel implements Channel {
       const file = await ctx.api.getFile(photo.file_id);
       const url = `https://api.telegram.org/file/bot${this.bot!.token}/${file.file_path}`;
       const hasMention = checkMention(ctx.chat.type, ctx.message.caption);
+      const threadId = ctx.message.message_thread_id;
+      const sessionKey = threadId 
+        ? `telegram:${ctx.chat.id}:${threadId}` 
+        : `telegram:${ctx.chat.id}`;
 
       const event: InboundEvent = {
-        sessionKey: `telegram:${ctx.chat.id}`,
+        sessionKey,
         channel: "telegram",
         target: String(ctx.chat.id),
         author: ctx.from?.username || ctx.from?.first_name || "user",
@@ -141,6 +200,7 @@ export class TelegramChannel implements Channel {
           },
         ],
         raw: ctx,
+        threadId: ctx.message.message_thread_id,
       };
       onEvent(event);
     });
@@ -153,9 +213,13 @@ export class TelegramChannel implements Channel {
       const file = await ctx.api.getFile(doc.file_id);
       const url = `https://api.telegram.org/file/bot${this.bot!.token}/${file.file_path}`;
       const hasMention = checkMention(ctx.chat.type, ctx.message.caption);
+      const threadId = ctx.message.message_thread_id;
+      const sessionKey = threadId 
+        ? `telegram:${ctx.chat.id}:${threadId}` 
+        : `telegram:${ctx.chat.id}`;
 
       const event: InboundEvent = {
-        sessionKey: `telegram:${ctx.chat.id}`,
+        sessionKey,
         channel: "telegram",
         target: String(ctx.chat.id),
         author: ctx.from?.username || ctx.from?.first_name || "user",
@@ -171,6 +235,7 @@ export class TelegramChannel implements Channel {
           },
         ],
         raw: ctx,
+        threadId: ctx.message.message_thread_id,
       };
       onEvent(event);
     });
@@ -184,9 +249,13 @@ export class TelegramChannel implements Channel {
       const url = `https://api.telegram.org/file/bot${this.bot!.token}/${file.file_path}`;
       // Voice messages don't have captions, treat as hasMention in private chats
       const hasMention = ctx.chat.type === "private";
+      const threadId = ctx.message.message_thread_id;
+      const sessionKey = threadId 
+        ? `telegram:${ctx.chat.id}:${threadId}` 
+        : `telegram:${ctx.chat.id}`;
 
       const event: InboundEvent = {
-        sessionKey: `telegram:${ctx.chat.id}`,
+        sessionKey,
         channel: "telegram",
         target: String(ctx.chat.id),
         author: ctx.from?.username || ctx.from?.first_name || "user",
@@ -202,6 +271,7 @@ export class TelegramChannel implements Channel {
           },
         ],
         raw: ctx,
+        threadId: ctx.message.message_thread_id,
       };
       onEvent(event);
     });
@@ -215,9 +285,13 @@ export class TelegramChannel implements Channel {
       const url = `https://api.telegram.org/file/bot${this.bot!.token}/${file.file_path}`;
       // Audio files can have captions
       const hasMention = checkMention(ctx.chat.type, ctx.message.caption);
+      const threadId = ctx.message.message_thread_id;
+      const sessionKey = threadId 
+        ? `telegram:${ctx.chat.id}:${threadId}` 
+        : `telegram:${ctx.chat.id}`;
 
       const event: InboundEvent = {
-        sessionKey: `telegram:${ctx.chat.id}`,
+        sessionKey,
         channel: "telegram",
         target: String(ctx.chat.id),
         author: ctx.from?.username || ctx.from?.first_name || "user",
@@ -233,6 +307,7 @@ export class TelegramChannel implements Channel {
           },
         ],
         raw: ctx,
+        threadId: ctx.message.message_thread_id,
       };
       onEvent(event);
     });
@@ -264,12 +339,14 @@ class TelegramOutputHandler implements OutputHandler {
   private buffer = "";
   private typingInterval: ReturnType<typeof setInterval> | null = null;
   private chatId: string;
+  private threadId?: number;
 
   constructor(
     private bot: Bot,
     private event: InboundEvent
   ) {
     this.chatId = event.target;
+    this.threadId = event.threadId;
   }
 
   async relay(msg: OutboundMessage): Promise<void> {
@@ -279,6 +356,7 @@ class TelegramOutputHandler implements OutputHandler {
   }
 
   async startTyping(): Promise<void> {
+    console.log(`[Telegram] startTyping() called for chat ${this.chatId}${this.threadId ? ` thread ${this.threadId}` : ''}`);
     // Send typing action immediately, then repeat every 4s
     this.sendTypingAction();
     this.typingInterval = setInterval(() => this.sendTypingAction(), 4000);
@@ -297,9 +375,22 @@ class TelegramOutputHandler implements OutputHandler {
   }
 
   private sendTypingAction(): void {
-    this.bot.api
-      .sendChatAction(this.chatId, "typing")
-      .catch(() => {}); // Ignore errors — typing is best-effort
+    // For General topic (no threadId) or DMs, don't pass message_thread_id at all
+    // This treats General topic like a DM - just send to the chat, no thread params
+    if (this.threadId) {
+      console.log(`[Telegram] sendTypingAction() to chat ${this.chatId} thread ${this.threadId}`);
+      this.bot.api
+        .sendChatAction(this.chatId, "typing", { message_thread_id: this.threadId })
+        .then(() => console.log(`[Telegram] ✅ Typing indicator sent to thread ${this.threadId}`))
+        .catch((err) => console.log(`[Telegram] ❌ Typing failed for thread ${this.threadId}: ${err.message || err}`));
+    } else {
+      // No thread ID = General topic or DM - just send to the chat directly
+      console.log(`[Telegram] sendTypingAction() to chat ${this.chatId} (no thread - General/DM mode)`);
+      this.bot.api
+        .sendChatAction(this.chatId, "typing")
+        .then(() => console.log(`[Telegram] ✅ Typing indicator sent (General/DM mode)`))
+        .catch((err) => console.log(`[Telegram] ❌ Typing failed (General/DM mode): ${err.message || err}`));
+    }
   }
 
   private async flushBuffer(): Promise<void> {
@@ -337,12 +428,15 @@ class TelegramOutputHandler implements OutputHandler {
       parts.push({ type: "text", content: after });
     }
 
+    // Message options for thread support
+    const msgOptions = this.threadId ? { message_thread_id: this.threadId } : undefined;
+
     // If no media found, just send as text
     if (parts.length === 0) {
       const chunks = splitMessage(text, TELEGRAM_MAX_LENGTH);
-      console.log(`[Telegram] Sending ${chunks.length} chunk(s) to chat ${this.chatId}`);
+      console.log(`[Telegram] Sending ${chunks.length} chunk(s) to chat ${this.chatId}${this.threadId ? ` thread ${this.threadId}` : ''}`);
       for (const chunk of chunks) {
-        await this.bot.api.sendMessage(this.chatId, chunk);
+        await this.bot.api.sendMessage(this.chatId, chunk, msgOptions);
         console.log(`[Telegram] ✅ Sent chunk of ${chunk.length} chars`);
       }
       return;
@@ -353,7 +447,7 @@ class TelegramOutputHandler implements OutputHandler {
       if (part.type === "text") {
         const chunks = splitMessage(part.content, TELEGRAM_MAX_LENGTH);
         for (const chunk of chunks) {
-          await this.bot.api.sendMessage(this.chatId, chunk);
+          await this.bot.api.sendMessage(this.chatId, chunk, msgOptions);
           console.log(`[Telegram] ✅ Sent text chunk of ${chunk.length} chars`);
         }
       } else {
@@ -366,15 +460,15 @@ class TelegramOutputHandler implements OutputHandler {
           const inputFile = new InputFile(filePath);
           
           if (isImage) {
-            await this.bot.api.sendPhoto(this.chatId, inputFile);
+            await this.bot.api.sendPhoto(this.chatId, inputFile, msgOptions);
             console.log(`[Telegram] ✅ Sent image: ${filePath}`);
           } else {
-            await this.bot.api.sendDocument(this.chatId, inputFile);
+            await this.bot.api.sendDocument(this.chatId, inputFile, msgOptions);
             console.log(`[Telegram] ✅ Sent document: ${filePath}`);
           }
         } catch (error) {
           console.error(`[Telegram] ❌ Failed to send media: ${error}`);
-          await this.bot.api.sendMessage(this.chatId, `Error sending media: ${filePath}`);
+          await this.bot.api.sendMessage(this.chatId, `Error sending media: ${filePath}`, msgOptions);
         }
       }
     }

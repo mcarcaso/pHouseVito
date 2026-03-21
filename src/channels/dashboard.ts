@@ -111,6 +111,10 @@ export class DashboardChannel implements Channel {
     registerSlashCommands: () => Promise<{ success: boolean; count: number; error?: string }>;
     getChannelInfo: (channelId: string) => Promise<{ name: string; guildName?: string } | null>;
   };
+  private telegramChannel?: {
+    setMyCommands: () => Promise<{ success: boolean; count: number; error?: string }>;
+    getChatInfo: (chatId: string) => Promise<{ name: string; type: string } | null>;
+  };
   private askHandler?: (options: {
     question: string;
     session?: string;
@@ -152,6 +156,13 @@ export class DashboardChannel implements Channel {
     getChannelInfo: (channelId: string) => Promise<{ name: string; guildName?: string } | null>;
   }) {
     this.discordChannel = discord;
+  }
+
+  setTelegramChannel(telegram: {
+    setMyCommands: () => Promise<{ success: boolean; count: number; error?: string }>;
+    getChatInfo: (chatId: string) => Promise<{ name: string; type: string } | null>;
+  }) {
+    this.telegramChannel = telegram;
   }
 
   setAskHandler(handler: (options: {
@@ -717,6 +728,77 @@ export class DashboardChannel implements Channel {
             const alias = info.guildName 
               ? `${info.guildName} / ${info.name}`
               : info.name;
+            
+            this.queries.updateSessionAlias(session.id, alias);
+            updated.push(session.id);
+          } else {
+            failed.push(session.id);
+          }
+        }
+        
+        res.json({ 
+          success: true, 
+          updated: updated.length, 
+          failed: failed.length,
+          sessions: { updated, failed }
+        });
+      } catch (err: any) {
+        res.status(500).json({ success: false, error: err.message });
+      }
+    });
+
+    // Telegram bot command registration
+    this.app.post("/api/telegram/register-commands", async (req, res) => {
+      if (!this.telegramChannel) {
+        res.status(400).json({ success: false, error: "Telegram channel not configured" });
+        return;
+      }
+      try {
+        const result = await this.telegramChannel.setMyCommands();
+        res.json(result);
+      } catch (err: any) {
+        res.status(500).json({ success: false, error: err.message });
+      }
+    });
+
+    // Auto-generate aliases for Telegram sessions that don't have one
+    this.app.post("/api/telegram/auto-alias", async (req, res) => {
+      if (!this.telegramChannel) {
+        res.status(400).json({ success: false, error: "Telegram channel not configured" });
+        return;
+      }
+      try {
+        // Get all Telegram sessions without aliases
+        const sessions = this.queries.getAllSessions().filter(
+          (s: any) => s.channel === "telegram" && !s.alias
+        );
+        
+        const updated: string[] = [];
+        const failed: string[] = [];
+        
+        for (const session of sessions) {
+          // Session key formats:
+          // - "telegram:chatId" (DM or regular group)
+          // - "telegram:chatId:threadId" (forum topic)
+          const parts = session.id.split(":");
+          const chatId = parts[1];
+          const threadId = parts[2]; // undefined for non-topic sessions
+          
+          const info = await this.telegramChannel.getChatInfo(chatId);
+          
+          if (info) {
+            // Format alias based on type and whether it's a topic
+            // All Telegram aliases prefixed with "telegram:" for consistency
+            let alias: string;
+            if (info.type === "private") {
+              alias = `telegram: DM: ${info.name}`;
+            } else if (threadId) {
+              // Forum topic - we can't easily get topic names via API,
+              // so we show "telegram: GroupName / Topic"
+              alias = `telegram: ${info.name} / Topic`;
+            } else {
+              alias = `telegram: ${info.name}`;
+            }
             
             this.queries.updateSessionAlias(session.id, alias);
             updated.push(session.id);

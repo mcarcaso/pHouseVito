@@ -66,6 +66,10 @@ async function main() {
   // Register Telegram channel
   const telegram = new TelegramChannel(config);
   orchestrator.registerChannel(telegram);
+  dashboard.setTelegramChannel({
+    setMyCommands: () => telegram.setMyCommands(),
+    getChatInfo: (chatId: string) => telegram.getChatInfo(chatId),
+  });
 
   // Register Discord channel
   const discord = new DiscordChannel(config);

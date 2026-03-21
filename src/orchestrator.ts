@@ -363,7 +363,8 @@ export class Orchestrator {
     event: InboundEvent,
     channel: Channel | null
   ): Promise<void> {
-    const sessionKey = `${event.channel}:${event.target}`;
+    // Use the session key from the event (includes thread IDs for forum topics)
+    const sessionKey = event.sessionKey;
     console.log(`[handleInbound] ⚡ Received event from ${sessionKey}, content: "${event.content?.slice(0, 50)}"`);
 
     // PRIORITY: /stop command bypasses queue entirely — handle immediately
@@ -431,11 +432,8 @@ export class Orchestrator {
       return;
     }
 
-    // 1. Resolve/create session
-    const vitoSession = this.sessionManager.resolveSession(
-      event.channel,
-      event.target
-    );
+    // 1. Resolve/create session — sessionKey is built by the channel
+    const vitoSession = this.sessionManager.resolveSession(event.sessionKey);
 
     // 1.5. Download any remote attachments (e.g., from Telegram)
     await this.downloadAttachments(event);
@@ -454,8 +452,8 @@ export class Orchestrator {
       : event.content;
 
     // 2.5. Check if we should respond based on requireMention setting
-    const sessionKey = `${event.channel}:${event.target}`;
-    const effectiveSettings = getEffectiveSettings(this.config, event.channel, sessionKey);
+    // Use event.sessionKey (which may include threadId for Telegram topics) for settings lookup
+    const effectiveSettings = getEffectiveSettings(this.config, event.channel, event.sessionKey);
     const requireMention = effectiveSettings.requireMention !== false; // default true
     const hasMention = event.hasMention !== false; // default true if not set (backward compat)
     
@@ -475,7 +473,7 @@ export class Orchestrator {
     }
 
     // 3. Log effective settings (already computed above for requireMention check)
-    console.log(`[Orchestrator] Effective settings for ${sessionKey}: harness=${effectiveSettings.harness}, streamMode=${effectiveSettings.streamMode}, traceMessageUpdates=${effectiveSettings.traceMessageUpdates}, currentContext.limit=${effectiveSettings.currentContext.limit}, crossContext.limit=${effectiveSettings.crossContext.limit}`);
+    console.log(`[Orchestrator] Effective settings for ${event.sessionKey}: harness=${effectiveSettings.harness}, streamMode=${effectiveSettings.streamMode}, traceMessageUpdates=${effectiveSettings.traceMessageUpdates}, currentContext.limit=${effectiveSettings.currentContext.limit}, crossContext.limit=${effectiveSettings.crossContext.limit}`);
 
     // 4. Build fresh context (uses effective settings for memory limits)
     const ctx = await assembleContext(
@@ -578,7 +576,7 @@ export class Orchestrator {
     // Set up abort controller for this request
     const abortController = new AbortController();
     const activeEntry = { abort: abortController, aborted: false };
-    this.activeRequests.set(sessionKey, activeEntry);
+    this.activeRequests.set(event.sessionKey, activeEntry);
 
     // Build user message (include sender name and attachment file paths if any)
     let promptText = event.content || "";
@@ -613,7 +611,7 @@ export class Orchestrator {
       console.error(`[Orchestrator] Error during LLM call: ${err instanceof Error ? err.message : err}`);
       return;
     } finally {
-      this.activeRequests.delete(sessionKey);
+      this.activeRequests.delete(event.sessionKey);
     }
 
     // Signal the channel that the response is complete (for re-prompting)
@@ -713,10 +711,7 @@ export class Orchestrator {
     event: InboundEvent,
     channel: Channel
   ): Promise<void> {
-    const vitoSession = this.sessionManager.resolveSession(
-      event.channel,
-      event.target
-    );
+    const vitoSession = this.sessionManager.resolveSession(event.sessionKey);
 
     const handler = channel.createHandler(event);
 

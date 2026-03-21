@@ -33,6 +33,8 @@ export interface InboundEvent {
   raw: any;
   /** Whether the bot was @mentioned in this message (channels set this, orchestrator decides what to do) */
   hasMention?: boolean;
+  /** Thread/topic ID for forum-style chats (Telegram topics, Discord threads, etc.) */
+  threadId?: number;
 }
 
 export interface Attachment {

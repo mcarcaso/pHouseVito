@@ -13,6 +13,8 @@ export const SYSTEM_KEYS: Record<string, string> = {
   DISCORD_BOT_TOKEN: "Discord Bot token — get from https://discord.com/developers/applications (required for Discord channel)",
   // Dashboard auth
   DASHBOARD_PASSWORD_HASH: "Dashboard password hash (managed automatically — do not edit manually)",
+  // Bland AI webhook
+  BLAND_WEBHOOK_SECRET: "Bland AI webhook secret — add as ?secret=VALUE to your Bland webhook URL",
   // Provider API keys (auto-populated from PROVIDER_API_KEYS below)
 };
 

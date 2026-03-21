@@ -2,10 +2,8 @@ import type {
   Channel,
   InboundEvent,
   OutputHandler,
-  OutboundMessage,
 } from "../types.js";
 import express from "express";
-import { WebSocketServer, WebSocket } from "ws";
 import http from "http";
 const createServer = http.createServer.bind(http);
 import path from "path";
@@ -56,6 +54,34 @@ function isDrivePathPublic(absPath: string): boolean {
 const SESSION_TTL = 7 * 24 * 60 * 60 * 1000; // 7 days
 const sessions = new Map<string, { expires: number }>();
 
+// Simple login rate limiter: max 5 failed attempts per IP per 15 minutes
+const LOGIN_WINDOW_MS = 15 * 60 * 1000;
+const LOGIN_MAX_ATTEMPTS = 5;
+const loginAttempts = new Map<string, { count: number; resetAt: number }>();
+
+function checkLoginRateLimit(ip: string): boolean {
+  const now = Date.now();
+  const entry = loginAttempts.get(ip);
+  if (!entry || now > entry.resetAt) {
+    loginAttempts.set(ip, { count: 1, resetAt: now + LOGIN_WINDOW_MS });
+    return true;
+  }
+  if (entry.count >= LOGIN_MAX_ATTEMPTS) return false;
+  entry.count++;
+  return true;
+}
+
+function resetLoginAttempts(ip: string): void {
+  loginAttempts.delete(ip);
+}
+
+function buildSessionCookie(sessionId: string, maxAge: number, req: any): string {
+  const host = (req.headers?.host || "").split(":")[0];
+  const isLocal = host === "localhost" || host === "127.0.0.1";
+  const secure = isLocal ? "" : " Secure;";
+  return `session=${sessionId}; HttpOnly; Path=/; SameSite=Lax;${secure} Max-Age=${maxAge}`;
+}
+
 function hashPassword(password: string): string {
   const salt = crypto.randomBytes(16).toString("hex");
   const hash = crypto.scryptSync(password, salt, 64).toString("hex");
@@ -75,14 +101,6 @@ function parseCookie(cookieHeader: string | undefined, name: string): string {
   return match ? decodeURIComponent(match[1]) : "";
 }
 
-interface DashboardMessage {
-  type: "chat" | "typing" | "status";
-  sessionId?: string;
-  content?: string;
-  timestamp?: number;
-  author?: string;
-}
-
 export class DashboardChannel implements Channel {
   name = "dashboard";
   capabilities = {
@@ -94,8 +112,6 @@ export class DashboardChannel implements Channel {
 
   private app = express();
   private server = createServer(this.app);
-  private wss = new WebSocketServer({ server: this.server });
-  private clients = new Set<WebSocket>();
   private port = parseInt(process.env.PORT || "3030", 10);
   private eventHandler?: (event: InboundEvent) => void;
 
@@ -124,7 +140,6 @@ export class DashboardChannel implements Channel {
 
   constructor(private db: any, private queries: any, private config: any) {
     this.setupExpress();
-    this.setupWebSocket();
   }
 
   /** Save current config to disk */
@@ -223,9 +238,8 @@ export class DashboardChannel implements Channel {
     this.app.use(express.json({ limit: "200mb" }));
     this.app.use(express.static(path.join(__dirname, "../../dashboard/dist")));
 
-    // Serve uploaded attachments
+    // Ensure attachments dir exists (served behind auth below)
     if (!existsSync(ATTACHMENTS_DIR)) mkdirSync(ATTACHMENTS_DIR, { recursive: true });
-    this.app.use("/attachments", express.static(ATTACHMENTS_DIR));
 
     // ── Public Drive route (before auth) ──
     // Serves any file under user/drive/ if its nearest .meta.json has isPublic:true
@@ -285,11 +299,17 @@ export class DashboardChannel implements Channel {
       // Auto-login after setup
       const sessionId = crypto.randomUUID();
       sessions.set(sessionId, { expires: Date.now() + SESSION_TTL });
-      res.setHeader("Set-Cookie", `session=${sessionId}; HttpOnly; Path=/; SameSite=Lax; Max-Age=${SESSION_TTL / 1000}`);
+      res.setHeader("Set-Cookie", buildSessionCookie(sessionId, SESSION_TTL / 1000, req));
       res.json({ ok: true, password });
     });
 
     this.app.post("/api/auth/login", (req, res) => {
+      const clientIp = req.ip || req.socket.remoteAddress || "unknown";
+      if (!checkLoginRateLimit(clientIp)) {
+        res.status(429).json({ error: "Too many login attempts. Try again in 15 minutes." });
+        return;
+      }
+
       const secrets = readSecrets();
       const hash = secrets.DASHBOARD_PASSWORD_HASH;
       if (!hash) {
@@ -301,16 +321,17 @@ export class DashboardChannel implements Channel {
         res.status(401).json({ error: "Invalid password" });
         return;
       }
+      resetLoginAttempts(clientIp);
       const sessionId = crypto.randomUUID();
       sessions.set(sessionId, { expires: Date.now() + SESSION_TTL });
-      res.setHeader("Set-Cookie", `session=${sessionId}; HttpOnly; Path=/; SameSite=Lax; Max-Age=${SESSION_TTL / 1000}`);
+      res.setHeader("Set-Cookie", buildSessionCookie(sessionId, SESSION_TTL / 1000, req));
       res.json({ ok: true });
     });
 
     this.app.post("/api/auth/logout", (req, res) => {
       const sessionId = parseCookie(req.headers.cookie, "session");
       if (sessionId) sessions.delete(sessionId);
-      res.setHeader("Set-Cookie", "session=; HttpOnly; Path=/; SameSite=Lax; Max-Age=0");
+      res.setHeader("Set-Cookie", buildSessionCookie("", 0, req));
       res.json({ ok: true });
     });
 
@@ -344,6 +365,22 @@ export class DashboardChannel implements Channel {
       }
       next();
     });
+
+    // Serve uploaded attachments (auth-gated)
+    this.app.use("/attachments", (req, res, next) => {
+      const remoteAddr = req.ip || req.socket.remoteAddress || "";
+      const isLocalhost = remoteAddr === "127.0.0.1" || remoteAddr === "::1" || remoteAddr === "::ffff:127.0.0.1";
+      if (isLocalhost) return next();
+      const secrets = readSecrets();
+      if (!secrets.DASHBOARD_PASSWORD_HASH) return next();
+      const sessionId = parseCookie(req.headers.cookie, "session");
+      const session = sessions.get(sessionId);
+      if (!session || session.expires < Date.now()) {
+        res.status(401).json({ error: "Unauthorized" });
+        return;
+      }
+      next();
+    }, express.static(ATTACHMENTS_DIR));
 
     // API endpoints
     this.app.get("/api/health", (req, res) => {
@@ -1131,13 +1168,15 @@ export class DashboardChannel implements Channel {
       // Authenticate with Bearer token from secrets
       const secrets = readSecrets();
       const apiKey = secrets["VITO_ASK_API_KEY"];
-      if (apiKey) {
-        const authHeader = req.headers.authorization || "";
-        const token = authHeader.startsWith("Bearer ") ? authHeader.slice(7) : authHeader;
-        if (token !== apiKey) {
-          res.status(401).json({ error: "Unauthorized — invalid or missing API key" });
-          return;
-        }
+      if (!apiKey) {
+        res.status(503).json({ error: "Ask API is disabled — no VITO_ASK_API_KEY configured" });
+        return;
+      }
+      const authHeader = req.headers.authorization || "";
+      const token = authHeader.startsWith("Bearer ") ? authHeader.slice(7) : authHeader;
+      if (!token || token !== apiKey) {
+        res.status(401).json({ error: "Unauthorized — invalid or missing API key" });
+        return;
       }
 
       if (!this.askHandler) {
@@ -1175,6 +1214,17 @@ export class DashboardChannel implements Channel {
     // Checks caller against whitelist — if not Mike, instructs the agent to reject/hang up.
     // If Mike, requires passphrase verification before granting full brain access.
     this.app.post("/api/bland/inbound", (req, res) => {
+      // Verify webhook secret if configured (set as query param in Bland's webhook URL)
+      const secrets = readSecrets();
+      const webhookSecret = secrets["BLAND_WEBHOOK_SECRET"];
+      if (webhookSecret) {
+        const provided = req.query.secret as string;
+        if (!provided || provided !== webhookSecret) {
+          res.status(401).json({ error: "Unauthorized — invalid or missing webhook secret" });
+          return;
+        }
+      }
+
       const { phone_number, call_id, from, to } = req.body;
       console.log(`[Bland Inbound] Call from ${phone_number || from} to ${to}, call_id=${call_id}`);
       
@@ -1207,8 +1257,7 @@ export class DashboardChannel implements Channel {
       // We just tell it to ask for the passphrase before granting full access
       console.log(`[Bland Inbound] Whitelisted caller ${callerNumber} — requiring passphrase verification`);
       
-      // Read secrets for AskVito endpoint
-      const secrets = readSecrets();
+      // Read API key for AskVito endpoint (secrets already read above)
       const askApiKey = secrets["VITO_ASK_API_KEY"] || "";
       
       res.json({
@@ -1944,18 +1993,6 @@ export class DashboardChannel implements Channel {
     });
   }
 
-  private setupWebSocket() {
-    // WebSocket kept for potential future use (live streaming, etc.)
-    // Chat messages are now sent via HTTP POST /api/chat
-    // Frontend polls for new messages instead of listening to WS events
-    this.wss.on("connection", (ws) => {
-      this.clients.add(ws);
-      ws.on("close", () => {
-        this.clients.delete(ws);
-      });
-    });
-  }
-
   async start(): Promise<void> {
     return new Promise((resolve) => {
       this.server.listen(this.port, () => {
@@ -1966,12 +2003,6 @@ export class DashboardChannel implements Channel {
   }
 
   async stop(): Promise<void> {
-    // Force-close all connected WebSocket clients
-    for (const client of this.clients) {
-      client.terminate();
-    }
-    this.clients.clear();
-    this.wss.close();
     this.server.closeAllConnections();
     return new Promise((resolve) => {
       this.server.close(() => resolve());
@@ -1988,7 +2019,7 @@ export class DashboardChannel implements Channel {
   }
 
   createHandler(event: InboundEvent): OutputHandler {
-    return new DashboardOutputHandler(this.clients, event);
+    return new DashboardOutputHandler(event);
   }
 
   getSessionKey(payload: any): string {
@@ -1997,40 +2028,10 @@ export class DashboardChannel implements Channel {
 }
 
 class DashboardOutputHandler implements OutputHandler {
-  constructor(
-    private clients: Set<WebSocket>,
-    private event: InboundEvent
-  ) {}
+  constructor(private event: InboundEvent) {}
 
   async relay(): Promise<void> {
-    // no-op — frontend refetches from DB
-  }
-
-  async relayEvent(): Promise<void> {
-    // Tool call stored in DB — tell frontend to refresh
-    this.broadcast({ type: "refresh", sessionId: this.event.sessionKey });
-  }
-
-  async startTyping(): Promise<void> {
-    this.broadcast({ type: "typing", sessionId: this.event.sessionKey });
-  }
-
-  async endMessage(): Promise<void> {
-    // New message stored in DB — tell frontend to refresh
-    this.broadcast({ type: "refresh", sessionId: this.event.sessionKey });
-  }
-
-  async stopTyping(): Promise<void> {
-    this.broadcast({ type: "done", sessionId: this.event.sessionKey });
-  }
-
-  private broadcast(msg: any) {
-    const data = JSON.stringify(msg);
-    this.clients.forEach((client) => {
-      if (client.readyState === WebSocket.OPEN) {
-        client.send(data);
-      }
-    });
+    // no-op — frontend polls from DB
   }
 }
 

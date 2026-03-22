@@ -392,6 +392,12 @@ export class DashboardChannel implements Channel {
     this.app.put("/api/config", (req, res) => {
       const updates = req.body;
       // Deep merge updates into config
+      if (updates.bot) {
+        if (!this.config.bot) {
+          this.config.bot = {};
+        }
+        Object.assign(this.config.bot, updates.bot);
+      }
       if (updates.settings) {
         if (!this.config.settings) {
           this.config.settings = {};

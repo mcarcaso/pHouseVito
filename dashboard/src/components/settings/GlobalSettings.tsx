@@ -103,6 +103,12 @@ function NumberInput({
 export default function GlobalSettings({ config, onSave }: GlobalSettingsProps) {
   const settings = config.settings || {};
   const botName = config.bot?.name || '';
+  const [localBotName, setLocalBotName] = useState(botName);
+
+  // Sync local state when config changes externally
+  useEffect(() => {
+    setLocalBotName(config.bot?.name || '');
+  }, [config.bot?.name]);
 
   const updateSetting = async (field: string, value: any) => {
     const newSettings = { ...settings };
@@ -130,12 +136,22 @@ export default function GlobalSettings({ config, onSave }: GlobalSettingsProps) 
           <label className="text-sm text-neutral-400 sm:w-48 sm:shrink-0">Bot Name</label>
           <input
             type="text"
-            value={botName}
-            onChange={(e) => updateBotName(e.target.value)}
+            value={localBotName}
+            onChange={(e) => setLocalBotName(e.target.value)}
+            onBlur={() => {
+              if (localBotName !== botName) {
+                updateBotName(localBotName);
+              }
+            }}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') {
+                e.currentTarget.blur();
+              }
+            }}
             placeholder="Assistant"
             className="w-full sm:w-48 bg-neutral-950 border border-neutral-700 rounded-md px-3 py-2 text-neutral-200 text-sm focus:outline-none focus:border-blue-600 transition-colors"
           />
-          <span className="text-xs text-neutral-600">@mentions become @{botName}</span>
+          <span className="text-xs text-neutral-600">@mentions become @{localBotName || 'Assistant'}</span>
         </div>
       </section>
 

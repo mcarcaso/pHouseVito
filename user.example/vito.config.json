@@ -3,7 +3,7 @@
     "name": "Assistant"
   },
   "settings": {
-    "harness": "claude-code",
+    "harness": "pi-coding-agent",
     "streamMode": "stream",
     "traceMessageUpdates": false,
     "currentContext": {
@@ -23,6 +23,24 @@
     "claude-code": {
       "model": "sonnet",
       "permissionMode": "bypassPermissions"
+    },
+    "pi-coding-agent": {
+      "model": {
+        "provider": "openrouter",
+        "name": "google/gemini-3-flash-preview"
+      }
+    }
+  },
+  "sessions": {
+    "system:profile-updater": {
+      "harness": "pi-coding-agent",
+      "pi-coding-agent": {
+        "model": {
+          "provider": "openrouter",
+          "name": "openai/gpt-5-nano"
+        },
+        "thinkingLevel": "off"
+      }
     }
   },
   "channels": {

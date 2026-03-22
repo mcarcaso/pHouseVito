@@ -809,6 +809,9 @@ export class Orchestrator {
       parts.push(`<memory>\n${contextPrompt}\n</memory>`);
     }
 
+    // Anchor the user's message to the current conversation thread
+    parts.push(`The user's message is a direct response to the last message in <current-session>. Treat the current session as the primary conversational thread. <recalled-memories> provides historical context but should NOT override the immediate conversation flow.`);
+
     return parts.join("\n\n");
   }
 

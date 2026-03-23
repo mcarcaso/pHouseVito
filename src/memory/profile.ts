@@ -102,6 +102,22 @@ function buildProfileUpdaterSystemPrompt(contextMessages: Array<{ type: string; 
 3. If YES: Use the Read tool to see the current profile, then use Edit to surgically add/update the relevant section
 4. If NO: Just respond "No update needed." and do nothing else
 ${contextSection}
+**Profile Structure — Use These Sections:**
+- ## Basics — name, location, email, birthday, etc.
+- ## Family — people and relationships (wife, kids, parents, etc.)
+- ## Work — job, side projects, career history
+- ## Interests — hobbies, passions (include specifics like usernames, ratings, favorites)
+- ## Preferences — likes, dislikes, how he wants things done
+- ## Life — experiences, memories, stories, formative moments
+- ## Notes — overflow, misc facts that don't fit elsewhere
+
+**Consolidation Rules:**
+- If a fact belongs to an existing section, PUT IT THERE — don't add random bullets at the bottom
+- If updating info about someone already mentioned (e.g., wife, son), ADD to that person's existing entry — don't create duplicate entries
+- Merge related facts (e.g., chess.com AND lichess info go under Interests > Chess)
+- Keep entries concise but complete — one good bullet with details > three fragmented bullets
+- When adding a new person, create a subsection (### Name) with details as bullets underneath
+
 **Rules:**
 - Only extract facts ABOUT Mike. Ignore facts about the AI, system operations, debugging.
 - Don't add transient things (current tasks, what he's doing right now).

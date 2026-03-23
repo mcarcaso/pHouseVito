@@ -4,19 +4,25 @@
   },
   "settings": {
     "harness": "pi-coding-agent",
-    "streamMode": "stream",
+    "streamMode": "final",
     "traceMessageUpdates": false,
     "currentContext": {
-      "limit": 100,
-      "includeThoughts": true,
-      "includeTools": true,
-      "includeArchived": false
-    },
-    "crossContext": {
-      "limit": 5,
+      "limit": 30,
       "includeThoughts": false,
       "includeTools": false,
       "includeArchived": false
+    },
+    "crossContext": {
+      "limit": 3,
+      "includeThoughts": false,
+      "includeTools": false,
+      "includeArchived": false,
+      "maxSessions": 5
+    },
+    "requireMention": false,
+    "memory": {
+      "recalledMemoryLimit": 5,
+      "profileUpdateContext": 2
     }
   },
   "harnesses": {
@@ -27,22 +33,11 @@
     "pi-coding-agent": {
       "model": {
         "provider": "openrouter",
-        "name": "google/gemini-3-flash-preview"
+        "name": "minimax/minimax-m2.7"
       }
     }
   },
-  "sessions": {
-    "system:profile-updater": {
-      "harness": "pi-coding-agent",
-      "pi-coding-agent": {
-        "model": {
-          "provider": "openrouter",
-          "name": "openai/gpt-5-nano"
-        },
-        "thinkingLevel": "off"
-      }
-    }
-  },
+  "sessions": {},
   "channels": {
     "dashboard": {
       "enabled": true

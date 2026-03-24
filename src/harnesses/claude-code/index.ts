@@ -81,41 +81,18 @@ export class ClaudeCodeHarness implements Harness {
     return `
 ## Skill System (Claude Code)
 
-Skills are **folders** in user/skills/ containing:
-- **SKILL.md** (instructions — ALWAYS present)
-- **Optional scripts** (run.js, run.py, run.sh, generate.py, edit.py, index.js, etc.)
+Skills are **folders** in user/skills/ containing a SKILL.md and optional scripts.
 
-**Skills are NOT native Claude Code tools.** They're just documentation and scripts you run manually.
+**Skills are NOT native Claude Code tools.** They're documentation and scripts you invoke manually via Bash.
 
 **To use a skill:**
-1. **ALWAYS read SKILL.md FIRST**: \`Read user/skills/<skill-name>/SKILL.md\`
-   - The SKILL.md tells you EXACTLY which script to run and how to run it
-   - Script names vary (run.js, generate.py, edit.sh, etc.) — DO NOT GUESS
-2. **Follow the instructions** — the SKILL.md will tell you:
-   - What the skill does
-   - The EXACT command to run (e.g., \`python3 generate.py "prompt"\`)
-   - What parameters it takes
-   - What output to expect
-3. **Run the script EXACTLY as documented**:
-   - If SKILL.md says \`python3 generate.py\`, use that (not \`node run.js\`)
-   - If SKILL.md says \`node run.js\`, use that (not \`python generate.py\`)
-   - Copy the command format from SKILL.md
-4. **Parse the output yourself** (usually JSON or plain text)
+1. **Read SKILL.md FIRST**: \`Read user/skills/<skill-name>/SKILL.md\`
+2. **Follow its instructions** — it tells you the exact command, parameters, and output format
+3. **Run via Bash** as documented (could be Node, Python, shell, or anything)
 
 **Do NOT:**
-- Use the Skill tool — it's not available in this harness
-- Assume skills are tools you can call directly
-- Guess script names or command formats — ALWAYS read SKILL.md first
-- Run \`node run.js\` blindly — many skills use Python, Bash, or other interpreters
-
-## Drive File URLs
-
-When sharing files from user/drive/ with the user, check the baseDomain in user/vito.config.json and use:
-\`https://{baseDomain}/api/drive/file/<path>\`
-
-Example: A file at \`user/drive/music/song.mp3\` with baseDomain \`example.com\` → \`https://example.com/api/drive/file/music/song.mp3\`
-
-Note: The file/folder must be public (has a \`.meta.json\` with \`{"isPublic": true}\` in its directory or a parent directory).
+- Assume skills are callable tools
+- Guess script names — ALWAYS check SKILL.md first
     `.trim();
   }
 

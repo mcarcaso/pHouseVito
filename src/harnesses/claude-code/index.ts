@@ -107,6 +107,15 @@ Skills are **folders** in user/skills/ containing:
 - Assume skills are tools you can call directly
 - Guess script names or command formats — ALWAYS read SKILL.md first
 - Run \`node run.js\` blindly — many skills use Python, Bash, or other interpreters
+
+## Drive File URLs
+
+When sharing files from user/drive/ with the user, check the baseDomain in user/vito.config.json and use:
+\`https://{baseDomain}/api/drive/file/<path>\`
+
+Example: A file at \`user/drive/music/song.mp3\` with baseDomain \`example.com\` → \`https://example.com/api/drive/file/music/song.mp3\`
+
+Note: The file/folder must be public (has a \`.meta.json\` with \`{"isPublic": true}\` in its directory or a parent directory).
     `.trim();
   }
 

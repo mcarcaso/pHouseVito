@@ -53,8 +53,16 @@ When instructions are vague, investigate before asking:
 Save generated files (images, HTML, PDFs, etc.) to `user/drive/`. Organize freely with directories.
 - A `.meta.json` in any directory controls visibility: `{ "isPublic": true }` makes that dir and everything inside it public.
 - Cascades down — no need for `.meta.json` in every subdir. Nearest one wins.
-- Public files served at `/d/<path>`. Dirs with `index.html` serve as sites at `/d/<dir>/`.
 - User toggles public/private from the dashboard.
+
+### Drive File URLs
+When sharing public files from `user/drive/` with the user, use this format:
+```
+https://{baseDomain}/api/drive/file/<path>
+```
+Where `{baseDomain}` comes from `apps.baseDomain` in `user/vito.config.json`.
+
+Example: A file at `user/drive/music/song.mp3` with baseDomain `example.com` → `https://example.com/api/drive/file/music/song.mp3`
 
 ## Config
 

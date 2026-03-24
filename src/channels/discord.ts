@@ -206,6 +206,24 @@ export class DiscordChannel implements Channel {
         console.log(`[Discord] ⚡ Slash command /stop from ${interaction.user.tag}`);
         onEvent(event);
       }
+
+      if (interaction.commandName === "restart") {
+        // Defer so we can respond before server dies
+        await interaction.deferReply();
+
+        const event: InboundEvent = {
+          sessionKey: `discord:${target}`,
+          channel: "discord",
+          target: target,
+          author: interaction.user.tag,
+          timestamp: Date.now(),
+          content: "/restart",
+          raw: interaction,
+        };
+
+        console.log(`[Discord] ⚡ Slash command /restart from ${interaction.user.tag}`);
+        onEvent(event);
+      }
     });
 
     return () => {
@@ -268,6 +286,9 @@ export class DiscordChannel implements Channel {
       new SlashCommandBuilder()
         .setName("stop")
         .setDescription("Stop current request and clear any queued messages"),
+      new SlashCommandBuilder()
+        .setName("restart")
+        .setDescription("Restart the Vito server (PM2)"),
     ];
 
     const rest = new REST({ version: "10" }).setToken(token);

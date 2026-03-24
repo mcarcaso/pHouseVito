@@ -603,7 +603,20 @@ export class DashboardChannel implements Channel {
 
     // Cron job management
     this.app.get("/api/cron/jobs", (req, res) => {
-      res.json(this.config.cron.jobs || []);
+      const jobs = this.config.cron.jobs || [];
+      // Enrich with nextRun info from scheduler
+      if (this.cronManager) {
+        const health = this.cronManager.checkHealth();
+        const healthMap = new Map(health.map(h => [h.name, h]));
+        const enriched = jobs.map((job: any) => ({
+          ...job,
+          nextRun: healthMap.get(job.name)?.nextRun?.toISOString() || null,
+          isActive: healthMap.get(job.name)?.isActive ?? false,
+        }));
+        res.json(enriched);
+      } else {
+        res.json(jobs);
+      }
     });
 
     this.app.post("/api/cron/jobs", (req, res) => {
@@ -632,12 +645,16 @@ export class DashboardChannel implements Channel {
       // Save to disk
       this.saveConfig();
       
-      // Schedule it
+      // Schedule it and get next run
+      let nextRun: string | null = null;
       if (this.cronManager) {
         this.cronManager.scheduleJob(job);
+        const health = this.cronManager.checkHealth();
+        const jobHealth = health.find(h => h.name === job.name);
+        nextRun = jobHealth?.nextRun?.toISOString() || null;
       }
       
-      res.json(job);
+      res.json({ ...job, nextRun });
     });
 
     this.app.put("/api/cron/jobs/:name", (req, res) => {

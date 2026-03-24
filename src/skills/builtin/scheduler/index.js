@@ -5,7 +5,8 @@
  *
  * Usage:
  *   node index.js schedule --name "morning" --schedule "0 9 * * *" --prompt "Good morning!"
- *   node index.js schedule --name "once" --schedule "2025-12-25T00:00:00Z" --prompt "Merry Christmas!" --oneTime
+ *   node index.js schedule --name "once" --schedule "2025-12-25T00:00:00" --prompt "Merry Christmas!" --oneTime
+ *   node index.js schedule --name "london" --schedule "0 9 * * *" --prompt "London report" --timezone "Europe/London"
  *   node index.js schedule --name "weather" --schedule "0 8 * * *" --prompt "Check weather" --sendCondition "Only send if rain"
  *   node index.js cancel --name "morning"
  *   node index.js list
@@ -23,7 +24,7 @@ const DEFAULT_TIMEZONE = 'America/Toronto';
 /**
  * Get the configured timezone from vito.config.json
  */
-function getTimezone() {
+function getGlobalTimezone() {
   try {
     // Navigate from skills/builtin/scheduler to project root
     const configPath = resolve(__dirname, '../../../../user/vito.config.json');
@@ -61,8 +62,10 @@ async function main() {
         const args = parseArgs(rest);
         if (!args.name || !args.schedule || !args.prompt) {
           console.error('Required: --name, --schedule, --prompt');
+          console.error('Optional: --session, --oneTime, --timezone, --sendCondition');
           process.exit(1);
         }
+        
         const jobData = {
           name: args.name,
           schedule: args.schedule,
@@ -70,14 +73,29 @@ async function main() {
           session: args.session || 'dashboard:default',
           oneTime: args.oneTime || false,
         };
-        if (args.sendCondition) jobData.sendCondition = args.sendCondition;
+        
+        // Per-job timezone support
+        if (args.timezone) {
+          jobData.timezone = args.timezone;
+        }
+        
+        if (args.sendCondition) {
+          jobData.sendCondition = args.sendCondition;
+        }
 
-        await axios.post(API_URL, jobData);
+        const response = await axios.post(API_URL, jobData);
+        const job = response.data;
+        
         const jobType = jobData.oneTime ? 'one-time job' : 'recurring job';
-        const tz = getTimezone();
-        console.log(`Scheduled ${jobType} "${args.name}" (timezone: ${tz})`);
+        const effectiveTz = args.timezone || getGlobalTimezone();
+        
+        console.log(`✅ Scheduled ${jobType} "${args.name}" (timezone: ${effectiveTz})`);
         console.log(`  → schedule: ${args.schedule}`);
+        console.log(`  → session: ${jobData.session}`);
         console.log(`  → will execute: "${args.prompt}"`);
+        if (job.nextRun) {
+          console.log(`  → next run: ${new Date(job.nextRun).toLocaleString('en-US', { timeZone: effectiveTz })}`);
+        }
         break;
       }
 
@@ -88,7 +106,7 @@ async function main() {
           process.exit(1);
         }
         await axios.delete(`${API_URL}/${args.name}`);
-        console.log(`Cancelled job "${args.name}"`);
+        console.log(`✅ Cancelled job "${args.name}"`);
         break;
       }
 
@@ -98,11 +116,23 @@ async function main() {
         if (jobs.length === 0) {
           console.log('No scheduled jobs');
         } else {
-          const tz = getTimezone();
-          console.log(`All times in: ${tz}\n`);
+          const globalTz = getGlobalTimezone();
+          console.log(`Global timezone: ${globalTz}\n`);
           for (const job of jobs) {
             const type = job.oneTime ? '[ONE-TIME]' : '[RECURRING]';
-            console.log(`${type} ${job.name}: "${job.prompt}" (schedule: ${job.schedule}, session: ${job.session})`);
+            const jobTz = job.timezone || globalTz;
+            const tzNote = job.timezone ? ` [tz: ${job.timezone}]` : '';
+            console.log(`${type} ${job.name}${tzNote}`);
+            console.log(`  schedule: ${job.schedule}`);
+            console.log(`  session: ${job.session}`);
+            console.log(`  prompt: "${job.prompt}"`);
+            if (job.nextRun) {
+              console.log(`  next run: ${new Date(job.nextRun).toLocaleString('en-US', { timeZone: jobTz })}`);
+            }
+            if (job.sendCondition) {
+              console.log(`  condition: ${job.sendCondition}`);
+            }
+            console.log('');
           }
         }
         break;
@@ -115,11 +145,11 @@ async function main() {
     }
   } catch (error) {
     if (error.response?.status === 409) {
-      console.error(`Job already exists. Use a different name or cancel first.`);
+      console.error(`❌ Job already exists. Use a different name or cancel first.`);
     } else if (error.response?.status === 404) {
-      console.error(`Job not found.`);
+      console.error(`❌ Job not found.`);
     } else {
-      console.error(`Error: ${error.message}`);
+      console.error(`❌ Error: ${error.message}`);
     }
     process.exit(1);
   }

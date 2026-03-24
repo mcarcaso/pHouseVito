@@ -374,6 +374,13 @@ export class Orchestrator {
       return;
     }
 
+    // PRIORITY: /restart command bypasses queue — restarts the server
+    if (channel && event.content?.trim() === '/restart') {
+      console.log(`[handleInbound] 🔄 /restart command detected — bypassing queue`);
+      await this.handleRestartCommand(event, channel);
+      return;
+    }
+
     // Get or create the per-session queue
     if (!this.sessionQueues.has(sessionKey)) {
       this.sessionQueues.set(sessionKey, []);
@@ -684,6 +691,13 @@ export class Orchestrator {
       console.log(`[/stop] Aborted active request`);
     }
 
+    // Force-release the session lock — this is the escape hatch for stuck sessions
+    const wasLocked = this.sessionProcessing.has(sessionKey);
+    if (wasLocked) {
+      this.sessionProcessing.delete(sessionKey);
+      console.log(`[/stop] 🔓 Force-released session lock for ${sessionKey}`);
+    }
+
     // Send confirmation
     const parts: string[] = [];
     if (aborted) {
@@ -691,6 +705,10 @@ export class Orchestrator {
     }
     if (queuedCount > 0) {
       parts.push(`🗑️ Cleared ${queuedCount} queued message${queuedCount > 1 ? 's' : ''}`);
+    }
+    if (wasLocked && !aborted) {
+      // Lock was held but no active request — this is the "stuck" scenario
+      parts.push("🔓 Released stuck session lock");
     }
     
     const message = parts.length === 0 
@@ -704,7 +722,32 @@ export class Orchestrator {
     console.log(`[/stop] Flushing buffer (stopTyping)`);
     await handler.stopTyping?.();
 
-    console.log(`[/stop] ✅ Complete. Session ${sessionKey}: aborted=${aborted}, cleared=${queuedCount}`);
+    console.log(`[/stop] ✅ Complete. Session ${sessionKey}: aborted=${aborted}, cleared=${queuedCount}, lockReleased=${wasLocked}`);
+  }
+
+  private async handleRestartCommand(
+    event: InboundEvent,
+    channel: Channel
+  ): Promise<void> {
+    const { spawn } = await import('child_process');
+    const handler = channel.createHandler(event);
+
+    console.log(`[/restart] 🔄 Restart command received`);
+
+    // Send confirmation BEFORE restarting
+    await handler.relay("🔄 Restarting in 5 seconds...");
+    await handler.stopTyping?.();
+
+    // Spawn a bash script that waits 5 seconds then restarts
+    // This gives the message time to actually get sent
+    console.log(`[/restart] Spawning delayed restart (5 seconds)`);
+    const child = spawn('bash', ['-c', 'sleep 5 && pm2 restart vito-server'], {
+      detached: true,
+      stdio: 'ignore',
+    });
+    child.unref();
+
+    console.log(`[/restart] Delayed restart scheduled, message should be delivered`);
   }
 
   private async handleNewCommand(

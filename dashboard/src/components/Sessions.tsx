@@ -50,6 +50,11 @@ function Sessions() {
   const [autoRefresh, setAutoRefresh] = useState(true);
   const autoRefreshRef = useRef(autoRefresh);
   autoRefreshRef.current = autoRefresh;
+  
+  // Track if user has scrolled away from bottom - if so, don't append new messages (avoid scroll jump)
+  const [userScrolledUp, setUserScrolledUp] = useState(false);
+  const [pendingCount, setPendingCount] = useState(0);
+  const pendingMessagesRef = useRef<Message[]>([]);
 
   const [filterState, setFilterState] = useState<FilterState>({ showThoughts: true, showTools: true });
 
@@ -71,6 +76,30 @@ function Sessions() {
   useEffect(() => {
     fetchSessions();
   }, []);
+
+  // Detect if user has scrolled away from bottom
+  useEffect(() => {
+    if (!selectedSession) return;
+    
+    const handleScroll = () => {
+      const scrollTop = window.scrollY;
+      const windowHeight = window.innerHeight;
+      const docHeight = document.documentElement.scrollHeight;
+      // Consider "at bottom" if within 150px of the bottom
+      const isAtBottom = scrollTop + windowHeight >= docHeight - 150;
+      setUserScrolledUp(!isAtBottom);
+      
+      // If user scrolled back to bottom and we have pending messages, apply them
+      if (isAtBottom && pendingMessagesRef.current.length > 0) {
+        setAllMessages(prev => [...prev, ...pendingMessagesRef.current]);
+        pendingMessagesRef.current = [];
+        setPendingCount(0);
+      }
+    };
+    
+    window.addEventListener('scroll', handleScroll, { passive: true });
+    return () => window.removeEventListener('scroll', handleScroll);
+  }, [selectedSession]);
 
   useEffect(() => {
     if (!autoRefresh) return;
@@ -141,7 +170,20 @@ function Sessions() {
       } else if (isPolling && afterId) {
         // Append only NEW messages from polling
         if (data.messages.length > 0) {
-          setAllMessages(prev => [...prev, ...data.messages]);
+          // If user has scrolled up, queue the messages instead of appending immediately
+          // This prevents the scroll position from jumping
+          const scrollTop = window.scrollY;
+          const windowHeight = window.innerHeight;
+          const docHeight = document.documentElement.scrollHeight;
+          const isAtBottom = scrollTop + windowHeight >= docHeight - 150;
+          
+          if (isAtBottom) {
+            setAllMessages(prev => [...prev, ...data.messages]);
+          } else {
+            // Queue messages for later - they'll be applied when user scrolls back to bottom
+            pendingMessagesRef.current = [...pendingMessagesRef.current, ...data.messages];
+            setPendingCount(pendingMessagesRef.current.length);
+          }
         }
       } else {
         // Initial load - replace all
@@ -251,6 +293,9 @@ function Sessions() {
 
   useEffect(() => {
     hasScrolledRef.current = false;
+    pendingMessagesRef.current = [];
+    setUserScrolledUp(false);
+    setPendingCount(0);
   }, [selectedSession]);
 
   if (loading) {
@@ -346,7 +391,26 @@ function Sessions() {
           </div>
         </div>
 
-        <div className="p-4 pt-3">
+        <div className="p-4 pt-3 relative">
+          {/* New messages indicator - shows when user scrolled up and new messages arrived */}
+          {pendingCount > 0 && (
+            <button
+              className="fixed bottom-6 left-1/2 -translate-x-1/2 bg-blue-600 hover:bg-blue-500 text-white px-4 py-2 rounded-full shadow-lg z-30 text-sm font-medium transition-all animate-bounce"
+              onClick={() => {
+                // Apply pending messages and scroll to bottom
+                if (pendingMessagesRef.current.length > 0) {
+                  setAllMessages(prev => [...prev, ...pendingMessagesRef.current]);
+                  pendingMessagesRef.current = [];
+                  setPendingCount(0);
+                }
+                setTimeout(() => {
+                  window.scrollTo({ top: document.body.scrollHeight, behavior: 'smooth' });
+                }, 50);
+              }}
+            >
+              ↓ {pendingCount} new message{pendingCount > 1 ? 's' : ''}
+            </button>
+          )}
           {allMessages.length > 0 ? (
             <ChatView
               messages={parsedMessages}

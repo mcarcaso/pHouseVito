@@ -129,6 +129,7 @@ interface LogFile {
   sessionId?: string;
   alias?: string | null;
   hasEmbedding?: boolean;
+  userMessage?: string;
 }
 
 interface LogDetailJsonl {
@@ -880,6 +881,11 @@ function Traces() {
               {log.alias && info.session && (
                 <div className="text-neutral-600 text-xs font-mono mt-1 truncate">
                   {info.session}
+                </div>
+              )}
+              {log.userMessage && (
+                <div className="text-neutral-400 text-sm mt-2 line-clamp-2">
+                  {log.userMessage}
                 </div>
               )}
             </div>

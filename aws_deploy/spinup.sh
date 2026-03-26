@@ -337,9 +337,16 @@ ECOEOF
 mkdir -p user/logs
 
 echo ">>> Obtaining wildcard TLS certificate …"
-sudo certbot certonly --dns-route53 \
-  -d "$FQDN" -d "*.$FQDN" \
-  --non-interactive --agree-tos --register-unsafely-without-email
+for attempt in 1 2 3; do
+  if sudo certbot certonly --dns-route53 \
+    -d "$FQDN" -d "*.$FQDN" \
+    --non-interactive --agree-tos --register-unsafely-without-email; then
+    break
+  fi
+  [ "$attempt" = "3" ] && { echo "certbot failed after 3 attempts" >&2; exit 1; }
+  echo ">>> certbot attempt $attempt failed, retrying in 10s …"
+  sleep 10
+done
 
 echo ">>> Writing Caddyfile …"
 CERT_DIR="/etc/letsencrypt/live/$FQDN"

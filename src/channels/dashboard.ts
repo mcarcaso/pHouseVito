@@ -1749,6 +1749,8 @@ export class DashboardChannel implements Channel {
           res.status(404).json({ error: "File not found" });
           return;
         }
+        // Disable caching for drive files
+        res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
         res.sendFile(resolved);
       } catch (e: any) {
         res.status(500).json({ error: e.message });
@@ -1794,13 +1796,25 @@ export class DashboardChannel implements Channel {
             closeSync(fd);
             const head = buf.toString("utf-8");
 
+            let userMessage = "";
             if (isJsonl) {
-              // Parse first line (header) for preview
+              // Parse first few lines for header and user_message
               try {
-                const firstLine = head.split("\n")[0];
-                const header = JSON.parse(firstLine);
-                sessionId = header.session_id || "";
-                preview = `Session: ${header.session_id}\nChannel: ${header.channel}\nModel: ${header.model}`;
+                const lines = head.split("\n");
+                for (const line of lines) {
+                  if (!line.trim()) continue;
+                  try {
+                    const obj = JSON.parse(line);
+                    if (obj.type === "header") {
+                      sessionId = obj.session_id || "";
+                      preview = `Session: ${obj.session_id}\nChannel: ${obj.channel}\nModel: ${obj.model}`;
+                    } else if (obj.type === "user_message") {
+                      userMessage = obj.content || "";
+                    }
+                  } catch {
+                    // skip malformed lines
+                  }
+                }
               } catch {
                 preview = head.split("\n").slice(0, 3).join("\n");
               }
@@ -1838,6 +1852,7 @@ export class DashboardChannel implements Channel {
               sessionId,
               alias: sessionId ? aliasMap.get(sessionId) || null : null,
               hasEmbedding,
+              userMessage,
             };
           })
           .sort((a, b) => b.timestamp - a.timestamp); // Newest first

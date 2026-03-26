@@ -1739,21 +1739,41 @@ export class DashboardChannel implements Channel {
       }
     });
 
-    // Serve a file (authed, for dashboard preview)
+    // Serve a file from drive — public files get CORS headers for cross-origin access
     this.app.get("/api/drive/file/*filepath", (req, res) => {
       try {
         const filePath = req.params.filepath.join("/");
         const resolved = path.resolve(DRIVE_DIR, filePath);
         if (!resolved.startsWith(DRIVE_DIR + path.sep)) { res.status(403).json({ error: "Access denied" }); return; }
         if (!existsSync(resolved) || statSync(resolved).isDirectory()) {
+          // Don't let Cloudflare cache 404s — file might exist soon
+          res.setHeader("Cache-Control", "no-store");
           res.status(404).json({ error: "File not found" });
           return;
         }
-        // Disable caching for drive files
-        res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
+        // Add CORS headers for public files so apps on subdomains can fetch them
+        if (isDrivePathPublic(resolved)) {
+          res.setHeader("Access-Control-Allow-Origin", "*");
+          res.setHeader("Access-Control-Allow-Methods", "GET, OPTIONS");
+          res.setHeader("Access-Control-Allow-Headers", "Content-Type");
+        }
         res.sendFile(resolved);
       } catch (e: any) {
         res.status(500).json({ error: e.message });
+      }
+    });
+
+    // CORS preflight for drive files
+    (this.app as any).options("/api/drive/file/*filepath", (req: any, res: any) => {
+      const filePath = req.params.filepath.join("/");
+      const resolved = path.resolve(DRIVE_DIR, filePath);
+      if (resolved.startsWith(DRIVE_DIR + path.sep) && existsSync(resolved) && isDrivePathPublic(resolved)) {
+        res.setHeader("Access-Control-Allow-Origin", "*");
+        res.setHeader("Access-Control-Allow-Methods", "GET, OPTIONS");
+        res.setHeader("Access-Control-Allow-Headers", "Content-Type");
+        res.status(204).end();
+      } else {
+        res.status(403).end();
       }
     });
 

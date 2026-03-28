@@ -56,6 +56,14 @@ export class PiHarness implements Harness {
     return "";  // Pi harness uses the standard Skill tool, no custom instructions needed
   }
 
+  private buildCliCommand(systemPrompt: string, userMessage: string): string {
+    const modelConfig = this.config.model || DEFAULT_CONFIG.model!;
+    const escape = (s: string) => s.replace(/'/g, "'\\''");
+    
+    // Pi doesn't have a real CLI, but we can show a representative command
+    return `pi-coding-agent --model ${modelConfig.provider}/${modelConfig.name} --system-prompt '${escape(systemPrompt)}' -p '${escape(userMessage)}'`;
+  }
+
   async run(
     systemPrompt: string,
     userMessage: string,
@@ -103,23 +111,8 @@ export class PiHarness implements Harness {
 
     this.currentSession = piSession;
 
-    // Fire invocation callback with exact SDK config
-    callbacks.onInvocation?.({
-      harness: "pi-coding-agent",
-      sdk: "createAgentSession",
-      model: {
-        provider: modelConfig.provider,
-        name: modelConfig.name,
-      },
-      thinkingLevel: this.config.thinkingLevel || "off",
-      options: {
-        noExtensions: true,
-        noSkills: true,
-        noPromptTemplates: true,
-        noThemes: true,
-        cwd: process.cwd(),
-      },
-    });
+    // Fire invocation callback before we start
+    callbacks.onInvocation?.(this.buildCliCommand(systemPrompt, userMessage));
 
     // Track current message for assembling assistant content
     let currentMessageText = "";

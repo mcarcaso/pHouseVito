@@ -24,7 +24,7 @@ export interface TracingOptions {
 
 type TraceLine =
   | { type: "header"; timestamp: string; session_id: string; channel: string; target: string; model: string; harness: string }
-  | { type: "invocation"; config: Record<string, unknown> }
+  | { type: "invocation"; command: string }
   | { type: "prompt"; content: string; length: number }
   | { type: "user_message"; content: string }
   | { type: "raw_event"; ts: number; event: unknown }
@@ -135,9 +135,9 @@ export class TracingHarness extends ProxyHarness {
     this.pendingLines = [];
 
     const tracingCallbacks: HarnessCallbacks = {
-      onInvocation: (config: Record<string, unknown>) => {
-        this.writeLine({ type: "invocation", config });
-        callbacks.onInvocation?.(config);
+      onInvocation: (cliCommand: string) => {
+        this.writeLine({ type: "invocation", command: cliCommand });
+        callbacks.onInvocation?.(cliCommand);
       },
 
       onRawEvent: (event: unknown) => {

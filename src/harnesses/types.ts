@@ -23,8 +23,8 @@ export type NormalizedEvent =
 // ════════════════════════════════════════════════════════════════════════════
 
 export interface HarnessCallbacks {
-  /** Fired before execution starts, with the exact config used to invoke the harness */
-  onInvocation?: (config: Record<string, unknown>) => void;
+  /** Fired before execution starts, with CLI-equivalent command for tracing */
+  onInvocation?: (cliCommand: string) => void;
 
   /** Every event from the underlying system, for tracing */
   onRawEvent: (event: unknown) => void;

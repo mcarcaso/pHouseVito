@@ -17,8 +17,7 @@ interface TraceHeader {
 
 interface TraceInvocation {
   type: "invocation";
-  config?: Record<string, unknown>;
-  command?: string;  // Legacy — old traces may still have this
+  command: string;
 }
 
 interface TracePrompt {
@@ -331,14 +330,12 @@ function Traces() {
               className="w-full px-4 py-2 flex items-center justify-between text-left bg-neutral-800/50 hover:bg-neutral-800 transition-colors"
               onClick={() => toggleSection('invocation')}
             >
-              <span className="text-sm font-medium text-neutral-300">Invocation Config</span>
+              <span className="text-sm font-medium text-neutral-300">CLI Command</span>
               <span className="text-neutral-500">{expandedSections.has('invocation') ? '−' : '+'}</span>
             </button>
             {expandedSections.has('invocation') && (
               <pre className="p-4 text-xs text-neutral-400 font-mono overflow-x-auto whitespace-pre-wrap break-all">
-                {invocation.config
-                  ? JSON.stringify(invocation.config, null, 2)
-                  : invocation.command || '(no config)'}
+                {invocation.command}
               </pre>
             )}
           </div>

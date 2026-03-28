@@ -96,6 +96,22 @@ Skills are **folders** in user/skills/ containing a SKILL.md and optional script
     `.trim();
   }
 
+  private buildCliCommand(systemPrompt: string, userMessage: string): string {
+    const escape = (s: string) => s.replace(/'/g, "'\\''");
+    const model = this.config.model || "sonnet";
+    
+    let cmd = `claude --model ${model}`;
+    
+    if (systemPrompt) {
+      cmd += ` --system-prompt '${escape(systemPrompt)}'`;
+    }
+    
+    cmd += ` -p '${escape(userMessage)}'`;
+    cmd += ` --output-format=stream-json --verbose`;
+    
+    return cmd;
+  }
+
   async run(
     systemPrompt: string,
     userMessage: string,
@@ -135,14 +151,8 @@ Skills are **folders** in user/skills/ containing a SKILL.md and optional script
         args.push("--tools", this.config.allowedTools.join(","));
       }
 
-      // Fire invocation callback with exact spawn config
-      callbacks.onInvocation?.({
-        harness: "claude-code",
-        command: "npx",
-        args: [...args],
-        cwd: this.config.cwd || process.cwd(),
-        permissionMode: this.config.permissionMode || "bypassPermissions",
-      });
+      // Fire invocation callback before we start
+      callbacks.onInvocation?.(this.buildCliCommand(systemPrompt, userMessage));
 
       // Spawn npx process
       const proc = spawn("npx", args, {

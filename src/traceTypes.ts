@@ -15,11 +15,11 @@ export interface TraceHeader {
 }
 
 /**
- * Invocation - the CLI command used to start the harness
+ * Invocation - the exact config used to run the harness
  */
 export interface TraceInvocation {
   type: "invocation";
-  command: string;            // CLI equivalent command
+  config: Record<string, unknown>;  // Exact config/args the harness was invoked with
 }
 
 /**

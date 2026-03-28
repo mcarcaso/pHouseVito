@@ -1546,7 +1546,7 @@ export class DashboardChannel implements Channel {
 
         const entries = readdirSync(dir, { withFileTypes: true });
         const dirs: { name: string; hasMeta: boolean; meta: any }[] = [];
-        const files: { name: string; size: number; isPublic: boolean }[] = [];
+        const files: { name: string; size: number; isPublic: boolean; createdAt: string }[] = [];
 
         for (const entry of entries) {
           if (entry.name === ".meta.json") continue;
@@ -1559,8 +1559,9 @@ export class DashboardChannel implements Channel {
             dirs.push({ name: entry.name, hasMeta: Boolean(childMeta), meta: childMeta });
           } else {
             const filePath = path.join(dir, entry.name);
+            const fileStat = statSync(filePath);
             const filePublic = isDrivePathPublic(filePath);
-            files.push({ name: entry.name, size: statSync(filePath).size, isPublic: filePublic });
+            files.push({ name: entry.name, size: fileStat.size, isPublic: filePublic, createdAt: fileStat.birthtime.toISOString() });
           }
         }
 

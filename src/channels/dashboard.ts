@@ -1797,20 +1797,32 @@ export class DashboardChannel implements Channel {
           }
         }
         
-        // Support both old .log and new .jsonl formats
-        const files = readdirSync(logsDir)
+        // Phase 1: Enumerate + stat only (cheap — no file reads)
+        const limit = parseInt(req.query.limit as string) || 50;
+        const offset = parseInt(req.query.offset as string) || 0;
+
+        const allFiles = readdirSync(logsDir)
           .filter(f => (f.startsWith("request-") && f.endsWith(".log")) ||
                        (f.startsWith("trace-") && f.endsWith(".jsonl")))
           .map(filename => {
+            const stats = statSync(path.join(logsDir, filename));
+            return { filename, timestamp: stats.mtime.getTime(), size: stats.size };
+          })
+          .sort((a, b) => b.timestamp - a.timestamp);
+
+        const totalCount = allFiles.length;
+        const page = allFiles.slice(offset, offset + limit);
+
+        // Phase 2: Only read the files we're actually returning
+        const files = page.map(({ filename, timestamp, size }) => {
             const filePath = path.join(logsDir, filename);
-            const stats = statSync(filePath);
             const isJsonl = filename.endsWith(".jsonl");
 
-            // Read only the first 4KB for preview (avoids reading multi-MB trace files)
+            // Read first 4KB for preview/header
             let preview = "";
             let sessionId = "";
             let hasEmbedding = false;
-            const readSize = Math.min(stats.size, 4096);
+            const readSize = Math.min(size, 4096);
             const buf = Buffer.alloc(readSize);
             const fd = openSync(filePath, "r");
             readSync(fd, buf, 0, readSize, 0);
@@ -1840,21 +1852,28 @@ export class DashboardChannel implements Channel {
                 preview = head.split("\n").slice(0, 3).join("\n");
               }
 
-              // Detect embedding_result with actual chunks (for list badge)
+              // Detect embedding_result — read only the TAIL of the file (it's always near the end)
               try {
-                const content = readFileSync(filePath, "utf-8");
-                const lines = content.split("\n");
-                hasEmbedding = false;
-                for (const line of lines) {
-                  if (!line.includes('"type":"embedding_result"')) continue;
-                  try {
-                    const obj = JSON.parse(line);
-                    if (obj.type === "embedding_result" && typeof obj.chunks_created === "number" && obj.chunks_created > 0) {
-                      hasEmbedding = true;
-                      break;
+                const tailSize = Math.min(size, 4096);
+                const tailBuf = Buffer.alloc(tailSize);
+                const tailFd = openSync(filePath, "r");
+                readSync(tailFd, tailBuf, 0, tailSize, Math.max(0, size - tailSize));
+                closeSync(tailFd);
+                const tail = tailBuf.toString("utf-8");
+
+                if (tail.includes('"type":"embedding_result"')) {
+                  const tailLines = tail.split("\n");
+                  for (const line of tailLines) {
+                    if (!line.includes('"type":"embedding_result"')) continue;
+                    try {
+                      const obj = JSON.parse(line);
+                      if (obj.type === "embedding_result" && typeof obj.chunks_created === "number" && obj.chunks_created > 0) {
+                        hasEmbedding = true;
+                        break;
+                      }
+                    } catch {
+                      // ignore partial/malformed lines from tail read
                     }
-                  } catch {
-                    // ignore parse errors
                   }
                 }
               } catch {
@@ -1866,8 +1885,8 @@ export class DashboardChannel implements Channel {
 
             return {
               filename,
-              timestamp: stats.mtime.getTime(),
-              size: stats.size,
+              timestamp,
+              size,
               preview,
               format: isJsonl ? "jsonl" : "text",
               sessionId,
@@ -1875,11 +1894,9 @@ export class DashboardChannel implements Channel {
               hasEmbedding,
               userMessage,
             };
-          })
-          .sort((a, b) => b.timestamp - a.timestamp); // Newest first
-        
-        const limit = parseInt(req.query.limit as string) || 50;
-        res.json(files.slice(0, limit));
+          });
+
+        res.json({ files, totalCount, offset, limit });
       } catch (e: any) {
         res.status(500).json({ error: e.message });
       }

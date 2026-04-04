@@ -165,7 +165,8 @@ function Traces() {
     try {
       const res = await fetch('/api/logs?limit=100');
       const data = await res.json();
-      setLogs(data);
+      // API returns { files, totalCount, offset, limit }
+      setLogs(Array.isArray(data) ? data : data.files || []);
     } catch (err) {
       console.error('Failed to fetch logs:', err);
     } finally {

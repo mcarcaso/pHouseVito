@@ -128,7 +128,7 @@ async function main() {
         } catch (err) {
           console.error("[Config] Failed to load config file:", err);
         }
-      }, 500); // Wait 500ms for file write to complete
+      }, 3000); // Wait 3s to collapse rapid config writes into one reload
     }
   });
   

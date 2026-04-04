@@ -1818,39 +1818,73 @@ export class DashboardChannel implements Channel {
             const filePath = path.join(logsDir, filename);
             const isJsonl = filename.endsWith(".jsonl");
 
-            // Read first 4KB for preview/header
+            // Read first 4KB for header, then scan forward for user_message
             let preview = "";
             let sessionId = "";
             let hasEmbedding = false;
-            const readSize = Math.min(size, 4096);
-            const buf = Buffer.alloc(readSize);
-            const fd = openSync(filePath, "r");
-            readSync(fd, buf, 0, readSize, 0);
-            closeSync(fd);
-            const head = buf.toString("utf-8");
-
             let userMessage = "";
+
             if (isJsonl) {
-              // Parse first few lines for header and user_message
+              // Parse header from first 4KB (line 1 — always small)
+              const headSize = Math.min(size, 4096);
+              const headBuf = Buffer.alloc(headSize);
+              const headFd = openSync(filePath, "r");
+              readSync(headFd, headBuf, 0, headSize, 0);
+              closeSync(headFd);
+              const head = headBuf.toString("utf-8");
+
               try {
-                const lines = head.split("\n");
-                for (const line of lines) {
-                  if (!line.trim()) continue;
-                  try {
-                    const obj = JSON.parse(line);
-                    if (obj.type === "header") {
-                      sessionId = obj.session_id || "";
-                      preview = `Session: ${obj.session_id}\nChannel: ${obj.channel}\nModel: ${obj.model}`;
-                    } else if (obj.type === "user_message") {
-                      userMessage = obj.content || "";
-                    }
-                  } catch {
-                    // skip malformed lines
+                const firstLine = head.split("\n")[0];
+                if (firstLine) {
+                  const obj = JSON.parse(firstLine);
+                  if (obj.type === "header") {
+                    sessionId = obj.session_id || "";
+                    preview = `Session: ${obj.session_id}\nChannel: ${obj.channel}\nModel: ${obj.model}`;
                   }
                 }
               } catch {
                 preview = head.split("\n").slice(0, 3).join("\n");
               }
+
+              // Scan for user_message (line 3) — may be past 4KB due to large prompt on line 2
+              // Read in 64KB chunks, find the 3rd line
+              try {
+                const fd = openSync(filePath, "r");
+                let offset = 0;
+                let newlineCount = 0;
+                const chunkSize = 65536;
+                const scanLimit = Math.min(size, 262144); // cap at 256KB
+                outer:
+                while (offset < scanLimit) {
+                  const readLen = Math.min(chunkSize, scanLimit - offset);
+                  const chunk = Buffer.alloc(readLen);
+                  readSync(fd, chunk, 0, readLen, offset);
+                  for (let i = 0; i < readLen; i++) {
+                    if (chunk[i] === 0x0a) { // newline
+                      newlineCount++;
+                      if (newlineCount === 2) {
+                        // Line 3 starts at offset + i + 1 — read a small chunk for user_message
+                        const msgStart = offset + i + 1;
+                        const msgLen = Math.min(4096, size - msgStart);
+                        if (msgLen > 0) {
+                          const msgBuf = Buffer.alloc(msgLen);
+                          readSync(fd, msgBuf, 0, msgLen, msgStart);
+                          const msgLine = msgBuf.toString("utf-8").split("\n")[0];
+                          try {
+                            const msgObj = JSON.parse(msgLine);
+                            if (msgObj.type === "user_message") {
+                              userMessage = msgObj.content || "";
+                            }
+                          } catch { /* not user_message or malformed */ }
+                        }
+                        break outer;
+                      }
+                    }
+                  }
+                  offset += readLen;
+                }
+                closeSync(fd);
+              } catch { /* ignore scan errors */ }
 
               // Detect embedding_result — read only the TAIL of the file (it's always near the end)
               try {
@@ -1880,7 +1914,13 @@ export class DashboardChannel implements Channel {
                 hasEmbedding = false;
               }
             } else {
-              preview = head.split("\n").slice(0, 8).join("\n");
+              // Non-JSONL: read first 4KB for preview
+              const headSize = Math.min(size, 4096);
+              const headBuf = Buffer.alloc(headSize);
+              const headFd = openSync(filePath, "r");
+              readSync(headFd, headBuf, 0, headSize, 0);
+              closeSync(headFd);
+              preview = headBuf.toString("utf-8").split("\n").slice(0, 8).join("\n");
             }
 
             return {

@@ -8,6 +8,7 @@ import { DashboardChannel } from "./channels/dashboard.js";
 import { TelegramChannel } from "./channels/telegram.js";
 import { DiscordChannel } from "./channels/discord.js";
 import { loadSecrets } from "./secrets.js";
+import { DEFAULT_TIMEZONE } from "./system-instructions.js";
 
 const ROOT = process.cwd();
 
@@ -23,6 +24,14 @@ async function main() {
   // Load config and soul
   const config = loadConfig();
   const soul = loadSoul();
+
+  // Set the process timezone from config (default: America/Toronto).
+  // This propagates to every child process we spawn — shell tools, Pi's bash,
+  // skills that call `date`, etc. — so they all return local time regardless
+  // of the host OS clock (important for UTC servers like EC2).
+  const tz = config.settings?.timezone || DEFAULT_TIMEZONE;
+  process.env.TZ = tz;
+  console.log(`Timezone: ${tz}`);
 
   // Log the default harness and settings
   const defaultHarness = config.settings?.harness || "claude-code";

@@ -1,4 +1,5 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
+
 import type { VitoConfig } from '../../utils/settingsResolution';
 import { renderSelect, renderSegmented, renderNumberInput, renderSliderToggle } from './SettingRow';
 import HarnessConfigEditor from './HarnessConfigEditor';
@@ -55,60 +56,30 @@ const TIMEZONE_OPTIONS = [
   { value: 'UTC', label: 'UTC' },
 ];
 
-// NumberInput that allows clearing the field while typing (borrowed from old Settings.tsx)
-function NumberInput({
-  label, value, onChange, min, max, step, hint,
-}: {
-  label: string;
-  value: number;
-  onChange: (val: number) => void;
-  min?: number;
-  max?: number;
-  step?: number;
-  hint?: string;
-}) {
-  const [localValue, setLocalValue] = useState(String(value));
-
-  useEffect(() => {
-    setLocalValue(String(value));
-  }, [value]);
-
-  const handleBlur = () => {
-    const num = parseInt(localValue);
-    if (isNaN(num) || localValue === '') {
-      setLocalValue(String(value));
-    } else {
-      onChange(num);
-    }
-  };
-
-  return (
-    <div className="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-4 py-3 border-b border-neutral-800/50 last:border-b-0">
-      <label className="text-sm text-neutral-400 sm:w-48 sm:shrink-0">{label}</label>
-      <input
-        type="number"
-        value={localValue}
-        onChange={(e) => setLocalValue(e.target.value)}
-        onBlur={handleBlur}
-        min={min}
-        max={max}
-        step={step}
-        className="w-full sm:w-28 bg-neutral-950 border border-neutral-700 rounded-md px-3 py-2 text-neutral-200 text-sm focus:outline-none focus:border-blue-600 transition-colors"
-      />
-      {hint && <span className="text-xs text-neutral-600">{hint}</span>}
-    </div>
-  );
-}
 
 export default function GlobalSettings({ config, onSave }: GlobalSettingsProps) {
   const settings = config.settings || {};
   const botName = config.bot?.name || '';
   const [localBotName, setLocalBotName] = useState(botName);
+  const [localCustomInstructions, setLocalCustomInstructions] = useState(settings.customInstructions || '');
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
 
   // Sync local state when config changes externally
   useEffect(() => {
     setLocalBotName(config.bot?.name || '');
   }, [config.bot?.name]);
+
+  useEffect(() => {
+    setLocalCustomInstructions(config.settings?.customInstructions || '');
+  }, [config.settings?.customInstructions]);
+
+  // Auto-resize textarea
+  useEffect(() => {
+    if (textareaRef.current) {
+      textareaRef.current.style.height = 'auto';
+      textareaRef.current.style.height = textareaRef.current.scrollHeight + 'px';
+    }
+  }, [localCustomInstructions]);
 
   const updateSetting = async (field: string, value: any) => {
     const newSettings = { ...settings };
@@ -196,6 +167,26 @@ export default function GlobalSettings({ config, onSave }: GlobalSettingsProps) 
           onChange={(val) => updateSetting('traceMessageUpdates', val)}
         />
 
+      </section>
+
+      {/* ── Custom Instructions ── */}
+      <section className="bg-neutral-900 border border-neutral-800 rounded-xl p-5">
+        <h3 className="text-base font-semibold text-white mb-1">Custom Instructions</h3>
+        <p className="text-xs text-neutral-600 mb-4">Additional instructions injected into the system prompt. Channels and sessions can override this.</p>
+
+        <textarea
+          ref={textareaRef}
+          value={localCustomInstructions}
+          onChange={(e) => setLocalCustomInstructions(e.target.value)}
+          onBlur={() => {
+            if (localCustomInstructions !== (settings.customInstructions || '')) {
+              updateSetting('customInstructions', localCustomInstructions || undefined);
+            }
+          }}
+          placeholder="e.g., Always respond in Italian when discussing food..."
+          rows={3}
+          className="w-full bg-neutral-950 border border-neutral-700 rounded-md px-3 py-2 text-neutral-200 text-sm focus:outline-none focus:border-blue-600 transition-colors resize-none overflow-hidden"
+        />
       </section>
 
       {/* ── Current Session Context ── */}
@@ -287,40 +278,35 @@ export default function GlobalSettings({ config, onSave }: GlobalSettingsProps) 
         <h3 className="text-base font-semibold text-white mb-1">Memory Recall</h3>
         <p className="text-xs text-neutral-600 mb-4">Settings for semantic search over past conversations.</p>
 
-        <NumberInput
-          label="Recalled Memory Limit"
-          value={settings.memory?.recalledMemoryLimit ?? 3}
-          onChange={(val) => updateSetting('memory.recalledMemoryLimit', val)}
-          min={0}
-          max={10}
-          hint="Max memory chunks to inject (0 to disable)"
-        />
+        <div className="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-4 py-3 border-b border-neutral-800/50">
+          <label className="text-sm text-neutral-400 sm:w-48 sm:shrink-0">Recalled Memory Limit</label>
+          {renderNumberInput(
+            settings.memory?.recalledMemoryLimit ?? 3,
+            (val) => updateSetting('memory.recalledMemoryLimit', val),
+            { min: 0, max: 10 }
+          )}
+          <span className="text-xs text-neutral-600">Max memory chunks to inject (0 to disable)</span>
+        </div>
 
         <div className="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-4 py-3 border-b border-neutral-800/50">
           <label className="text-sm text-neutral-400 sm:w-48 sm:shrink-0">Relevance Threshold</label>
-          <input
-            type="number"
-            value={settings.memory?.recalledMemoryThreshold ?? 0.005}
-            onChange={(e) => {
-              const val = parseFloat(e.target.value);
-              if (!isNaN(val)) updateSetting('memory.recalledMemoryThreshold', val);
-            }}
-            min={0}
-            max={1}
-            step={0.001}
-            className="w-full sm:w-28 bg-neutral-950 border border-neutral-700 rounded-md px-3 py-2 text-neutral-200 text-sm focus:outline-none focus:border-blue-600 transition-colors"
-          />
+          {renderNumberInput(
+            settings.memory?.recalledMemoryThreshold ?? 0.005,
+            (val) => updateSetting('memory.recalledMemoryThreshold', val),
+            { min: 0, max: 1, step: 0.001 }
+          )}
           <span className="text-xs text-neutral-600">Min RRF score (lower = more results)</span>
         </div>
 
-        <NumberInput
-          label="Profile Update Context"
-          value={settings.memory?.profileUpdateContext ?? 2}
-          onChange={(val) => updateSetting('memory.profileUpdateContext', val)}
-          min={1}
-          max={10}
-          hint="Messages of context for profile updates"
-        />
+        <div className="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-4 py-3 border-b border-neutral-800/50">
+          <label className="text-sm text-neutral-400 sm:w-48 sm:shrink-0">Profile Update Context</label>
+          {renderNumberInput(
+            settings.memory?.profileUpdateContext ?? 2,
+            (val) => updateSetting('memory.profileUpdateContext', val),
+            { min: 1, max: 10 }
+          )}
+          <span className="text-xs text-neutral-600">Messages of context for profile updates</span>
+        </div>
       </section>
 
       {/* ── Harness Configurations ── */}

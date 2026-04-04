@@ -53,6 +53,9 @@ function mergeSettings(base: Settings, override: Settings): Settings {
   if (override.streamMode !== undefined) {
     result.streamMode = override.streamMode;
   }
+  if (override.customInstructions !== undefined) {
+    result.customInstructions = override.customInstructions;
+  }
   if (override.currentContext !== undefined) {
     result.currentContext = { ...base.currentContext, ...override.currentContext };
   }
@@ -116,6 +119,7 @@ export function getEffectiveSettings(
   return {
     harness: settings.harness || DEFAULTS.harness,
     streamMode: settings.streamMode || DEFAULTS.streamMode,
+    customInstructions: settings.customInstructions,
     currentContext: {
       limit: settings.currentContext?.limit ?? DEFAULT_CURRENT_CONTEXT.limit,
       includeThoughts: settings.currentContext?.includeThoughts ?? DEFAULT_CURRENT_CONTEXT.includeThoughts,

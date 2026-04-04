@@ -577,7 +577,8 @@ export class Orchestrator {
       skillsPrompt,
       channelPrompt,
       innerHarness.getCustomInstructions?.() || "",
-      recalledMemories
+      recalledMemories,
+      effectiveSettings.customInstructions || ""
     );
 
     // Set up abort controller for this request
@@ -812,7 +813,8 @@ export class Orchestrator {
     skillsPrompt: string,
     channelPrompt: string,
     harnessInstructions: string = "",
-    recalledMemories: string = ""
+    recalledMemories: string = "",
+    customInstructions: string = ""
   ): string {
     const parts: string[] = [];
 
@@ -835,7 +837,12 @@ export class Orchestrator {
 
     // Inject harness-specific instructions if they exist (before memory)
     if (harnessInstructions) {
-      parts.push(`<custom-instructions>\n${harnessInstructions}\n</custom-instructions>`);
+      parts.push(`<harness-instructions>\n${harnessInstructions}\n</harness-instructions>`);
+    }
+
+    // Inject user-defined custom instructions (cascaded: Global → Channel → Session)
+    if (customInstructions) {
+      parts.push(`<custom-instructions>\n${customInstructions}\n</custom-instructions>`);
     }
 
     // User profile — structured semantic memory, always injected
@@ -891,8 +898,6 @@ export class Orchestrator {
       const harness = new ClaudeCodeHarness({
         model: mergedConfig.model || "sonnet",
         cwd: mergedConfig.cwd || process.cwd(),
-        permissionMode: mergedConfig.permissionMode || "bypassPermissions",
-        allowedTools: mergedConfig.allowedTools,
       });
 
       console.log(`[Orchestrator] 🎭 Created harness: ${harness.getName()} (model: ${mergedConfig.model || "sonnet"})`);

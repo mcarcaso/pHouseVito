@@ -1,7 +1,7 @@
-import { useState } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import type { ChannelConfig, VitoConfig, Settings } from '../../utils/settingsResolution';
 import { getEffectiveSettings } from '../../utils/settingsResolution';
-import SettingRow, { renderSelect, renderSegmented, renderNumberInput, renderToggle } from './SettingRow';
+import SettingRow, { renderSelect, renderSegmented, renderNumberInput, renderToggle, renderTextarea } from './SettingRow';
 import { channelConfigComponents, CHANNEL_ICONS } from './channels';
 
 interface ChannelConfigEditorProps {
@@ -242,6 +242,18 @@ export default function ChannelConfigEditor({ name, channelConfig, config, onSav
               formatValue={(v) => v ? 'On' : 'Off'}
             />
 
+            <SettingRow
+              label="Custom Instructions"
+              hint="Additional system prompt instructions for this channel"
+              inheritedValue={globalResolved.customInstructions || ''}
+              inheritedFrom="global"
+              overrideValue={channelSettings.customInstructions}
+              onOverride={(val) => updateChannelSetting('customInstructions', val)}
+              onReset={() => resetChannelSetting('customInstructions')}
+              renderInput={(val, onChange) => renderTextarea(val, onChange, { placeholder: 'Custom instructions for this channel...' })}
+              formatValue={(v) => v ? `"${(v as string).slice(0, 50)}${(v as string).length > 50 ? '...' : ''}"` : '(none)'}
+            />
+
             {/* Current Session Context */}
             <div className="mt-4 mb-2">
               <span className="text-xs font-semibold text-neutral-500 uppercase tracking-wide">Current Session Context</span>
@@ -286,17 +298,6 @@ export default function ChannelConfigEditor({ name, channelConfig, config, onSav
               overrideValue={channelSettings.currentContext?.includeArchived}
               onOverride={(val) => updateChannelSetting('currentContext.includeArchived', val)}
               onReset={() => resetChannelSetting('currentContext.includeArchived')}
-              renderInput={(val, onChange) => renderToggle(val, onChange)}
-              formatValue={(v) => v ? 'On' : 'Off'}
-            />
-
-            <SettingRow
-              label="Compacted"
-              inheritedValue={globalResolved.currentContext.includeCompacted}
-              inheritedFrom="global"
-              overrideValue={channelSettings.currentContext?.includeCompacted}
-              onOverride={(val) => updateChannelSetting('currentContext.includeCompacted', val)}
-              onReset={() => resetChannelSetting('currentContext.includeCompacted')}
               renderInput={(val, onChange) => renderToggle(val, onChange)}
               formatValue={(v) => v ? 'On' : 'Off'}
             />
@@ -349,16 +350,6 @@ export default function ChannelConfigEditor({ name, channelConfig, config, onSav
               formatValue={(v) => v ? 'On' : 'Off'}
             />
 
-            <SettingRow
-              label="Compacted"
-              inheritedValue={globalResolved.crossContext.includeCompacted}
-              inheritedFrom="global"
-              overrideValue={channelSettings.crossContext?.includeCompacted}
-              onOverride={(val) => updateChannelSetting('crossContext.includeCompacted', val)}
-              onReset={() => resetChannelSetting('crossContext.includeCompacted')}
-              renderInput={(val, onChange) => renderToggle(val, onChange)}
-              formatValue={(v) => v ? 'On' : 'Off'}
-            />
           </div>
         </div>
       )}

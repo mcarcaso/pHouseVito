@@ -88,8 +88,6 @@ export interface PiHarnessConfig {
 export interface ClaudeCodeHarnessConfig {
   model?: string;  // "sonnet", "opus", "haiku", or full model name
   cwd?: string;
-  permissionMode?: "default" | "acceptEdits" | "bypassPermissions" | "plan";
-  allowedTools?: string[];
 }
 
 // Add more harness configs here as we add harnesses
@@ -129,6 +127,8 @@ export interface Settings {
   harness?: string;
   /** How to deliver responses: stream (real-time), bundled (chunks), final (single message) */
   streamMode?: StreamMode;
+  /** Custom instructions injected into the system prompt — cascades Global → Channel → Session (most specific wins) */
+  customInstructions?: string;
   /** Current session context settings */
   currentContext?: ContextSettings;
   /** Cross-session context settings */
@@ -166,6 +166,7 @@ export interface ResolvedMemorySettings {
 
 /** Deep merge helper type for settings resolution */
 export type ResolvedSettings = Required<Pick<Settings, "harness" | "streamMode">> & {
+  customInstructions?: string;
   currentContext: ResolvedContextSettings;
   crossContext: ResolvedContextSettings;
   memory: ResolvedMemorySettings;

@@ -36,6 +36,7 @@ export interface ResolvedMemorySettings {
 export interface Settings {
   harness?: string;
   streamMode?: 'stream' | 'bundled' | 'final';
+  customInstructions?: string;
   currentContext?: ContextSettings;
   crossContext?: ContextSettings;
   memory?: MemorySettings;
@@ -48,14 +49,13 @@ export interface Settings {
   'claude-code'?: {
     model?: string;
     cwd?: string;
-    permissionMode?: 'default' | 'acceptEdits' | 'bypassPermissions' | 'plan';
-    allowedTools?: string[];
   };
 }
 
 export interface ResolvedSettings {
   harness: string;
   streamMode: 'stream' | 'bundled' | 'final';
+  customInstructions?: string;
   currentContext: ResolvedContextSettings;
   crossContext: ResolvedContextSettings;
   memory: ResolvedMemorySettings;
@@ -77,8 +77,6 @@ export interface VitoConfig {
     };
     'claude-code'?: {
       model?: string;
-      permissionMode?: string;
-      allowedTools?: string[];
     };
   };
   channels: Record<string, ChannelConfig>;
@@ -131,6 +129,7 @@ function mergeSettings(base: Settings, override: Settings): Settings {
 
   if (override.harness !== undefined) result.harness = override.harness;
   if (override.streamMode !== undefined) result.streamMode = override.streamMode;
+  if (override.customInstructions !== undefined) result.customInstructions = override.customInstructions;
   if (override.currentContext !== undefined) {
     result.currentContext = { ...base.currentContext, ...override.currentContext };
   }
@@ -191,6 +190,7 @@ export function getEffectiveSettings(
   return {
     harness: settings.harness || DEFAULTS.harness,
     streamMode: settings.streamMode || DEFAULTS.streamMode,
+    customInstructions: settings.customInstructions,
     currentContext: {
       limit: settings.currentContext?.limit ?? DEFAULT_CURRENT_CONTEXT.limit,
       includeThoughts: settings.currentContext?.includeThoughts ?? DEFAULT_CURRENT_CONTEXT.includeThoughts,

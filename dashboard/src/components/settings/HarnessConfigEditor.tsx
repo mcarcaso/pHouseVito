@@ -21,25 +21,12 @@ interface ProviderKeyInfo {
   description: string;
 }
 
-const CLAUDE_CODE_TOOLS = [
-  'Bash', 'Read', 'Write', 'Edit', 'Glob', 'Grep',
-  'LS', 'NotebookRead', 'NotebookEdit', 'WebFetch',
-  'TodoRead', 'TodoWrite',
-];
-
 const CLAUDE_CODE_MODELS = [
   { id: 'sonnet', label: 'Claude Sonnet' },
   { id: 'opus', label: 'Claude Opus' },
   { id: 'haiku', label: 'Claude Haiku' },
   { id: 'claude-sonnet-4-20250514', label: 'Claude Sonnet 4 (2025-05-14)' },
   { id: 'claude-opus-4-20250514', label: 'Claude Opus 4 (2025-05-14)' },
-];
-
-const PERMISSION_MODES = [
-  { id: 'bypassPermissions', label: 'Bypass Permissions (automation)' },
-  { id: 'acceptEdits', label: 'Accept Edits (auto-accept file changes)' },
-  { id: 'default', label: 'Default (prompt for permissions)' },
-  { id: 'plan', label: 'Plan Only (no execution)' },
 ];
 
 const THINKING_LEVELS = [
@@ -68,8 +55,6 @@ export default function HarnessConfigEditor({ config, onSave }: HarnessConfigEdi
   // Claude Code state
   const [editingClaude, setEditingClaude] = useState(false);
   const [claudeModel, setClaudeModel] = useState('sonnet');
-  const [claudePermissionMode, setClaudePermissionMode] = useState('bypassPermissions');
-  const [claudeAllowedTools, setClaudeAllowedTools] = useState<string[]>([]);
   const [customModel, setCustomModel] = useState('');
   const [savingClaude, setSavingClaude] = useState(false);
 
@@ -98,8 +83,6 @@ export default function HarnessConfigEditor({ config, onSave }: HarnessConfigEdi
     const cc = config.harnesses?.['claude-code'];
     if (cc) {
       setClaudeModel(cc.model || 'sonnet');
-      setClaudePermissionMode(cc.permissionMode || 'bypassPermissions');
-      setClaudeAllowedTools(cc.allowedTools || []);
     }
   }, [config]);
 
@@ -138,21 +121,12 @@ export default function HarnessConfigEditor({ config, onSave }: HarnessConfigEdi
     const modelToSave = customModel.trim() || claudeModel;
     const ccConfig: any = {
       model: modelToSave,
-      permissionMode: claudePermissionMode,
     };
-    if (claudeAllowedTools.length > 0 && claudeAllowedTools.length < CLAUDE_CODE_TOOLS.length) {
-      ccConfig.allowedTools = claudeAllowedTools;
-    }
     await onSave({ harnesses: { ...config.harnesses, 'claude-code': ccConfig } });
     setEditingClaude(false);
     setCustomModel('');
     setSavingClaude(false);
   };
-
-  const toggleTool = (tool: string) =>
-    setClaudeAllowedTools((prev) =>
-      prev.includes(tool) ? prev.filter((t) => t !== tool) : [...prev, tool]
-    );
 
   const popularProviders = ['anthropic', 'openai', 'google', 'xai', 'groq', 'mistral', 'openrouter'];
   const availableProviders = providers.filter((p) => authStatus[p]?.hasAuth === true);
@@ -271,8 +245,6 @@ export default function HarnessConfigEditor({ config, onSave }: HarnessConfigEdi
                   setCustomModel('');
                   if (ccConfig) {
                     setClaudeModel(ccConfig.model || 'sonnet');
-                    setClaudePermissionMode(ccConfig.permissionMode || 'bypassPermissions');
-                    setClaudeAllowedTools(ccConfig.allowedTools || []);
                   }
                 }}
                 className="text-xs text-neutral-400 hover:text-neutral-300"
@@ -295,18 +267,6 @@ export default function HarnessConfigEditor({ config, onSave }: HarnessConfigEdi
             <div className="flex gap-2">
               <span className="text-neutral-500">Model:</span>
               <span className="text-purple-400">{ccConfig.model || 'sonnet'}</span>
-            </div>
-            <div className="flex gap-2">
-              <span className="text-neutral-500">Permission Mode:</span>
-              <span className="text-purple-400">{ccConfig.permissionMode || 'bypassPermissions'}</span>
-            </div>
-            <div className="flex gap-2">
-              <span className="text-neutral-500">Tools:</span>
-              <span className="text-purple-400">
-                {ccConfig.allowedTools && ccConfig.allowedTools.length > 0
-                  ? ccConfig.allowedTools.join(', ')
-                  : 'All tools enabled'}
-              </span>
             </div>
           </div>
         ) : editingClaude ? (
@@ -335,52 +295,7 @@ export default function HarnessConfigEditor({ config, onSave }: HarnessConfigEdi
               </div>
             </div>
 
-            {/* Permission Mode */}
-            <div className="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-4">
-              <label className="text-sm text-neutral-400 sm:w-32 shrink-0">Permission Mode</label>
-              <select className={selectClass} value={claudePermissionMode} onChange={(e) => setClaudePermissionMode(e.target.value)}>
-                {PERMISSION_MODES.map((m) => <option key={m.id} value={m.id}>{m.label}</option>)}
-              </select>
-            </div>
 
-            {/* Allowed Tools */}
-            <div className="flex flex-col gap-2">
-              <div className="flex items-center gap-4">
-                <label className="text-sm text-neutral-400 sm:w-32 shrink-0">Allowed Tools</label>
-                <div className="flex gap-2">
-                  <button onClick={() => setClaudeAllowedTools([...CLAUDE_CODE_TOOLS])} className="text-xs text-blue-400 hover:text-blue-300">Select All</button>
-                  <span className="text-neutral-600">|</span>
-                  <button onClick={() => setClaudeAllowedTools([])} className="text-xs text-blue-400 hover:text-blue-300">Clear All</button>
-                </div>
-              </div>
-              <p className="text-xs text-neutral-500 sm:ml-36">Leave empty to allow all tools.</p>
-              <div className="flex flex-wrap gap-2 sm:ml-36 mt-1">
-                {CLAUDE_CODE_TOOLS.map((tool) => (
-                  <button
-                    key={tool}
-                    onClick={() => toggleTool(tool)}
-                    className={`px-2 py-1 text-xs rounded-md border transition-colors ${
-                      claudeAllowedTools.includes(tool)
-                        ? 'bg-blue-900 border-blue-600 text-blue-300'
-                        : 'bg-neutral-900 border-neutral-700 text-neutral-400 hover:border-neutral-500'
-                    }`}
-                  >
-                    {tool}
-                  </button>
-                ))}
-              </div>
-            </div>
-
-            {/* Preview */}
-            <div className="p-3 bg-neutral-950 border border-neutral-800 rounded-md">
-              <div className="text-xs text-neutral-500 mb-1">Preview</div>
-              <div className="font-mono text-sm text-purple-400">
-                claude --model {customModel || claudeModel}
-                {claudePermissionMode === 'bypassPermissions' && ' --dangerously-skip-permissions'}
-                {claudePermissionMode !== 'bypassPermissions' && claudePermissionMode !== 'default' && ` --permission-mode ${claudePermissionMode}`}
-                {claudeAllowedTools.length > 0 && claudeAllowedTools.length < CLAUDE_CODE_TOOLS.length && ` --tools ${claudeAllowedTools.join(',')}`}
-              </div>
-            </div>
           </div>
         ) : null}
       </section>

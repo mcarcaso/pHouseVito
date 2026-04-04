@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import type { VitoConfig, Settings } from '../../utils/settingsResolution';
 import { getEffectiveSettings } from '../../utils/settingsResolution';
-import SettingRow, { renderSelect, renderSegmented, renderNumberInput, renderToggle } from './SettingRow';
+import SettingRow, { renderSelect, renderSegmented, renderNumberInput, renderToggle, renderTextarea } from './SettingRow';
 
 interface SessionSettingsPanelProps {
   config: VitoConfig;
@@ -51,12 +51,7 @@ const CLAUDE_CODE_MODELS = [
   { value: 'haiku', label: 'Claude Haiku' },
 ];
 
-const PERMISSION_MODES = [
-  { value: 'bypassPermissions', label: 'Bypass' },
-  { value: 'acceptEdits', label: 'Accept Edits' },
-  { value: 'default', label: 'Default' },
-  { value: 'plan', label: 'Plan Only' },
-];
+
 
 // System sessions that always appear in the list (no message history required)
 const SYSTEM_SESSIONS = [
@@ -196,7 +191,7 @@ export default function SessionSettingsPanel({ config, onSave, initialSessionId 
 
   // Get the global harness config as the "inherited" value for harness-specific settings
   const getGlobalPiConfig = () => config.harnesses?.['pi-coding-agent'] || { model: { provider: '', name: '' } };
-  const getGlobalClaudeConfig = () => config.harnesses?.['claude-code'] || { model: 'sonnet', permissionMode: 'bypassPermissions' };
+  const getGlobalClaudeConfig = () => config.harnesses?.['claude-code'] || { model: 'sonnet' };
 
   const renderPiCodingAgentOverrides = (
     sessionId: string,
@@ -298,16 +293,6 @@ export default function SessionSettingsPanel({ config, onSave, initialSessionId 
           onReset={() => resetSessionSetting(sessionId, 'claude-code.model')}
           renderInput={(val, onChange) => renderSelect(val, onChange, CLAUDE_CODE_MODELS)}
         />
-
-        <SettingRow
-          label="Permission Mode"
-          inheritedValue={claudeInherited.permissionMode || 'bypassPermissions'}
-          inheritedFrom={inheritFrom}
-          overrideValue={claudeOverrides.permissionMode}
-          onOverride={(val) => updateSessionSetting(sessionId, 'claude-code.permissionMode', val)}
-          onReset={() => resetSessionSetting(sessionId, 'claude-code.permissionMode')}
-          renderInput={(val, onChange) => renderSelect(val, onChange, PERMISSION_MODES)}
-        />
       </>
     );
   };
@@ -374,6 +359,18 @@ export default function SessionSettingsPanel({ config, onSave, initialSessionId 
             formatValue={(v) => v ? 'On' : 'Off'}
           />
 
+          <SettingRow
+            label="Custom Instructions"
+            hint="Additional system prompt instructions for this session"
+            inheritedValue={inherited.customInstructions || ''}
+            inheritedFrom={inheritFrom}
+            overrideValue={overrides.customInstructions}
+            onOverride={(val) => updateSessionSetting(sessionId, 'customInstructions', val)}
+            onReset={() => resetSessionSetting(sessionId, 'customInstructions')}
+            renderInput={(val, onChange) => renderTextarea(val, onChange, { placeholder: 'Custom instructions for this session...' })}
+            formatValue={(v) => v ? `"${(v as string).slice(0, 50)}${(v as string).length > 50 ? '...' : ''}"` : '(none)'}
+          />
+
           {/* Current Session Context */}
           <div className="mt-4 mb-2">
             <span className="text-xs font-semibold text-neutral-500 uppercase tracking-wide">Current Session Context</span>
@@ -422,17 +419,6 @@ export default function SessionSettingsPanel({ config, onSave, initialSessionId 
             formatValue={(v) => v ? 'On' : 'Off'}
           />
 
-          <SettingRow
-            label="Compacted"
-            inheritedValue={inherited.currentContext.includeCompacted}
-            inheritedFrom={inheritFrom}
-            overrideValue={overrides.currentContext?.includeCompacted}
-            onOverride={(val) => updateSessionSetting(sessionId, 'currentContext.includeCompacted', val)}
-            onReset={() => resetSessionSetting(sessionId, 'currentContext.includeCompacted')}
-            renderInput={(val, onChange) => renderToggle(val, onChange)}
-            formatValue={(v) => v ? 'On' : 'Off'}
-          />
-
           {/* Cross-Session Context */}
           <div className="mt-4 mb-2">
             <span className="text-xs font-semibold text-neutral-500 uppercase tracking-wide">Cross-Session Context</span>
@@ -477,17 +463,6 @@ export default function SessionSettingsPanel({ config, onSave, initialSessionId 
             overrideValue={overrides.crossContext?.includeArchived}
             onOverride={(val) => updateSessionSetting(sessionId, 'crossContext.includeArchived', val)}
             onReset={() => resetSessionSetting(sessionId, 'crossContext.includeArchived')}
-            renderInput={(val, onChange) => renderToggle(val, onChange)}
-            formatValue={(v) => v ? 'On' : 'Off'}
-          />
-
-          <SettingRow
-            label="Compacted"
-            inheritedValue={inherited.crossContext.includeCompacted}
-            inheritedFrom={inheritFrom}
-            overrideValue={overrides.crossContext?.includeCompacted}
-            onOverride={(val) => updateSessionSetting(sessionId, 'crossContext.includeCompacted', val)}
-            onReset={() => resetSessionSetting(sessionId, 'crossContext.includeCompacted')}
             renderInput={(val, onChange) => renderToggle(val, onChange)}
             formatValue={(v) => v ? 'On' : 'Off'}
           />

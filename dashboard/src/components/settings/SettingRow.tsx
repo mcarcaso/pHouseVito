@@ -1,4 +1,4 @@
-import type { ReactNode } from 'react';
+import { useState, useEffect, useRef, type ReactNode } from 'react';
 import type { InheritSource } from '../../utils/settingsResolution';
 
 interface SettingRowProps {
@@ -101,22 +101,57 @@ export function renderSelect(
   );
 }
 
-export function renderNumberInput(
-  value: any,
-  onChange: (val: any) => void,
-  opts?: { min?: number; max?: number }
-) {
+function NumberField({ value, onChange, min, max, step, className }: {
+  value: any;
+  onChange: (val: number) => void;
+  min?: number;
+  max?: number;
+  step?: number;
+  className?: string;
+}) {
+  const [local, setLocal] = useState(String(value ?? ''));
+
+  useEffect(() => {
+    setLocal(String(value ?? ''));
+  }, [value]);
+
+  const commit = () => {
+    const num = step != null && step < 1 ? parseFloat(local) : parseInt(local);
+    if (isNaN(num) || local === '') {
+      setLocal(String(value ?? ''));
+    } else {
+      onChange(num);
+    }
+  };
+
   return (
     <input
       type="number"
+      className={className}
+      value={local}
+      min={min}
+      max={max}
+      step={step}
+      onChange={(e) => setLocal(e.target.value)}
+      onBlur={commit}
+      onKeyDown={(e) => { if (e.key === 'Enter') e.currentTarget.blur(); }}
+    />
+  );
+}
+
+export function renderNumberInput(
+  value: any,
+  onChange: (val: any) => void,
+  opts?: { min?: number; max?: number; step?: number }
+) {
+  return (
+    <NumberField
       className={inputClass + ' w-24'}
-      value={value ?? ''}
+      value={value}
+      onChange={onChange}
       min={opts?.min}
       max={opts?.max}
-      onChange={(e) => {
-        const num = parseInt(e.target.value);
-        if (!isNaN(num)) onChange(num);
-      }}
+      step={opts?.step}
     />
   );
 }
@@ -169,6 +204,56 @@ export function renderToggle(value: boolean, onChange: (val: boolean) => void) {
         Off
       </button>
     </div>
+  );
+}
+
+export function renderTextarea(
+  value: string,
+  onChange: (val: string) => void,
+  opts?: { placeholder?: string; rows?: number }
+) {
+  return (
+    <AutoResizeTextarea
+      value={value}
+      onChange={onChange}
+      placeholder={opts?.placeholder}
+      rows={opts?.rows}
+    />
+  );
+}
+
+function AutoResizeTextarea({ value, onChange, placeholder, rows = 2 }: {
+  value: string;
+  onChange: (val: string) => void;
+  placeholder?: string;
+  rows?: number;
+}) {
+  const [local, setLocal] = useState(value || '');
+  const ref = useRef<HTMLTextAreaElement>(null);
+
+  useEffect(() => {
+    setLocal(value || '');
+  }, [value]);
+
+  useEffect(() => {
+    if (ref.current) {
+      ref.current.style.height = 'auto';
+      ref.current.style.height = ref.current.scrollHeight + 'px';
+    }
+  }, [local]);
+
+  return (
+    <textarea
+      ref={ref}
+      value={local}
+      onChange={(e) => setLocal(e.target.value)}
+      onBlur={() => {
+        if (local !== (value || '')) onChange(local);
+      }}
+      placeholder={placeholder || ''}
+      rows={rows}
+      className="w-full bg-neutral-950 border border-neutral-700 rounded-md px-3 py-1.5 text-neutral-200 text-sm focus:outline-none focus:border-blue-600 transition-colors resize-none overflow-hidden"
+    />
   );
 }
 

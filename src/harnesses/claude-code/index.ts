@@ -16,13 +16,10 @@ import type { Harness, HarnessCallbacks, HarnessFactory, NormalizedEvent } from 
 export interface ClaudeCodeConfig {
   model?: string;  // e.g., "sonnet", "opus", or full model name
   cwd?: string;    // Working directory for Claude Code
-  allowedTools?: string[];  // e.g., ["Bash", "Read", "Write", "Edit"]
-  permissionMode?: "default" | "acceptEdits" | "bypassPermissions" | "plan";
 }
 
 const DEFAULT_CONFIG: ClaudeCodeConfig = {
   model: "sonnet",
-  permissionMode: "bypassPermissions",  // For automation, we skip permission prompts
 };
 
 // ════════════════════════════════════════════════════════════════════════════
@@ -137,19 +134,8 @@ Skills are **folders** in user/skills/ containing a SKILL.md and optional script
         args.push("--system-prompt", systemPrompt);
       }
 
-      // Add permission mode
-      if (this.config.permissionMode) {
-        if (this.config.permissionMode === "bypassPermissions") {
-          args.push("--dangerously-skip-permissions");
-        } else {
-          args.push("--permission-mode", this.config.permissionMode);
-        }
-      }
-
-      // Add allowed tools
-      if (this.config.allowedTools?.length) {
-        args.push("--tools", this.config.allowedTools.join(","));
-      }
+      // Always bypass permissions for automation
+      args.push("--dangerously-skip-permissions");
 
       // Fire invocation callback before we start
       callbacks.onInvocation?.(this.buildCliCommand(systemPrompt, userMessage));
@@ -359,18 +345,6 @@ export const claudeCodeHarnessFactory: HarnessFactory = {
           type: "string",
           title: "Working Directory",
           description: "Directory for Claude Code to operate in",
-        },
-        allowedTools: {
-          type: "array",
-          title: "Allowed Tools",
-          description: "List of tools to allow (empty = all)",
-          items: { type: "string" },
-        },
-        permissionMode: {
-          type: "string",
-          title: "Permission Mode",
-          enum: ["default", "acceptEdits", "bypassPermissions", "plan"],
-          default: "bypassPermissions",
         },
       },
     };

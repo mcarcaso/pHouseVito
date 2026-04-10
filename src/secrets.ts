@@ -52,7 +52,7 @@ for (const config of Object.values(PROVIDER_API_KEYS)) {
 }
 
 /** Read Pi's OAuth auth.json for provider tokens */
-function readPiAuth(): Record<string, { type: string; access?: string; refresh?: string; expires?: number }> {
+export function readPiAuth(): Record<string, { type: string; access?: string; refresh?: string; expires?: number; key?: string }> {
   if (!existsSync(PI_AUTH_PATH)) return {};
   try {
     return JSON.parse(readFileSync(PI_AUTH_PATH, "utf-8"));
@@ -84,21 +84,21 @@ export function getProviderAuthStatus(): Record<string, ProviderAuthStatus> {
   const secrets = readSecrets();
   const piAuth = readPiAuth();
   const status: Record<string, ProviderAuthStatus> = {};
-  
+
   for (const [provider, config] of Object.entries(PROVIDER_API_KEYS)) {
     // Check secrets.json first, then fall back to process.env
     const apiKey = secrets[config.envVar] || process.env[config.envVar];
     const hasApiKey = Boolean(apiKey && apiKey.trim().length > 0);
-    
+
     // Also check Pi's OAuth auth.json for this provider
     const oauthEntry = piAuth[provider];
     const hasOAuth = Boolean(oauthEntry && oauthEntry.type === "oauth" && oauthEntry.access);
-    
+
     if (hasApiKey) {
       status[provider] = { hasAuth: true, authType: "api_key" };
     } else if (hasOAuth) {
-      status[provider] = { 
-        hasAuth: true, 
+      status[provider] = {
+        hasAuth: true,
         authType: "oauth",
         expiresAt: oauthEntry?.expires
       };
@@ -106,7 +106,21 @@ export function getProviderAuthStatus(): Record<string, ProviderAuthStatus> {
       status[provider] = { hasAuth: false, authType: null };
     }
   }
-  
+
+  // Also include OAuth-only providers from auth.json (e.g., openai-codex)
+  for (const [provider, entry] of Object.entries(piAuth)) {
+    if (status[provider]) continue; // Already handled above
+    if (entry.type === "oauth" && entry.access) {
+      status[provider] = {
+        hasAuth: true,
+        authType: "oauth",
+        expiresAt: entry.expires,
+      };
+    } else if (entry.type === "api_key" && entry.key) {
+      status[provider] = { hasAuth: true, authType: "api_key" };
+    }
+  }
+
   return status;
 }
 

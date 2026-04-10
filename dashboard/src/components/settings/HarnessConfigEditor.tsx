@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import type { VitoConfig } from '../../utils/settingsResolution';
 
 interface HarnessConfigEditorProps {
@@ -19,6 +19,11 @@ interface AuthStatus {
 interface ProviderKeyInfo {
   envVar: string;
   description: string;
+}
+
+interface OAuthProviderInfo {
+  id: string;
+  name: string;
 }
 
 const CLAUDE_CODE_MODELS = [
@@ -45,6 +50,7 @@ export default function HarnessConfigEditor({ config, onSave }: HarnessConfigEdi
   const [providers, setProviders] = useState<string[]>([]);
   const [keyInfo, setKeyInfo] = useState<Record<string, ProviderKeyInfo>>({});
   const [authStatus, setAuthStatus] = useState<Record<string, AuthStatus>>({});
+  const [oauthProviders, setOauthProviders] = useState<OAuthProviderInfo[]>([]);
   const [models, setModels] = useState<ModelOption[]>([]);
   const [loadingModels, setLoadingModels] = useState(false);
   const [selectedProvider, setSelectedProvider] = useState('');
@@ -52,21 +58,38 @@ export default function HarnessConfigEditor({ config, onSave }: HarnessConfigEdi
   const [selectedThinking, setSelectedThinking] = useState('off');
   const [savingPi, setSavingPi] = useState(false);
 
+  // OAuth login state
+  const [loggingIn, setLoggingIn] = useState<string | null>(null);
+  const [loginError, setLoginError] = useState<string | null>(null);
+  const loginPollRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
   // Claude Code state
   const [editingClaude, setEditingClaude] = useState(false);
   const [claudeModel, setClaudeModel] = useState('sonnet');
   const [customModel, setCustomModel] = useState('');
   const [savingClaude, setSavingClaude] = useState(false);
 
-  useEffect(() => {
-    fetch('/api/models/providers')
+  const refreshProviders = useCallback(() => {
+    return fetch('/api/models/providers')
       .then((r) => r.json())
       .then((data) => {
         setProviders(data.providers || []);
         setKeyInfo(data.keyInfo || {});
         setAuthStatus(data.authStatus || {});
+        setOauthProviders(data.oauthProviders || []);
       })
       .catch(console.error);
+  }, []);
+
+  useEffect(() => {
+    refreshProviders();
+  }, [refreshProviders]);
+
+  // Cleanup polling on unmount
+  useEffect(() => {
+    return () => {
+      if (loginPollRef.current) clearInterval(loginPollRef.current);
+    };
   }, []);
 
   // Sync from config
@@ -103,6 +126,61 @@ export default function HarnessConfigEditor({ config, onSave }: HarnessConfigEdi
     loadModelsForProvider(provider);
   };
 
+  const handleOAuthLogin = async (providerId: string) => {
+    setLoggingIn(providerId);
+    setLoginError(null);
+    try {
+      const res = await fetch(`/api/auth/provider/${providerId}/login`, { method: 'POST' });
+      const data = await res.json();
+      if (data.error) {
+        setLoginError(data.error);
+        setLoggingIn(null);
+        return;
+      }
+      if (data.status === 'already_authenticated') {
+        setLoggingIn(null);
+        refreshProviders();
+        return;
+      }
+      // Open the auth URL in a new tab
+      if (data.url) {
+        window.open(data.url, '_blank');
+      }
+      // Poll for login completion
+      loginPollRef.current = setInterval(async () => {
+        try {
+          const statusRes = await fetch(`/api/auth/provider/${providerId}/login/status`);
+          const statusData = await statusRes.json();
+          if (statusData.status === 'success') {
+            if (loginPollRef.current) clearInterval(loginPollRef.current);
+            loginPollRef.current = null;
+            setLoggingIn(null);
+            refreshProviders();
+          } else if (statusData.status === 'error') {
+            if (loginPollRef.current) clearInterval(loginPollRef.current);
+            loginPollRef.current = null;
+            setLoginError(statusData.error || 'Login failed');
+            setLoggingIn(null);
+          }
+        } catch {
+          // Ignore poll errors
+        }
+      }, 2000);
+    } catch (err: any) {
+      setLoginError(err.message || 'Login request failed');
+      setLoggingIn(null);
+    }
+  };
+
+  const handleOAuthLogout = async (providerId: string) => {
+    try {
+      await fetch(`/api/auth/provider/${providerId}/logout`, { method: 'POST' });
+      refreshProviders();
+    } catch (err: any) {
+      console.error('Logout failed:', err);
+    }
+  };
+
   const savePi = async () => {
     if (!selectedProvider || !selectedModel) return;
     setSavingPi(true);
@@ -128,17 +206,29 @@ export default function HarnessConfigEditor({ config, onSave }: HarnessConfigEdi
     setSavingClaude(false);
   };
 
-  const popularProviders = ['anthropic', 'openai', 'google', 'xai', 'groq', 'mistral', 'openrouter'];
+  // Show providers that have auth OR that support OAuth login (so user can log in)
+  const popularProviders = ['anthropic', 'openai', 'openai-codex', 'google', 'xai', 'groq', 'mistral', 'openrouter'];
   const availableProviders = providers.filter((p) => authStatus[p]?.hasAuth === true);
+  // Also include OAuth-capable providers that aren't yet authenticated
+  const oauthProviderIds = new Set(oauthProviders.map(p => p.id));
+  const allCandidates = new Set([...availableProviders, ...providers.filter(p => oauthProviderIds.has(p))]);
   const sortedProviders = [
-    ...popularProviders.filter((p) => availableProviders.includes(p)),
-    ...availableProviders.filter((p) => !popularProviders.includes(p)).sort(),
+    ...popularProviders.filter((p) => allCandidates.has(p)),
+    ...Array.from(allCandidates).filter((p) => !popularProviders.includes(p)).sort(),
   ];
+
+  const getOAuthProviderName = (providerId: string): string | null => {
+    const op = oauthProviders.find(p => p.id === providerId);
+    return op?.name || null;
+  };
 
   const getAuthDisplay = (provider: string): string => {
     const status = authStatus[provider];
     if (!status?.hasAuth) return '';
-    if (status.authType === 'oauth') return '\u2713 OAuth';
+    if (status.authType === 'oauth') {
+      const name = getOAuthProviderName(provider);
+      return name ? `\u2713 ${name}` : '\u2713 Subscription';
+    }
     return `\u2713 ${keyInfo[provider]?.envVar || 'API Key'}`;
   };
 
@@ -192,19 +282,67 @@ export default function HarnessConfigEditor({ config, onSave }: HarnessConfigEdi
             <div className="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-4">
               <label className="text-sm text-neutral-400 sm:w-24 shrink-0">Provider</label>
               {sortedProviders.length === 0 ? (
-                <span className="text-xs text-red-400">No API keys configured. Add keys in <a href="/secrets" className="text-blue-400 underline">Secrets</a>.</span>
+                <span className="text-xs text-red-400">No API keys configured. Add keys in <a href="/secrets" className="text-blue-400 underline">Secrets</a> or log in with a subscription below.</span>
               ) : (
                 <div className="flex flex-col gap-1">
                   <select className={selectClass} value={selectedProvider} onChange={(e) => handleProviderChange(e.target.value)}>
                     <option value="">Select provider...</option>
-                    {sortedProviders.map((p) => <option key={p} value={p}>{p}</option>)}
+                    {sortedProviders.map((p) => (
+                      <option key={p} value={p}>
+                        {p}{authStatus[p]?.hasAuth ? '' : ' (not authenticated)'}
+                      </option>
+                    ))}
                   </select>
                   {selectedProvider && authStatus[selectedProvider]?.hasAuth && (
                     <span className="text-xs text-green-400">{getAuthDisplay(selectedProvider)}</span>
                   )}
+                  {/* Show OAuth login/logout for selected provider */}
+                  {selectedProvider && oauthProviderIds.has(selectedProvider) && (
+                    <div className="flex items-center gap-2 mt-1">
+                      {authStatus[selectedProvider]?.authType === 'oauth' ? (
+                        <button
+                          onClick={() => handleOAuthLogout(selectedProvider)}
+                          className="text-xs text-red-400 hover:text-red-300 transition-colors"
+                        >
+                          Log out of {getOAuthProviderName(selectedProvider) || 'subscription'}
+                        </button>
+                      ) : (
+                        <button
+                          onClick={() => handleOAuthLogin(selectedProvider)}
+                          disabled={loggingIn === selectedProvider}
+                          className="text-xs text-blue-400 hover:text-blue-300 disabled:text-neutral-500 transition-colors"
+                        >
+                          {loggingIn === selectedProvider
+                            ? 'Waiting for browser login...'
+                            : `Log in with ${getOAuthProviderName(selectedProvider) || 'subscription'}`}
+                        </button>
+                      )}
+                    </div>
+                  )}
+                  {loginError && loggingIn === null && (
+                    <span className="text-xs text-red-400 mt-1">{loginError}</span>
+                  )}
                 </div>
               )}
             </div>
+            {/* OAuth login buttons for providers not yet authenticated */}
+            {sortedProviders.length === 0 && oauthProviders.length > 0 && (
+              <div className="space-y-2">
+                <span className="text-xs text-neutral-400">Or log in with a subscription:</span>
+                {oauthProviders
+                  .filter(op => providers.includes(op.id))
+                  .map(op => (
+                    <button
+                      key={op.id}
+                      onClick={() => handleOAuthLogin(op.id)}
+                      disabled={loggingIn === op.id}
+                      className="block text-xs text-blue-400 hover:text-blue-300 disabled:text-neutral-500 transition-colors"
+                    >
+                      {loggingIn === op.id ? 'Waiting for browser login...' : `Log in with ${op.name}`}
+                    </button>
+                  ))}
+              </div>
+            )}
             <div className="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-4">
               <label className="text-sm text-neutral-400 sm:w-24 shrink-0">Model</label>
               {loadingModels ? (

@@ -11,9 +11,11 @@ import { readFileSync, writeFileSync, existsSync, mkdirSync, readdirSync, statSy
 import { execSync } from "child_process";
 import { fileURLToPath } from "url";
 import crypto from "crypto";
-import { readSecrets, writeSecrets, loadSecrets, getSecretsForDashboard, SYSTEM_KEYS, PROVIDER_API_KEYS, getProviderKeyStatus, getProviderAuthStatus } from "../secrets.js";
+import { readSecrets, writeSecrets, loadSecrets, getSecretsForDashboard, SYSTEM_KEYS, PROVIDER_API_KEYS, getProviderKeyStatus, getProviderAuthStatus, readPiAuth } from "../secrets.js";
 import Database from "better-sqlite3";
 import { getProviders, getModels } from "@mariozechner/pi-ai";
+import { getOAuthProviders } from "@mariozechner/pi-ai/oauth";
+import { AuthStorage } from "@mariozechner/pi-coding-agent";
 import { searchMemory } from "../memory/search.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -472,12 +474,14 @@ export class DashboardChannel implements Channel {
         const providers = getProviders();
         const keyStatus = getProviderKeyStatus();
         const authStatus = getProviderAuthStatus();
-        // Return providers with their API key status
+        // Include OAuth provider metadata so the frontend knows which providers support subscription login
+        const oauthProviders = getOAuthProviders().map(p => ({ id: p.id, name: p.name }));
         res.json({
           providers,
           keyStatus,
           authStatus,
-          keyInfo: PROVIDER_API_KEYS
+          keyInfo: PROVIDER_API_KEYS,
+          oauthProviders,
         });
       } catch (err: any) {
         res.status(500).json({ error: err.message });
@@ -490,6 +494,90 @@ export class DashboardChannel implements Channel {
         res.json(models.map((m: any) => ({ id: m.id })));
       } catch (err: any) {
         res.status(400).json({ error: `Unknown provider: ${req.params.provider}` });
+      }
+    });
+
+    // OAuth login/logout endpoints for subscription-based providers
+    // Tracks in-progress login flows so the frontend can poll for completion
+    const pendingLogins = new Map<string, { status: "pending" | "success" | "error"; error?: string }>();
+
+    this.app.post("/api/auth/provider/:id/login", (req, res) => {
+      const providerId = req.params.id;
+
+      // Check if already logged in
+      const piAuth = readPiAuth();
+      if (piAuth[providerId]?.type === "oauth" && piAuth[providerId]?.access) {
+        res.json({ status: "already_authenticated" });
+        return;
+      }
+
+      // Check if a login is already in progress
+      if (pendingLogins.get(providerId)?.status === "pending") {
+        res.status(409).json({ error: "Login already in progress" });
+        return;
+      }
+
+      pendingLogins.set(providerId, { status: "pending" });
+
+      const authStorage = AuthStorage.create();
+      let authUrl = "";
+
+      // Start login flow - returns immediately with the URL
+      authStorage.login(providerId, {
+        onAuth: (info) => {
+          authUrl = info.url;
+          // Send URL back to frontend immediately
+          res.json({ status: "login_started", url: info.url });
+        },
+        onPrompt: async () => {
+          // Dashboard doesn't support manual code entry
+          throw new Error("Manual code entry not supported via dashboard. Complete the login in your browser.");
+        },
+        onProgress: (message) => {
+          console.log(`[oauth/${providerId}] ${message}`);
+        },
+      }).then(() => {
+        pendingLogins.set(providerId, { status: "success" });
+        console.log(`[oauth/${providerId}] Login successful`);
+      }).catch((err) => {
+        const message = err instanceof Error ? err.message : String(err);
+        pendingLogins.set(providerId, { status: "error", error: message });
+        console.error(`[oauth/${providerId}] Login failed:`, message);
+        // If we haven't sent a response yet (onAuth never called), send error
+        if (!authUrl) {
+          res.status(500).json({ error: message });
+        }
+      });
+    });
+
+    this.app.get("/api/auth/provider/:id/login/status", (_req, res) => {
+      const providerId = _req.params.id;
+      const pending = pendingLogins.get(providerId);
+      if (!pending) {
+        // Check if already authenticated
+        const piAuth = readPiAuth();
+        if (piAuth[providerId]?.type === "oauth" && piAuth[providerId]?.access) {
+          res.json({ status: "success" });
+        } else {
+          res.json({ status: "none" });
+        }
+        return;
+      }
+      res.json(pending);
+      // Clean up completed statuses after they've been read
+      if (pending.status !== "pending") {
+        pendingLogins.delete(providerId);
+      }
+    });
+
+    this.app.post("/api/auth/provider/:id/logout", (_req, res) => {
+      const providerId = _req.params.id;
+      try {
+        const authStorage = AuthStorage.create();
+        authStorage.logout(providerId);
+        res.json({ status: "logged_out" });
+      } catch (err: any) {
+        res.status(500).json({ error: err.message });
       }
     });
 

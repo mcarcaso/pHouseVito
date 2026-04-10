@@ -103,7 +103,7 @@ export default function SessionSettingsPanel({ config, onSave, initialSessionId 
   };
 
   const availableProviders = providers.filter((p) => authStatus[p]?.hasAuth === true);
-  const popularProviders = ['anthropic', 'openai', 'google', 'xai', 'groq', 'mistral', 'openrouter'];
+  const popularProviders = ['anthropic', 'openai', 'openai-codex', 'google', 'xai', 'groq', 'mistral', 'openrouter'];
   const sortedProviders = [
     ...popularProviders.filter((p) => availableProviders.includes(p)),
     ...availableProviders.filter((p) => !popularProviders.includes(p)).sort(),

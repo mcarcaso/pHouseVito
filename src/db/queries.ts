@@ -114,6 +114,51 @@ export class Queries {
       .all(sessionId, limit) as MessageRow[];
   }
 
+  /**
+   * Get the last N "turns" (user/assistant messages) plus any thoughts and
+   * tools that happened in between, optionally filtered. This is what the
+   * auto classifier reasons about when picking currentContextLimit — its
+   * "5 messages" means 5 user/assistant exchanges, not 5 raw rows.
+   *
+   * Returns rows in chronological order (oldest first).
+   */
+  getRecentTurns(
+    sessionId: string,
+    turnLimit: number,
+    includeThoughts = true,
+    includeTools = true,
+    includeArchived = false
+  ): MessageRow[] {
+    if (turnLimit <= 0) return [];
+
+    const archivedClause = includeArchived ? "" : " AND archived = 0";
+
+    const typeFilters: string[] = [];
+    if (!includeThoughts) typeFilters.push("type != 'thought'");
+    if (!includeTools) typeFilters.push("type NOT IN ('tool_start', 'tool_end')");
+    const typeFilterClause = typeFilters.length > 0 ? ` AND ${typeFilters.join(" AND ")}` : "";
+
+    return this.db
+      .prepare(
+        `SELECT * FROM messages
+         WHERE session_id = ?
+           AND timestamp >= COALESCE(
+             (SELECT MIN(timestamp) FROM (
+                SELECT timestamp FROM messages
+                WHERE session_id = ?
+                  AND type IN ('user', 'assistant')${archivedClause}
+                ORDER BY timestamp DESC
+                LIMIT ?
+              )),
+             9.2233720368548e+18
+           )
+           ${archivedClause}
+           ${typeFilterClause}
+         ORDER BY timestamp ASC`
+      )
+      .all(sessionId, sessionId, turnLimit) as MessageRow[];
+  }
+
   /** Get all messages for a session (including archived) for dashboard */
   getAllMessagesForSession(sessionId: string, limit?: number, beforeId?: number, hideThoughts?: boolean, hideTools?: boolean, afterId?: number): MessageRow[] {
     // Build filter clause based on filter options

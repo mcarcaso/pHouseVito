@@ -35,13 +35,13 @@ export const DEFAULT_PI_MODEL_CHOICES: ModelChoice[] = [
     provider: "openrouter",
     name: "anthropic/claude-haiku-4.5",
     description:
-      "Smallest, fastest, cheapest. Pick when the message needs zero real reasoning: greetings, acknowledgments (\"ok\", \"thanks\", \"got it\"), one-line factual questions with a known answer, social chit-chat, simple confirmations. If the message could be answered correctly without actually thinking, pick this. If you're unsure between this and the middle tier, prefer the middle tier.",
+      "Smallest, fastest, cheapest — but capable enough for one-shot work. Pick when the message is a self-contained, well-scoped request: a small coding task with a clear ask (\"write a function that…\", \"regex for…\", \"convert this snippet\"), basic research or factual lookups, short explanations of a concept, greetings, acknowledgments (\"ok\", \"thanks\"). The defining test: the task can be answered in a single pass with no iteration, no need to hold repo context in mind, and low risk of subtly getting it wrong. If you're unsure between this and the middle tier, prefer the middle tier.",
   },
   {
     provider: "openrouter",
     name: "anthropic/claude-sonnet-4.6",
     description:
-      "Middle tier — the default. Pick when the message needs straightforward reasoning along a clear path: single-file code edits with obvious requirements, bug fixes where the cause is already given, explanations of existing code, routine multi-step tasks where each step follows from the last. Use this whenever there's a right answer and getting to it is mostly mechanical.",
+      "Middle tier — the default. Pick when the message needs more than a one-shot answer: tasks that touch real repo context (multi-file edits, edits that depend on the surrounding code), follow-ups in an ongoing coding session where prior turns matter, multi-step bug fixes where each step depends on the last, anything where getting it right requires holding several pieces in mind at once. Use this whenever the task is concrete but not trivially one-shot.",
   },
   {
     provider: "openrouter",
@@ -157,7 +157,7 @@ export async function runAutoClassifier(req: AutoClassifierRequest): Promise<Aut
   }
   if (req.needed.currentContextLimit) {
     fieldDescriptions.push(
-      `- "currentContextLimit": integer 0-300. How many of the most recent messages from THIS session to include in the response context. The recent-history block tags each line with [-K], its distance from the new message ([-1] = just before it). Pick the smallest N such that messages [-N] through [-1] still cover everything relevant to the new user message. Return 0 if the topic has fully shifted and none of the visible history is needed. Return roughly the visible window size if everything shown still looks relevant. Return larger than the visible window only when the new message clearly references something further back than what you can see.`,
+      `- "currentContextLimit": integer 5-300. How many of the most recent messages from THIS session to include in the response context. The recent-history block tags each line with [-K], its distance from the new message ([-1] = just before it). Pick the smallest N such that messages [-N] through [-1] still cover everything relevant to the new user message. The minimum is 5 — even if the topic has fully shifted, return 5 (don't bother trying to return less). Return roughly the visible window size if everything shown still looks relevant. Return larger than the visible window only when the new message clearly references something further back than what you can see.`,
     );
   }
   if (req.needed.currentContextIncludeThoughts) {
@@ -300,7 +300,7 @@ Only include the keys listed above plus "explanation". Any extra keys will be ig
       }
     }
     if (req.needed.currentContextLimit && typeof parsed.currentContextLimit === "number") {
-      result.currentContextLimit = Math.max(0, Math.min(300, Math.round(parsed.currentContextLimit)));
+      result.currentContextLimit = Math.max(5, Math.min(300, Math.round(parsed.currentContextLimit)));
     }
     if (req.needed.currentContextIncludeThoughts && typeof parsed.currentContextIncludeThoughts === "boolean") {
       result.currentContextIncludeThoughts = parsed.currentContextIncludeThoughts;

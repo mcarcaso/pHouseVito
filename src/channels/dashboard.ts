@@ -2,7 +2,9 @@ import type {
   Channel,
   InboundEvent,
   OutputHandler,
+  VitoConfig,
 } from "../types.js";
+import { getEffectiveSettings } from "../settings.js";
 import express from "express";
 import http from "http";
 const createServer = http.createServer.bind(http);
@@ -460,6 +462,17 @@ export class DashboardChannel implements Channel {
         available,
         sessionOverrides
       });
+    });
+
+    // Resolved settings defaults — single source of truth for the dashboard,
+    // so it doesn't have to mirror the constants in src/settings.ts.
+    this.app.get("/api/settings/defaults", (_req, res) => {
+      try {
+        const defaults = getEffectiveSettings({} as VitoConfig, "", "");
+        res.json(defaults);
+      } catch (err: any) {
+        res.status(500).json({ error: err.message });
+      }
     });
 
     // Model discovery endpoints

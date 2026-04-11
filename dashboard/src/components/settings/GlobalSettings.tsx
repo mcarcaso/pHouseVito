@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from 'react';
 
-import { DEFAULT_CLASSIFIER_MODEL, DEFAULT_PI_MODEL_CHOICES, type ModelChoice, type VitoConfig } from '../../utils/settingsResolution';
+import { type ModelChoice, type VitoConfig } from '../../utils/settingsResolution';
+import { getDefaults } from '../../utils/defaults';
 import { renderSelect, renderSegmented, renderNumberInput, renderSliderToggle } from './SettingRow';
 import HarnessConfigEditor from './HarnessConfigEditor';
 
@@ -725,7 +726,7 @@ export default function GlobalSettings({ config, onSave }: GlobalSettingsProps) 
             <span className="text-xs text-neutral-500">Cheap, fast model used for every classifier call</span>
           </div>
           <ClassifierModelPicker
-            value={settings.auto?.classifierModel ?? DEFAULT_CLASSIFIER_MODEL}
+            value={settings.auto?.classifierModel ?? getDefaults().auto.classifierModel}
             onChange={(next) => updateSetting('auto.classifierModel', next)}
           />
         </div>
@@ -746,7 +747,7 @@ export default function GlobalSettings({ config, onSave }: GlobalSettingsProps) 
 
         {/* Editable candidate models list */}
         <ModelChoicesEditor
-          choices={settings.auto?.['pi-coding-agent']?.modelChoices ?? DEFAULT_PI_MODEL_CHOICES}
+          choices={settings.auto?.['pi-coding-agent']?.modelChoices ?? getDefaults().auto['pi-coding-agent'].modelChoices}
           onChange={(next) => updateSetting('auto.pi-coding-agent.modelChoices', next)}
         />
       </section>

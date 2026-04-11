@@ -13,10 +13,12 @@ import Drive from './components/Drive';
 import Traces from './components/Traces';
 import UnifiedSettings from './components/settings/UnifiedSettings';
 import Login from './components/Login';
+import { loadDefaults } from './utils/defaults';
 
 function App() {
   const [menuOpen, setMenuOpen] = useState(false);
   const [authState, setAuthState] = useState<'loading' | 'authenticated' | 'login' | 'setup'>('loading');
+  const [defaultsLoaded, setDefaultsLoaded] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
   const location = useLocation();
 
@@ -30,6 +32,17 @@ function App() {
         else setAuthState('login');
       })
       .catch(() => setAuthState('authenticated')); // If check fails, allow through (offline/dev)
+  }, []);
+
+  // Load resolved settings defaults from the backend before any settings UI
+  // can render — settingsResolution.ts pulls them out via getDefaults().
+  useEffect(() => {
+    loadDefaults()
+      .then(() => setDefaultsLoaded(true))
+      .catch((err) => {
+        console.error('Failed to load settings defaults:', err);
+        setDefaultsLoaded(true); // unblock the UI; settings panels will surface the error themselves
+      });
   }, []);
 
   // Close menu on route change (mobile only)
@@ -71,8 +84,8 @@ function App() {
     setAuthState('login');
   };
 
-  // Show loading spinner while checking auth
-  if (authState === 'loading') {
+  // Show loading spinner while checking auth or loading defaults
+  if (authState === 'loading' || !defaultsLoaded) {
     return (
       <div className="flex items-center justify-center min-h-screen bg-[#0a0a0a] text-neutral-400">
         Loading...

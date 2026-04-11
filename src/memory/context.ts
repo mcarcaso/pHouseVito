@@ -55,12 +55,16 @@ export async function assembleContext(
   const assistantLabel = config.bot?.name ? `@${config.bot.name}` : "assistant";
   const crossSessionBlock = formatCrossSessionMessages(crossSessionMessages, aliases, assistantLabel);
 
-  // 3. Current session messages (filtered by settings)
-  const currentSessionMessages = queries.getRecentMessages(
+  // 3. Current session messages — anchor on the last N user/assistant turns
+  // (the unit the auto classifier reasons about), then optionally pull in the
+  // thoughts and tool calls that happened in between. Using getRecentTurns
+  // instead of getRecentMessages prevents a tool-heavy turn from eating the
+  // entire window when the classifier picks a small limit.
+  const currentSessionMessages = queries.getRecentTurns(
     sessionId,
     currentContext.limit,
-    currentContext.includeTools,
     currentContext.includeThoughts,
+    currentContext.includeTools,
     currentContext.includeArchived
   );
   const currentSessionBlock = formatCurrentSessionMessages(

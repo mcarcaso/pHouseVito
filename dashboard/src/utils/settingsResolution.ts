@@ -1,7 +1,11 @@
 /**
  * Client-side settings cascade resolution.
- * Mirrors src/settings.ts logic for the dashboard UI.
+ * Mirrors src/settings.ts logic for the dashboard UI. Default values are
+ * loaded from the backend at startup via loadDefaults() and read here through
+ * getDefaults() — no constants are duplicated.
  */
+
+import { getDefaults } from './defaults';
 
 export interface ContextSettings {
   limit?: number;
@@ -72,30 +76,6 @@ export interface ResolvedAutoFlags {
   classifierModel: { provider: string; name: string };
 }
 
-/** Default classifier model — kept in sync with src/memory/auto-classifier.ts */
-export const DEFAULT_CLASSIFIER_MODEL = { provider: 'anthropic', name: 'claude-haiku-4-5' };
-
-/** Default pi model choices — kept in sync with src/memory/auto-classifier.ts */
-export const DEFAULT_PI_MODEL_CHOICES: ModelChoice[] = [
-  {
-    provider: 'openrouter',
-    name: 'anthropic/claude-haiku-4.5',
-    description:
-      'Smallest, fastest, cheapest. Pick when the message needs zero real reasoning: greetings, acknowledgments ("ok", "thanks", "got it"), one-line factual questions with a known answer, social chit-chat, simple confirmations. If the message could be answered correctly without actually thinking, pick this. If you\'re unsure between this and the middle tier, prefer the middle tier.',
-  },
-  {
-    provider: 'openrouter',
-    name: 'anthropic/claude-sonnet-4.6',
-    description:
-      'Middle tier — the default. Pick when the message needs straightforward reasoning along a clear path: single-file code edits with obvious requirements, bug fixes where the cause is already given, explanations of existing code, routine multi-step tasks where each step follows from the last. Use this whenever there\'s a right answer and getting to it is mostly mechanical.',
-  },
-  {
-    provider: 'openrouter',
-    name: 'anthropic/claude-opus-4.6',
-    description:
-      'Top tier, most capable, most expensive. Pick only when the message genuinely needs deep reasoning: architectural decisions with tradeoffs, refactors spanning multiple files or changing interfaces, debugging without an obvious cause, open-ended planning ("how should we…"), or follow-ups where an earlier simpler attempt has already failed. If you\'re unsure between this and the middle tier, prefer the middle tier — only pick this when you can name a specific reason the cheaper model would struggle.',
-  },
-];
 
 export interface Settings {
   harness?: string;
@@ -152,44 +132,6 @@ export interface ChannelConfig {
   [key: string]: any;
 }
 
-const DEFAULT_CURRENT_CONTEXT: ResolvedContextSettings = {
-  limit: 100,
-  includeThoughts: true,
-  includeTools: true,
-  includeArchived: false,
-  maxSessions: 0, // Not used for current context
-};
-
-const DEFAULT_CROSS_CONTEXT: ResolvedContextSettings = {
-  limit: 5,
-  includeThoughts: false,
-  includeTools: false,
-  includeArchived: false,
-  maxSessions: 15, // Cap at 15 most recent sessions
-};
-
-const DEFAULT_MEMORY: ResolvedMemorySettings = {
-  recalledMemoryLimit: 3,
-  recalledMemoryThreshold: 0.005,
-  profileUpdateContext: 2,
-};
-
-const DEFAULT_AUTO: ResolvedAutoFlags = {
-  currentContext: { limit: false, includeThoughts: false, includeTools: false },
-  memory: { recalledMemoryLimit: false },
-  'pi-coding-agent': { model: false, modelChoices: DEFAULT_PI_MODEL_CHOICES },
-  classifierModel: DEFAULT_CLASSIFIER_MODEL,
-};
-
-const DEFAULTS: ResolvedSettings = {
-  harness: 'pi-coding-agent',
-  streamMode: 'stream',
-  currentContext: DEFAULT_CURRENT_CONTEXT,
-  crossContext: DEFAULT_CROSS_CONTEXT,
-  memory: DEFAULT_MEMORY,
-  auto: DEFAULT_AUTO,
-};
-
 /** Deep merge two Settings objects. Later values win. */
 function mergeSettings(base: Settings, override: Settings): Settings {
   const result: Settings = { ...base };
@@ -237,7 +179,8 @@ export function getEffectiveSettings(
   channelName?: string,
   sessionKey?: string
 ): ResolvedSettings {
-  let settings: Settings = { ...DEFAULTS };
+  const defaults = getDefaults();
+  let settings: Settings = { ...defaults };
 
   // Layer 1: Global
   if (config.settings) {
@@ -261,49 +204,49 @@ export function getEffectiveSettings(
   }
 
   return {
-    harness: settings.harness || DEFAULTS.harness,
-    streamMode: settings.streamMode || DEFAULTS.streamMode,
+    harness: settings.harness || defaults.harness,
+    streamMode: settings.streamMode || defaults.streamMode,
     customInstructions: settings.customInstructions,
     currentContext: {
-      limit: settings.currentContext?.limit ?? DEFAULT_CURRENT_CONTEXT.limit,
-      includeThoughts: settings.currentContext?.includeThoughts ?? DEFAULT_CURRENT_CONTEXT.includeThoughts,
-      includeTools: settings.currentContext?.includeTools ?? DEFAULT_CURRENT_CONTEXT.includeTools,
-      includeArchived: settings.currentContext?.includeArchived ?? DEFAULT_CURRENT_CONTEXT.includeArchived,
-      maxSessions: DEFAULT_CURRENT_CONTEXT.maxSessions, // Not used for current context
+      limit: settings.currentContext?.limit ?? defaults.currentContext.limit,
+      includeThoughts: settings.currentContext?.includeThoughts ?? defaults.currentContext.includeThoughts,
+      includeTools: settings.currentContext?.includeTools ?? defaults.currentContext.includeTools,
+      includeArchived: settings.currentContext?.includeArchived ?? defaults.currentContext.includeArchived,
+      maxSessions: defaults.currentContext.maxSessions, // Not used for current context
     },
     crossContext: {
-      limit: settings.crossContext?.limit ?? DEFAULT_CROSS_CONTEXT.limit,
-      includeThoughts: settings.crossContext?.includeThoughts ?? DEFAULT_CROSS_CONTEXT.includeThoughts,
-      includeTools: settings.crossContext?.includeTools ?? DEFAULT_CROSS_CONTEXT.includeTools,
-      includeArchived: settings.crossContext?.includeArchived ?? DEFAULT_CROSS_CONTEXT.includeArchived,
-      maxSessions: settings.crossContext?.maxSessions ?? DEFAULT_CROSS_CONTEXT.maxSessions,
+      limit: settings.crossContext?.limit ?? defaults.crossContext.limit,
+      includeThoughts: settings.crossContext?.includeThoughts ?? defaults.crossContext.includeThoughts,
+      includeTools: settings.crossContext?.includeTools ?? defaults.crossContext.includeTools,
+      includeArchived: settings.crossContext?.includeArchived ?? defaults.crossContext.includeArchived,
+      maxSessions: settings.crossContext?.maxSessions ?? defaults.crossContext.maxSessions,
     },
     memory: {
-      recalledMemoryLimit: settings.memory?.recalledMemoryLimit ?? DEFAULT_MEMORY.recalledMemoryLimit,
-      recalledMemoryThreshold: settings.memory?.recalledMemoryThreshold ?? DEFAULT_MEMORY.recalledMemoryThreshold,
-      profileUpdateContext: settings.memory?.profileUpdateContext ?? DEFAULT_MEMORY.profileUpdateContext,
+      recalledMemoryLimit: settings.memory?.recalledMemoryLimit ?? defaults.memory.recalledMemoryLimit,
+      recalledMemoryThreshold: settings.memory?.recalledMemoryThreshold ?? defaults.memory.recalledMemoryThreshold,
+      profileUpdateContext: settings.memory?.profileUpdateContext ?? defaults.memory.profileUpdateContext,
     },
     requireMention: settings.requireMention,
     traceMessageUpdates: settings.traceMessageUpdates ?? false,
     'pi-coding-agent': settings['pi-coding-agent'],
     auto: {
       currentContext: {
-        limit: settings.auto?.currentContext?.limit ?? DEFAULT_AUTO.currentContext.limit,
-        includeThoughts: settings.auto?.currentContext?.includeThoughts ?? DEFAULT_AUTO.currentContext.includeThoughts,
-        includeTools: settings.auto?.currentContext?.includeTools ?? DEFAULT_AUTO.currentContext.includeTools,
+        limit: settings.auto?.currentContext?.limit ?? defaults.auto.currentContext.limit,
+        includeThoughts: settings.auto?.currentContext?.includeThoughts ?? defaults.auto.currentContext.includeThoughts,
+        includeTools: settings.auto?.currentContext?.includeTools ?? defaults.auto.currentContext.includeTools,
       },
       memory: {
-        recalledMemoryLimit: settings.auto?.memory?.recalledMemoryLimit ?? DEFAULT_AUTO.memory.recalledMemoryLimit,
+        recalledMemoryLimit: settings.auto?.memory?.recalledMemoryLimit ?? defaults.auto.memory.recalledMemoryLimit,
       },
       'pi-coding-agent': {
-        model: settings.auto?.['pi-coding-agent']?.model ?? DEFAULT_AUTO['pi-coding-agent'].model,
+        model: settings.auto?.['pi-coding-agent']?.model ?? defaults.auto['pi-coding-agent'].model,
         modelChoices: (settings.auto?.['pi-coding-agent']?.modelChoices && settings.auto['pi-coding-agent'].modelChoices.length > 0)
           ? settings.auto['pi-coding-agent'].modelChoices
-          : DEFAULT_AUTO['pi-coding-agent'].modelChoices,
+          : defaults.auto['pi-coding-agent'].modelChoices,
       },
       classifierModel: (settings.auto?.classifierModel?.provider && settings.auto.classifierModel.name)
         ? settings.auto.classifierModel
-        : DEFAULT_AUTO.classifierModel,
+        : defaults.auto.classifierModel,
     },
   };
 }
@@ -338,7 +281,7 @@ export function getInheritSource(
   if (globalVal !== undefined) return { value: globalVal, source: 'global' };
 
   // Fall back to defaults
-  const defaultVal = getNestedValue(DEFAULTS, field);
+  const defaultVal = getNestedValue(getDefaults(), field);
   return { value: defaultVal, source: 'default' };
 }
 

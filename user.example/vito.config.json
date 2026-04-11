@@ -23,6 +23,40 @@
     "memory": {
       "recalledMemoryLimit": 5,
       "profileUpdateContext": 2
+    },
+    "auto": {
+      "pi-coding-agent": {
+        "model": true,
+        "modelChoices": [
+          {
+            "provider": "openrouter",
+            "name": "minimax/minimax-m2.7",
+            "description": "Default. Everything text — Q&A, coding, terminal, reasoning, writing, analysis, text files. No images or PDFs."
+          },
+          {
+            "provider": "openrouter",
+            "name": "moonshotai/kimi-k2.5",
+            "description": "Multimodal only. Images and PDFs. For text files, use MiniMax instead."
+          },
+          {
+            "provider": "openrouter",
+            "name": "anthropic/claude-opus-4.6",
+            "description": "Hard tasks. Last resort for complex debugging, architecture, or multi-step problems."
+          }
+        ]
+      },
+      "classifierModel": {
+        "provider": "openrouter",
+        "name": "google/gemini-3.1-flash-lite-preview"
+      },
+      "currentContext": {
+        "includeThoughts": true,
+        "includeTools": true,
+        "limit": true
+      },
+      "memory": {
+        "recalledMemoryLimit": true
+      }
     }
   },
   "harnesses": {
@@ -30,7 +64,8 @@
       "model": {
         "provider": "openrouter",
         "name": "minimax/minimax-m2.7"
-      }
+      },
+      "thinkingLevel": "off"
     }
   },
   "sessions": {},

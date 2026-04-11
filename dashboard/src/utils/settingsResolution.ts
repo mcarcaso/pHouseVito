@@ -33,6 +33,62 @@ export interface ResolvedMemorySettings {
   profileUpdateContext: number;
 }
 
+export interface ModelChoice {
+  provider: string;
+  name: string;
+  description: string;
+}
+
+/** Per-field auto-selection flags. Mirror of backend AutoFlags. */
+export interface AutoFlags {
+  currentContext?: {
+    limit?: boolean;
+    includeThoughts?: boolean;
+    includeTools?: boolean;
+  };
+  memory?: {
+    recalledMemoryLimit?: boolean;
+  };
+  'pi-coding-agent'?: {
+    model?: boolean;
+    modelChoices?: ModelChoice[];
+  };
+}
+
+export interface ResolvedAutoFlags {
+  currentContext: {
+    limit: boolean;
+    includeThoughts: boolean;
+    includeTools: boolean;
+  };
+  memory: {
+    recalledMemoryLimit: boolean;
+  };
+  'pi-coding-agent': {
+    model: boolean;
+    modelChoices: ModelChoice[];
+  };
+}
+
+/** Default pi model choices — kept in sync with src/memory/auto-classifier.ts */
+export const DEFAULT_PI_MODEL_CHOICES: ModelChoice[] = [
+  {
+    provider: 'openrouter',
+    name: 'anthropic/claude-haiku-4.5',
+    description: 'Cheapest, fastest. Chit-chat, greetings, one-line questions.',
+  },
+  {
+    provider: 'openrouter',
+    name: 'anthropic/claude-sonnet-4.6',
+    description: 'Balanced default. Normal coding, everyday conversation.',
+  },
+  {
+    provider: 'openrouter',
+    name: 'anthropic/claude-opus-4.6',
+    description: 'Most capable, most expensive. Hard reasoning, large refactors.',
+  },
+];
+
 export interface Settings {
   harness?: string;
   streamMode?: 'stream' | 'bundled' | 'final';
@@ -42,14 +98,12 @@ export interface Settings {
   memory?: MemorySettings;
   requireMention?: boolean;
   traceMessageUpdates?: boolean;
+  timezone?: string;
   'pi-coding-agent'?: {
     model?: { provider: string; name: string };
     thinkingLevel?: 'off' | 'low' | 'medium' | 'high';
   };
-  'claude-code'?: {
-    model?: string;
-    cwd?: string;
-  };
+  auto?: AutoFlags;
 }
 
 export interface ResolvedSettings {
@@ -62,7 +116,7 @@ export interface ResolvedSettings {
   requireMention?: boolean;
   traceMessageUpdates?: boolean;
   'pi-coding-agent'?: Settings['pi-coding-agent'];
-  'claude-code'?: Settings['claude-code'];
+  auto: ResolvedAutoFlags;
 }
 
 export interface VitoConfig {
@@ -74,9 +128,6 @@ export interface VitoConfig {
     'pi-coding-agent'?: {
       model: { provider: string; name: string };
       thinkingLevel?: string;
-    };
-    'claude-code'?: {
-      model?: string;
     };
   };
   channels: Record<string, ChannelConfig>;
@@ -115,12 +166,19 @@ const DEFAULT_MEMORY: ResolvedMemorySettings = {
   profileUpdateContext: 2,
 };
 
+const DEFAULT_AUTO: ResolvedAutoFlags = {
+  currentContext: { limit: false, includeThoughts: false, includeTools: false },
+  memory: { recalledMemoryLimit: false },
+  'pi-coding-agent': { model: false, modelChoices: DEFAULT_PI_MODEL_CHOICES },
+};
+
 const DEFAULTS: ResolvedSettings = {
-  harness: 'claude-code',
+  harness: 'pi-coding-agent',
   streamMode: 'stream',
   currentContext: DEFAULT_CURRENT_CONTEXT,
   crossContext: DEFAULT_CROSS_CONTEXT,
   memory: DEFAULT_MEMORY,
+  auto: DEFAULT_AUTO,
 };
 
 /** Deep merge two Settings objects. Later values win. */
@@ -142,14 +200,20 @@ function mergeSettings(base: Settings, override: Settings): Settings {
   if (override['pi-coding-agent'] !== undefined) {
     result['pi-coding-agent'] = { ...base['pi-coding-agent'], ...override['pi-coding-agent'] };
   }
-  if (override['claude-code'] !== undefined) {
-    result['claude-code'] = { ...base['claude-code'], ...override['claude-code'] };
-  }
   if (override.requireMention !== undefined) {
     result.requireMention = override.requireMention;
   }
   if (override.traceMessageUpdates !== undefined) {
     result.traceMessageUpdates = override.traceMessageUpdates;
+  }
+  if (override.auto !== undefined) {
+    result.auto = {
+      ...base.auto,
+      ...override.auto,
+      currentContext: { ...base.auto?.currentContext, ...override.auto?.currentContext },
+      memory: { ...base.auto?.memory, ...override.auto?.memory },
+      'pi-coding-agent': { ...base.auto?.['pi-coding-agent'], ...override.auto?.['pi-coding-agent'] },
+    };
   }
 
   return result;
@@ -213,7 +277,22 @@ export function getEffectiveSettings(
     requireMention: settings.requireMention,
     traceMessageUpdates: settings.traceMessageUpdates ?? false,
     'pi-coding-agent': settings['pi-coding-agent'],
-    'claude-code': settings['claude-code'],
+    auto: {
+      currentContext: {
+        limit: settings.auto?.currentContext?.limit ?? DEFAULT_AUTO.currentContext.limit,
+        includeThoughts: settings.auto?.currentContext?.includeThoughts ?? DEFAULT_AUTO.currentContext.includeThoughts,
+        includeTools: settings.auto?.currentContext?.includeTools ?? DEFAULT_AUTO.currentContext.includeTools,
+      },
+      memory: {
+        recalledMemoryLimit: settings.auto?.memory?.recalledMemoryLimit ?? DEFAULT_AUTO.memory.recalledMemoryLimit,
+      },
+      'pi-coding-agent': {
+        model: settings.auto?.['pi-coding-agent']?.model ?? DEFAULT_AUTO['pi-coding-agent'].model,
+        modelChoices: (settings.auto?.['pi-coding-agent']?.modelChoices && settings.auto['pi-coding-agent'].modelChoices.length > 0)
+          ? settings.auto['pi-coding-agent'].modelChoices
+          : DEFAULT_AUTO['pi-coding-agent'].modelChoices,
+      },
+    },
   };
 }
 
@@ -283,4 +362,10 @@ export const CASCADING_FIELDS = [
   { key: 'memory.recalledMemoryLimit', label: 'Recalled Memory Limit', type: 'number' as const },
   { key: 'memory.recalledMemoryThreshold', label: 'Recalled Memory Threshold', type: 'number' as const },
   { key: 'memory.profileUpdateContext', label: 'Profile Update Context', type: 'number' as const },
+  // Per-field auto-selection flags
+  { key: 'auto.currentContext.limit', label: 'Auto: Current Num Messages', type: 'boolean' as const },
+  { key: 'auto.currentContext.includeThoughts', label: 'Auto: Current Thoughts', type: 'boolean' as const },
+  { key: 'auto.currentContext.includeTools', label: 'Auto: Current Tools', type: 'boolean' as const },
+  { key: 'auto.memory.recalledMemoryLimit', label: 'Auto: Recalled Memory Limit', type: 'boolean' as const },
+  { key: 'auto.pi-coding-agent.model', label: 'Auto: Pi Model', type: 'boolean' as const },
 ] as const;

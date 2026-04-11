@@ -1,9 +1,10 @@
 import { CronScheduler } from "./cron/scheduler.js";
 import type { Queries } from "./db/queries.js";
-import { ClaudeCodeHarness, PiHarness, withPersistence, withRelay, withTracing, withTyping, type Harness } from "./harnesses/index.js";
+import { PiHarness, withPersistence, withRelay, withTracing, withTyping, type Harness } from "./harnesses/index.js";
 import { withNoReplyCheck } from "./harness/decorators/index.js";
 import { getDirectChannel, type DirectChannel } from "./channels/direct.js";
 
+import { runAutoClassifier } from "./memory/auto-classifier.js";
 import { assembleContext, formatContextForPrompt } from "./memory/context.js";
 import { maybeEmbedNewChunks } from "./memory/embeddings.js";
 import { loadProfileForPrompt, maybeUpdateProfile, setProfileUpdaterConfig, setProfileUpdaterQueries } from "./memory/profile.js";
@@ -142,7 +143,7 @@ export class Orchestrator {
   reloadConfig(config: VitoConfig): void {
     this.config = config;
     setProfileUpdaterConfig(config);  // Keep profile updater in sync
-    const defaultHarness = config.settings?.harness || "claude-code";
+    const defaultHarness = config.settings?.harness || "pi-coding-agent";
     console.log(`[Orchestrator] Config reloaded — default harness: ${defaultHarness}`);
   }
 
@@ -481,6 +482,78 @@ export class Orchestrator {
 
     // 3. Log effective settings (already computed above for requireMention check)
     console.log(`[Orchestrator] Effective settings for ${event.sessionKey}: harness=${effectiveSettings.harness}, streamMode=${effectiveSettings.streamMode}, traceMessageUpdates=${effectiveSettings.traceMessageUpdates}, currentContext.limit=${effectiveSettings.currentContext.limit}, crossContext.limit=${effectiveSettings.crossContext.limit}`);
+
+    // 3.5. If any auto flags are set, run the cheap classifier and overlay decisions
+    //      onto effectiveSettings before context assembly / memory search / harness creation.
+    const auto = effectiveSettings.auto;
+    const anyAuto =
+      auto.currentContext.limit ||
+      auto.currentContext.includeThoughts ||
+      auto.currentContext.includeTools ||
+      auto.memory.recalledMemoryLimit ||
+      auto["pi-coding-agent"].model;
+
+    if (anyAuto) {
+      // Build a small chronological history snippet (last 8 user/assistant messages, no tools/thoughts).
+      const recent = this.queries.getRecentMessages(vitoSession.id, 8, false, false, false);
+      const historyLines: string[] = [];
+      for (const msg of recent) {
+        try {
+          const parsed = JSON.parse(msg.content);
+          const text = typeof parsed === "string" ? parsed : (parsed.text || "");
+          if (!text) continue;
+          const role = msg.type === "user" ? "user" : "assistant";
+          historyLines.push(`${role}: ${text.slice(0, 300)}`);
+        } catch {
+          // skip malformed rows
+        }
+      }
+      const recentHistory = historyLines.length > 0 ? historyLines.join("\n") : undefined;
+
+      const classified = await runAutoClassifier({
+        userMessage: event.content || "",
+        recentHistory,
+        modelChoices: auto["pi-coding-agent"].modelChoices,
+        needed: {
+          model: auto["pi-coding-agent"].model,
+          currentContextLimit: auto.currentContext.limit,
+          currentContextIncludeThoughts: auto.currentContext.includeThoughts,
+          currentContextIncludeTools: auto.currentContext.includeTools,
+          recalledMemoryLimit: auto.memory.recalledMemoryLimit,
+        },
+      });
+
+      if (classified.ran) {
+        const applied: string[] = [];
+        if (auto.currentContext.limit && classified.currentContextLimit !== undefined) {
+          effectiveSettings.currentContext.limit = classified.currentContextLimit;
+          applied.push(`currentContext.limit=${classified.currentContextLimit}`);
+        }
+        if (auto.currentContext.includeThoughts && classified.currentContextIncludeThoughts !== undefined) {
+          effectiveSettings.currentContext.includeThoughts = classified.currentContextIncludeThoughts;
+          applied.push(`currentContext.includeThoughts=${classified.currentContextIncludeThoughts}`);
+        }
+        if (auto.currentContext.includeTools && classified.currentContextIncludeTools !== undefined) {
+          effectiveSettings.currentContext.includeTools = classified.currentContextIncludeTools;
+          applied.push(`currentContext.includeTools=${classified.currentContextIncludeTools}`);
+        }
+        if (auto.memory.recalledMemoryLimit && classified.recalledMemoryLimit !== undefined) {
+          effectiveSettings.memory.recalledMemoryLimit = classified.recalledMemoryLimit;
+          applied.push(`memory.recalledMemoryLimit=${classified.recalledMemoryLimit}`);
+        }
+        if (auto["pi-coding-agent"].model && classified.selectedModel) {
+          const piModel = classified.selectedModel;
+          effectiveSettings["pi-coding-agent"] = {
+            ...(effectiveSettings["pi-coding-agent"] || {}),
+            model: piModel,
+          };
+          applied.push(`pi-coding-agent.model=${piModel.provider}/${piModel.name}`);
+        }
+        console.log(`[Orchestrator] 🤖 Auto classifier (${classified.durationMs}ms) applied: ${applied.join(", ") || "(nothing)"}`);
+      } else {
+        console.warn(`[Orchestrator] 🤖 Auto classifier skipped: ${classified.note}`);
+      }
+    }
 
     // 4. Build fresh context (uses effective settings for memory limits)
     const ctx = await assembleContext(
@@ -867,15 +940,8 @@ export class Orchestrator {
 
   /** Get a human-readable model string from resolved settings */
   private getModelString(settings: ResolvedSettings): string {
-    const harnessName = settings.harness;
-    if (harnessName === "claude-code") {
-      // Get model from cascaded settings, fallback to global harness config
-      const globalCCConfig = this.config.harnesses?.["claude-code"];
-      return settings["claude-code"]?.model || globalCCConfig?.model || "sonnet";
-    }
-    // Pi harness
     const globalPiConfig = this.config.harnesses?.["pi-coding-agent"];
-    const model = settings["pi-coding-agent"]?.model || globalPiConfig?.model || 
+    const model = settings["pi-coding-agent"]?.model || globalPiConfig?.model ||
       { provider: "anthropic", name: "claude-sonnet-4-20250514" };
     return `${model.provider}/${model.name}`;
   }
@@ -885,35 +951,11 @@ export class Orchestrator {
    * Settings come pre-cascaded: Global → Channel → Session
    */
   private getHarness(settings: ResolvedSettings): Harness {
-    const harnessName = settings.harness;
-    
-    if (harnessName === "claude-code") {
-      // Claude Code harness - merge global config with cascaded overrides
-      const globalConfig = this.config.harnesses?.["claude-code"] || {};
-      const cascadedOverrides = settings["claude-code"] || {};
-      
-      // Cascaded overrides (from settings cascade) take precedence over global config
-      const mergedConfig = { ...globalConfig, ...cascadedOverrides };
-      
-      const harness = new ClaudeCodeHarness({
-        model: mergedConfig.model || "sonnet",
-        cwd: mergedConfig.cwd || process.cwd(),
-      });
-
-      console.log(`[Orchestrator] 🎭 Created harness: ${harness.getName()} (model: ${mergedConfig.model || "sonnet"})`);
-      return harness;
-    }
-    
-    // Default: pi-coding-agent
-    if (harnessName !== "pi-coding-agent") {
-      console.warn(`[Orchestrator] Unknown harness "${harnessName}", falling back to pi-coding-agent`);
-    }
-
     // Get base config for pi-coding-agent
     const globalPiConfig = this.config.harnesses?.["pi-coding-agent"] || {
       model: { provider: "anthropic", name: "claude-sonnet-4-20250514" },
     };
-    
+
     // Apply cascaded overrides
     const cascadedOverrides = settings["pi-coding-agent"] || {};
     const model = cascadedOverrides.model || globalPiConfig.model;

@@ -17,8 +17,6 @@ A personal AI agent framework with persistent memory, extensible skills, and mul
 - **Telegram** - Bot integration with chat ID filtering
 
 ### 🔌 Harness System
-- **Pluggable AI backends** - Swap between different AI providers
-- **claude-code** - Claude Code SDK harness (Anthropic)
 - **pi-coding-agent** - Pi Coding Agent harness (supports OpenAI, Anthropic, Google, OpenRouter)
 - **Per-session overrides** - Use different models for different conversations
 
@@ -102,7 +100,7 @@ pHouseVito/
 ├── src/                       # Core application code
 │   ├── channels/              # Channel adapters (Dashboard, Telegram, Discord)
 │   ├── db/                    # SQLite schema and queries
-│   ├── harnesses/             # AI backend harnesses (claude-code, pi-coding-agent)
+│   ├── harnesses/             # AI backend harnesses (pi-coding-agent)
 │   ├── memory/                # Memory management and compaction
 │   ├── sessions/              # Session management
 │   ├── skills/                # Builtin skill discovery and loading
@@ -197,21 +195,17 @@ npm run build:dashboard
 
 ### Harness System
 
-Harnesses are pluggable AI backends that handle the actual LLM interaction. Currently supported:
+The harness is the pluggable AI backend that handles LLM interaction.
 
-- **claude-code** — Uses the Claude Code SDK. Supports Sonnet and Opus models with configurable permission mode.
 - **pi-coding-agent** — Uses the Pi Coding Agent SDK. Supports multiple providers (OpenAI, Anthropic, Google, OpenRouter) with thinking levels.
 
-Configure your default harness in `user/vito.config.json`:
+Configure in `user/vito.config.json`:
 ```json
 {
-  "settings": {
-    "harness": "claude-code"
-  },
   "harnesses": {
-    "claude-code": {
-      "model": "sonnet",
-      "permissionMode": "bypassPermissions"
+    "pi-coding-agent": {
+      "model": { "provider": "openrouter", "name": "anthropic/claude-sonnet-4.6" },
+      "thinkingLevel": "off"
     }
   }
 }

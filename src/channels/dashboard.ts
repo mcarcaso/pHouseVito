@@ -434,8 +434,8 @@ export class DashboardChannel implements Channel {
     this.app.get("/api/harnesses", (req, res) => {
       // Get config and list registered harnesses
       const harnesses = this.config.harnesses || {};
-      const defaultHarness = this.config.settings?.harness || "claude-code";
-      
+      const defaultHarness = this.config.settings?.harness || "pi-coding-agent";
+
       // Build harness info
       const available: Record<string, any> = {
         "pi-coding-agent": {
@@ -443,21 +443,15 @@ export class DashboardChannel implements Channel {
           description: "Pi Coding Agent — Anthropic Claude with full tool use",
           config: harnesses["pi-coding-agent"] || null,
           isDefault: defaultHarness === "pi-coding-agent"
-        },
-        "claude-code": {
-          name: "claude-code",
-          description: "Claude Code CLI — Anthropic's official coding agent",
-          config: harnesses["claude-code"] || { model: "sonnet", permissionMode: "bypassPermissions" },
-          isDefault: defaultHarness === "claude-code"
         }
       };
-      
+
       // Get session overrides from config file
-      const sessionOverrides = this.config.sessions 
+      const sessionOverrides = this.config.sessions
         ? Object.entries(this.config.sessions).map(([id, settings]: [string, any]) => ({
             id,
             harness: settings.harness || defaultHarness,
-            overrides: settings["pi-coding-agent"] || settings["claude-code"] || null
+            overrides: settings["pi-coding-agent"] || null
           }))
         : [];
       

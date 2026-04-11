@@ -26,10 +26,6 @@
     }
   },
   "harnesses": {
-    "claude-code": {
-      "model": "sonnet",
-      "permissionMode": "bypassPermissions"
-    },
     "pi-coding-agent": {
       "model": {
         "provider": "openrouter",

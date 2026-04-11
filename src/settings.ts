@@ -5,7 +5,8 @@
  *   Global (config.settings) → Channel (config.channels[name].settings) → Session (config.sessions[key])
  */
 
-import type { ResolvedSettings, ResolvedContextSettings, ResolvedMemorySettings, Settings, VitoConfig } from "./types.js";
+import { DEFAULT_PI_MODEL_CHOICES } from "./memory/auto-classifier.js";
+import type { ResolvedAutoFlags, ResolvedSettings, ResolvedContextSettings, ResolvedMemorySettings, Settings, VitoConfig } from "./types.js";
 
 /** Default context settings */
 const DEFAULT_CURRENT_CONTEXT: ResolvedContextSettings = {
@@ -31,13 +32,30 @@ const DEFAULT_MEMORY: ResolvedMemorySettings = {
   profileUpdateContext: 2,
 };
 
+/** Default auto flags — everything off, with the default model choice list */
+const DEFAULT_AUTO: ResolvedAutoFlags = {
+  currentContext: {
+    limit: false,
+    includeThoughts: false,
+    includeTools: false,
+  },
+  memory: {
+    recalledMemoryLimit: false,
+  },
+  "pi-coding-agent": {
+    model: false,
+    modelChoices: DEFAULT_PI_MODEL_CHOICES,
+  },
+};
+
 /** Default settings when nothing is specified */
 const DEFAULTS: ResolvedSettings = {
-  harness: "claude-code",
+  harness: "pi-coding-agent",
   streamMode: "stream",
   currentContext: DEFAULT_CURRENT_CONTEXT,
   crossContext: DEFAULT_CROSS_CONTEXT,
   memory: DEFAULT_MEMORY,
+  auto: DEFAULT_AUTO,
 };
 
 /**
@@ -68,14 +86,20 @@ function mergeSettings(base: Settings, override: Settings): Settings {
   if (override["pi-coding-agent"] !== undefined) {
     result["pi-coding-agent"] = { ...base["pi-coding-agent"], ...override["pi-coding-agent"] };
   }
-  if (override["claude-code"] !== undefined) {
-    result["claude-code"] = { ...base["claude-code"], ...override["claude-code"] };
-  }
   if (override.requireMention !== undefined) {
     result.requireMention = override.requireMention;
   }
   if (override.traceMessageUpdates !== undefined) {
     result.traceMessageUpdates = override.traceMessageUpdates;
+  }
+  if (override.auto !== undefined) {
+    result.auto = {
+      ...base.auto,
+      ...override.auto,
+      currentContext: { ...base.auto?.currentContext, ...override.auto?.currentContext },
+      memory: { ...base.auto?.memory, ...override.auto?.memory },
+      "pi-coding-agent": { ...base.auto?.["pi-coding-agent"], ...override.auto?.["pi-coding-agent"] },
+    };
   }
 
   return result;
@@ -142,7 +166,22 @@ export function getEffectiveSettings(
     requireMention: settings.requireMention,
     traceMessageUpdates: settings.traceMessageUpdates ?? false,
     "pi-coding-agent": settings["pi-coding-agent"],
-    "claude-code": settings["claude-code"],
+    auto: {
+      currentContext: {
+        limit: settings.auto?.currentContext?.limit ?? DEFAULT_AUTO.currentContext.limit,
+        includeThoughts: settings.auto?.currentContext?.includeThoughts ?? DEFAULT_AUTO.currentContext.includeThoughts,
+        includeTools: settings.auto?.currentContext?.includeTools ?? DEFAULT_AUTO.currentContext.includeTools,
+      },
+      memory: {
+        recalledMemoryLimit: settings.auto?.memory?.recalledMemoryLimit ?? DEFAULT_AUTO.memory.recalledMemoryLimit,
+      },
+      "pi-coding-agent": {
+        model: settings.auto?.["pi-coding-agent"]?.model ?? DEFAULT_AUTO["pi-coding-agent"].model,
+        modelChoices: (settings.auto?.["pi-coding-agent"]?.modelChoices && settings.auto["pi-coding-agent"].modelChoices.length > 0)
+          ? settings.auto["pi-coding-agent"].modelChoices
+          : DEFAULT_AUTO["pi-coding-agent"].modelChoices,
+      },
+    },
   };
 }
 

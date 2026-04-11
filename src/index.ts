@@ -34,16 +34,11 @@ async function main() {
   console.log(`Timezone: ${tz}`);
 
   // Log the default harness and settings
-  const defaultHarness = config.settings?.harness || "claude-code";
+  const defaultHarness = config.settings?.harness || "pi-coding-agent";
   console.log(`Default harness: ${defaultHarness}`);
-  if (defaultHarness === "claude-code") {
-    const ccModel = config.settings?.["claude-code"]?.model || config.harnesses?.["claude-code"]?.model || "sonnet";
-    console.log(`Claude Code model: ${ccModel}`);
-  } else if (defaultHarness === "pi-coding-agent") {
-    const piConfig = config.settings?.["pi-coding-agent"]?.model || config.harnesses?.["pi-coding-agent"]?.model;
-    if (piConfig) {
-      console.log(`Pi model: ${piConfig.provider}/${piConfig.name}`);
-    }
+  const piConfig = config.settings?.["pi-coding-agent"]?.model || config.harnesses?.["pi-coding-agent"]?.model;
+  if (piConfig) {
+    console.log(`Pi model: ${piConfig.provider}/${piConfig.name}`);
   }
   if (soul) {
     console.log("SOUL.md loaded");

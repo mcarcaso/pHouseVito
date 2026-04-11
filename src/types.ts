@@ -85,11 +85,6 @@ export interface PiHarnessConfig {
   thinkingLevel?: "off" | "low" | "medium" | "high";
 }
 
-export interface ClaudeCodeHarnessConfig {
-  model?: string;  // "sonnet", "opus", "haiku", or full model name
-  cwd?: string;
-}
-
 // Add more harness configs here as we add harnesses
 // export interface OpenAIHarnessConfig { ... }
 // export interface LocalLlamaHarnessConfig { ... }
@@ -122,6 +117,36 @@ export interface MemorySettings {
   profileUpdateContext?: number;
 }
 
+/** A single candidate model the auto classifier can choose between. */
+export interface ModelChoice {
+  provider: string;
+  name: string;
+  /** Human-readable description shown to the classifier — tell it when to pick this one. */
+  description: string;
+}
+
+/**
+ * Per-field auto-selection flags. When a field is true, a cheap LLM classifier
+ * decides the value for that field on every turn (overriding the configured value).
+ * Cascades through Global → Channel → Session like other settings.
+ */
+export interface AutoFlags {
+  currentContext?: {
+    limit?: boolean;
+    includeThoughts?: boolean;
+    includeTools?: boolean;
+  };
+  memory?: {
+    recalledMemoryLimit?: boolean;
+  };
+  "pi-coding-agent"?: {
+    /** If true, a classifier picks the pi-coding-agent model per turn from modelChoices. */
+    model?: boolean;
+    /** Candidate models for the classifier to pick between. Defaults to DEFAULT_PI_MODEL_CHOICES. */
+    modelChoices?: ModelChoice[];
+  };
+}
+
 export interface Settings {
   /** Which harness to use */
   harness?: string;
@@ -143,8 +168,8 @@ export interface Settings {
   timezone?: string;
   /** Pi Coding Agent harness overrides */
   "pi-coding-agent"?: Partial<PiHarnessConfig>;
-  /** Claude Code CLI harness overrides */
-  "claude-code"?: Partial<ClaudeCodeHarnessConfig>;
+  /** Per-field auto-selection flags — cascades like other settings */
+  auto?: AutoFlags;
 }
 
 /** Resolved context settings with all fields required */
@@ -164,6 +189,23 @@ export interface ResolvedMemorySettings {
   profileUpdateContext: number;
 }
 
+/** Resolved auto flags — all fields present, defaulting to false */
+export interface ResolvedAutoFlags {
+  currentContext: {
+    limit: boolean;
+    includeThoughts: boolean;
+    includeTools: boolean;
+  };
+  memory: {
+    recalledMemoryLimit: boolean;
+  };
+  "pi-coding-agent": {
+    model: boolean;
+    /** Fully-resolved list of candidate models (always populated — from config or default). */
+    modelChoices: ModelChoice[];
+  };
+}
+
 /** Deep merge helper type for settings resolution */
 export type ResolvedSettings = Required<Pick<Settings, "harness" | "streamMode">> & {
   customInstructions?: string;
@@ -173,7 +215,7 @@ export type ResolvedSettings = Required<Pick<Settings, "harness" | "streamMode">
   requireMention?: boolean;
   traceMessageUpdates?: boolean;
   "pi-coding-agent"?: Partial<PiHarnessConfig>;
-  "claude-code"?: Partial<ClaudeCodeHarnessConfig>;
+  auto: ResolvedAutoFlags;
 };
 
 export interface VitoConfig {
@@ -186,7 +228,6 @@ export interface VitoConfig {
   /** Global harness configurations (full configs, not overrides) */
   harnesses: {
     "pi-coding-agent"?: PiHarnessConfig;
-    "claude-code"?: ClaudeCodeHarnessConfig;
   };
   /** Per-channel configuration */
   channels: Record<string, ChannelConfig>;

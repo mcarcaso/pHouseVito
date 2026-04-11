@@ -11,7 +11,7 @@ export interface TraceHeader {
   session_id: string;
   channel: string;
   target: string;
-  harness: string;            // Which harness was used (pi-coding-agent, claude-code, etc.)
+  harness: string;            // Which harness was used (e.g., pi-coding-agent)
 }
 
 /**

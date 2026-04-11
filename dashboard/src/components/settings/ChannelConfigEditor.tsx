@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from 'react';
 import type { ChannelConfig, VitoConfig, Settings } from '../../utils/settingsResolution';
 import { getEffectiveSettings } from '../../utils/settingsResolution';
-import SettingRow, { renderSelect, renderSegmented, renderNumberInput, renderToggle, renderTextarea } from './SettingRow';
+import SettingRow, { renderSegmented, renderNumberInput, renderToggle, renderTextarea } from './SettingRow';
 import { channelConfigComponents, CHANNEL_ICONS } from './channels';
 
 interface ChannelConfigEditorProps {
@@ -15,11 +15,6 @@ const STREAM_MODES = [
   { value: 'stream', label: 'Stream' },
   { value: 'bundled', label: 'Bundled' },
   { value: 'final', label: 'Final' },
-];
-
-const HARNESS_OPTIONS = [
-  { value: 'claude-code', label: 'Claude Code' },
-  { value: 'pi-coding-agent', label: 'Pi Coding Agent' },
 ];
 
 export default function ChannelConfigEditor({ name, channelConfig, config, onSave }: ChannelConfigEditorProps) {
@@ -198,16 +193,6 @@ export default function ChannelConfigEditor({ name, channelConfig, config, onSav
           <div className="mt-6">
             <h5 className="text-xs font-semibold text-neutral-500 uppercase tracking-wider mb-3">Setting Overrides</h5>
             <p className="text-xs text-neutral-600 mb-3">Override global defaults for this channel. Unset values inherit from Global.</p>
-
-            <SettingRow
-              label="Harness"
-              inheritedValue={globalResolved.harness}
-              inheritedFrom="global"
-              overrideValue={channelSettings.harness}
-              onOverride={(val) => updateChannelSetting('harness', val)}
-              onReset={() => resetChannelSetting('harness')}
-              renderInput={(val, onChange) => renderSelect(val, onChange, HARNESS_OPTIONS)}
-            />
 
             <SettingRow
               label="Stream Mode"

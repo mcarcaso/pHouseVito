@@ -39,7 +39,7 @@ export interface HarnessCallbacks {
 
 export interface Harness {
   /**
-   * Unique harness identifier (e.g., "pi-coding-agent", "claude-code")
+   * Unique harness identifier (e.g., "pi-coding-agent")
    */
   getName(): string;
 

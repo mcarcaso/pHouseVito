@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
 
-import type { VitoConfig } from '../../utils/settingsResolution';
+import { DEFAULT_PI_MODEL_CHOICES, type VitoConfig } from '../../utils/settingsResolution';
 import { renderSelect, renderSegmented, renderNumberInput, renderSliderToggle } from './SettingRow';
 import HarnessConfigEditor from './HarnessConfigEditor';
 
@@ -10,19 +10,64 @@ interface GlobalSettingsProps {
 }
 
 // Toggle row with title+description on left, toggle on right
-function ToggleRow({ title, description, value, onChange }: {
+function ToggleRow({ title, description, value, onChange, auto, onAutoChange }: {
   title: string;
   description: string;
   value: boolean;
   onChange: (val: boolean) => void;
+  auto?: boolean;
+  onAutoChange?: (val: boolean) => void;
 }) {
+  const hasAuto = onAutoChange !== undefined;
+  const disabled = hasAuto && !!auto;
   return (
     <div className="flex items-center justify-between gap-4 py-3 border-b border-neutral-800/50 last:border-b-0">
       <div className="flex flex-col">
         <span className="text-sm text-neutral-200">{title}</span>
         <span className="text-xs text-neutral-500">{description}</span>
       </div>
-      {renderSliderToggle(value, onChange)}
+      <div className="flex items-center gap-3">
+        <div className={disabled ? 'opacity-40 pointer-events-none' : ''}>
+          {renderSliderToggle(value, onChange)}
+        </div>
+        {hasAuto && (
+          <label className="flex items-center gap-1.5 cursor-pointer select-none">
+            <span className="text-xs text-neutral-500 uppercase tracking-wide">Auto</span>
+            {renderSliderToggle(!!auto, onAutoChange!)}
+          </label>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// Numeric row with optional auto toggle
+function NumberRow({ label, hint, value, onChange, min, max, step, auto, onAutoChange }: {
+  label: string;
+  hint?: string;
+  value: number;
+  onChange: (val: number) => void;
+  min?: number;
+  max?: number;
+  step?: number;
+  auto?: boolean;
+  onAutoChange?: (val: boolean) => void;
+}) {
+  const hasAuto = onAutoChange !== undefined;
+  const disabled = hasAuto && !!auto;
+  return (
+    <div className="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-4 py-3 border-b border-neutral-800/50">
+      <label className="text-sm text-neutral-400 sm:w-48 sm:shrink-0">{label}</label>
+      <div className={disabled ? 'opacity-40 pointer-events-none' : ''}>
+        {renderNumberInput(value, onChange, { min, max, step })}
+      </div>
+      {hint && <span className="text-xs text-neutral-600">{hint}</span>}
+      {hasAuto && (
+        <label className="flex items-center gap-1.5 cursor-pointer select-none sm:ml-auto">
+          <span className="text-xs text-neutral-500 uppercase tracking-wide">Auto</span>
+          {renderSliderToggle(!!auto, onAutoChange!)}
+        </label>
+      )}
     </div>
   );
 }
@@ -31,11 +76,6 @@ const STREAM_MODES = [
   { value: 'stream', label: 'Stream' },
   { value: 'bundled', label: 'Bundled' },
   { value: 'final', label: 'Final' },
-];
-
-const HARNESS_OPTIONS = [
-  { value: 'claude-code', label: 'Claude Code' },
-  { value: 'pi-coding-agent', label: 'Pi Coding Agent' },
 ];
 
 const TIMEZONE_OPTIONS = [
@@ -82,12 +122,20 @@ export default function GlobalSettings({ config, onSave }: GlobalSettingsProps) 
   }, [localCustomInstructions]);
 
   const updateSetting = async (field: string, value: any) => {
-    const newSettings = { ...settings };
-    if (field.includes('.')) {
-      const [parent, child] = field.split('.');
-      (newSettings as any)[parent] = { ...(newSettings as any)[parent], [child]: value };
+    const newSettings: any = { ...settings };
+    const parts = field.split('.');
+    if (parts.length === 1) {
+      newSettings[parts[0]] = value;
+    } else if (parts.length === 2) {
+      newSettings[parts[0]] = { ...newSettings[parts[0]], [parts[1]]: value };
     } else {
-      (newSettings as any)[field] = value;
+      // 3+ levels (e.g., auto.currentContext.limit)
+      let cursor = newSettings;
+      for (let i = 0; i < parts.length - 1; i++) {
+        cursor[parts[i]] = { ...cursor[parts[i]] };
+        cursor = cursor[parts[i]];
+      }
+      cursor[parts[parts.length - 1]] = value;
     }
     await onSave({ settings: newSettings });
   };
@@ -144,11 +192,6 @@ export default function GlobalSettings({ config, onSave }: GlobalSettingsProps) 
         <p className="text-xs text-neutral-600 mb-4">Baseline defaults — channels and sessions inherit from here.</p>
 
         <div className="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-4 py-3 border-b border-neutral-800/50">
-          <label className="text-sm text-neutral-400 sm:w-48 sm:shrink-0">Harness</label>
-          {renderSelect(settings.harness || 'claude-code', (val) => updateSetting('harness', val), HARNESS_OPTIONS)}
-        </div>
-
-        <div className="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-4 py-3 border-b border-neutral-800/50">
           <label className="text-sm text-neutral-400 sm:w-48 sm:shrink-0">Stream Mode</label>
           {renderSegmented(settings.streamMode || 'stream', (val) => updateSetting('streamMode', val), STREAM_MODES)}
         </div>
@@ -192,23 +235,25 @@ export default function GlobalSettings({ config, onSave }: GlobalSettingsProps) 
       {/* ── Current Session Context ── */}
       <section className="bg-neutral-900 border border-neutral-800 rounded-xl p-5">
         <h3 className="text-base font-semibold text-white mb-1">Current Session Context</h3>
-        <p className="text-xs text-neutral-600 mb-4">What to include from the active session's history.</p>
+        <p className="text-xs text-neutral-600 mb-4">What to include from the active session's history. Turn on <span className="text-blue-400">Auto</span> to have a cheap classifier pick the value per turn.</p>
 
-        <div className="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-4 py-3 border-b border-neutral-800/50">
-          <label className="text-sm text-neutral-400 sm:w-48 sm:shrink-0">Num Messages</label>
-          {renderNumberInput(
-            settings.currentContext?.limit ?? 100,
-            (val) => updateSetting('currentContext.limit', val),
-            { min: 0 }
-          )}
-          <span className="text-xs text-neutral-600">Recent messages to include</span>
-        </div>
+        <NumberRow
+          label="Num Messages"
+          hint="Recent messages to include"
+          value={settings.currentContext?.limit ?? 100}
+          onChange={(val) => updateSetting('currentContext.limit', val)}
+          min={0}
+          auto={settings.auto?.currentContext?.limit ?? false}
+          onAutoChange={(val) => updateSetting('auto.currentContext.limit', val)}
+        />
 
         <ToggleRow
           title="Thoughts"
           description="Include thinking/reasoning steps"
           value={settings.currentContext?.includeThoughts ?? true}
           onChange={(val) => updateSetting('currentContext.includeThoughts', val)}
+          auto={settings.auto?.currentContext?.includeThoughts ?? false}
+          onAutoChange={(val) => updateSetting('auto.currentContext.includeThoughts', val)}
         />
 
         <ToggleRow
@@ -216,6 +261,8 @@ export default function GlobalSettings({ config, onSave }: GlobalSettingsProps) 
           description="Include tool calls and results"
           value={settings.currentContext?.includeTools ?? true}
           onChange={(val) => updateSetting('currentContext.includeTools', val)}
+          auto={settings.auto?.currentContext?.includeTools ?? false}
+          onAutoChange={(val) => updateSetting('auto.currentContext.includeTools', val)}
         />
 
         <ToggleRow
@@ -278,15 +325,16 @@ export default function GlobalSettings({ config, onSave }: GlobalSettingsProps) 
         <h3 className="text-base font-semibold text-white mb-1">Memory Recall</h3>
         <p className="text-xs text-neutral-600 mb-4">Settings for semantic search over past conversations.</p>
 
-        <div className="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-4 py-3 border-b border-neutral-800/50">
-          <label className="text-sm text-neutral-400 sm:w-48 sm:shrink-0">Recalled Memory Limit</label>
-          {renderNumberInput(
-            settings.memory?.recalledMemoryLimit ?? 3,
-            (val) => updateSetting('memory.recalledMemoryLimit', val),
-            { min: 0, max: 10 }
-          )}
-          <span className="text-xs text-neutral-600">Max memory chunks to inject (0 to disable)</span>
-        </div>
+        <NumberRow
+          label="Recalled Memory Limit"
+          hint="Max memory chunks to inject (0 to disable)"
+          value={settings.memory?.recalledMemoryLimit ?? 3}
+          onChange={(val) => updateSetting('memory.recalledMemoryLimit', val)}
+          min={0}
+          max={10}
+          auto={settings.auto?.memory?.recalledMemoryLimit ?? false}
+          onAutoChange={(val) => updateSetting('auto.memory.recalledMemoryLimit', val)}
+        />
 
         <div className="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-4 py-3 border-b border-neutral-800/50">
           <label className="text-sm text-neutral-400 sm:w-48 sm:shrink-0">Relevance Threshold</label>
@@ -316,6 +364,43 @@ export default function GlobalSettings({ config, onSave }: GlobalSettingsProps) 
           <p className="text-xs text-neutral-600">Base configs for each AI harness engine.</p>
         </div>
         <HarnessConfigEditor config={config} onSave={onSave} />
+      </section>
+
+      {/* ── Auto Classifier ── */}
+      <section className="bg-neutral-900 border border-neutral-800 rounded-xl p-5">
+        <h3 className="text-base font-semibold text-white mb-1">Auto Classifier</h3>
+        <p className="text-xs text-neutral-600 mb-4">When a field's Auto toggle is on, a cheap LLM (claude-haiku-4-5) picks its value per turn based on the incoming message — overriding the configured value only for that turn. Toggles for message limits, thoughts/tools inclusion, and memory recall live inline in the sections above.</p>
+
+        <div className="flex items-center justify-between gap-4 py-3 border-b border-neutral-800/50">
+          <div className="flex flex-col">
+            <span className="text-sm text-neutral-200">Pi Coding Agent: Model</span>
+            <span className="text-xs text-neutral-500">Auto-pick one of the candidate models below per turn (overrides the pi-coding-agent model)</span>
+          </div>
+          <label className="flex items-center gap-1.5 cursor-pointer select-none">
+            <span className="text-xs text-neutral-500 uppercase tracking-wide">Auto</span>
+            {renderSliderToggle(
+              settings.auto?.['pi-coding-agent']?.model ?? false,
+              (val) => updateSetting('auto.pi-coding-agent.model', val)
+            )}
+          </label>
+        </div>
+
+        {/* Read-only list of candidate models. Users can override via vito.config.json:
+            settings.auto['pi-coding-agent'].modelChoices */}
+        <div className="pt-3">
+          <div className="text-xs text-neutral-500 uppercase tracking-wide mb-2">Candidate Models</div>
+          <ul className="space-y-2">
+            {(settings.auto?.['pi-coding-agent']?.modelChoices ?? DEFAULT_PI_MODEL_CHOICES).map((c, i) => (
+              <li key={`${c.provider}/${c.name}/${i}`} className="bg-neutral-950/60 border border-neutral-800 rounded-md p-3">
+                <div className="font-mono text-xs text-purple-400">{c.provider}/{c.name}</div>
+                <div className="text-xs text-neutral-500 mt-1">{c.description}</div>
+              </li>
+            ))}
+          </ul>
+          <p className="text-xs text-neutral-600 mt-3">
+            Override this list in <span className="font-mono text-neutral-500">vito.config.json</span> under <span className="font-mono text-neutral-500">settings.auto["pi-coding-agent"].modelChoices</span>.
+          </p>
+        </div>
       </section>
     </div>
   );

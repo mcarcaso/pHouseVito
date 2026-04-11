@@ -26,14 +26,6 @@ interface OAuthProviderInfo {
   name: string;
 }
 
-const CLAUDE_CODE_MODELS = [
-  { id: 'sonnet', label: 'Claude Sonnet' },
-  { id: 'opus', label: 'Claude Opus' },
-  { id: 'haiku', label: 'Claude Haiku' },
-  { id: 'claude-sonnet-4-20250514', label: 'Claude Sonnet 4 (2025-05-14)' },
-  { id: 'claude-opus-4-20250514', label: 'Claude Opus 4 (2025-05-14)' },
-];
-
 const THINKING_LEVELS = [
   { id: 'off', label: 'Off' },
   { id: 'low', label: 'Low' },
@@ -42,7 +34,6 @@ const THINKING_LEVELS = [
 ];
 
 const selectClass = "w-full sm:w-64 bg-neutral-950 border border-neutral-700 rounded-md px-3 py-2 text-neutral-200 text-sm focus:outline-none focus:border-blue-600 transition-colors cursor-pointer appearance-none bg-[url('data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20width%3D%2210%22%20height%3D%2210%22%20viewBox%3D%220%200%2012%2012%22%3E%3Cpath%20fill%3D%22%23666%22%20d%3D%22M6%208L1%203h10z%22%2F%3E%3C%2Fsvg%3E')] bg-no-repeat bg-[right_0.75rem_center] pr-8";
-const inputClass = "w-full sm:w-64 bg-neutral-950 border border-neutral-700 rounded-md px-3 py-2 text-neutral-200 text-sm focus:outline-none focus:border-blue-600 transition-colors";
 
 export default function HarnessConfigEditor({ config, onSave }: HarnessConfigEditorProps) {
   // Pi state
@@ -62,12 +53,6 @@ export default function HarnessConfigEditor({ config, onSave }: HarnessConfigEdi
   const [loggingIn, setLoggingIn] = useState<string | null>(null);
   const [loginError, setLoginError] = useState<string | null>(null);
   const loginPollRef = useRef<ReturnType<typeof setInterval> | null>(null);
-
-  // Claude Code state
-  const [editingClaude, setEditingClaude] = useState(false);
-  const [claudeModel, setClaudeModel] = useState('sonnet');
-  const [customModel, setCustomModel] = useState('');
-  const [savingClaude, setSavingClaude] = useState(false);
 
   const refreshProviders = useCallback(() => {
     return fetch('/api/models/providers')
@@ -102,10 +87,6 @@ export default function HarnessConfigEditor({ config, onSave }: HarnessConfigEdi
     }
     if (piConfig?.thinkingLevel) {
       setSelectedThinking(piConfig.thinkingLevel);
-    }
-    const cc = config.harnesses?.['claude-code'];
-    if (cc) {
-      setClaudeModel(cc.model || 'sonnet');
     }
   }, [config]);
 
@@ -194,18 +175,6 @@ export default function HarnessConfigEditor({ config, onSave }: HarnessConfigEdi
     setSavingPi(false);
   };
 
-  const saveClaude = async () => {
-    setSavingClaude(true);
-    const modelToSave = customModel.trim() || claudeModel;
-    const ccConfig: any = {
-      model: modelToSave,
-    };
-    await onSave({ harnesses: { ...config.harnesses, 'claude-code': ccConfig } });
-    setEditingClaude(false);
-    setCustomModel('');
-    setSavingClaude(false);
-  };
-
   // Show providers that have auth OR that support OAuth login (so user can log in)
   const popularProviders = ['anthropic', 'openai', 'openai-codex', 'google', 'xai', 'groq', 'mistral', 'openrouter'];
   const availableProviders = providers.filter((p) => authStatus[p]?.hasAuth === true);
@@ -233,7 +202,6 @@ export default function HarnessConfigEditor({ config, onSave }: HarnessConfigEdi
   };
 
   const piConfig = config.harnesses?.['pi-coding-agent'];
-  const ccConfig = config.harnesses?.['claude-code'];
 
   return (
     <div className="space-y-3">
@@ -364,79 +332,6 @@ export default function HarnessConfigEditor({ config, onSave }: HarnessConfigEdi
         ) : null}
       </section>
 
-      {/* ── Claude Code ── */}
-      <section className="bg-[#151515] border border-neutral-800 rounded-xl p-5">
-        <div className="flex items-center justify-between mb-3">
-          <div className="flex items-center gap-3">
-            <span className="text-xl">🤖</span>
-            <h4 className="text-sm font-semibold text-white">claude-code</h4>
-          </div>
-          {!editingClaude ? (
-            <button onClick={() => setEditingClaude(true)} className="text-xs text-blue-400 hover:text-blue-300 transition-colors">
-              Edit
-            </button>
-          ) : (
-            <div className="flex gap-2">
-              <button
-                onClick={() => {
-                  setEditingClaude(false);
-                  setCustomModel('');
-                  if (ccConfig) {
-                    setClaudeModel(ccConfig.model || 'sonnet');
-                  }
-                }}
-                className="text-xs text-neutral-400 hover:text-neutral-300"
-              >
-                Cancel
-              </button>
-              <button
-                onClick={saveClaude}
-                disabled={savingClaude}
-                className="px-3 py-1 text-xs bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white rounded-md transition-colors"
-              >
-                {savingClaude ? 'Saving...' : 'Save'}
-              </button>
-            </div>
-          )}
-        </div>
-
-        {!editingClaude && ccConfig ? (
-          <div className="bg-neutral-900/50 border border-neutral-800 rounded-md p-3 font-mono text-sm space-y-1">
-            <div className="flex gap-2">
-              <span className="text-neutral-500">Model:</span>
-              <span className="text-purple-400">{ccConfig.model || 'sonnet'}</span>
-            </div>
-          </div>
-        ) : editingClaude ? (
-          <div className="space-y-4">
-            {/* Model */}
-            <div className="flex flex-col sm:flex-row sm:items-start gap-2 sm:gap-4">
-              <label className="text-sm text-neutral-400 sm:w-32 shrink-0 pt-2">Model</label>
-              <div className="flex flex-col gap-2 flex-1">
-                <select
-                  className={selectClass}
-                  value={customModel ? '' : claudeModel}
-                  onChange={(e) => { setClaudeModel(e.target.value); setCustomModel(''); }}
-                >
-                  {CLAUDE_CODE_MODELS.map((m) => <option key={m.id} value={m.id}>{m.label}</option>)}
-                </select>
-                <div className="flex items-center gap-2">
-                  <span className="text-xs text-neutral-500">or custom:</span>
-                  <input
-                    type="text"
-                    className={inputClass + ' flex-1'}
-                    placeholder="e.g., claude-3-5-sonnet-20241022"
-                    value={customModel}
-                    onChange={(e) => setCustomModel(e.target.value)}
-                  />
-                </div>
-              </div>
-            </div>
-
-
-          </div>
-        ) : null}
-      </section>
     </div>
   );
 }

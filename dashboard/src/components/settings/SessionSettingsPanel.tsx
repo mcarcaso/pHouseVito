@@ -33,25 +33,12 @@ const STREAM_MODES = [
   { value: 'final', label: 'Final' },
 ];
 
-const HARNESS_OPTIONS = [
-  { value: 'claude-code', label: 'Claude Code' },
-  { value: 'pi-coding-agent', label: 'Pi Coding Agent' },
-];
-
 const THINKING_LEVELS = [
   { value: 'off', label: 'Off' },
   { value: 'low', label: 'Low' },
   { value: 'medium', label: 'Medium' },
   { value: 'high', label: 'High' },
 ];
-
-const CLAUDE_CODE_MODELS = [
-  { value: 'sonnet', label: 'Claude Sonnet' },
-  { value: 'opus', label: 'Claude Opus' },
-  { value: 'haiku', label: 'Claude Haiku' },
-];
-
-
 
 // System sessions that always appear in the list (no message history required)
 const SYSTEM_SESSIONS = [
@@ -191,7 +178,6 @@ export default function SessionSettingsPanel({ config, onSave, initialSessionId 
 
   // Get the global harness config as the "inherited" value for harness-specific settings
   const getGlobalPiConfig = () => config.harnesses?.['pi-coding-agent'] || { model: { provider: '', name: '' } };
-  const getGlobalClaudeConfig = () => config.harnesses?.['claude-code'] || { model: 'sonnet' };
 
   const renderPiCodingAgentOverrides = (
     sessionId: string,
@@ -270,33 +256,6 @@ export default function SessionSettingsPanel({ config, onSave, initialSessionId 
     );
   };
 
-  const renderClaudeCodeOverrides = (
-    sessionId: string,
-    overrides: Settings,
-    inherited: ReturnType<typeof getEffectiveSettings>,
-    inheritFrom: 'global' | 'channel'
-  ) => {
-    const globalClaude = getGlobalClaudeConfig();
-    const claudeOverrides = overrides['claude-code'] || {};
-    // inherited['claude-code'] might be empty object, so check for model property
-    const rawClaudeInherited = inherited['claude-code'];
-    const claudeInherited = (rawClaudeInherited && rawClaudeInherited.model) ? rawClaudeInherited : globalClaude;
-
-    return (
-      <>
-        <SettingRow
-          label="Model"
-          inheritedValue={claudeInherited.model || 'sonnet'}
-          inheritedFrom={inheritFrom}
-          overrideValue={claudeOverrides.model}
-          onOverride={(val) => updateSessionSetting(sessionId, 'claude-code.model', val)}
-          onReset={() => resetSessionSetting(sessionId, 'claude-code.model')}
-          renderInput={(val, onChange) => renderSelect(val, onChange, CLAUDE_CODE_MODELS)}
-        />
-      </>
-    );
-  };
-
   const renderSessionOverrides = (sessionId: string) => {
     const overrides = sessionOverrides[sessionId] || {};
     const inherited = getInheritedForSession(sessionId);
@@ -316,16 +275,6 @@ export default function SessionSettingsPanel({ config, onSave, initialSessionId 
         </div>
 
         <div className="mt-3">
-          <SettingRow
-            label="Harness"
-            inheritedValue={inherited.harness}
-            inheritedFrom={inheritFrom}
-            overrideValue={overrides.harness}
-            onOverride={(val) => updateSessionSetting(sessionId, 'harness', val)}
-            onReset={() => resetSessionSetting(sessionId, 'harness')}
-            renderInput={(val, onChange) => renderSelect(val, onChange, HARNESS_OPTIONS)}
-          />
-
           <SettingRow
             label="Stream Mode"
             inheritedValue={inherited.streamMode}
@@ -476,16 +425,6 @@ export default function SessionSettingsPanel({ config, onSave, initialSessionId 
           </div>
 
           {renderPiCodingAgentOverrides(sessionId, overrides, inherited, inheritFrom)}
-
-          {/* Claude Code Overrides */}
-          <div className="mt-5 mb-2">
-            <div className="flex items-center justify-between">
-              <span className="text-xs font-semibold text-neutral-500 uppercase tracking-wide">Claude Code Config</span>
-              <span className="text-xs text-neutral-600">Used when harness = claude-code</span>
-            </div>
-          </div>
-
-          {renderClaudeCodeOverrides(sessionId, overrides, inherited, inheritFrom)}
         </div>
       </div>
     );

@@ -5,7 +5,7 @@
  *   Global (config.settings) → Channel (config.channels[name].settings) → Session (config.sessions[key])
  */
 
-import { DEFAULT_PI_MODEL_CHOICES } from "./memory/auto-classifier.js";
+import { DEFAULT_CLASSIFIER_MODEL, DEFAULT_PI_MODEL_CHOICES } from "./memory/auto-classifier.js";
 import type { ResolvedAutoFlags, ResolvedSettings, ResolvedContextSettings, ResolvedMemorySettings, Settings, VitoConfig } from "./types.js";
 
 /** Default context settings */
@@ -46,6 +46,7 @@ const DEFAULT_AUTO: ResolvedAutoFlags = {
     model: false,
     modelChoices: DEFAULT_PI_MODEL_CHOICES,
   },
+  classifierModel: DEFAULT_CLASSIFIER_MODEL,
 };
 
 /** Default settings when nothing is specified */
@@ -181,6 +182,9 @@ export function getEffectiveSettings(
           ? settings.auto["pi-coding-agent"].modelChoices
           : DEFAULT_AUTO["pi-coding-agent"].modelChoices,
       },
+      classifierModel: (settings.auto?.classifierModel?.provider && settings.auto.classifierModel.name)
+        ? settings.auto.classifierModel
+        : DEFAULT_AUTO.classifierModel,
     },
   };
 }

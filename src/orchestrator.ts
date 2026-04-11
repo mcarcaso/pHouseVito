@@ -494,32 +494,47 @@ export class Orchestrator {
       auto["pi-coding-agent"].model;
 
     if (anyAuto) {
-      // Build a small chronological history snippet (last 8 user/assistant messages, no tools/thoughts).
-      const recent = this.queries.getRecentMessages(vitoSession.id, 8, false, false, false);
+      // Build a numbered chronological history snippet (last N user/assistant
+      // messages, no tools/thoughts). Each line is prefixed with [-K] where
+      // K is its distance from "now" — [-1] is the most recent past message,
+      // [-2] is two back, etc. The classifier uses these offsets to pick
+      // currentContextLimit concretely instead of guessing abstract numbers.
+      const RECENT_WINDOW = 25;
+      const recent = this.queries.getRecentMessages(vitoSession.id, RECENT_WINDOW, false, false, false);
+      const totalSessionMessages = this.queries.countMessagesForSession(vitoSession.id, true, true);
       const historyLines: string[] = [];
-      for (const msg of recent) {
+      for (let i = 0; i < recent.length; i++) {
         try {
-          const parsed = JSON.parse(msg.content);
+          const parsed = JSON.parse(recent[i].content);
           const text = typeof parsed === "string" ? parsed : (parsed.text || "");
           if (!text) continue;
-          const role = msg.type === "user" ? "user" : "assistant";
-          historyLines.push(`${role}: ${text.slice(0, 300)}`);
+          const role = recent[i].type === "user" ? "user" : "assistant";
+          const offset = recent.length - i; // last entry → 1, first entry → recent.length
+          historyLines.push(`[-${offset}] ${role}: ${text.slice(0, 300)}`);
         } catch {
           // skip malformed rows
         }
       }
-      const recentHistory = historyLines.length > 0 ? historyLines.join("\n") : undefined;
+      const recentHistory = historyLines.length > 0
+        ? `Window: showing the ${recent.length} most recent message(s) of ${totalSessionMessages} total in this session. Each line is tagged with its distance from the new message — [-1] is the message just before it, [-2] is two back, and so on.\n\n${historyLines.join("\n")}`
+        : undefined;
 
       const classified = await runAutoClassifier({
         userMessage: event.content || "",
         recentHistory,
         modelChoices: auto["pi-coding-agent"].modelChoices,
+        classifierModel: auto.classifierModel,
         needed: {
           model: auto["pi-coding-agent"].model,
           currentContextLimit: auto.currentContext.limit,
           currentContextIncludeThoughts: auto.currentContext.includeThoughts,
           currentContextIncludeTools: auto.currentContext.includeTools,
           recalledMemoryLimit: auto.memory.recalledMemoryLimit,
+        },
+        trace: {
+          session_id: vitoSession.id,
+          channel: event.channel,
+          target: event.target,
         },
       });
 
@@ -549,9 +564,12 @@ export class Orchestrator {
           };
           applied.push(`pi-coding-agent.model=${piModel.provider}/${piModel.name}`);
         }
-        console.log(`[Orchestrator] 🤖 Auto classifier (${classified.durationMs}ms) applied: ${applied.join(", ") || "(nothing)"}`);
+        console.log(`[Orchestrator] 🤖 Auto classifier (${classified.durationMs}ms) applied: ${applied.join(", ") || "(nothing)"}${classified.tracePath ? ` — trace: ${classified.tracePath}` : ""}`);
+        if (classified.explanation) {
+          console.log(`[Orchestrator] 🤖 Auto classifier reasoning: ${classified.explanation}`);
+        }
       } else {
-        console.warn(`[Orchestrator] 🤖 Auto classifier skipped: ${classified.note}`);
+        console.warn(`[Orchestrator] 🤖 Auto classifier skipped: ${classified.note}${classified.tracePath ? ` — trace: ${classified.tracePath}` : ""}`);
       }
     }
 

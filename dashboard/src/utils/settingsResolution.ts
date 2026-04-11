@@ -53,6 +53,7 @@ export interface AutoFlags {
     model?: boolean;
     modelChoices?: ModelChoice[];
   };
+  classifierModel?: { provider: string; name: string };
 }
 
 export interface ResolvedAutoFlags {
@@ -68,24 +69,31 @@ export interface ResolvedAutoFlags {
     model: boolean;
     modelChoices: ModelChoice[];
   };
+  classifierModel: { provider: string; name: string };
 }
+
+/** Default classifier model — kept in sync with src/memory/auto-classifier.ts */
+export const DEFAULT_CLASSIFIER_MODEL = { provider: 'anthropic', name: 'claude-haiku-4-5' };
 
 /** Default pi model choices — kept in sync with src/memory/auto-classifier.ts */
 export const DEFAULT_PI_MODEL_CHOICES: ModelChoice[] = [
   {
     provider: 'openrouter',
     name: 'anthropic/claude-haiku-4.5',
-    description: 'Cheapest, fastest. Chit-chat, greetings, one-line questions.',
+    description:
+      'Smallest, fastest, cheapest. Pick when the message needs zero real reasoning: greetings, acknowledgments ("ok", "thanks", "got it"), one-line factual questions with a known answer, social chit-chat, simple confirmations. If the message could be answered correctly without actually thinking, pick this. If you\'re unsure between this and the middle tier, prefer the middle tier.',
   },
   {
     provider: 'openrouter',
     name: 'anthropic/claude-sonnet-4.6',
-    description: 'Balanced default. Normal coding, everyday conversation.',
+    description:
+      'Middle tier — the default. Pick when the message needs straightforward reasoning along a clear path: single-file code edits with obvious requirements, bug fixes where the cause is already given, explanations of existing code, routine multi-step tasks where each step follows from the last. Use this whenever there\'s a right answer and getting to it is mostly mechanical.',
   },
   {
     provider: 'openrouter',
     name: 'anthropic/claude-opus-4.6',
-    description: 'Most capable, most expensive. Hard reasoning, large refactors.',
+    description:
+      'Top tier, most capable, most expensive. Pick only when the message genuinely needs deep reasoning: architectural decisions with tradeoffs, refactors spanning multiple files or changing interfaces, debugging without an obvious cause, open-ended planning ("how should we…"), or follow-ups where an earlier simpler attempt has already failed. If you\'re unsure between this and the middle tier, prefer the middle tier — only pick this when you can name a specific reason the cheaper model would struggle.',
   },
 ];
 
@@ -170,6 +178,7 @@ const DEFAULT_AUTO: ResolvedAutoFlags = {
   currentContext: { limit: false, includeThoughts: false, includeTools: false },
   memory: { recalledMemoryLimit: false },
   'pi-coding-agent': { model: false, modelChoices: DEFAULT_PI_MODEL_CHOICES },
+  classifierModel: DEFAULT_CLASSIFIER_MODEL,
 };
 
 const DEFAULTS: ResolvedSettings = {
@@ -292,6 +301,9 @@ export function getEffectiveSettings(
           ? settings.auto['pi-coding-agent'].modelChoices
           : DEFAULT_AUTO['pi-coding-agent'].modelChoices,
       },
+      classifierModel: (settings.auto?.classifierModel?.provider && settings.auto.classifierModel.name)
+        ? settings.auto.classifierModel
+        : DEFAULT_AUTO.classifierModel,
     },
   };
 }

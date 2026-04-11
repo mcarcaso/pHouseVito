@@ -145,6 +145,8 @@ export interface AutoFlags {
     /** Candidate models for the classifier to pick between. Defaults to DEFAULT_PI_MODEL_CHOICES. */
     modelChoices?: ModelChoice[];
   };
+  /** Which LLM the classifier itself runs on. Defaults to anthropic/claude-haiku-4-5. */
+  classifierModel?: { provider: string; name: string };
 }
 
 export interface Settings {
@@ -204,6 +206,8 @@ export interface ResolvedAutoFlags {
     /** Fully-resolved list of candidate models (always populated — from config or default). */
     modelChoices: ModelChoice[];
   };
+  /** Fully-resolved classifier model (always populated — from config or default). */
+  classifierModel: { provider: string; name: string };
 }
 
 /** Deep merge helper type for settings resolution */

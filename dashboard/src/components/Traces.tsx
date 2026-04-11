@@ -159,6 +159,7 @@ function Traces() {
   
   // Filters
   const [hideProfileUpdates, setHideProfileUpdates] = useState(false);
+  const [hideClassifier, setHideClassifier] = useState(false);
   const [sessionFilter, setSessionFilter] = useState<string>("all");
 
   const fetchLogs = useCallback(async () => {
@@ -756,6 +757,10 @@ function Traces() {
     if (hideProfileUpdates && log.filename.startsWith("trace-profile-")) {
       return false;
     }
+    // Hide auto classifier traces if toggle is on
+    if (hideClassifier && log.filename.startsWith("trace-classifier-")) {
+      return false;
+    }
     // Filter by session if not "all"
     if (sessionFilter !== "all") {
       const info = parsePreview(log.preview);
@@ -832,6 +837,15 @@ function Traces() {
             className="accent-blue-600 cursor-pointer w-3 h-3"
           />
           Hide profile updates
+        </label>
+        <label className="flex items-center gap-1.5 text-xs text-neutral-500 cursor-pointer select-none">
+          <input
+            type="checkbox"
+            checked={hideClassifier}
+            onChange={(e) => setHideClassifier(e.target.checked)}
+            className="accent-blue-600 cursor-pointer w-3 h-3"
+          />
+          Hide classifier
         </label>
       </div>
 

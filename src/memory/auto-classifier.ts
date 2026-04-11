@@ -11,8 +11,19 @@
  */
 
 import { completeSimple, getModel } from "@mariozechner/pi-ai";
-import type { Message } from "@mariozechner/pi-ai";
+import type { AssistantMessage, Message } from "@mariozechner/pi-ai";
+import { appendFileSync, mkdirSync } from "fs";
+import { dirname, join } from "path";
 import type { ModelChoice } from "../types.js";
+
+/**
+ * Default model the classifier itself runs on. Cheap + fast.
+ * Users can override via settings.auto.classifierModel.
+ */
+export const DEFAULT_CLASSIFIER_MODEL = {
+  provider: "anthropic",
+  name: "claude-haiku-4-5",
+} as const;
 
 /**
  * Default candidates for the pi-coding-agent model auto-selection.
@@ -24,19 +35,19 @@ export const DEFAULT_PI_MODEL_CHOICES: ModelChoice[] = [
     provider: "openrouter",
     name: "anthropic/claude-haiku-4.5",
     description:
-      "Cheapest, fastest. Pick for chit-chat, greetings, one-line factual questions, simple lookups, and anything that doesn't need real reasoning.",
+      "Smallest, fastest, cheapest. Pick when the message needs zero real reasoning: greetings, acknowledgments (\"ok\", \"thanks\", \"got it\"), one-line factual questions with a known answer, social chit-chat, simple confirmations. If the message could be answered correctly without actually thinking, pick this. If you're unsure between this and the middle tier, prefer the middle tier.",
   },
   {
     provider: "openrouter",
     name: "anthropic/claude-sonnet-4.6",
     description:
-      "Balanced default. Pick for normal coding help, everyday conversations, moderate reasoning, and most typical requests.",
+      "Middle tier — the default. Pick when the message needs straightforward reasoning along a clear path: single-file code edits with obvious requirements, bug fixes where the cause is already given, explanations of existing code, routine multi-step tasks where each step follows from the last. Use this whenever there's a right answer and getting to it is mostly mechanical.",
   },
   {
     provider: "openrouter",
     name: "anthropic/claude-opus-4.6",
     description:
-      "Most capable, most expensive. Pick only for genuinely hard reasoning, large refactors, ambiguous multi-step planning, or when earlier attempts have failed.",
+      "Top tier, most capable, most expensive. Pick only when the message genuinely needs deep reasoning: architectural decisions with tradeoffs, refactors spanning multiple files or changing interfaces, debugging without an obvious cause, open-ended planning (\"how should we…\"), or follow-ups where an earlier simpler attempt has already failed. If you're unsure between this and the middle tier, prefer the middle tier — only pick this when you can name a specific reason the cheaper model would struggle.",
   },
 ];
 
@@ -56,6 +67,14 @@ export interface AutoClassifierRequest {
     currentContextIncludeTools?: boolean;
     recalledMemoryLimit?: boolean;
   };
+  /** Which model the classifier should run on. Defaults to DEFAULT_CLASSIFIER_MODEL. */
+  classifierModel?: { provider: string; name: string };
+  /** Identifying info for the trace file header. */
+  trace?: {
+    session_id: string;
+    channel: string;
+    target: string;
+  };
 }
 
 /** Fields returned by the classifier (only populated for ones that were needed). */
@@ -66,16 +85,46 @@ export interface AutoClassifierResult {
   currentContextIncludeThoughts?: boolean;
   currentContextIncludeTools?: boolean;
   recalledMemoryLimit?: number;
+  /** Classifier's own explanation of why it picked these values. */
+  explanation?: string;
   /** True if the classifier call actually ran and produced values. */
   ran: boolean;
   /** Reason if the classifier didn't run or fell back. */
   note?: string;
   /** Total time spent on the classifier call, ms. */
   durationMs: number;
+  /** Path to the JSONL trace file written for this call (if any). */
+  tracePath?: string;
 }
 
-const CLASSIFIER_PROVIDER = "anthropic" as const;
-const CLASSIFIER_MODEL = "claude-haiku-4-5" as const;
+
+/**
+ * Open a fresh trace file for a single classifier call.
+ * Returns the path and a writeLine helper. Returns null if no trace info
+ * was provided (caller wants to skip tracing for this run).
+ */
+function openTraceFile(
+  trace: AutoClassifierRequest["trace"],
+): { path: string; writeLine: (obj: unknown) => void } | null {
+  if (!trace) return null;
+  const timestamp = new Date().toISOString().replace(/:/g, "-");
+  const suffix = Math.random().toString(36).slice(2, 8);
+  const path = join("logs", `trace-classifier-${timestamp}-${suffix}.jsonl`);
+  try {
+    mkdirSync(dirname(path), { recursive: true });
+  } catch {
+    // best-effort
+  }
+  const writeLine = (obj: unknown) => {
+    try {
+      appendFileSync(path, JSON.stringify(obj) + "\n");
+    } catch (err) {
+      // Tracing must never break the classifier — swallow.
+      console.warn(`[AutoClassifier] failed to write trace line: ${err instanceof Error ? err.message : String(err)}`);
+    }
+  };
+  return { path, writeLine };
+}
 
 /**
  * Run the auto classifier. Always returns — on any failure, `ran` is false
@@ -108,17 +157,17 @@ export async function runAutoClassifier(req: AutoClassifierRequest): Promise<Aut
   }
   if (req.needed.currentContextLimit) {
     fieldDescriptions.push(
-      `- "currentContextLimit": integer 0-300. How many of the most recent messages from THIS session to include. Use 20-40 for simple/standalone messages, 80-120 for normal follow-ups, 150-250 if the user is clearly referring back to earlier conversation.`,
+      `- "currentContextLimit": integer 0-300. How many of the most recent messages from THIS session to include in the response context. The recent-history block tags each line with [-K], its distance from the new message ([-1] = just before it). Pick the smallest N such that messages [-N] through [-1] still cover everything relevant to the new user message. Return 0 if the topic has fully shifted and none of the visible history is needed. Return roughly the visible window size if everything shown still looks relevant. Return larger than the visible window only when the new message clearly references something further back than what you can see.`,
     );
   }
   if (req.needed.currentContextIncludeThoughts) {
     fieldDescriptions.push(
-      `- "currentContextIncludeThoughts": boolean. Include the assistant's prior thinking/reasoning steps. True if the user is asking about how/why the assistant did something; false otherwise.`,
+      `- "currentContextIncludeThoughts": boolean. Include the assistant's prior reasoning/thinking blocks in the response context. These are large, so only keep them when the new message asks the assistant to explain, justify, revisit, or continue past reasoning — phrases like "why did you", "what were you thinking", "go back to your plan", "you said X, explain" — OR when the conversation is an iterative software-building/debugging session where the assistant is mid-task and needs its own prior thought process to continue coherently. Default to false for new topics, chit-chat, and anything that doesn't reference the assistant's past thinking. In practice this usually matches currentContextIncludeTools — if one is true, the other probably is too.`,
     );
   }
   if (req.needed.currentContextIncludeTools) {
     fieldDescriptions.push(
-      `- "currentContextIncludeTools": boolean. Include prior tool calls and results. True if the user is asking about past actions, files, commands, or tool output; false otherwise.`,
+      `- "currentContextIncludeTools": boolean. Include prior tool calls and their results (file reads, command output, search results, etc.) in the response context. These are large, so only keep them when the new message leans on past tool work — asking about a file the assistant read, output from a command it ran, search results, follow-ups on something it fetched or wrote — OR when the conversation is an iterative software-building/debugging session where the assistant needs its prior tool output to keep working on the same task. Default to false for new topics, chit-chat, or anything that doesn't reference past tool output. In practice this usually matches currentContextIncludeThoughts.`,
     );
   }
   if (req.needed.recalledMemoryLimit) {
@@ -132,7 +181,10 @@ export async function runAutoClassifier(req: AutoClassifierRequest): Promise<Aut
 Fields to decide:
 ${fieldDescriptions.join("\n")}
 
-Only include keys for the fields listed above. Any extra keys will be ignored.`;
+You MUST also include:
+- "explanation": string. Two to four short sentences explaining your reasoning for the values you chose. Reference the actual user message and recent history. If you picked a model tier, say which trigger from its description matched. If you picked a context limit, say what makes the new message standalone, a follow-up, or a deep callback. This is read by humans debugging the classifier — be specific, not generic.
+
+Only include the keys listed above plus "explanation". Any extra keys will be ignored.`;
 
   const userContent = req.recentHistory
     ? `<recent-history>\n${req.recentHistory}\n</recent-history>\n\n<user-message>\n${req.userMessage}\n</user-message>`
@@ -146,9 +198,71 @@ Only include keys for the fields listed above. Any extra keys will be ignored.`;
     },
   ];
 
+  // Resolve the classifier model (request override → default).
+  const classifierModel = req.classifierModel?.provider && req.classifierModel.name
+    ? req.classifierModel
+    : DEFAULT_CLASSIFIER_MODEL;
+
+  // Open the trace file (no-op if caller passed no trace info).
+  const traceFile = openTraceFile(req.trace);
+  if (traceFile && req.trace) {
+    traceFile.writeLine({
+      type: "header",
+      timestamp: new Date().toISOString(),
+      session_id: req.trace.session_id,
+      channel: req.trace.channel,
+      target: req.trace.target,
+      model: `${classifierModel.provider}/${classifierModel.name}`,
+      harness: "auto-classifier",
+    });
+    traceFile.writeLine({
+      type: "prompt",
+      content: systemPrompt,
+      length: systemPrompt.length,
+    });
+    traceFile.writeLine({ type: "user_message", content: userContent });
+  }
+
+  // Helper used by both success and failure paths to close the trace file.
+  let assistantMsg: AssistantMessage | undefined;
+  let runError: string | undefined;
+  const finishTrace = () => {
+    if (!traceFile) return;
+    if (assistantMsg) {
+      // Mirror the shape pi-ai uses for streamed events so the dashboard
+      // raw_event renderer shows tokens/cost like a normal harness trace.
+      traceFile.writeLine({
+        type: "raw_event",
+        ts: Date.now() - startTime,
+        event: { type: "message_end", message: assistantMsg },
+      });
+      // Also emit a normalized assistant event with the parsed text so the
+      // default (non-raw) dashboard view shows the JSON decision.
+      let assistantText = "";
+      for (const block of assistantMsg.content) {
+        if (block.type === "text") assistantText += block.text;
+      }
+      traceFile.writeLine({
+        type: "normalized_event",
+        ts: Date.now() - startTime,
+        event: { kind: "assistant", content: assistantText },
+      });
+    }
+    traceFile.writeLine({
+      type: "footer",
+      duration_ms: Date.now() - startTime,
+      message_count: assistantMsg ? 1 : 0,
+      tool_calls: 0,
+      success: !runError,
+      error: runError,
+    });
+  };
+
   try {
-    const model = getModel(CLASSIFIER_PROVIDER, CLASSIFIER_MODEL);
-    const assistantMsg = await completeSimple(model, {
+    // Provider/name come from user config — getModel's literal-typed signature
+    // can't see them, so cast to bypass.
+    const model = (getModel as any)(classifierModel.provider, classifierModel.name);
+    assistantMsg = await completeSimple(model, {
       systemPrompt,
       messages,
     });
@@ -175,6 +289,7 @@ Only include keys for the fields listed above. Any extra keys will be ignored.`;
     const result: AutoClassifierResult = {
       ran: true,
       durationMs: Date.now() - startTime,
+      tracePath: traceFile?.path,
     };
 
     if (req.needed.model && typeof parsed.modelIndex === "number") {
@@ -196,13 +311,20 @@ Only include keys for the fields listed above. Any extra keys will be ignored.`;
     if (req.needed.recalledMemoryLimit && typeof parsed.recalledMemoryLimit === "number") {
       result.recalledMemoryLimit = Math.max(0, Math.min(10, Math.round(parsed.recalledMemoryLimit)));
     }
+    if (typeof parsed.explanation === "string") {
+      result.explanation = parsed.explanation.trim();
+    }
 
+    finishTrace();
     return result;
   } catch (err) {
+    runError = err instanceof Error ? err.message : String(err);
+    finishTrace();
     return {
       ran: false,
-      note: `classifier failed: ${err instanceof Error ? err.message : String(err)}`,
+      note: `classifier failed: ${runError}`,
       durationMs: Date.now() - startTime,
+      tracePath: traceFile?.path,
     };
   }
 }

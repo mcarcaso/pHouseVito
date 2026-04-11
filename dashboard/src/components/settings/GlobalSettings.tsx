@@ -1,8 +1,78 @@
 import { useState, useEffect, useRef } from 'react';
 
-import { DEFAULT_PI_MODEL_CHOICES, type VitoConfig } from '../../utils/settingsResolution';
+import { DEFAULT_CLASSIFIER_MODEL, DEFAULT_PI_MODEL_CHOICES, type ModelChoice, type VitoConfig } from '../../utils/settingsResolution';
 import { renderSelect, renderSegmented, renderNumberInput, renderSliderToggle } from './SettingRow';
 import HarnessConfigEditor from './HarnessConfigEditor';
+
+// Compact provider/model picker for the auto classifier model.
+// Reuses the /api/models/* endpoints that HarnessConfigEditor uses.
+function ClassifierModelPicker({
+  value,
+  onChange,
+}: {
+  value: { provider: string; name: string };
+  onChange: (next: { provider: string; name: string }) => void;
+}) {
+  const [providers, setProviders] = useState<string[]>([]);
+  const [models, setModels] = useState<{ id: string }[]>([]);
+  const [loadingModels, setLoadingModels] = useState(false);
+
+  useEffect(() => {
+    fetch('/api/models/providers')
+      .then((r) => r.json())
+      .then((data) => {
+        const auth = data.authStatus || {};
+        const all: string[] = data.providers || [];
+        // Only show providers we actually have credentials for.
+        setProviders(all.filter((p) => auth[p]?.hasAuth === true));
+      })
+      .catch(console.error);
+  }, []);
+
+  useEffect(() => {
+    if (!value.provider) return;
+    setLoadingModels(true);
+    fetch(`/api/models/${value.provider}`)
+      .then((r) => r.json())
+      .then((data) => setModels(Array.isArray(data) ? data : []))
+      .catch(() => setModels([]))
+      .finally(() => setLoadingModels(false));
+  }, [value.provider]);
+
+  const selectClass =
+    "bg-neutral-950 border border-neutral-700 rounded-md px-2 py-1.5 text-neutral-200 text-xs focus:outline-none focus:border-blue-600 transition-colors cursor-pointer";
+
+  return (
+    <div className="flex flex-wrap items-center gap-2">
+      <select
+        className={selectClass}
+        value={value.provider}
+        onChange={(e) => onChange({ provider: e.target.value, name: '' })}
+      >
+        <option value="">Select provider...</option>
+        {providers.map((p) => (
+          <option key={p} value={p}>{p}</option>
+        ))}
+      </select>
+      {value.provider && (
+        loadingModels ? (
+          <span className="text-xs text-neutral-600">Loading models...</span>
+        ) : (
+          <select
+            className={selectClass}
+            value={value.name}
+            onChange={(e) => onChange({ provider: value.provider, name: e.target.value })}
+          >
+            <option value="">Select model...</option>
+            {models.map((m) => (
+              <option key={m.id} value={m.id}>{m.id}</option>
+            ))}
+          </select>
+        )
+      )}
+    </div>
+  );
+}
 
 interface GlobalSettingsProps {
   config: VitoConfig;
@@ -96,6 +166,284 @@ const TIMEZONE_OPTIONS = [
   { value: 'UTC', label: 'UTC' },
 ];
 
+
+// ── Model Choices Editor ──────────────────────────────────────────────────────
+
+interface ModelChoicesEditorProps {
+  choices: ModelChoice[];
+  onChange: (next: ModelChoice[]) => void;
+}
+
+interface EditingChoice {
+  provider: string;
+  name: string;
+  description: string;
+}
+
+const emptyChoice = (): EditingChoice => ({ provider: '', name: '', description: '' });
+
+const choiceFormInputCls = "w-full bg-neutral-950 border border-neutral-700 rounded-md px-2.5 py-1.5 text-neutral-200 text-xs focus:outline-none focus:border-blue-600 transition-colors";
+const choiceFormSelectCls = `${choiceFormInputCls} cursor-pointer`;
+
+// Top-level so its identity is stable across re-renders. If this lived inside
+// ModelChoicesEditor's body, every keystroke (which calls setDraft) would
+// re-create the function, React would unmount/remount the inputs, and the
+// focused input would lose focus on every keystroke.
+function ChoiceForm({
+  draft,
+  setDraft,
+  availableProviders,
+  providerModels,
+  loadingModels,
+  onProviderChange,
+  onConfirm,
+  onCancel,
+  confirmLabel,
+}: {
+  draft: EditingChoice;
+  setDraft: React.Dispatch<React.SetStateAction<EditingChoice>>;
+  availableProviders: string[];
+  providerModels: { id: string }[];
+  loadingModels: boolean;
+  onProviderChange: (provider: string) => void;
+  onConfirm: () => void;
+  onCancel: () => void;
+  confirmLabel: string;
+}) {
+  return (
+    <div className="space-y-2 pt-2">
+      <div className="grid grid-cols-2 gap-2">
+        <div>
+          <label className="text-xs text-neutral-500 mb-1 block">Provider</label>
+          <select
+            className={choiceFormSelectCls}
+            value={draft.provider}
+            onChange={(e) => onProviderChange(e.target.value)}
+          >
+            <option value="">Select provider...</option>
+            {availableProviders.map((p) => (
+              <option key={p} value={p}>{p}</option>
+            ))}
+          </select>
+        </div>
+        <div>
+          <label className="text-xs text-neutral-500 mb-1 block">Model</label>
+          {providerModels.length > 0 ? (
+            <select
+              className={choiceFormSelectCls}
+              value={draft.name}
+              onChange={(e) => setDraft((d) => ({ ...d, name: e.target.value }))}
+            >
+              <option value="">Select model...</option>
+              {providerModels.map((m) => (
+                <option key={m.id} value={m.id}>{m.id}</option>
+              ))}
+            </select>
+          ) : (
+            <input
+              className={choiceFormInputCls}
+              placeholder={loadingModels ? 'Loading...' : 'model-name'}
+              value={draft.name}
+              onChange={(e) => setDraft((d) => ({ ...d, name: e.target.value }))}
+            />
+          )}
+        </div>
+      </div>
+      <div>
+        <label className="text-xs text-neutral-500 mb-1 block">Description <span className="text-neutral-600">(when should this model be picked?)</span></label>
+        <textarea
+          className={`${choiceFormInputCls} resize-none`}
+          rows={2}
+          placeholder="e.g. Cheapest, fastest. Pick for chit-chat and simple lookups."
+          value={draft.description}
+          onChange={(e) => setDraft((d) => ({ ...d, description: e.target.value }))}
+        />
+      </div>
+      <div className="flex gap-2 pt-1">
+        <button
+          onClick={onConfirm}
+          disabled={!draft.provider || !draft.name}
+          className="px-3 py-1 text-xs bg-blue-600 hover:bg-blue-700 disabled:opacity-40 text-white rounded-md transition-colors"
+        >
+          {confirmLabel}
+        </button>
+        <button onClick={onCancel} className="px-3 py-1 text-xs text-neutral-400 hover:text-neutral-200 transition-colors">
+          Cancel
+        </button>
+      </div>
+    </div>
+  );
+}
+
+function ModelChoicesEditor({ choices, onChange }: ModelChoicesEditorProps) {
+  const [editingIdx, setEditingIdx] = useState<number | null>(null);
+  const [addingNew, setAddingNew] = useState(false);
+  const [draft, setDraft] = useState<EditingChoice>(emptyChoice());
+  const [availableProviders, setAvailableProviders] = useState<string[]>([]);
+  const [providerModels, setProviderModels] = useState<{ id: string }[]>([]);
+  const [loadingModels, setLoadingModels] = useState(false);
+
+  // Load providers we have credentials for. /api/models/providers returns
+  // { providers, authStatus } — only show ones with hasAuth === true.
+  useEffect(() => {
+    fetch('/api/models/providers')
+      .then((r) => r.json())
+      .then((data) => {
+        const all: string[] = data.providers || [];
+        const auth: Record<string, { hasAuth?: boolean }> = data.authStatus || {};
+        setAvailableProviders(all.filter((p) => auth[p]?.hasAuth === true));
+      })
+      .catch(() => {});
+  }, []);
+
+  const loadModels = async (provider: string) => {
+    if (!provider) { setProviderModels([]); return; }
+    setLoadingModels(true);
+    try {
+      const res = await fetch(`/api/models/${provider}`);
+      const data = await res.json();
+      setProviderModels(Array.isArray(data) ? data : []);
+    } catch {
+      setProviderModels([]);
+    }
+    setLoadingModels(false);
+  };
+
+  const startEdit = (i: number) => {
+    setAddingNew(false);
+    setEditingIdx(i);
+    setDraft({ ...choices[i] });
+    loadModels(choices[i].provider);
+  };
+
+  const startAdd = () => {
+    setEditingIdx(null);
+    setAddingNew(true);
+    setDraft(emptyChoice());
+    setProviderModels([]);
+  };
+
+  const cancel = () => { setEditingIdx(null); setAddingNew(false); };
+
+  const saveEdit = () => {
+    if (!draft.provider || !draft.name) return;
+    const next = [...choices];
+    next[editingIdx!] = { ...draft };
+    onChange(next);
+    cancel();
+  };
+
+  const saveNew = () => {
+    if (!draft.provider || !draft.name) return;
+    onChange([...choices, { ...draft }]);
+    cancel();
+  };
+
+  const remove = (i: number) => {
+    const next = choices.filter((_, idx) => idx !== i);
+    onChange(next);
+    if (editingIdx === i) cancel();
+  };
+
+  const move = (i: number, dir: -1 | 1) => {
+    const j = i + dir;
+    if (j < 0 || j >= choices.length) return;
+    const next = [...choices];
+    [next[i], next[j]] = [next[j], next[i]];
+    onChange(next);
+    if (editingIdx === i) setEditingIdx(j);
+    else if (editingIdx === j) setEditingIdx(i);
+  };
+
+  const onProviderChange = (provider: string) => {
+    setDraft((d) => ({ ...d, provider, name: '' }));
+    loadModels(provider);
+  };
+
+  return (
+    <div className="pt-3">
+      <div className="flex items-center justify-between mb-2">
+        <span className="text-xs text-neutral-500 uppercase tracking-wide">Candidate Models</span>
+        {!addingNew && editingIdx === null && (
+          <button
+            onClick={startAdd}
+            className="text-xs text-blue-400 hover:text-blue-300 transition-colors"
+          >
+            + Add Model
+          </button>
+        )}
+      </div>
+
+      <ul className="space-y-2">
+        {choices.map((c, i) => (
+          <li key={`${c.provider}/${c.name}/${i}`} className="bg-neutral-950/60 border border-neutral-800 rounded-md p-3">
+            {editingIdx === i ? (
+              <ChoiceForm
+                draft={draft}
+                setDraft={setDraft}
+                availableProviders={availableProviders}
+                providerModels={providerModels}
+                loadingModels={loadingModels}
+                onProviderChange={onProviderChange}
+                onConfirm={saveEdit}
+                onCancel={cancel}
+                confirmLabel="Save"
+              />
+            ) : (
+              <div className="flex items-start gap-2">
+                <div className="flex-1 min-w-0">
+                  <div className="font-mono text-xs text-purple-400 truncate">{c.provider}/{c.name}</div>
+                  {c.description && <div className="text-xs text-neutral-500 mt-0.5">{c.description}</div>}
+                </div>
+                <div className="flex items-center gap-1 shrink-0">
+                  <button
+                    onClick={() => move(i, -1)}
+                    disabled={i === 0}
+                    className="p-1 text-neutral-600 hover:text-neutral-300 disabled:opacity-30 transition-colors"
+                    title="Move up"
+                  >↑</button>
+                  <button
+                    onClick={() => move(i, 1)}
+                    disabled={i === choices.length - 1}
+                    className="p-1 text-neutral-600 hover:text-neutral-300 disabled:opacity-30 transition-colors"
+                    title="Move down"
+                  >↓</button>
+                  <button
+                    onClick={() => startEdit(i)}
+                    className="p-1 text-xs text-blue-400 hover:text-blue-300 transition-colors"
+                  >Edit</button>
+                  <button
+                    onClick={() => remove(i)}
+                    className="p-1 text-xs text-red-500 hover:text-red-400 transition-colors"
+                  >✕</button>
+                </div>
+              </div>
+            )}
+          </li>
+        ))}
+      </ul>
+
+      {addingNew && (
+        <div className="mt-2 bg-neutral-950/60 border border-blue-800/40 rounded-md p-3">
+          <div className="text-xs text-blue-400 mb-1 font-medium">New Candidate Model</div>
+          <ChoiceForm
+            draft={draft}
+            setDraft={setDraft}
+            availableProviders={availableProviders}
+            providerModels={providerModels}
+            loadingModels={loadingModels}
+            onProviderChange={onProviderChange}
+            onConfirm={saveNew}
+            onCancel={cancel}
+            confirmLabel="Add"
+          />
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 
 export default function GlobalSettings({ config, onSave }: GlobalSettingsProps) {
   const settings = config.settings || {};
@@ -369,7 +717,18 @@ export default function GlobalSettings({ config, onSave }: GlobalSettingsProps) 
       {/* ── Auto Classifier ── */}
       <section className="bg-neutral-900 border border-neutral-800 rounded-xl p-5">
         <h3 className="text-base font-semibold text-white mb-1">Auto Classifier</h3>
-        <p className="text-xs text-neutral-600 mb-4">When a field's Auto toggle is on, a cheap LLM (claude-haiku-4-5) picks its value per turn based on the incoming message — overriding the configured value only for that turn. Toggles for message limits, thoughts/tools inclusion, and memory recall live inline in the sections above.</p>
+        <p className="text-xs text-neutral-600 mb-4">When a field's Auto toggle is on, the classifier model below picks its value per turn based on the incoming message — overriding the configured value only for that turn. Toggles for message limits, thoughts/tools inclusion, and memory recall live inline in the sections above.</p>
+
+        <div className="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-4 py-3 border-b border-neutral-800/50">
+          <div className="flex flex-col sm:w-48 sm:shrink-0">
+            <span className="text-sm text-neutral-200">Classifier Model</span>
+            <span className="text-xs text-neutral-500">Cheap, fast model used for every classifier call</span>
+          </div>
+          <ClassifierModelPicker
+            value={settings.auto?.classifierModel ?? DEFAULT_CLASSIFIER_MODEL}
+            onChange={(next) => updateSetting('auto.classifierModel', next)}
+          />
+        </div>
 
         <div className="flex items-center justify-between gap-4 py-3 border-b border-neutral-800/50">
           <div className="flex flex-col">
@@ -385,22 +744,11 @@ export default function GlobalSettings({ config, onSave }: GlobalSettingsProps) 
           </label>
         </div>
 
-        {/* Read-only list of candidate models. Users can override via vito.config.json:
-            settings.auto['pi-coding-agent'].modelChoices */}
-        <div className="pt-3">
-          <div className="text-xs text-neutral-500 uppercase tracking-wide mb-2">Candidate Models</div>
-          <ul className="space-y-2">
-            {(settings.auto?.['pi-coding-agent']?.modelChoices ?? DEFAULT_PI_MODEL_CHOICES).map((c, i) => (
-              <li key={`${c.provider}/${c.name}/${i}`} className="bg-neutral-950/60 border border-neutral-800 rounded-md p-3">
-                <div className="font-mono text-xs text-purple-400">{c.provider}/{c.name}</div>
-                <div className="text-xs text-neutral-500 mt-1">{c.description}</div>
-              </li>
-            ))}
-          </ul>
-          <p className="text-xs text-neutral-600 mt-3">
-            Override this list in <span className="font-mono text-neutral-500">vito.config.json</span> under <span className="font-mono text-neutral-500">settings.auto["pi-coding-agent"].modelChoices</span>.
-          </p>
-        </div>
+        {/* Editable candidate models list */}
+        <ModelChoicesEditor
+          choices={settings.auto?.['pi-coding-agent']?.modelChoices ?? DEFAULT_PI_MODEL_CHOICES}
+          onChange={(next) => updateSetting('auto.pi-coding-agent.modelChoices', next)}
+        />
       </section>
     </div>
   );

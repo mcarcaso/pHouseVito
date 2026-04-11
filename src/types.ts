@@ -44,6 +44,39 @@ export interface Attachment {
   filename?: string;
 }
 
+/**
+ * Build a human-readable prompt string from a message's text + attachments.
+ * Shared by the orchestrator (for the LLM prompt) and the classifier (for tracing).
+ *
+ * Uses the MEDIA: prefix for file references — the universal format across
+ * the system (DB storage, channel rendering, LLM prompts).
+ *
+ * Output format:
+ *   [senderName]: message text
+ *
+ *   MEDIA:/path/to/file.jpg
+ */
+export function buildPromptText(
+  content: string,
+  opts?: { author?: string; attachments?: Attachment[] }
+): string {
+  let text = content || "";
+
+  const sender = opts?.author;
+  if (sender && sender !== "user" && sender !== "system") {
+    text = `[${sender}]: ${text}`;
+  }
+
+  if (opts?.attachments?.length) {
+    const refs = opts.attachments
+      .map((a) => `MEDIA:${a.path || a.filename || "(attachment)"}`)
+      .join("\n");
+    text = text ? `${text}\n\n${refs}` : refs;
+  }
+
+  return text;
+}
+
 export interface OutputHandler {
   relay(msg: OutboundMessage): Promise<void>;
   /** Send a structured agent event (tool calls, thinking, etc.) to the UI */

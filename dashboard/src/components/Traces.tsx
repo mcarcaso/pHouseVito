@@ -130,6 +130,7 @@ interface LogFile {
   alias?: string | null;
   hasEmbedding?: boolean;
   userMessage?: string;
+  traceType?: "main" | "classifier" | "profile";
 }
 
 interface LogDetailJsonl {
@@ -158,8 +159,7 @@ function Traces() {
   const [showRaw, setShowRaw] = useState(false); // Hide raw events by default
   
   // Filters
-  const [hideProfileUpdates, setHideProfileUpdates] = useState(false);
-  const [hideClassifier, setHideClassifier] = useState(false);
+  const [traceTypeFilter, setTraceTypeFilter] = useState<string>("all");
   const [sessionFilter, setSessionFilter] = useState<string>("all");
 
   const fetchLogs = useCallback(async () => {
@@ -753,12 +753,8 @@ function Traces() {
 
   // Compute filtered logs
   const filteredLogs = logs.filter(log => {
-    // Hide profile updates if toggle is on
-    if (hideProfileUpdates && log.filename.startsWith("trace-profile-")) {
-      return false;
-    }
-    // Hide auto classifier traces if toggle is on
-    if (hideClassifier && log.filename.startsWith("trace-classifier-")) {
+    // Filter by trace type
+    if (traceTypeFilter !== "all" && log.traceType !== traceTypeFilter) {
       return false;
     }
     // Filter by session if not "all"
@@ -817,6 +813,19 @@ function Traces() {
       {/* Filter bar */}
       <div className="flex items-center gap-4 px-4 py-2 border-b border-neutral-800 bg-neutral-950/50">
         <div className="flex items-center gap-2">
+          <span className="text-xs text-neutral-500">Type:</span>
+          <select
+            value={traceTypeFilter}
+            onChange={(e) => setTraceTypeFilter(e.target.value)}
+            className="bg-neutral-900 border border-neutral-700 rounded px-2 py-1 text-xs text-neutral-300 cursor-pointer focus:outline-none focus:border-blue-600"
+          >
+            <option value="all">All</option>
+            <option value="main">Main</option>
+            <option value="classifier">Classifier</option>
+            <option value="profile">Profile</option>
+          </select>
+        </div>
+        <div className="flex items-center gap-2">
           <span className="text-xs text-neutral-500">Session:</span>
           <select
             value={sessionFilter}
@@ -829,30 +838,23 @@ function Traces() {
             ))}
           </select>
         </div>
-        <label className="flex items-center gap-1.5 text-xs text-neutral-500 cursor-pointer select-none">
-          <input
-            type="checkbox"
-            checked={hideProfileUpdates}
-            onChange={(e) => setHideProfileUpdates(e.target.checked)}
-            className="accent-blue-600 cursor-pointer w-3 h-3"
-          />
-          Hide profile updates
-        </label>
-        <label className="flex items-center gap-1.5 text-xs text-neutral-500 cursor-pointer select-none">
-          <input
-            type="checkbox"
-            checked={hideClassifier}
-            onChange={(e) => setHideClassifier(e.target.checked)}
-            className="accent-blue-600 cursor-pointer w-3 h-3"
-          />
-          Hide classifier
-        </label>
       </div>
 
       <div className="p-4 space-y-2">
         {filteredLogs.map((log) => {
           const info = parsePreview(log.preview);
           const isJsonl = log.format === 'jsonl';
+          const traceType = log.traceType || "main";
+
+          // Extract clean user message for classifier traces (strip <recent-history> wrapper)
+          let displayMessage = log.userMessage || "";
+          if (traceType === "classifier" && displayMessage.includes("<user-message>")) {
+            const match = displayMessage.match(/<user-message>\s*([\s\S]*?)\s*<\/user-message>/);
+            if (match) {
+              displayMessage = match[1].trim();
+            }
+          }
+
           return (
             <div
               key={log.filename}
@@ -860,6 +862,17 @@ function Traces() {
               onClick={() => setSearchParams({ file: log.filename })}
             >
               <div className="flex items-center gap-3 mb-2 text-sm flex-wrap">
+                {/* Trace type badge */}
+                {traceType === "classifier" && (
+                  <span className="text-amber-400 bg-amber-500/20 px-2 py-0.5 rounded text-xs font-medium border border-amber-500/30">
+                    Classifier
+                  </span>
+                )}
+                {traceType === "profile" && (
+                  <span className="text-sky-400 bg-sky-500/20 px-2 py-0.5 rounded text-xs font-medium border border-sky-500/30">
+                    Profile
+                  </span>
+                )}
                 <span className="text-neutral-500 bg-neutral-800 px-2 py-0.5 rounded text-xs">
                   {info.channel || '—'}
                 </span>
@@ -898,9 +911,9 @@ function Traces() {
                   {info.session}
                 </div>
               )}
-              {log.userMessage && (
+              {displayMessage && (
                 <div className="text-neutral-400 text-sm mt-2 line-clamp-2">
-                  {log.userMessage}
+                  {displayMessage}
                 </div>
               )}
             </div>

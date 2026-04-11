@@ -14,7 +14,8 @@ import { completeSimple, getModel } from "@mariozechner/pi-ai";
 import type { AssistantMessage, Message } from "@mariozechner/pi-ai";
 import { appendFileSync, mkdirSync } from "fs";
 import { dirname, join } from "path";
-import type { ModelChoice } from "../types.js";
+import { buildPromptText } from "../types.js";
+import type { Attachment, ModelChoice } from "../types.js";
 
 /**
  * Default model the classifier itself runs on. Cheap + fast.
@@ -55,6 +56,10 @@ export const DEFAULT_PI_MODEL_CHOICES: ModelChoice[] = [
 export interface AutoClassifierRequest {
   /** The raw user message for this turn. */
   userMessage: string;
+  /** Author of the message (optional, used for trace formatting). */
+  author?: string;
+  /** Attachments on the message (optional). */
+  attachments?: Attachment[];
   /** A short chronological snippet of the recent turn history (optional). */
   recentHistory?: string;
   /** Candidate models — required when needed.model is true. */
@@ -186,9 +191,14 @@ You MUST also include:
 
 Only include the keys listed above plus "explanation". Any extra keys will be ignored.`;
 
+  const formattedMessage = buildPromptText(req.userMessage, {
+    author: req.author,
+    attachments: req.attachments,
+  });
+
   const userContent = req.recentHistory
-    ? `<recent-history>\n${req.recentHistory}\n</recent-history>\n\n<user-message>\n${req.userMessage}\n</user-message>`
-    : `<user-message>\n${req.userMessage}\n</user-message>`;
+    ? `<recent-history>\n${req.recentHistory}\n</recent-history>\n\n<user-message>\n${formattedMessage}\n</user-message>`
+    : `<user-message>\n${formattedMessage}\n</user-message>`;
 
   const messages: Message[] = [
     {
@@ -220,7 +230,10 @@ Only include the keys listed above plus "explanation". Any extra keys will be ig
       content: systemPrompt,
       length: systemPrompt.length,
     });
-    traceFile.writeLine({ type: "user_message", content: userContent });
+    traceFile.writeLine({
+      type: "user_message",
+      content: userContent,
+    });
   }
 
   // Helper used by both success and failure paths to close the trace file.

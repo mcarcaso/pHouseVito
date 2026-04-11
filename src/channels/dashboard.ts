@@ -1958,9 +1958,9 @@ export class DashboardChannel implements Channel {
                     if (chunk[i] === 0x0a) { // newline
                       newlineCount++;
                       if (newlineCount === 2) {
-                        // Line 3 starts at offset + i + 1 — read a small chunk for user_message
+                        // Line 3 starts at offset + i + 1 — read chunk for user_message (larger for classifier traces)
                         const msgStart = offset + i + 1;
-                        const msgLen = Math.min(4096, size - msgStart);
+                        const msgLen = Math.min(16384, size - msgStart);
                         if (msgLen > 0) {
                           const msgBuf = Buffer.alloc(msgLen);
                           readSync(fd, msgBuf, 0, msgLen, msgStart);
@@ -2018,6 +2018,14 @@ export class DashboardChannel implements Channel {
               preview = headBuf.toString("utf-8").split("\n").slice(0, 8).join("\n");
             }
 
+            // Detect trace type from filename prefix
+            let traceType: "main" | "classifier" | "profile" = "main";
+            if (filename.startsWith("trace-classifier-")) {
+              traceType = "classifier";
+            } else if (filename.startsWith("trace-profile-")) {
+              traceType = "profile";
+            }
+
             return {
               filename,
               timestamp,
@@ -2028,6 +2036,7 @@ export class DashboardChannel implements Channel {
               alias: sessionId ? aliasMap.get(sessionId) || null : null,
               hasEmbedding,
               userMessage,
+              traceType,
             };
           });
 

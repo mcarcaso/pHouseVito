@@ -5,7 +5,7 @@ import { withNoReplyCheck } from "./harness/decorators/index.js";
 import { getDirectChannel, type DirectChannel } from "./channels/direct.js";
 
 import { runAutoClassifier } from "./memory/auto-classifier.js";
-import { assembleContext, formatContextForPrompt } from "./memory/context.js";
+import { assembleContext, formatContextForPrompt, extractMessageText } from "./memory/context.js";
 import { maybeEmbedNewChunks } from "./memory/embeddings.js";
 import { loadProfileForPrompt, maybeUpdateProfile, setProfileUpdaterConfig, setProfileUpdaterQueries } from "./memory/profile.js";
 import { autoSearchForContext, type AutoSearchResult } from "./memory/search.js";
@@ -17,6 +17,9 @@ import { buildSystemBlock, getDateTimeString } from "./system-instructions.js";
 import { randomBytes } from "crypto";
 import { mkdirSync, writeFileSync } from "fs";
 import { join, resolve } from "path";
+import {
+  buildPromptText,
+} from "./types.js";
 import type {
   Channel,
   CronJobConfig,
@@ -505,12 +508,14 @@ export class Orchestrator {
       const historyLines: string[] = [];
       for (let i = 0; i < recent.length; i++) {
         try {
-          const parsed = JSON.parse(recent[i].content);
-          const text = typeof parsed === "string" ? parsed : (parsed.text || "");
+          const text = extractMessageText(recent[i].content);
           if (!text) continue;
           const role = recent[i].type === "user" ? "user" : "assistant";
+          const authorPrefix = (recent[i].type === "user" && recent[i].author)
+            ? `${recent[i].author}: `
+            : "";
           const offset = recent.length - i; // last entry → 1, first entry → recent.length
-          historyLines.push(`[-${offset}] ${role}: ${text.slice(0, 300)}`);
+          historyLines.push(`[-${offset}] ${role}: ${authorPrefix}${text.slice(0, 300)}`);
         } catch {
           // skip malformed rows
         }
@@ -521,6 +526,8 @@ export class Orchestrator {
 
       const classified = await runAutoClassifier({
         userMessage: event.content || "",
+        author: event.author,
+        attachments: event.attachments,
         recentHistory,
         modelChoices: auto["pi-coding-agent"].modelChoices,
         classifierModel: auto.classifierModel,
@@ -678,23 +685,10 @@ export class Orchestrator {
     this.activeRequests.set(event.sessionKey, activeEntry);
 
     // Build user message (include sender name and attachment file paths if any)
-    let promptText = event.content || "";
-    
-    // Prepend sender name if available (so Claude knows who is talking)
-    const senderName = event.author;
-    if (senderName && senderName !== "user" && senderName !== "system") {
-      promptText = `[${senderName}]: ${promptText}`;
-    }
-    
-    if (event.attachments?.length) {
-      const refs = event.attachments
-        .map((a) => {
-          const ref = a.path || a.filename || "(attachment)";
-          return `[Attached ${a.type}: ${ref}]`;
-        })
-        .join("\n");
-      promptText = promptText ? `${promptText}\n\n${refs}` : refs;
-    }
+    const promptText = buildPromptText(event.content, {
+      author: event.author,
+      attachments: event.attachments,
+    });
 
     console.log(`[Orchestrator] Sending prompt to LLM (${promptText.length} chars)...`);
 

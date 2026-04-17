@@ -211,20 +211,29 @@ export class DashboardChannel implements Channel {
       } catch {}
       if (!baseDomain || !host.endsWith(baseDomain)) return next();
 
-      const prefix = host.slice(0, -(baseDomain.length + 1)); // e.g. "myapp"
-      if (!prefix || prefix.includes(".")) return next(); // no nested subdomains
+      // Try to find the app by matching the host against known app URLs
+      const appsDir = path.join(process.cwd(), "user", "apps");
+      const appHost = `https://${host}`;
+      let port: number | undefined;
+      let found = false;
 
-      const appDir = path.join(process.cwd(), "user", "apps", prefix);
-      const metaPath = path.join(appDir, ".vito-app.json");
-      if (!existsSync(metaPath)) return next();
-
-      let port: number;
       try {
-        const meta = JSON.parse(readFileSync(metaPath, "utf-8"));
-        port = meta.port;
-      } catch {
-        return next();
-      }
+        const dirs = readdirSync(appsDir);
+        for (const dir of dirs) {
+          const metaPath = path.join(appsDir, dir, ".vito-app.json");
+          if (!existsSync(metaPath)) continue;
+          try {
+            const meta = JSON.parse(readFileSync(metaPath, "utf-8"));
+            if (meta.url === appHost) {
+              port = meta.port;
+              found = true;
+              break;
+            }
+          } catch {}
+        }
+      } catch {}
+
+      if (!found) return next();
 
       const proxyReq = http.request(
         { hostname: "127.0.0.1", port, path: req.originalUrl, method: req.method, headers: req.headers },

@@ -10,10 +10,9 @@
  * actually asked for, and fall back to sensible defaults on any failure.
  */
 
-import { completeSimple, getModel } from "@mariozechner/pi-ai";
-import type { AssistantMessage, Message } from "@mariozechner/pi-ai";
 import { appendFileSync, mkdirSync } from "fs";
 import { dirname, join } from "path";
+import { PiHarness } from "../harnesses/index.js";
 import { buildPromptText } from "../types.js";
 import type { Attachment, ModelChoice } from "../types.js";
 
@@ -70,6 +69,8 @@ export interface AutoClassifierRequest {
     currentContextLimit?: boolean;
     currentContextIncludeThoughts?: boolean;
     currentContextIncludeTools?: boolean;
+    crossContextLimit?: boolean;
+    crossContextMaxSessions?: boolean;
     recalledMemoryLimit?: boolean;
   };
   /** Which model the classifier should run on. Defaults to DEFAULT_CLASSIFIER_MODEL. */
@@ -89,6 +90,8 @@ export interface AutoClassifierResult {
   currentContextLimit?: number;
   currentContextIncludeThoughts?: boolean;
   currentContextIncludeTools?: boolean;
+  crossContextLimit?: number;
+  crossContextMaxSessions?: number;
   recalledMemoryLimit?: number;
   /** Classifier's own explanation of why it picked these values. */
   explanation?: string;
@@ -175,19 +178,40 @@ export async function runAutoClassifier(req: AutoClassifierRequest): Promise<Aut
       `- "currentContextIncludeTools": boolean. Include prior tool calls and their results (file reads, command output, search results, etc.) in the response context. These are large, so only keep them when the new message leans on past tool work — asking about a file the assistant read, output from a command it ran, search results, follow-ups on something it fetched or wrote — OR when the conversation is an iterative software-building/debugging session where the assistant needs its prior tool output to keep working on the same task. Default to false for new topics, chit-chat, or anything that doesn't reference past tool output. In practice this usually matches currentContextIncludeThoughts.`,
     );
   }
+  if (req.needed.crossContextLimit) {
+    fieldDescriptions.push(
+      `- "crossContextLimit": integer 0-10. How many messages per OTHER session to include. Cross-session context is expensive and should usually be near zero. Pick 0 for standalone requests, routine follow-ups in the current thread, and operational tasks that don't need outside sessions. Pick 1-2 when a little outside context might help. Pick 3-6 only when the user is clearly asking about prior work across sessions, patterns over time, or comparisons with earlier conversations.`,
+    );
+  }
+  if (req.needed.crossContextMaxSessions) {
+    fieldDescriptions.push(
+      `- "crossContextMaxSessions": integer 0-20. How many OTHER sessions may contribute cross-session context. 0 means no cross-session context at all. For most requests this should be 0-3. Only go above that when the user is explicitly asking for synthesis across many threads, history, or project-wide recall.`,
+    );
+  }
   if (req.needed.recalledMemoryLimit) {
     fieldDescriptions.push(
-      `- "recalledMemoryLimit": integer 0-10. How many semantically-recalled memory chunks to inject. 0 for chit-chat, 2-3 for normal, 5-8 for questions that seem to reference history ("last time", "remember when", "you mentioned").`,
+      `- "recalledMemoryLimit": integer 0-10. How many semantically-recalled memory chunks to inject. 0 for chit-chat and fresh standalone asks, 1-3 for normal personal continuity, 4-6 for memory-heavy questions that seem to reference history ("last time", "remember when", "you mentioned").`,
     );
   }
 
   const systemPrompt = `You classify an incoming user message for an AI assistant harness. Given the message (and optional recent history), decide values for ONLY the fields listed below. Respond with a single JSON object, no prose, no markdown fences.
 
+Use this bounded policy as your guardrail:
+- LEAN: standalone, procedural, one-shot, or routine operational requests. Keep context tight. Prefer current-session only. Cross-session should usually be 0. Memory should usually be 0-1.
+- NORMAL: ordinary follow-ups in the same thread or tasks that need some nearby continuity. Keep enough current-session context to stay coherent. Cross-session should stay small unless the user clearly asks for it. Memory is usually 1-3.
+- RICH: debugging, audits, comparisons, strategy, or explicit references to previous work across sessions. Use more current-session context, allow some cross-session context, and raise memory only when the user is clearly leaning on history.
+
+Hard rules:
+- Bias toward the smallest context that still safely answers the message.
+- Cross-session context is the most expensive and easiest to over-inject. Do not include it unless the message actually benefits from other sessions.
+- If the message is about "this trace", "this file", "today's task", or a direct follow-up in the same thread, prefer current-session context over cross-session context.
+- Thoughts/tools should usually move together: if prior reasoning matters, prior tool output often matters too.
+
 Fields to decide:
 ${fieldDescriptions.join("\n")}
 
 You MUST also include:
-- "explanation": string. Two to four short sentences explaining your reasoning for the values you chose. Reference the actual user message and recent history. If you picked a model tier, say which trigger from its description matched. If you picked a context limit, say what makes the new message standalone, a follow-up, or a deep callback. This is read by humans debugging the classifier — be specific, not generic.
+- "explanation": string. Two to four short sentences explaining your reasoning for the values you chose. Reference the actual user message and recent history. Name the inferred mode (LEAN, NORMAL, or RICH). If you picked a model tier, say which trigger from its description matched. If you picked context values, say why this is standalone, a same-thread follow-up, or a cross-session/history-heavy request.
 
 Only include the keys listed above plus "explanation". Any extra keys will be ignored.`;
 
@@ -199,14 +223,6 @@ Only include the keys listed above plus "explanation". Any extra keys will be ig
   const userContent = req.recentHistory
     ? `<recent-history>\n${req.recentHistory}\n</recent-history>\n\n<user-message>\n${formattedMessage}\n</user-message>`
     : `<user-message>\n${formattedMessage}\n</user-message>`;
-
-  const messages: Message[] = [
-    {
-      role: "user",
-      content: userContent,
-      timestamp: Date.now(),
-    },
-  ];
 
   // Resolve the classifier model (request override → default).
   const classifierModel = req.classifierModel?.provider && req.classifierModel.name
@@ -237,55 +253,65 @@ Only include the keys listed above plus "explanation". Any extra keys will be ig
   }
 
   // Helper used by both success and failure paths to close the trace file.
-  let assistantMsg: AssistantMessage | undefined;
+  let assistantText = "";
   let runError: string | undefined;
+  let sawAssistantMessage = false;
+  let toolCalls = 0;
   const finishTrace = () => {
     if (!traceFile) return;
-    if (assistantMsg) {
-      // Mirror the shape pi-ai uses for streamed events so the dashboard
-      // raw_event renderer shows tokens/cost like a normal harness trace.
-      traceFile.writeLine({
-        type: "raw_event",
-        ts: Date.now() - startTime,
-        event: { type: "message_end", message: assistantMsg },
-      });
-      // Also emit a normalized assistant event with the parsed text so the
-      // default (non-raw) dashboard view shows the JSON decision.
-      let assistantText = "";
-      for (const block of assistantMsg.content) {
-        if (block.type === "text") assistantText += block.text;
-      }
-      traceFile.writeLine({
-        type: "normalized_event",
-        ts: Date.now() - startTime,
-        event: { kind: "assistant", content: assistantText },
-      });
-    }
     traceFile.writeLine({
       type: "footer",
       duration_ms: Date.now() - startTime,
-      message_count: assistantMsg ? 1 : 0,
-      tool_calls: 0,
+      message_count: sawAssistantMessage ? 1 : 0,
+      tool_calls: toolCalls,
       success: !runError,
       error: runError,
     });
   };
 
   try {
-    // Provider/name come from user config — getModel's literal-typed signature
-    // can't see them, so cast to bypass.
-    const model = (getModel as any)(classifierModel.provider, classifierModel.name);
-    assistantMsg = await completeSimple(model, {
-      systemPrompt,
-      messages,
+    const classifierHarness = new PiHarness({
+      model: classifierModel,
+      thinkingLevel: "off",
     });
 
-    // Extract text from assistant content blocks.
-    let text = "";
-    for (const block of assistantMsg.content) {
-      if (block.type === "text") text += block.text;
-    }
-    text = text.trim();
+    await classifierHarness.run(
+      systemPrompt,
+      userContent,
+      {
+        onInvocation: (cliCommand) => {
+          traceFile?.writeLine({
+            type: "invocation",
+            command: cliCommand,
+          });
+        },
+        onRawEvent: (event) => {
+          traceFile?.writeLine({
+            type: "raw_event",
+            ts: Date.now() - startTime,
+            event,
+          });
+        },
+        onNormalizedEvent: (event) => {
+          traceFile?.writeLine({
+            type: "normalized_event",
+            ts: Date.now() - startTime,
+            event,
+          });
+
+          if (event.kind === "assistant" && event.content?.trim()) {
+            assistantText = event.content.trim();
+            sawAssistantMessage = true;
+          } else if (event.kind === "tool_start") {
+            toolCalls += 1;
+          } else if (event.kind === "error") {
+            runError = event.message;
+          }
+        },
+      },
+    );
+
+    let text = assistantText.trim();
 
     // Strip code fences if the model added them despite the instruction.
     text = text.replace(/^```(?:json)?\s*/i, "").replace(/\s*```$/, "").trim();
@@ -320,6 +346,12 @@ Only include the keys listed above plus "explanation". Any extra keys will be ig
     }
     if (req.needed.currentContextIncludeTools && typeof parsed.currentContextIncludeTools === "boolean") {
       result.currentContextIncludeTools = parsed.currentContextIncludeTools;
+    }
+    if (req.needed.crossContextLimit && typeof parsed.crossContextLimit === "number") {
+      result.crossContextLimit = Math.max(0, Math.min(10, Math.round(parsed.crossContextLimit)));
+    }
+    if (req.needed.crossContextMaxSessions && typeof parsed.crossContextMaxSessions === "number") {
+      result.crossContextMaxSessions = Math.max(0, Math.min(20, Math.round(parsed.crossContextMaxSessions)));
     }
     if (req.needed.recalledMemoryLimit && typeof parsed.recalledMemoryLimit === "number") {
       result.recalledMemoryLimit = Math.max(0, Math.min(10, Math.round(parsed.recalledMemoryLimit)));

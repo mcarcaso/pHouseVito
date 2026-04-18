@@ -493,8 +493,12 @@ export class Orchestrator {
       auto.currentContext.limit ||
       auto.currentContext.includeThoughts ||
       auto.currentContext.includeTools ||
+      auto.crossContext.limit ||
+      auto.crossContext.maxSessions ||
       auto.memory.recalledMemoryLimit ||
       auto["pi-coding-agent"].model;
+
+    let classifiedResult: Awaited<ReturnType<typeof runAutoClassifier>> | null = null;
 
     if (anyAuto) {
       // Build a numbered chronological history snippet (last N user/assistant
@@ -536,6 +540,8 @@ export class Orchestrator {
           currentContextLimit: auto.currentContext.limit,
           currentContextIncludeThoughts: auto.currentContext.includeThoughts,
           currentContextIncludeTools: auto.currentContext.includeTools,
+          crossContextLimit: auto.crossContext.limit,
+          crossContextMaxSessions: auto.crossContext.maxSessions,
           recalledMemoryLimit: auto.memory.recalledMemoryLimit,
         },
         trace: {
@@ -544,6 +550,7 @@ export class Orchestrator {
           target: event.target,
         },
       });
+      classifiedResult = classified;
 
       if (classified.ran) {
         const applied: string[] = [];
@@ -558,6 +565,14 @@ export class Orchestrator {
         if (auto.currentContext.includeTools && classified.currentContextIncludeTools !== undefined) {
           effectiveSettings.currentContext.includeTools = classified.currentContextIncludeTools;
           applied.push(`currentContext.includeTools=${classified.currentContextIncludeTools}`);
+        }
+        if (auto.crossContext.limit && classified.crossContextLimit !== undefined) {
+          effectiveSettings.crossContext.limit = classified.crossContextLimit;
+          applied.push(`crossContext.limit=${classified.crossContextLimit}`);
+        }
+        if (auto.crossContext.maxSessions && classified.crossContextMaxSessions !== undefined) {
+          effectiveSettings.crossContext.maxSessions = classified.crossContextMaxSessions;
+          applied.push(`crossContext.maxSessions=${classified.crossContextMaxSessions}`);
         }
         if (auto.memory.recalledMemoryLimit && classified.recalledMemoryLimit !== undefined) {
           effectiveSettings.memory.recalledMemoryLimit = classified.recalledMemoryLimit;
@@ -640,7 +655,26 @@ export class Orchestrator {
       traceMessageUpdates: effectiveSettings.traceMessageUpdates ?? false,
     });
 
-    // Inject memory search trace data (queued for writing when trace file is created)
+    // Inject pre-run trace data (queued for writing when trace file is created)
+    if (classifiedResult) {
+      tracedHarness.writePreRunLine({
+        type: "auto_classifier",
+        ran: classifiedResult.ran,
+        duration_ms: classifiedResult.durationMs,
+        skipped: classifiedResult.note,
+        traceFile: classifiedResult.tracePath,
+        explanation: classifiedResult.explanation,
+        currentContextLimit: classifiedResult.currentContextLimit,
+        currentContextIncludeThoughts: classifiedResult.currentContextIncludeThoughts,
+        currentContextIncludeTools: classifiedResult.currentContextIncludeTools,
+        crossContextLimit: classifiedResult.crossContextLimit,
+        crossContextMaxSessions: classifiedResult.crossContextMaxSessions,
+        recalledMemoryLimit: classifiedResult.recalledMemoryLimit,
+        selectedModel: classifiedResult.selectedModel
+          ? `${classifiedResult.selectedModel.provider}/${classifiedResult.selectedModel.name}`
+          : undefined,
+      });
+    }
     if (memorySearchTrace) {
       tracedHarness.writePreRunLine({
         type: "memory_search",

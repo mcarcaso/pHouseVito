@@ -66,6 +66,22 @@ interface TraceMemorySearch {
   skipped?: string;
 }
 
+interface TraceAutoClassifier {
+  type: "auto_classifier";
+  ran: boolean;
+  duration_ms: number;
+  skipped?: string;
+  traceFile?: string;
+  explanation?: string;
+  currentContextLimit?: number;
+  currentContextIncludeThoughts?: boolean;
+  currentContextIncludeTools?: boolean;
+  crossContextLimit?: number;
+  crossContextMaxSessions?: number;
+  recalledMemoryLimit?: number;
+  selectedModel?: string;
+}
+
 interface TraceEmbeddingResult {
   type: "embedding_result";
   skipped?: string;
@@ -118,7 +134,7 @@ interface TraceFooter {
   error?: string;
 }
 
-type TraceLine = TraceHeader | TraceInvocation | TracePrompt | TraceUserMessage | TraceRawEvent | TraceNormalizedEvent | TraceMemorySearch | TraceEmbeddingResult | TraceProfileUpdate | TraceFooter;
+type TraceLine = TraceHeader | TraceInvocation | TracePrompt | TraceUserMessage | TraceRawEvent | TraceNormalizedEvent | TraceMemorySearch | TraceAutoClassifier | TraceEmbeddingResult | TraceProfileUpdate | TraceFooter;
 
 interface LogFile {
   filename: string;
@@ -275,6 +291,7 @@ function Traces() {
     const prompt = detail.lines.find(l => l.type === "prompt") as TracePrompt | undefined;
     const userMessage = detail.lines.find(l => l.type === "user_message") as TraceUserMessage | undefined;
     const memorySearch = detail.lines.find(l => l.type === "memory_search") as TraceMemorySearch | undefined;
+    const autoClassifier = detail.lines.find(l => l.type === "auto_classifier") as TraceAutoClassifier | undefined;
     const embeddingResult = detail.lines.find(l => l.type === "embedding_result") as TraceEmbeddingResult | undefined;
     const profileUpdate = detail.lines.find(l => l.type === "profile_update") as TraceProfileUpdate | undefined;
     const footer = detail.lines.find(l => l.type === "footer") as TraceFooter | undefined;
@@ -422,6 +439,76 @@ function Traces() {
                 ) : (
                   <div className="text-xs text-neutral-600 italic">No results returned</div>
                 )}
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* Auto Classifier */}
+        {autoClassifier && (
+          <div className="bg-neutral-900 border border-neutral-800 rounded-lg overflow-hidden">
+            <div className="px-4 py-2 flex items-center justify-between bg-neutral-800/50 gap-3">
+              <span className="text-sm font-medium text-neutral-300 flex items-center gap-2 flex-wrap">
+                🤖 Auto Classifier
+                {autoClassifier.ran ? (
+                  <>
+                    <span className="text-amber-400 font-normal text-xs">✓ Applied</span>
+                    <span className="text-neutral-600 font-normal text-xs">
+                      ({formatMs(autoClassifier.duration_ms)})
+                    </span>
+                  </>
+                ) : (
+                  <>
+                    <span className="text-neutral-500 font-normal text-xs">skipped — {autoClassifier.skipped || 'not run'}</span>
+                    <span className="text-neutral-600 font-normal text-xs">
+                      ({formatMs(autoClassifier.duration_ms)})
+                    </span>
+                  </>
+                )}
+              </span>
+              {autoClassifier.traceFile && (
+                <button
+                  className="text-xs text-blue-400 hover:text-blue-300 font-mono bg-blue-500/10 hover:bg-blue-500/20 px-2 py-1 rounded transition-colors whitespace-nowrap"
+                  onClick={() => {
+                    const filename = autoClassifier.traceFile!.split('/').pop() || autoClassifier.traceFile!;
+                    setSearchParams({ file: filename });
+                  }}
+                >
+                  View Trace →
+                </button>
+              )}
+            </div>
+            {(autoClassifier.explanation || autoClassifier.selectedModel || autoClassifier.currentContextLimit !== undefined || autoClassifier.currentContextIncludeThoughts !== undefined || autoClassifier.currentContextIncludeTools !== undefined || autoClassifier.crossContextLimit !== undefined || autoClassifier.crossContextMaxSessions !== undefined || autoClassifier.recalledMemoryLimit !== undefined) && (
+              <div className="p-4 space-y-3 border-t border-neutral-800">
+                {autoClassifier.explanation && (
+                  <div>
+                    <div className="text-xs text-neutral-500 mb-1">Reasoning</div>
+                    <div className="text-sm text-neutral-300 whitespace-pre-wrap break-words">{autoClassifier.explanation}</div>
+                  </div>
+                )}
+                <div className="flex flex-wrap gap-2 text-xs">
+                  {autoClassifier.selectedModel && (
+                    <span className="bg-amber-500/10 text-amber-300 px-2 py-1 rounded font-mono">model: {autoClassifier.selectedModel}</span>
+                  )}
+                  {autoClassifier.currentContextLimit !== undefined && (
+                    <span className="bg-neutral-800 text-neutral-300 px-2 py-1 rounded font-mono">context: {autoClassifier.currentContextLimit}</span>
+                  )}
+                  {autoClassifier.currentContextIncludeThoughts !== undefined && (
+                    <span className="bg-neutral-800 text-neutral-300 px-2 py-1 rounded font-mono">thoughts: {String(autoClassifier.currentContextIncludeThoughts)}</span>
+                  )}
+                  {autoClassifier.currentContextIncludeTools !== undefined && (
+                    <span className="bg-neutral-800 text-neutral-300 px-2 py-1 rounded font-mono">tools: {String(autoClassifier.currentContextIncludeTools)}</span>
+                  )}
+                  {autoClassifier.crossContextLimit !== undefined && (
+                    <span className="bg-neutral-800 text-neutral-300 px-2 py-1 rounded font-mono">cross: {autoClassifier.crossContextLimit}</span>
+                  )}
+                  {autoClassifier.crossContextMaxSessions !== undefined && (
+                    <span className="bg-neutral-800 text-neutral-300 px-2 py-1 rounded font-mono">crossSessions: {autoClassifier.crossContextMaxSessions}</span>
+                  )}
+                  {autoClassifier.recalledMemoryLimit !== undefined && (
+                    <span className="bg-neutral-800 text-neutral-300 px-2 py-1 rounded font-mono">memory: {autoClassifier.recalledMemoryLimit}</span>
+                  )}
+                </div>
               </div>
             )}
           </div>

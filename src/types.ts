@@ -169,6 +169,10 @@ export interface AutoFlags {
     includeThoughts?: boolean;
     includeTools?: boolean;
   };
+  crossContext?: {
+    limit?: boolean;
+    maxSessions?: boolean;
+  };
   memory?: {
     recalledMemoryLimit?: boolean;
   };
@@ -230,6 +234,10 @@ export interface ResolvedAutoFlags {
     limit: boolean;
     includeThoughts: boolean;
     includeTools: boolean;
+  };
+  crossContext: {
+    limit: boolean;
+    maxSessions: boolean;
   };
   memory: {
     recalledMemoryLimit: boolean;

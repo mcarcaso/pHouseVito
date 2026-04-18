@@ -39,6 +39,10 @@ const DEFAULT_AUTO: ResolvedAutoFlags = {
     includeThoughts: false,
     includeTools: false,
   },
+  crossContext: {
+    limit: false,
+    maxSessions: false,
+  },
   memory: {
     recalledMemoryLimit: false,
   },
@@ -98,6 +102,7 @@ function mergeSettings(base: Settings, override: Settings): Settings {
       ...base.auto,
       ...override.auto,
       currentContext: { ...base.auto?.currentContext, ...override.auto?.currentContext },
+      crossContext: { ...base.auto?.crossContext, ...override.auto?.crossContext },
       memory: { ...base.auto?.memory, ...override.auto?.memory },
       "pi-coding-agent": { ...base.auto?.["pi-coding-agent"], ...override.auto?.["pi-coding-agent"] },
     };
@@ -172,6 +177,10 @@ export function getEffectiveSettings(
         limit: settings.auto?.currentContext?.limit ?? DEFAULT_AUTO.currentContext.limit,
         includeThoughts: settings.auto?.currentContext?.includeThoughts ?? DEFAULT_AUTO.currentContext.includeThoughts,
         includeTools: settings.auto?.currentContext?.includeTools ?? DEFAULT_AUTO.currentContext.includeTools,
+      },
+      crossContext: {
+        limit: settings.auto?.crossContext?.limit ?? DEFAULT_AUTO.crossContext.limit,
+        maxSessions: settings.auto?.crossContext?.maxSessions ?? DEFAULT_AUTO.crossContext.maxSessions,
       },
       memory: {
         recalledMemoryLimit: settings.auto?.memory?.recalledMemoryLimit ?? DEFAULT_AUTO.memory.recalledMemoryLimit,

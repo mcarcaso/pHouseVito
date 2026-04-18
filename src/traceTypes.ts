@@ -103,6 +103,26 @@ export interface TraceMemorySearch {
 }
 
 /**
+ * AutoClassifier - per-turn classifier result written into the main trace
+ * with an optional link to the dedicated classifier trace file.
+ */
+export interface TraceAutoClassifier {
+  type: "auto_classifier";
+  ran: boolean;
+  duration_ms: number;
+  skipped?: string;
+  traceFile?: string;
+  explanation?: string;
+  currentContextLimit?: number;
+  currentContextIncludeThoughts?: boolean;
+  currentContextIncludeTools?: boolean;
+  crossContextLimit?: number;
+  crossContextMaxSessions?: number;
+  recalledMemoryLimit?: number;
+  selectedModel?: string;
+}
+
+/**
  * Footer - duration, counts, success/error summary
  */
 export interface TraceFooter {
@@ -125,4 +145,5 @@ export type TraceLine =
   | TraceRawEvent
   | TraceNormalizedEvent
   | TraceMemorySearch
+  | TraceAutoClassifier
   | TraceFooter;

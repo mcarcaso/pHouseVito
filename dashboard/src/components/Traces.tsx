@@ -74,10 +74,10 @@ interface TraceAutoClassifier {
   traceFile?: string;
   explanation?: string;
   currentContextLimit?: number;
-  currentContextIncludeThoughts?: boolean;
-  currentContextIncludeTools?: boolean;
+  currentContextIncludeWorkingContext?: boolean;
   crossContextLimit?: number;
   crossContextMaxSessions?: number;
+  crossContextIncludeWorkingContext?: boolean;
   recalledMemoryLimit?: number;
   selectedModel?: string;
 }
@@ -163,6 +163,9 @@ interface LogDetailText {
 
 type LogDetail = LogDetailJsonl | LogDetailText;
 
+const TRACE_TYPE_FILTER_STORAGE_KEY = 'traces.traceTypeFilter';
+const SESSION_FILTER_STORAGE_KEY = 'traces.sessionFilter';
+
 function Traces() {
   const [searchParams, setSearchParams] = useSearchParams();
   const selectedLog = searchParams.get('file');
@@ -175,8 +178,14 @@ function Traces() {
   const [showRaw, setShowRaw] = useState(false); // Hide raw events by default
   
   // Filters
-  const [traceTypeFilter, setTraceTypeFilter] = useState<string>("all");
-  const [sessionFilter, setSessionFilter] = useState<string>("all");
+  const [traceTypeFilter, setTraceTypeFilter] = useState<string>(() => {
+    if (typeof window === 'undefined') return 'all';
+    return localStorage.getItem(TRACE_TYPE_FILTER_STORAGE_KEY) || 'all';
+  });
+  const [sessionFilter, setSessionFilter] = useState<string>(() => {
+    if (typeof window === 'undefined') return 'all';
+    return localStorage.getItem(SESSION_FILTER_STORAGE_KEY) || 'all';
+  });
 
   const fetchLogs = useCallback(async () => {
     try {
@@ -235,6 +244,16 @@ function Traces() {
     }
   }, [selectedLog, fetchLogs, fetchLogDetail]);
 
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    localStorage.setItem(TRACE_TYPE_FILTER_STORAGE_KEY, traceTypeFilter);
+  }, [traceTypeFilter]);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    localStorage.setItem(SESSION_FILTER_STORAGE_KEY, sessionFilter);
+  }, [sessionFilter]);
+
   // Auto-refresh every 5s (both list and detail views)
   useEffect(() => {
     if (!autoRefresh) return;
@@ -247,6 +266,17 @@ function Traces() {
     }, 5000);
     return () => clearInterval(interval);
   }, [autoRefresh, selectedLog, fetchLogs, fetchLogDetail]);
+
+  useEffect(() => {
+    if (sessionFilter === 'all') return;
+    const availableSessions = new Set(logs.map((log) => {
+      const info = parsePreview(log.preview);
+      return log.sessionId || info.session || '';
+    }).filter(Boolean));
+    if (!availableSessions.has(sessionFilter)) {
+      setSessionFilter('all');
+    }
+  }, [logs, sessionFilter]);
 
   const formatDate = (ts: number) => new Date(ts).toLocaleString();
   const formatSize = (bytes: number) => {
@@ -478,7 +508,7 @@ function Traces() {
                 </button>
               )}
             </div>
-            {(autoClassifier.explanation || autoClassifier.selectedModel || autoClassifier.currentContextLimit !== undefined || autoClassifier.currentContextIncludeThoughts !== undefined || autoClassifier.currentContextIncludeTools !== undefined || autoClassifier.crossContextLimit !== undefined || autoClassifier.crossContextMaxSessions !== undefined || autoClassifier.recalledMemoryLimit !== undefined) && (
+            {(autoClassifier.explanation || autoClassifier.selectedModel || autoClassifier.currentContextLimit !== undefined || autoClassifier.currentContextIncludeWorkingContext !== undefined || autoClassifier.crossContextLimit !== undefined || autoClassifier.crossContextMaxSessions !== undefined || autoClassifier.crossContextIncludeWorkingContext !== undefined || autoClassifier.recalledMemoryLimit !== undefined) && (
               <div className="p-4 space-y-3 border-t border-neutral-800">
                 {autoClassifier.explanation && (
                   <div>
@@ -493,17 +523,17 @@ function Traces() {
                   {autoClassifier.currentContextLimit !== undefined && (
                     <span className="bg-neutral-800 text-neutral-300 px-2 py-1 rounded font-mono">context: {autoClassifier.currentContextLimit}</span>
                   )}
-                  {autoClassifier.currentContextIncludeThoughts !== undefined && (
-                    <span className="bg-neutral-800 text-neutral-300 px-2 py-1 rounded font-mono">thoughts: {String(autoClassifier.currentContextIncludeThoughts)}</span>
-                  )}
-                  {autoClassifier.currentContextIncludeTools !== undefined && (
-                    <span className="bg-neutral-800 text-neutral-300 px-2 py-1 rounded font-mono">tools: {String(autoClassifier.currentContextIncludeTools)}</span>
+                  {autoClassifier.currentContextIncludeWorkingContext !== undefined && (
+                    <span className="bg-neutral-800 text-neutral-300 px-2 py-1 rounded font-mono">working: {String(autoClassifier.currentContextIncludeWorkingContext)}</span>
                   )}
                   {autoClassifier.crossContextLimit !== undefined && (
                     <span className="bg-neutral-800 text-neutral-300 px-2 py-1 rounded font-mono">cross: {autoClassifier.crossContextLimit}</span>
                   )}
                   {autoClassifier.crossContextMaxSessions !== undefined && (
                     <span className="bg-neutral-800 text-neutral-300 px-2 py-1 rounded font-mono">crossSessions: {autoClassifier.crossContextMaxSessions}</span>
+                  )}
+                  {autoClassifier.crossContextIncludeWorkingContext !== undefined && (
+                    <span className="bg-neutral-800 text-neutral-300 px-2 py-1 rounded font-mono">crossWorking: {String(autoClassifier.crossContextIncludeWorkingContext)}</span>
                   )}
                   {autoClassifier.recalledMemoryLimit !== undefined && (
                     <span className="bg-neutral-800 text-neutral-300 px-2 py-1 rounded font-mono">memory: {autoClassifier.recalledMemoryLimit}</span>

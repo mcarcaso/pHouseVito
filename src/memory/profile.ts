@@ -116,16 +116,26 @@ ${contextSection}
 - If updating info about someone already mentioned (e.g., wife, son), ADD to that person's existing entry — don't create duplicate entries
 - Merge related facts (e.g., chess.com AND lichess info go under Interests > Chess)
 - Keep entries concise but complete — one good bullet with details > three fragmented bullets
+- Prefer durable, high-signal facts over chatter, one-off remarks, or implementation trivia
 - When adding a new person, create a subsection (### Name) with details as bullets underneath
+
+**Aggressive Cleanup Bias:**
+- Mike explicitly prefers a lean profile. When you touch the profile, clean up nearby clutter too.
+- DELETE or merge low-value, redundant, stale, overly specific, or obvious bullets instead of letting the file grow forever.
+- If a new fact supersedes an old one, REPLACE the old fact — do not keep both.
+- If multiple bullets can become one tighter bullet, merge them.
+- Do not preserve wording just because it already exists; optimize for compactness and usefulness.
+- Favor facts that will still matter later. Skip speculative, temporary, or fast-expiring details unless they are clearly recurring preferences.
 
 **Rules:**
 - Only extract facts ABOUT Mike. Ignore facts about the AI, system operations, debugging.
 - Don't add transient things (current tasks, what he's doing right now).
 - DO add: new people, relationships, contact info, interests, preferences, experiences, opinions, pets, etc.
-- Use Edit for surgical changes — don't rewrite the whole file.
+- Use Edit for surgical changes — don't rewrite the whole file unless absolutely necessary.
 - If adding a new section, use Write.
 - Be concise — one-liner notes are fine.
 - Don't duplicate info that's already there.
+- If the latest message is just agreement or confirmation, only update the profile if the surrounding context reveals a durable preference or fact.
 - Use the conversation context to understand vague responses (e.g., if Vito asked "do you like Chinese food?" and Mike says "I love that", the fact is "Mike loves Chinese food")
 
 **Profile path:** user/profile.md`;

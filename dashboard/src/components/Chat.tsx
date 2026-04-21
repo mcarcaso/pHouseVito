@@ -26,6 +26,14 @@ function playNotificationSound() {
 
 const POLL_INTERVAL = 5000; // 5 seconds
 
+interface DashboardMessage {
+  id: number;
+  type: string;
+  content: string;
+  timestamp: number;
+  author?: string | null;
+}
+
 function Chat() {
   const [allMessages, setAllMessages] = useState<ParsedMessage[]>([]);
   const [input, setInput] = useState('');
@@ -43,61 +51,79 @@ function Chat() {
   }, [filterState]);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const lastAssistantTsRef = useRef<number | null>(null);
+  const lastMessageIdRef = useRef<number | null>(null);
   const initialLoadRef = useRef(true);
   const pollTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
-  const fetchMessages = useCallback((filter?: FilterState) => {
+  const applyMessages = useCallback((rawMessages: DashboardMessage[], mode: 'replace' | 'append') => {
+    if (!Array.isArray(rawMessages) || rawMessages.length === 0) return;
+
+    const messages = rawMessages.map((msg) => parseDbMessage({
+      type: msg.type,
+      content: msg.content,
+      timestamp: msg.timestamp,
+      author: msg.author,
+    }));
+
+    const latestAssistant = [...messages].reverse().find((msg) => msg.role === 'assistant') ?? null;
+
+    if (
+      !initialLoadRef.current &&
+      latestAssistant &&
+      latestAssistant.timestamp !== lastAssistantTsRef.current
+    ) {
+      playNotificationSound();
+    }
+
+    initialLoadRef.current = false;
+    if (latestAssistant) {
+      lastAssistantTsRef.current = latestAssistant.timestamp;
+    }
+    lastMessageIdRef.current = rawMessages[rawMessages.length - 1]?.id ?? lastMessageIdRef.current;
+
+    setAllMessages((prev) => (mode === 'append' ? [...prev, ...messages] : messages));
+  }, []);
+
+  const fetchMessages = useCallback((filter?: FilterState, mode: 'replace' | 'append' = 'replace') => {
     const params = new URLSearchParams();
     if (filter) {
       if (!filter.showThoughts) params.set('hideThoughts', 'true');
       if (!filter.showTools) params.set('hideTools', 'true');
     }
+    if (mode === 'append' && lastMessageIdRef.current) {
+      params.set('after', String(lastMessageIdRef.current));
+    }
     const url = `/api/sessions/dashboard:default/messages${params.toString() ? '?' + params.toString() : ''}`;
     fetch(url)
       .then((res) => res.json())
       .then((data) => {
-        // Handle both old format (array) and new format ({messages, total})
         const rawMessages = Array.isArray(data) ? data : data.messages;
-        if (Array.isArray(rawMessages)) {
-          const messages = rawMessages.map((msg) => parseDbMessage({
-            type: msg.type,
-            content: msg.content,
-            timestamp: msg.timestamp,
-            author: msg.author,
-          }));
+        if (!Array.isArray(rawMessages)) return;
 
-          let latestAssistantTs: number | null = null;
-          for (let i = messages.length - 1; i >= 0; i--) {
-            if (messages[i].role === 'assistant') {
-              latestAssistantTs = messages[i].timestamp;
-              break;
-            }
-          }
-
-          if (
-            !initialLoadRef.current &&
-            latestAssistantTs !== null &&
-            latestAssistantTs !== lastAssistantTsRef.current
-          ) {
-            playNotificationSound();
-          }
-
-          initialLoadRef.current = false;
-          lastAssistantTsRef.current = latestAssistantTs;
-          setAllMessages(messages);
+        if (mode === 'append') {
+          applyMessages(rawMessages as DashboardMessage[], 'append');
+          return;
         }
+
+        if (rawMessages.length === 0) {
+          initialLoadRef.current = false;
+          lastAssistantTsRef.current = null;
+          lastMessageIdRef.current = null;
+          setAllMessages([]);
+          return;
+        }
+
+        applyMessages(rawMessages as DashboardMessage[], 'replace');
       })
       .catch((err) => console.error('Failed to load messages:', err));
-  }, []);
+  }, [applyMessages]);
 
-  // Polling — fetch messages every 5s
+  // Polling — initial full load, then incremental append every 5s
   useEffect(() => {
-    // Initial fetch
-    fetchMessages(filterState);
+    fetchMessages(filterState, 'replace');
 
-    // Start polling
     pollTimerRef.current = setInterval(() => {
-      fetchMessages(filterState);
+      fetchMessages(filterState, 'append');
     }, POLL_INTERVAL);
 
     return () => {
@@ -189,7 +215,7 @@ function Chat() {
     }
 
     // Fetch immediately to show our sent message
-    setTimeout(() => fetchMessages(filterState), 200);
+    setTimeout(() => fetchMessages(filterState, 'append'), 200);
   };
 
   const handleKeyPress = (e: React.KeyboardEvent) => {
@@ -266,6 +292,9 @@ function Chat() {
                 if (!confirm('Clear all messages in this chat?')) return;
                 try {
                   await fetch('/api/sessions/dashboard:default/messages', { method: 'DELETE' });
+                  initialLoadRef.current = false;
+                  lastAssistantTsRef.current = null;
+                  lastMessageIdRef.current = null;
                   setAllMessages([]);
                 } catch (err) {
                   console.error('Failed to clear messages:', err);

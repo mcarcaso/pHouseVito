@@ -462,60 +462,31 @@ function ChatView({
       )}
 
       <div className={`p-4 bg-neutral-900 rounded-lg flex flex-col flex-1 min-h-0 ${
-        reversed ? 'flex-col-reverse' : ''
-      } ${isStatic ? 'overflow-visible' : 'overflow-y-auto'}`}>
-        {reversed ? (
-          <>
-            {isTyping && (
-              <div className="mb-6 p-4 rounded-lg bg-neutral-800 mr-0 md:mr-[10%]">
-                <div className="flex justify-between mb-2 text-sm opacity-70">
-                  <span className="font-semibold capitalize">assistant</span>
-                </div>
-                <div className="leading-relaxed">
-                  <span className="inline-block animate-pulse">...</span>
-                </div>
-              </div>
-            )}
-            {renderMessages().reverse()}
-            {hasMoreOnServer && onLoadMore && (
-              <div className="text-center mb-6">
-                <button 
-                  className="bg-neutral-800 text-neutral-400 border border-neutral-700 rounded-md px-4 py-2 cursor-pointer text-sm transition-all hover:bg-neutral-700 hover:border-neutral-600 hover:text-neutral-200 disabled:opacity-50"
-                  onClick={onLoadMore}
-                  disabled={loadingMore}
-                >
-                  {loadingMore ? 'Loading...' : `Load Earlier (${messages.length}${totalMessages ? ` of ${totalMessages}` : ''} loaded)`}
-                </button>
-              </div>
-            )}
-          </>
-        ) : (
-          <>
-            {hasMoreOnServer && onLoadMore && (
-              <div className="text-center mb-6">
-                <button 
-                  className="bg-neutral-800 text-neutral-400 border border-neutral-700 rounded-md px-4 py-2 cursor-pointer text-sm transition-all hover:bg-neutral-700 hover:border-neutral-600 hover:text-neutral-200 disabled:opacity-50"
-                  onClick={onLoadMore}
-                  disabled={loadingMore}
-                >
-                  {loadingMore ? 'Loading...' : `Load Earlier (${messages.length}${totalMessages ? ` of ${totalMessages}` : ''} loaded)`}
-                </button>
-              </div>
-            )}
-            {renderMessages()}
-            {isTyping && (
-              <div className="mb-6 p-4 rounded-lg bg-neutral-800 mr-0 md:mr-[10%]">
-                <div className="flex justify-between mb-2 text-sm opacity-70">
-                  <span className="font-semibold capitalize">assistant</span>
-                </div>
-                <div className="leading-relaxed">
-                  <span className="inline-block animate-pulse">...</span>
-                </div>
-              </div>
-            )}
-            <div ref={messagesEndRef} />
-          </>
+        isStatic ? 'overflow-visible' : 'overflow-y-auto'
+      }`}>
+        {hasMoreOnServer && onLoadMore && (
+          <div className="text-center mb-6">
+            <button 
+              className="bg-neutral-800 text-neutral-400 border border-neutral-700 rounded-md px-4 py-2 cursor-pointer text-sm transition-all hover:bg-neutral-700 hover:border-neutral-600 hover:text-neutral-200 disabled:opacity-50"
+              onClick={onLoadMore}
+              disabled={loadingMore}
+            >
+              {loadingMore ? 'Loading...' : `Load Earlier (${messages.length}${totalMessages ? ` of ${totalMessages}` : ''} loaded)`}
+            </button>
+          </div>
         )}
+        {renderMessages()}
+        {isTyping && (
+          <div className="mb-6 p-4 rounded-lg bg-neutral-800 mr-0 md:mr-[10%]">
+            <div className="flex justify-between mb-2 text-sm opacity-70">
+              <span className="font-semibold capitalize">assistant</span>
+            </div>
+            <div className="leading-relaxed">
+              <span className="inline-block animate-pulse">...</span>
+            </div>
+          </div>
+        )}
+        <div ref={messagesEndRef} />
       </div>
     </div>
   );

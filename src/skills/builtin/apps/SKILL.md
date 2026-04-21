@@ -31,9 +31,17 @@ If not set, apps will be accessible at `http://localhost:<port>`.
 
 ## Lifecycle
 
-- **create_app:** Writes files → installs deps → starts server on assigned port
-- **delete_app:** Stops PM2 process → deletes files
-- **Updates:** If app name already exists, files are overwritten and server is restarted
+- **create_app:** Writes files → installs deps → starts server on assigned port → verifies app → **runs `pm2 save`**
+- **delete_app:** Stops PM2 process → deletes files → **runs `pm2 save`**
+- **Updates:** If app name already exists, files are overwritten and the server is restarted → verify app → **run `pm2 save`**
+
+**PM2 persistence is non-optional.** If you create, update, restore, restart, or delete app processes, finish by running:
+
+```bash
+pm2 save
+```
+
+Without `pm2 save`, the app family may not come back properly after a reboot.
 
 ## When to Use
 

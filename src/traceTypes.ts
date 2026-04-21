@@ -114,10 +114,10 @@ export interface TraceAutoClassifier {
   traceFile?: string;
   explanation?: string;
   currentContextLimit?: number;
-  currentContextIncludeThoughts?: boolean;
-  currentContextIncludeTools?: boolean;
+  currentContextIncludeWorkingContext?: boolean;
   crossContextLimit?: number;
   crossContextMaxSessions?: number;
+  crossContextIncludeWorkingContext?: boolean;
   recalledMemoryLimit?: number;
   selectedModel?: string;
 }

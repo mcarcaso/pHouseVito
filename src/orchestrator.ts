@@ -491,23 +491,23 @@ export class Orchestrator {
     const auto = effectiveSettings.auto;
     const anyAuto =
       auto.currentContext.limit ||
-      auto.currentContext.includeThoughts ||
-      auto.currentContext.includeTools ||
+      auto.currentContext.includeWorkingContext ||
       auto.crossContext.limit ||
       auto.crossContext.maxSessions ||
+      auto.crossContext.includeWorkingContext ||
       auto.memory.recalledMemoryLimit ||
       auto["pi-coding-agent"].model;
 
     let classifiedResult: Awaited<ReturnType<typeof runAutoClassifier>> | null = null;
 
     if (anyAuto) {
-      // Build a numbered chronological history snippet (last N user/assistant
-      // messages, no tools/thoughts). Each line is prefixed with [-K] where
-      // K is its distance from "now" — [-1] is the most recent past message,
-      // [-2] is two back, etc. The classifier uses these offsets to pick
-      // currentContextLimit concretely instead of guessing abstract numbers.
-      const RECENT_WINDOW = 25;
-      const recent = this.queries.getRecentMessages(vitoSession.id, RECENT_WINDOW, false, false, false);
+      const classifierContext = auto.classifierContext;
+
+      // Build a numbered chronological history snippet from THIS session.
+      const recentWindow = Math.max(0, classifierContext.currentSessionMessages);
+      const recent = recentWindow > 0
+        ? this.queries.getRecentMessages(vitoSession.id, recentWindow, false, false, false)
+        : [];
       const totalSessionMessages = this.queries.countMessagesForSession(vitoSession.id, true, true);
       const historyLines: string[] = [];
       for (let i = 0; i < recent.length; i++) {
@@ -528,20 +528,66 @@ export class Orchestrator {
         ? `Window: showing the ${recent.length} most recent message(s) of ${totalSessionMessages} total in this session. Each line is tagged with its distance from the new message — [-1] is the message just before it, [-2] is two back, and so on.\n\n${historyLines.join("\n")}`
         : undefined;
 
+      // Optional cross-session preview for the classifier itself.
+      let crossSessionHistory: string | undefined;
+      if (classifierContext.crossSessionMessages > 0 && classifierContext.crossSessionMaxSessions > 0) {
+        const aliases = this.queries.getSessionAliases();
+        const crossPreviewMessages = this.queries.getCrossSessionMessagesPerSession(
+          vitoSession.id,
+          classifierContext.crossSessionMessages,
+          false,
+          false,
+          false,
+          classifierContext.crossSessionMaxSessions,
+        );
+        if (crossPreviewMessages.length > 0) {
+          const grouped = new Map<string, typeof crossPreviewMessages>();
+          for (const msg of crossPreviewMessages) {
+            const existing = grouped.get(msg.session_id) || [];
+            existing.push(msg);
+            grouped.set(msg.session_id, existing);
+          }
+          const sessionBlocks: string[] = [];
+          for (const [sessionId, msgs] of grouped) {
+            const displayName = aliases[sessionId] || sessionId;
+            sessionBlocks.push(`[Session: ${displayName}]`);
+            for (const msg of msgs) {
+              try {
+                const text = extractMessageText(msg.content);
+                if (!text) continue;
+                const role = msg.type === "user" ? "user" : "assistant";
+                const authorPrefix = (msg.type === "user" && msg.author)
+                  ? `${msg.author}: `
+                  : "";
+                sessionBlocks.push(`${role}: ${authorPrefix}${text.slice(0, 240)}`);
+              } catch {
+                // skip malformed rows
+              }
+            }
+            sessionBlocks.push("");
+          }
+          while (sessionBlocks.length > 0 && sessionBlocks[sessionBlocks.length - 1] === "") {
+            sessionBlocks.pop();
+          }
+          crossSessionHistory = `Preview: showing up to ${classifierContext.crossSessionMessages} recent message(s) from each of up to ${classifierContext.crossSessionMaxSessions} other session(s). Use this only to judge whether outside-session context looks relevant.\n\n${sessionBlocks.join("\n")}`;
+        }
+      }
+
       const classified = await runAutoClassifier({
         userMessage: event.content || "",
         author: event.author,
         attachments: event.attachments,
         recentHistory,
+        crossSessionHistory,
         modelChoices: auto["pi-coding-agent"].modelChoices,
         classifierModel: auto.classifierModel,
         needed: {
           model: auto["pi-coding-agent"].model,
           currentContextLimit: auto.currentContext.limit,
-          currentContextIncludeThoughts: auto.currentContext.includeThoughts,
-          currentContextIncludeTools: auto.currentContext.includeTools,
+          currentContextIncludeWorkingContext: auto.currentContext.includeWorkingContext,
           crossContextLimit: auto.crossContext.limit,
           crossContextMaxSessions: auto.crossContext.maxSessions,
+          crossContextIncludeWorkingContext: auto.crossContext.includeWorkingContext,
           recalledMemoryLimit: auto.memory.recalledMemoryLimit,
         },
         trace: {
@@ -558,13 +604,10 @@ export class Orchestrator {
           effectiveSettings.currentContext.limit = classified.currentContextLimit;
           applied.push(`currentContext.limit=${classified.currentContextLimit}`);
         }
-        if (auto.currentContext.includeThoughts && classified.currentContextIncludeThoughts !== undefined) {
-          effectiveSettings.currentContext.includeThoughts = classified.currentContextIncludeThoughts;
-          applied.push(`currentContext.includeThoughts=${classified.currentContextIncludeThoughts}`);
-        }
-        if (auto.currentContext.includeTools && classified.currentContextIncludeTools !== undefined) {
-          effectiveSettings.currentContext.includeTools = classified.currentContextIncludeTools;
-          applied.push(`currentContext.includeTools=${classified.currentContextIncludeTools}`);
+        if (auto.currentContext.includeWorkingContext && classified.currentContextIncludeWorkingContext !== undefined) {
+          effectiveSettings.currentContext.includeThoughts = classified.currentContextIncludeWorkingContext;
+          effectiveSettings.currentContext.includeTools = classified.currentContextIncludeWorkingContext;
+          applied.push(`currentContext.includeWorkingContext=${classified.currentContextIncludeWorkingContext}`);
         }
         if (auto.crossContext.limit && classified.crossContextLimit !== undefined) {
           effectiveSettings.crossContext.limit = classified.crossContextLimit;
@@ -573,6 +616,11 @@ export class Orchestrator {
         if (auto.crossContext.maxSessions && classified.crossContextMaxSessions !== undefined) {
           effectiveSettings.crossContext.maxSessions = classified.crossContextMaxSessions;
           applied.push(`crossContext.maxSessions=${classified.crossContextMaxSessions}`);
+        }
+        if (auto.crossContext.includeWorkingContext && classified.crossContextIncludeWorkingContext !== undefined) {
+          effectiveSettings.crossContext.includeThoughts = classified.crossContextIncludeWorkingContext;
+          effectiveSettings.crossContext.includeTools = classified.crossContextIncludeWorkingContext;
+          applied.push(`crossContext.includeWorkingContext=${classified.crossContextIncludeWorkingContext}`);
         }
         if (auto.memory.recalledMemoryLimit && classified.recalledMemoryLimit !== undefined) {
           effectiveSettings.memory.recalledMemoryLimit = classified.recalledMemoryLimit;
@@ -665,10 +713,10 @@ export class Orchestrator {
         traceFile: classifiedResult.tracePath,
         explanation: classifiedResult.explanation,
         currentContextLimit: classifiedResult.currentContextLimit,
-        currentContextIncludeThoughts: classifiedResult.currentContextIncludeThoughts,
-        currentContextIncludeTools: classifiedResult.currentContextIncludeTools,
+        currentContextIncludeWorkingContext: classifiedResult.currentContextIncludeWorkingContext,
         crossContextLimit: classifiedResult.crossContextLimit,
         crossContextMaxSessions: classifiedResult.crossContextMaxSessions,
+        crossContextIncludeWorkingContext: classifiedResult.crossContextIncludeWorkingContext,
         recalledMemoryLimit: classifiedResult.recalledMemoryLimit,
         selectedModel: classifiedResult.selectedModel
           ? `${classifiedResult.selectedModel.provider}/${classifiedResult.selectedModel.name}`

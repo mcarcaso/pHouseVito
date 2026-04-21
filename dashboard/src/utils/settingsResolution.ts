@@ -43,12 +43,22 @@ export interface ModelChoice {
   description: string;
 }
 
+export interface ClassifierContextSettings {
+  currentSessionMessages?: number;
+  crossSessionMessages?: number;
+  crossSessionMaxSessions?: number;
+}
+
 /** Per-field auto-selection flags. Mirror of backend AutoFlags. */
 export interface AutoFlags {
   currentContext?: {
     limit?: boolean;
-    includeThoughts?: boolean;
-    includeTools?: boolean;
+    includeWorkingContext?: boolean;
+  };
+  crossContext?: {
+    limit?: boolean;
+    maxSessions?: boolean;
+    includeWorkingContext?: boolean;
   };
   memory?: {
     recalledMemoryLimit?: boolean;
@@ -58,13 +68,18 @@ export interface AutoFlags {
     modelChoices?: ModelChoice[];
   };
   classifierModel?: { provider: string; name: string };
+  classifierContext?: ClassifierContextSettings;
 }
 
 export interface ResolvedAutoFlags {
   currentContext: {
     limit: boolean;
-    includeThoughts: boolean;
-    includeTools: boolean;
+    includeWorkingContext: boolean;
+  };
+  crossContext: {
+    limit: boolean;
+    maxSessions: boolean;
+    includeWorkingContext: boolean;
   };
   memory: {
     recalledMemoryLimit: boolean;
@@ -74,6 +89,11 @@ export interface ResolvedAutoFlags {
     modelChoices: ModelChoice[];
   };
   classifierModel: { provider: string; name: string };
+  classifierContext: {
+    currentSessionMessages: number;
+    crossSessionMessages: number;
+    crossSessionMaxSessions: number;
+  };
 }
 
 
@@ -162,8 +182,10 @@ function mergeSettings(base: Settings, override: Settings): Settings {
       ...base.auto,
       ...override.auto,
       currentContext: { ...base.auto?.currentContext, ...override.auto?.currentContext },
+      crossContext: { ...base.auto?.crossContext, ...override.auto?.crossContext },
       memory: { ...base.auto?.memory, ...override.auto?.memory },
       'pi-coding-agent': { ...base.auto?.['pi-coding-agent'], ...override.auto?.['pi-coding-agent'] },
+      classifierContext: { ...base.auto?.classifierContext, ...override.auto?.classifierContext },
     };
   }
 
@@ -232,8 +254,12 @@ export function getEffectiveSettings(
     auto: {
       currentContext: {
         limit: settings.auto?.currentContext?.limit ?? defaults.auto.currentContext.limit,
-        includeThoughts: settings.auto?.currentContext?.includeThoughts ?? defaults.auto.currentContext.includeThoughts,
-        includeTools: settings.auto?.currentContext?.includeTools ?? defaults.auto.currentContext.includeTools,
+        includeWorkingContext: settings.auto?.currentContext?.includeWorkingContext ?? defaults.auto.currentContext.includeWorkingContext,
+      },
+      crossContext: {
+        limit: settings.auto?.crossContext?.limit ?? defaults.auto.crossContext.limit,
+        maxSessions: settings.auto?.crossContext?.maxSessions ?? defaults.auto.crossContext.maxSessions,
+        includeWorkingContext: settings.auto?.crossContext?.includeWorkingContext ?? defaults.auto.crossContext.includeWorkingContext,
       },
       memory: {
         recalledMemoryLimit: settings.auto?.memory?.recalledMemoryLimit ?? defaults.auto.memory.recalledMemoryLimit,
@@ -247,6 +273,11 @@ export function getEffectiveSettings(
       classifierModel: (settings.auto?.classifierModel?.provider && settings.auto.classifierModel.name)
         ? settings.auto.classifierModel
         : defaults.auto.classifierModel,
+      classifierContext: {
+        currentSessionMessages: settings.auto?.classifierContext?.currentSessionMessages ?? defaults.auto.classifierContext.currentSessionMessages,
+        crossSessionMessages: settings.auto?.classifierContext?.crossSessionMessages ?? defaults.auto.classifierContext.crossSessionMessages,
+        crossSessionMaxSessions: settings.auto?.classifierContext?.crossSessionMaxSessions ?? defaults.auto.classifierContext.crossSessionMaxSessions,
+      },
     },
   };
 }
@@ -319,8 +350,10 @@ export const CASCADING_FIELDS = [
   { key: 'memory.profileUpdateContext', label: 'Profile Update Context', type: 'number' as const },
   // Per-field auto-selection flags
   { key: 'auto.currentContext.limit', label: 'Auto: Current Num Messages', type: 'boolean' as const },
-  { key: 'auto.currentContext.includeThoughts', label: 'Auto: Current Thoughts', type: 'boolean' as const },
-  { key: 'auto.currentContext.includeTools', label: 'Auto: Current Tools', type: 'boolean' as const },
+  { key: 'auto.currentContext.includeWorkingContext', label: 'Auto: Current Working Context', type: 'boolean' as const },
+  { key: 'auto.crossContext.limit', label: 'Auto: Cross Num Messages', type: 'boolean' as const },
+  { key: 'auto.crossContext.maxSessions', label: 'Auto: Cross Max Sessions', type: 'boolean' as const },
+  { key: 'auto.crossContext.includeWorkingContext', label: 'Auto: Cross Working Context', type: 'boolean' as const },
   { key: 'auto.memory.recalledMemoryLimit', label: 'Auto: Recalled Memory Limit', type: 'boolean' as const },
   { key: 'auto.pi-coding-agent.model', label: 'Auto: Pi Model', type: 'boolean' as const },
 ] as const;

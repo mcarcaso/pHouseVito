@@ -45,6 +45,40 @@ const SYSTEM_SESSIONS = [
   { id: 'system:profile-updater', label: 'Profile Updater', description: 'Background process that updates user/profile.md when new facts are revealed' },
 ];
 
+function setNestedValue(target: Record<string, any>, path: string, value: any) {
+  const parts = path.split('.');
+  let cursor: Record<string, any> = target;
+  for (let i = 0; i < parts.length - 1; i++) {
+    const key = parts[i];
+    cursor[key] = { ...(cursor[key] || {}) };
+    cursor = cursor[key];
+  }
+  cursor[parts[parts.length - 1]] = value;
+}
+
+function deleteNestedValue(target: Record<string, any>, path: string) {
+  const parts = path.split('.');
+  const stack: Array<{ parent: Record<string, any>; key: string }> = [];
+  let cursor: Record<string, any> | undefined = target;
+
+  for (let i = 0; i < parts.length - 1; i++) {
+    const key = parts[i];
+    if (!cursor?.[key] || typeof cursor[key] !== 'object') return;
+    stack.push({ parent: cursor, key });
+    cursor = cursor[key];
+  }
+
+  if (!cursor) return;
+  delete cursor[parts[parts.length - 1]];
+
+  for (let i = stack.length - 1; i >= 0; i--) {
+    const { parent, key } = stack[i];
+    if (parent[key] && typeof parent[key] === 'object' && Object.keys(parent[key]).length === 0) {
+      delete parent[key];
+    }
+  }
+}
+
 export default function SessionSettingsPanel({ config, onSave, initialSessionId }: SessionSettingsPanelProps) {
   const [sessions, setSessions] = useState<SessionInfo[]>([]);
   const [loading, setLoading] = useState(true);
@@ -107,34 +141,47 @@ export default function SessionSettingsPanel({ config, onSave, initialSessionId 
     return getEffectiveSettings(config, channel);
   };
 
+  const saveSessionSettings = async (sessionId: string, newSettings: Settings) => {
+    await onSave({ sessions: { ...sessionOverrides, [sessionId]: newSettings } });
+  };
+
   const updateSessionSetting = async (sessionId: string, field: string, value: any) => {
     const current = sessionOverrides[sessionId] || {};
-    const newSettings: Settings = { ...current };
-    if (field.includes('.')) {
-      const [parent, child] = field.split('.');
-      (newSettings as any)[parent] = { ...(newSettings as any)[parent], [child]: value };
-    } else {
-      (newSettings as any)[field] = value;
+    const newSettings: Settings = structuredClone(current);
+    setNestedValue(newSettings as any, field, value);
+    await saveSessionSettings(sessionId, newSettings);
+  };
+
+  const updateSessionSettingsBatch = async (sessionId: string, entries: Array<{ field: string; value: any }>) => {
+    const current = sessionOverrides[sessionId] || {};
+    const newSettings: Settings = structuredClone(current);
+    for (const entry of entries) {
+      setNestedValue(newSettings as any, entry.field, entry.value);
     }
-    await onSave({ sessions: { ...sessionOverrides, [sessionId]: newSettings } });
+    await saveSessionSettings(sessionId, newSettings);
   };
 
   const resetSessionSetting = async (sessionId: string, field: string) => {
     const current = sessionOverrides[sessionId] || {};
-    const newSettings: Settings = { ...current };
-    if (field.includes('.')) {
-      const [parent, child] = field.split('.');
-      if ((newSettings as any)[parent]) {
-        delete (newSettings as any)[parent][child];
-        if (Object.keys((newSettings as any)[parent]).length === 0) {
-          delete (newSettings as any)[parent];
-        }
-      }
-    } else {
-      delete (newSettings as any)[field];
-    }
+    const newSettings: Settings = structuredClone(current);
+    deleteNestedValue(newSettings as any, field);
 
     // If empty, remove session entry entirely
+    if (Object.keys(newSettings).length === 0) {
+      const newSessions = { ...sessionOverrides };
+      delete newSessions[sessionId];
+      await onSave({ sessions: newSessions });
+    } else {
+      await onSave({ sessions: { ...sessionOverrides, [sessionId]: newSettings } });
+    }
+  };
+
+  const resetSessionSettingsBatch = async (sessionId: string, fields: string[]) => {
+    const current = sessionOverrides[sessionId] || {};
+    const newSettings: Settings = structuredClone(current);
+    for (const field of fields) {
+      deleteNestedValue(newSettings as any, field);
+    }
     if (Object.keys(newSettings).length === 0) {
       const newSessions = { ...sessionOverrides };
       delete newSessions[sessionId];
@@ -336,23 +383,46 @@ export default function SessionSettingsPanel({ config, onSave, initialSessionId 
           />
 
           <SettingRow
-            label="Thoughts"
-            inheritedValue={inherited.currentContext.includeThoughts}
+            label="Auto: Num Messages"
+            hint="Classifier decides the current-session message window"
+            inheritedValue={inherited.auto.currentContext.limit}
             inheritedFrom={inheritFrom}
-            overrideValue={overrides.currentContext?.includeThoughts}
-            onOverride={(val) => updateSessionSetting(sessionId, 'currentContext.includeThoughts', val)}
-            onReset={() => resetSessionSetting(sessionId, 'currentContext.includeThoughts')}
+            overrideValue={overrides.auto?.currentContext?.limit}
+            onOverride={(val) => updateSessionSetting(sessionId, 'auto.currentContext.limit', val)}
+            onReset={() => resetSessionSetting(sessionId, 'auto.currentContext.limit')}
             renderInput={(val, onChange) => renderToggle(val, onChange)}
             formatValue={(v) => v ? 'On' : 'Off'}
           />
 
           <SettingRow
-            label="Tools"
-            inheritedValue={inherited.currentContext.includeTools}
+            label="Working Context"
+            hint="Thoughts + tools together"
+            inheritedValue={inherited.currentContext.includeThoughts && inherited.currentContext.includeTools}
             inheritedFrom={inheritFrom}
-            overrideValue={overrides.currentContext?.includeTools}
-            onOverride={(val) => updateSessionSetting(sessionId, 'currentContext.includeTools', val)}
-            onReset={() => resetSessionSetting(sessionId, 'currentContext.includeTools')}
+            overrideValue={overrides.currentContext?.includeThoughts === undefined && overrides.currentContext?.includeTools === undefined
+              ? undefined
+              : (overrides.currentContext?.includeThoughts ?? inherited.currentContext.includeThoughts)
+                && (overrides.currentContext?.includeTools ?? inherited.currentContext.includeTools)}
+            onOverride={(val) => updateSessionSettingsBatch(sessionId, [
+              { field: 'currentContext.includeThoughts', value: val },
+              { field: 'currentContext.includeTools', value: val },
+            ])}
+            onReset={() => resetSessionSettingsBatch(sessionId, [
+              'currentContext.includeThoughts',
+              'currentContext.includeTools',
+            ])}
+            renderInput={(val, onChange) => renderToggle(val, onChange)}
+            formatValue={(v) => v ? 'On' : 'Off'}
+          />
+
+          <SettingRow
+            label="Auto: Working Context"
+            hint="Classifier decides whether to include thoughts + tools"
+            inheritedValue={inherited.auto.currentContext.includeWorkingContext}
+            inheritedFrom={inheritFrom}
+            overrideValue={overrides.auto?.currentContext?.includeWorkingContext}
+            onOverride={(val) => updateSessionSetting(sessionId, 'auto.currentContext.includeWorkingContext', val)}
+            onReset={() => resetSessionSetting(sessionId, 'auto.currentContext.includeWorkingContext')}
             renderInput={(val, onChange) => renderToggle(val, onChange)}
             formatValue={(v) => v ? 'On' : 'Off'}
           />
@@ -374,6 +444,28 @@ export default function SessionSettingsPanel({ config, onSave, initialSessionId 
           </div>
 
           <SettingRow
+            label="Max Sessions"
+            inheritedValue={inherited.crossContext.maxSessions}
+            inheritedFrom={inheritFrom}
+            overrideValue={overrides.crossContext?.maxSessions}
+            onOverride={(val) => updateSessionSetting(sessionId, 'crossContext.maxSessions', val)}
+            onReset={() => resetSessionSetting(sessionId, 'crossContext.maxSessions')}
+            renderInput={(val, onChange) => renderNumberInput(val, onChange, { min: 0 })}
+          />
+
+          <SettingRow
+            label="Auto: Max Sessions"
+            hint="Classifier decides how many other sessions to pull from"
+            inheritedValue={inherited.auto.crossContext.maxSessions}
+            inheritedFrom={inheritFrom}
+            overrideValue={overrides.auto?.crossContext?.maxSessions}
+            onOverride={(val) => updateSessionSetting(sessionId, 'auto.crossContext.maxSessions', val)}
+            onReset={() => resetSessionSetting(sessionId, 'auto.crossContext.maxSessions')}
+            renderInput={(val, onChange) => renderToggle(val, onChange)}
+            formatValue={(v) => v ? 'On' : 'Off'}
+          />
+
+          <SettingRow
             label="Num Messages"
             inheritedValue={inherited.crossContext.limit}
             inheritedFrom={inheritFrom}
@@ -384,23 +476,46 @@ export default function SessionSettingsPanel({ config, onSave, initialSessionId 
           />
 
           <SettingRow
-            label="Thoughts"
-            inheritedValue={inherited.crossContext.includeThoughts}
+            label="Auto: Num Messages"
+            hint="Classifier decides the cross-session message window"
+            inheritedValue={inherited.auto.crossContext.limit}
             inheritedFrom={inheritFrom}
-            overrideValue={overrides.crossContext?.includeThoughts}
-            onOverride={(val) => updateSessionSetting(sessionId, 'crossContext.includeThoughts', val)}
-            onReset={() => resetSessionSetting(sessionId, 'crossContext.includeThoughts')}
+            overrideValue={overrides.auto?.crossContext?.limit}
+            onOverride={(val) => updateSessionSetting(sessionId, 'auto.crossContext.limit', val)}
+            onReset={() => resetSessionSetting(sessionId, 'auto.crossContext.limit')}
             renderInput={(val, onChange) => renderToggle(val, onChange)}
             formatValue={(v) => v ? 'On' : 'Off'}
           />
 
           <SettingRow
-            label="Tools"
-            inheritedValue={inherited.crossContext.includeTools}
+            label="Working Context"
+            hint="Thoughts + tools together"
+            inheritedValue={inherited.crossContext.includeThoughts && inherited.crossContext.includeTools}
             inheritedFrom={inheritFrom}
-            overrideValue={overrides.crossContext?.includeTools}
-            onOverride={(val) => updateSessionSetting(sessionId, 'crossContext.includeTools', val)}
-            onReset={() => resetSessionSetting(sessionId, 'crossContext.includeTools')}
+            overrideValue={overrides.crossContext?.includeThoughts === undefined && overrides.crossContext?.includeTools === undefined
+              ? undefined
+              : (overrides.crossContext?.includeThoughts ?? inherited.crossContext.includeThoughts)
+                && (overrides.crossContext?.includeTools ?? inherited.crossContext.includeTools)}
+            onOverride={(val) => updateSessionSettingsBatch(sessionId, [
+              { field: 'crossContext.includeThoughts', value: val },
+              { field: 'crossContext.includeTools', value: val },
+            ])}
+            onReset={() => resetSessionSettingsBatch(sessionId, [
+              'crossContext.includeThoughts',
+              'crossContext.includeTools',
+            ])}
+            renderInput={(val, onChange) => renderToggle(val, onChange)}
+            formatValue={(v) => v ? 'On' : 'Off'}
+          />
+
+          <SettingRow
+            label="Auto: Working Context"
+            hint="Classifier decides whether to include thoughts + tools from other sessions"
+            inheritedValue={inherited.auto.crossContext.includeWorkingContext}
+            inheritedFrom={inheritFrom}
+            overrideValue={overrides.auto?.crossContext?.includeWorkingContext}
+            onOverride={(val) => updateSessionSetting(sessionId, 'auto.crossContext.includeWorkingContext', val)}
+            onReset={() => resetSessionSetting(sessionId, 'auto.crossContext.includeWorkingContext')}
             renderInput={(val, onChange) => renderToggle(val, onChange)}
             formatValue={(v) => v ? 'On' : 'Off'}
           />
@@ -414,6 +529,43 @@ export default function SessionSettingsPanel({ config, onSave, initialSessionId 
             onReset={() => resetSessionSetting(sessionId, 'crossContext.includeArchived')}
             renderInput={(val, onChange) => renderToggle(val, onChange)}
             formatValue={(v) => v ? 'On' : 'Off'}
+          />
+
+          <div className="mt-4 mb-2">
+            <span className="text-xs font-semibold text-neutral-500 uppercase tracking-wide">Auto Classifier</span>
+          </div>
+
+          <SettingRow
+            label="Classifier: Current Session Messages"
+            hint="How many recent messages from this session the classifier reads"
+            inheritedValue={inherited.auto.classifierContext.currentSessionMessages}
+            inheritedFrom={inheritFrom}
+            overrideValue={overrides.auto?.classifierContext?.currentSessionMessages}
+            onOverride={(val) => updateSessionSetting(sessionId, 'auto.classifierContext.currentSessionMessages', val)}
+            onReset={() => resetSessionSetting(sessionId, 'auto.classifierContext.currentSessionMessages')}
+            renderInput={(val, onChange) => renderNumberInput(val, onChange, { min: 0, max: 300 })}
+          />
+
+          <SettingRow
+            label="Classifier: Cross-Session Max Sessions"
+            hint="How many other sessions the classifier may preview"
+            inheritedValue={inherited.auto.classifierContext.crossSessionMaxSessions}
+            inheritedFrom={inheritFrom}
+            overrideValue={overrides.auto?.classifierContext?.crossSessionMaxSessions}
+            onOverride={(val) => updateSessionSetting(sessionId, 'auto.classifierContext.crossSessionMaxSessions', val)}
+            onReset={() => resetSessionSetting(sessionId, 'auto.classifierContext.crossSessionMaxSessions')}
+            renderInput={(val, onChange) => renderNumberInput(val, onChange, { min: 0, max: 20 })}
+          />
+
+          <SettingRow
+            label="Classifier: Cross-Session Messages"
+            hint="How many recent messages per other session the classifier may preview"
+            inheritedValue={inherited.auto.classifierContext.crossSessionMessages}
+            inheritedFrom={inheritFrom}
+            overrideValue={overrides.auto?.classifierContext?.crossSessionMessages}
+            onOverride={(val) => updateSessionSetting(sessionId, 'auto.classifierContext.crossSessionMessages', val)}
+            onReset={() => resetSessionSetting(sessionId, 'auto.classifierContext.crossSessionMessages')}
+            renderInput={(val, onChange) => renderNumberInput(val, onChange, { min: 0, max: 20 })}
           />
 
           {/* Pi Coding Agent Overrides */}

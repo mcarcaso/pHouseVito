@@ -36,12 +36,12 @@ const DEFAULT_MEMORY: ResolvedMemorySettings = {
 const DEFAULT_AUTO: ResolvedAutoFlags = {
   currentContext: {
     limit: false,
-    includeThoughts: false,
-    includeTools: false,
+    includeWorkingContext: false,
   },
   crossContext: {
     limit: false,
     maxSessions: false,
+    includeWorkingContext: false,
   },
   memory: {
     recalledMemoryLimit: false,
@@ -51,6 +51,11 @@ const DEFAULT_AUTO: ResolvedAutoFlags = {
     modelChoices: DEFAULT_PI_MODEL_CHOICES,
   },
   classifierModel: DEFAULT_CLASSIFIER_MODEL,
+  classifierContext: {
+    currentSessionMessages: 25,
+    crossSessionMessages: 0,
+    crossSessionMaxSessions: 0,
+  },
 };
 
 /** Default settings when nothing is specified */
@@ -105,6 +110,7 @@ function mergeSettings(base: Settings, override: Settings): Settings {
       crossContext: { ...base.auto?.crossContext, ...override.auto?.crossContext },
       memory: { ...base.auto?.memory, ...override.auto?.memory },
       "pi-coding-agent": { ...base.auto?.["pi-coding-agent"], ...override.auto?.["pi-coding-agent"] },
+      classifierContext: { ...base.auto?.classifierContext, ...override.auto?.classifierContext },
     };
   }
 
@@ -175,12 +181,12 @@ export function getEffectiveSettings(
     auto: {
       currentContext: {
         limit: settings.auto?.currentContext?.limit ?? DEFAULT_AUTO.currentContext.limit,
-        includeThoughts: settings.auto?.currentContext?.includeThoughts ?? DEFAULT_AUTO.currentContext.includeThoughts,
-        includeTools: settings.auto?.currentContext?.includeTools ?? DEFAULT_AUTO.currentContext.includeTools,
+        includeWorkingContext: settings.auto?.currentContext?.includeWorkingContext ?? DEFAULT_AUTO.currentContext.includeWorkingContext,
       },
       crossContext: {
         limit: settings.auto?.crossContext?.limit ?? DEFAULT_AUTO.crossContext.limit,
         maxSessions: settings.auto?.crossContext?.maxSessions ?? DEFAULT_AUTO.crossContext.maxSessions,
+        includeWorkingContext: settings.auto?.crossContext?.includeWorkingContext ?? DEFAULT_AUTO.crossContext.includeWorkingContext,
       },
       memory: {
         recalledMemoryLimit: settings.auto?.memory?.recalledMemoryLimit ?? DEFAULT_AUTO.memory.recalledMemoryLimit,
@@ -194,6 +200,11 @@ export function getEffectiveSettings(
       classifierModel: (settings.auto?.classifierModel?.provider && settings.auto.classifierModel.name)
         ? settings.auto.classifierModel
         : DEFAULT_AUTO.classifierModel,
+      classifierContext: {
+        currentSessionMessages: settings.auto?.classifierContext?.currentSessionMessages ?? DEFAULT_AUTO.classifierContext.currentSessionMessages,
+        crossSessionMessages: settings.auto?.classifierContext?.crossSessionMessages ?? DEFAULT_AUTO.classifierContext.crossSessionMessages,
+        crossSessionMaxSessions: settings.auto?.classifierContext?.crossSessionMaxSessions ?? DEFAULT_AUTO.classifierContext.crossSessionMaxSessions,
+      },
     },
   };
 }

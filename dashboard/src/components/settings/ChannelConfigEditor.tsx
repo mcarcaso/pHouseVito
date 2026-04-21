@@ -17,6 +17,40 @@ const STREAM_MODES = [
   { value: 'final', label: 'Final' },
 ];
 
+function setNestedValue(target: Record<string, any>, path: string, value: any) {
+  const parts = path.split('.');
+  let cursor: Record<string, any> = target;
+  for (let i = 0; i < parts.length - 1; i++) {
+    const key = parts[i];
+    cursor[key] = { ...(cursor[key] || {}) };
+    cursor = cursor[key];
+  }
+  cursor[parts[parts.length - 1]] = value;
+}
+
+function deleteNestedValue(target: Record<string, any>, path: string) {
+  const parts = path.split('.');
+  const stack: Array<{ parent: Record<string, any>; key: string }> = [];
+  let cursor: Record<string, any> | undefined = target;
+
+  for (let i = 0; i < parts.length - 1; i++) {
+    const key = parts[i];
+    if (!cursor?.[key] || typeof cursor[key] !== 'object') return;
+    stack.push({ parent: cursor, key });
+    cursor = cursor[key];
+  }
+
+  if (!cursor) return;
+  delete cursor[parts[parts.length - 1]];
+
+  for (let i = stack.length - 1; i >= 0; i--) {
+    const { parent, key } = stack[i];
+    if (parent[key] && typeof parent[key] === 'object' && Object.keys(parent[key]).length === 0) {
+      delete parent[key];
+    }
+  }
+}
+
 export default function ChannelConfigEditor({ name, channelConfig, config, onSave }: ChannelConfigEditorProps) {
   const [expanded, setExpanded] = useState(false);
   const [newId, setNewId] = useState<Record<string, string>>({});
@@ -35,32 +69,43 @@ export default function ChannelConfigEditor({ name, channelConfig, config, onSav
     if (key === 'enabled') setNeedsRestart(true);
   };
 
-  const updateChannelSetting = async (field: string, value: any) => {
-    const newSettings: Settings = { ...channelSettings };
-    if (field.includes('.')) {
-      const [parent, child] = field.split('.');
-      (newSettings as any)[parent] = { ...(newSettings as any)[parent], [child]: value };
-    } else {
-      (newSettings as any)[field] = value;
-    }
+  const saveChannelSettings = async (newSettings: Settings) => {
     const updatedChannel = { ...channelConfig, settings: newSettings };
     await onSave({ channels: { ...config.channels, [name]: updatedChannel } });
   };
 
-  const resetChannelSetting = async (field: string) => {
-    const newSettings: Settings = { ...channelSettings };
-    if (field.includes('.')) {
-      const [parent, child] = field.split('.');
-      if ((newSettings as any)[parent]) {
-        delete (newSettings as any)[parent][child];
-        if (Object.keys((newSettings as any)[parent]).length === 0) {
-          delete (newSettings as any)[parent];
-        }
-      }
-    } else {
-      delete (newSettings as any)[field];
+  const updateChannelSetting = async (field: string, value: any) => {
+    const newSettings: Settings = structuredClone(channelSettings);
+    setNestedValue(newSettings as any, field, value);
+    await saveChannelSettings(newSettings);
+  };
+
+  const updateChannelSettingsBatch = async (entries: Array<{ field: string; value: any }>) => {
+    const newSettings: Settings = structuredClone(channelSettings);
+    for (const entry of entries) {
+      setNestedValue(newSettings as any, entry.field, entry.value);
     }
+    await saveChannelSettings(newSettings);
+  };
+
+  const resetChannelSetting = async (field: string) => {
+    const newSettings: Settings = structuredClone(channelSettings);
+    deleteNestedValue(newSettings as any, field);
     // Clean up: if settings is now empty, remove the key
+    const updatedChannel = { ...channelConfig };
+    if (Object.keys(newSettings).length === 0) {
+      delete updatedChannel.settings;
+    } else {
+      updatedChannel.settings = newSettings;
+    }
+    await onSave({ channels: { ...config.channels, [name]: updatedChannel } });
+  };
+
+  const resetChannelSettingsBatch = async (fields: string[]) => {
+    const newSettings: Settings = structuredClone(channelSettings);
+    for (const field of fields) {
+      deleteNestedValue(newSettings as any, field);
+    }
     const updatedChannel = { ...channelConfig };
     if (Object.keys(newSettings).length === 0) {
       delete updatedChannel.settings;
@@ -255,23 +300,46 @@ export default function ChannelConfigEditor({ name, channelConfig, config, onSav
             />
 
             <SettingRow
-              label="Thoughts"
-              inheritedValue={globalResolved.currentContext.includeThoughts}
+              label="Auto: Num Messages"
+              hint="Classifier decides the current-session message window"
+              inheritedValue={globalResolved.auto.currentContext.limit}
               inheritedFrom="global"
-              overrideValue={channelSettings.currentContext?.includeThoughts}
-              onOverride={(val) => updateChannelSetting('currentContext.includeThoughts', val)}
-              onReset={() => resetChannelSetting('currentContext.includeThoughts')}
+              overrideValue={channelSettings.auto?.currentContext?.limit}
+              onOverride={(val) => updateChannelSetting('auto.currentContext.limit', val)}
+              onReset={() => resetChannelSetting('auto.currentContext.limit')}
               renderInput={(val, onChange) => renderToggle(val, onChange)}
               formatValue={(v) => v ? 'On' : 'Off'}
             />
 
             <SettingRow
-              label="Tools"
-              inheritedValue={globalResolved.currentContext.includeTools}
+              label="Working Context"
+              hint="Thoughts + tools together"
+              inheritedValue={globalResolved.currentContext.includeThoughts && globalResolved.currentContext.includeTools}
               inheritedFrom="global"
-              overrideValue={channelSettings.currentContext?.includeTools}
-              onOverride={(val) => updateChannelSetting('currentContext.includeTools', val)}
-              onReset={() => resetChannelSetting('currentContext.includeTools')}
+              overrideValue={channelSettings.currentContext?.includeThoughts === undefined && channelSettings.currentContext?.includeTools === undefined
+                ? undefined
+                : (channelSettings.currentContext?.includeThoughts ?? globalResolved.currentContext.includeThoughts)
+                  && (channelSettings.currentContext?.includeTools ?? globalResolved.currentContext.includeTools)}
+              onOverride={(val) => updateChannelSettingsBatch([
+                { field: 'currentContext.includeThoughts', value: val },
+                { field: 'currentContext.includeTools', value: val },
+              ])}
+              onReset={() => resetChannelSettingsBatch([
+                'currentContext.includeThoughts',
+                'currentContext.includeTools',
+              ])}
+              renderInput={(val, onChange) => renderToggle(val, onChange)}
+              formatValue={(v) => v ? 'On' : 'Off'}
+            />
+
+            <SettingRow
+              label="Auto: Working Context"
+              hint="Classifier decides whether to include thoughts + tools"
+              inheritedValue={globalResolved.auto.currentContext.includeWorkingContext}
+              inheritedFrom="global"
+              overrideValue={channelSettings.auto?.currentContext?.includeWorkingContext}
+              onOverride={(val) => updateChannelSetting('auto.currentContext.includeWorkingContext', val)}
+              onReset={() => resetChannelSetting('auto.currentContext.includeWorkingContext')}
               renderInput={(val, onChange) => renderToggle(val, onChange)}
               formatValue={(v) => v ? 'On' : 'Off'}
             />
@@ -293,6 +361,28 @@ export default function ChannelConfigEditor({ name, channelConfig, config, onSav
             </div>
 
             <SettingRow
+              label="Max Sessions"
+              inheritedValue={globalResolved.crossContext.maxSessions}
+              inheritedFrom="global"
+              overrideValue={channelSettings.crossContext?.maxSessions}
+              onOverride={(val) => updateChannelSetting('crossContext.maxSessions', val)}
+              onReset={() => resetChannelSetting('crossContext.maxSessions')}
+              renderInput={(val, onChange) => renderNumberInput(val, onChange, { min: 0 })}
+            />
+
+            <SettingRow
+              label="Auto: Max Sessions"
+              hint="Classifier decides how many other sessions to pull from"
+              inheritedValue={globalResolved.auto.crossContext.maxSessions}
+              inheritedFrom="global"
+              overrideValue={channelSettings.auto?.crossContext?.maxSessions}
+              onOverride={(val) => updateChannelSetting('auto.crossContext.maxSessions', val)}
+              onReset={() => resetChannelSetting('auto.crossContext.maxSessions')}
+              renderInput={(val, onChange) => renderToggle(val, onChange)}
+              formatValue={(v) => v ? 'On' : 'Off'}
+            />
+
+            <SettingRow
               label="Num Messages"
               inheritedValue={globalResolved.crossContext.limit}
               inheritedFrom="global"
@@ -303,23 +393,46 @@ export default function ChannelConfigEditor({ name, channelConfig, config, onSav
             />
 
             <SettingRow
-              label="Thoughts"
-              inheritedValue={globalResolved.crossContext.includeThoughts}
+              label="Auto: Num Messages"
+              hint="Classifier decides the cross-session message window"
+              inheritedValue={globalResolved.auto.crossContext.limit}
               inheritedFrom="global"
-              overrideValue={channelSettings.crossContext?.includeThoughts}
-              onOverride={(val) => updateChannelSetting('crossContext.includeThoughts', val)}
-              onReset={() => resetChannelSetting('crossContext.includeThoughts')}
+              overrideValue={channelSettings.auto?.crossContext?.limit}
+              onOverride={(val) => updateChannelSetting('auto.crossContext.limit', val)}
+              onReset={() => resetChannelSetting('auto.crossContext.limit')}
               renderInput={(val, onChange) => renderToggle(val, onChange)}
               formatValue={(v) => v ? 'On' : 'Off'}
             />
 
             <SettingRow
-              label="Tools"
-              inheritedValue={globalResolved.crossContext.includeTools}
+              label="Working Context"
+              hint="Thoughts + tools together"
+              inheritedValue={globalResolved.crossContext.includeThoughts && globalResolved.crossContext.includeTools}
               inheritedFrom="global"
-              overrideValue={channelSettings.crossContext?.includeTools}
-              onOverride={(val) => updateChannelSetting('crossContext.includeTools', val)}
-              onReset={() => resetChannelSetting('crossContext.includeTools')}
+              overrideValue={channelSettings.crossContext?.includeThoughts === undefined && channelSettings.crossContext?.includeTools === undefined
+                ? undefined
+                : (channelSettings.crossContext?.includeThoughts ?? globalResolved.crossContext.includeThoughts)
+                  && (channelSettings.crossContext?.includeTools ?? globalResolved.crossContext.includeTools)}
+              onOverride={(val) => updateChannelSettingsBatch([
+                { field: 'crossContext.includeThoughts', value: val },
+                { field: 'crossContext.includeTools', value: val },
+              ])}
+              onReset={() => resetChannelSettingsBatch([
+                'crossContext.includeThoughts',
+                'crossContext.includeTools',
+              ])}
+              renderInput={(val, onChange) => renderToggle(val, onChange)}
+              formatValue={(v) => v ? 'On' : 'Off'}
+            />
+
+            <SettingRow
+              label="Auto: Working Context"
+              hint="Classifier decides whether to include thoughts + tools from other sessions"
+              inheritedValue={globalResolved.auto.crossContext.includeWorkingContext}
+              inheritedFrom="global"
+              overrideValue={channelSettings.auto?.crossContext?.includeWorkingContext}
+              onOverride={(val) => updateChannelSetting('auto.crossContext.includeWorkingContext', val)}
+              onReset={() => resetChannelSetting('auto.crossContext.includeWorkingContext')}
               renderInput={(val, onChange) => renderToggle(val, onChange)}
               formatValue={(v) => v ? 'On' : 'Off'}
             />
@@ -333,6 +446,43 @@ export default function ChannelConfigEditor({ name, channelConfig, config, onSav
               onReset={() => resetChannelSetting('crossContext.includeArchived')}
               renderInput={(val, onChange) => renderToggle(val, onChange)}
               formatValue={(v) => v ? 'On' : 'Off'}
+            />
+
+            <div className="mt-4 mb-2">
+              <span className="text-xs font-semibold text-neutral-500 uppercase tracking-wide">Auto Classifier</span>
+            </div>
+
+            <SettingRow
+              label="Classifier: Current Session Messages"
+              hint="How many recent messages from this session the classifier reads"
+              inheritedValue={globalResolved.auto.classifierContext.currentSessionMessages}
+              inheritedFrom="global"
+              overrideValue={channelSettings.auto?.classifierContext?.currentSessionMessages}
+              onOverride={(val) => updateChannelSetting('auto.classifierContext.currentSessionMessages', val)}
+              onReset={() => resetChannelSetting('auto.classifierContext.currentSessionMessages')}
+              renderInput={(val, onChange) => renderNumberInput(val, onChange, { min: 0, max: 300 })}
+            />
+
+            <SettingRow
+              label="Classifier: Cross-Session Max Sessions"
+              hint="How many other sessions the classifier may preview"
+              inheritedValue={globalResolved.auto.classifierContext.crossSessionMaxSessions}
+              inheritedFrom="global"
+              overrideValue={channelSettings.auto?.classifierContext?.crossSessionMaxSessions}
+              onOverride={(val) => updateChannelSetting('auto.classifierContext.crossSessionMaxSessions', val)}
+              onReset={() => resetChannelSetting('auto.classifierContext.crossSessionMaxSessions')}
+              renderInput={(val, onChange) => renderNumberInput(val, onChange, { min: 0, max: 20 })}
+            />
+
+            <SettingRow
+              label="Classifier: Cross-Session Messages"
+              hint="How many recent messages per other session the classifier may preview"
+              inheritedValue={globalResolved.auto.classifierContext.crossSessionMessages}
+              inheritedFrom="global"
+              overrideValue={channelSettings.auto?.classifierContext?.crossSessionMessages}
+              onOverride={(val) => updateChannelSetting('auto.classifierContext.crossSessionMessages', val)}
+              onReset={() => resetChannelSetting('auto.classifierContext.crossSessionMessages')}
+              renderInput={(val, onChange) => renderNumberInput(val, onChange, { min: 0, max: 20 })}
             />
 
           </div>

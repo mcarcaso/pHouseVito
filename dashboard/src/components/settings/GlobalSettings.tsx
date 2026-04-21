@@ -489,6 +489,20 @@ export default function GlobalSettings({ config, onSave }: GlobalSettingsProps) 
     await onSave({ settings: newSettings });
   };
 
+  const updateSettingsBatch = async (entries: Array<{ field: string; value: any }>) => {
+    const newSettings: any = { ...settings };
+    for (const { field, value } of entries) {
+      const parts = field.split('.');
+      let cursor = newSettings;
+      for (let i = 0; i < parts.length - 1; i++) {
+        cursor[parts[i]] = { ...cursor[parts[i]] };
+        cursor = cursor[parts[i]];
+      }
+      cursor[parts[parts.length - 1]] = value;
+    }
+    await onSave({ settings: newSettings });
+  };
+
   const updateBotName = async (name: string) => {
     await onSave({ bot: { name } });
   };
@@ -597,21 +611,15 @@ export default function GlobalSettings({ config, onSave }: GlobalSettingsProps) 
         />
 
         <ToggleRow
-          title="Thoughts"
-          description="Include thinking/reasoning steps"
-          value={settings.currentContext?.includeThoughts ?? true}
-          onChange={(val) => updateSetting('currentContext.includeThoughts', val)}
-          auto={settings.auto?.currentContext?.includeThoughts ?? false}
-          onAutoChange={(val) => updateSetting('auto.currentContext.includeThoughts', val)}
-        />
-
-        <ToggleRow
-          title="Tools"
-          description="Include tool calls and results"
-          value={settings.currentContext?.includeTools ?? true}
-          onChange={(val) => updateSetting('currentContext.includeTools', val)}
-          auto={settings.auto?.currentContext?.includeTools ?? false}
-          onAutoChange={(val) => updateSetting('auto.currentContext.includeTools', val)}
+          title="Working Context"
+          description="Include both thinking/reasoning steps and tool calls/results"
+          value={(settings.currentContext?.includeThoughts ?? true) && (settings.currentContext?.includeTools ?? true)}
+          onChange={(val) => updateSettingsBatch([
+            { field: 'currentContext.includeThoughts', value: val },
+            { field: 'currentContext.includeTools', value: val },
+          ])}
+          auto={settings.auto?.currentContext?.includeWorkingContext ?? false}
+          onAutoChange={(val) => updateSetting('auto.currentContext.includeWorkingContext', val)}
         />
 
         <ToggleRow
@@ -627,38 +635,36 @@ export default function GlobalSettings({ config, onSave }: GlobalSettingsProps) 
         <h3 className="text-base font-semibold text-white mb-1">Cross-Session Context</h3>
         <p className="text-xs text-neutral-600 mb-4">What to include from other sessions.</p>
 
-        <div className="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-4 py-3 border-b border-neutral-800/50">
-          <label className="text-sm text-neutral-400 sm:w-48 sm:shrink-0">Max Sessions</label>
-          {renderNumberInput(
-            settings.crossContext?.maxSessions ?? 15,
-            (val) => updateSetting('crossContext.maxSessions', val),
-            { min: 0 }
-          )}
-          <span className="text-xs text-neutral-600">Sessions to pull from (0 = unlimited)</span>
-        </div>
+        <NumberRow
+          label="Max Sessions"
+          hint="Sessions to pull from"
+          value={settings.crossContext?.maxSessions ?? 15}
+          onChange={(val) => updateSetting('crossContext.maxSessions', val)}
+          min={0}
+          auto={settings.auto?.crossContext?.maxSessions ?? false}
+          onAutoChange={(val) => updateSetting('auto.crossContext.maxSessions', val)}
+        />
 
-        <div className="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-4 py-3 border-b border-neutral-800/50">
-          <label className="text-sm text-neutral-400 sm:w-48 sm:shrink-0">Num Messages</label>
-          {renderNumberInput(
-            settings.crossContext?.limit ?? 5,
-            (val) => updateSetting('crossContext.limit', val),
-            { min: 0 }
-          )}
-          <span className="text-xs text-neutral-600">Messages per session</span>
-        </div>
-
-        <ToggleRow
-          title="Thoughts"
-          description="Include thinking/reasoning steps"
-          value={settings.crossContext?.includeThoughts ?? false}
-          onChange={(val) => updateSetting('crossContext.includeThoughts', val)}
+        <NumberRow
+          label="Num Messages"
+          hint="Messages per session"
+          value={settings.crossContext?.limit ?? 5}
+          onChange={(val) => updateSetting('crossContext.limit', val)}
+          min={0}
+          auto={settings.auto?.crossContext?.limit ?? false}
+          onAutoChange={(val) => updateSetting('auto.crossContext.limit', val)}
         />
 
         <ToggleRow
-          title="Tools"
-          description="Include tool calls and results"
-          value={settings.crossContext?.includeTools ?? false}
-          onChange={(val) => updateSetting('crossContext.includeTools', val)}
+          title="Working Context"
+          description="Include both thinking/reasoning steps and tool calls/results from other sessions"
+          value={(settings.crossContext?.includeThoughts ?? false) && (settings.crossContext?.includeTools ?? false)}
+          onChange={(val) => updateSettingsBatch([
+            { field: 'crossContext.includeThoughts', value: val },
+            { field: 'crossContext.includeTools', value: val },
+          ])}
+          auto={settings.auto?.crossContext?.includeWorkingContext ?? false}
+          onAutoChange={(val) => updateSetting('auto.crossContext.includeWorkingContext', val)}
         />
 
         <ToggleRow
@@ -718,7 +724,7 @@ export default function GlobalSettings({ config, onSave }: GlobalSettingsProps) 
       {/* ── Auto Classifier ── */}
       <section className="bg-neutral-900 border border-neutral-800 rounded-xl p-5">
         <h3 className="text-base font-semibold text-white mb-1">Auto Classifier</h3>
-        <p className="text-xs text-neutral-600 mb-4">When a field's Auto toggle is on, the classifier model below picks its value per turn based on the incoming message — overriding the configured value only for that turn. Toggles for message limits, thoughts/tools inclusion, and memory recall live inline in the sections above.</p>
+        <p className="text-xs text-neutral-600 mb-4">When a field's Auto toggle is on, the classifier model below picks its value per turn based on the incoming message — overriding the configured value only for that turn. Toggles for message limits, working-context inclusion, and memory recall live inline in the sections above.</p>
 
         <div className="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-4 py-3 border-b border-neutral-800/50">
           <div className="flex flex-col sm:w-48 sm:shrink-0">
@@ -730,6 +736,33 @@ export default function GlobalSettings({ config, onSave }: GlobalSettingsProps) 
             onChange={(next) => updateSetting('auto.classifierModel', next)}
           />
         </div>
+
+        <NumberRow
+          label="Classifier: Current Session Messages"
+          hint="How many recent messages from this session the classifier reads before deciding"
+          value={settings.auto?.classifierContext?.currentSessionMessages ?? getDefaults().auto.classifierContext.currentSessionMessages}
+          onChange={(val) => updateSetting('auto.classifierContext.currentSessionMessages', val)}
+          min={0}
+          max={300}
+        />
+
+        <NumberRow
+          label="Classifier: Cross-Session Max Sessions"
+          hint="How many other sessions the classifier may preview to judge relevance"
+          value={settings.auto?.classifierContext?.crossSessionMaxSessions ?? getDefaults().auto.classifierContext.crossSessionMaxSessions}
+          onChange={(val) => updateSetting('auto.classifierContext.crossSessionMaxSessions', val)}
+          min={0}
+          max={20}
+        />
+
+        <NumberRow
+          label="Classifier: Cross-Session Messages"
+          hint="How many recent messages per other session the classifier may preview"
+          value={settings.auto?.classifierContext?.crossSessionMessages ?? getDefaults().auto.classifierContext.crossSessionMessages}
+          onChange={(val) => updateSetting('auto.classifierContext.crossSessionMessages', val)}
+          min={0}
+          max={20}
+        />
 
         <div className="flex items-center justify-between gap-4 py-3 border-b border-neutral-800/50">
           <div className="flex flex-col">

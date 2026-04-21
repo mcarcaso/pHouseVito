@@ -158,6 +158,16 @@ export interface ModelChoice {
   description: string;
 }
 
+/** Settings for how much context the auto classifier itself gets to inspect. */
+export interface ClassifierContextSettings {
+  /** How many recent user/assistant messages from THIS session the classifier sees. */
+  currentSessionMessages?: number;
+  /** How many recent messages per OTHER session the classifier sees as a preview. */
+  crossSessionMessages?: number;
+  /** How many OTHER sessions may contribute preview context for the classifier. */
+  crossSessionMaxSessions?: number;
+}
+
 /**
  * Per-field auto-selection flags. When a field is true, a cheap LLM classifier
  * decides the value for that field on every turn (overriding the configured value).
@@ -166,12 +176,12 @@ export interface ModelChoice {
 export interface AutoFlags {
   currentContext?: {
     limit?: boolean;
-    includeThoughts?: boolean;
-    includeTools?: boolean;
+    includeWorkingContext?: boolean;
   };
   crossContext?: {
     limit?: boolean;
     maxSessions?: boolean;
+    includeWorkingContext?: boolean;
   };
   memory?: {
     recalledMemoryLimit?: boolean;
@@ -184,6 +194,8 @@ export interface AutoFlags {
   };
   /** Which LLM the classifier itself runs on. Defaults to anthropic/claude-haiku-4-5. */
   classifierModel?: { provider: string; name: string };
+  /** How much current/cross-session preview context the classifier gets to inspect. */
+  classifierContext?: ClassifierContextSettings;
 }
 
 export interface Settings {
@@ -232,12 +244,12 @@ export interface ResolvedMemorySettings {
 export interface ResolvedAutoFlags {
   currentContext: {
     limit: boolean;
-    includeThoughts: boolean;
-    includeTools: boolean;
+    includeWorkingContext: boolean;
   };
   crossContext: {
     limit: boolean;
     maxSessions: boolean;
+    includeWorkingContext: boolean;
   };
   memory: {
     recalledMemoryLimit: boolean;
@@ -249,6 +261,12 @@ export interface ResolvedAutoFlags {
   };
   /** Fully-resolved classifier model (always populated — from config or default). */
   classifierModel: { provider: string; name: string };
+  /** Fully-resolved preview window settings for the classifier itself. */
+  classifierContext: {
+    currentSessionMessages: number;
+    crossSessionMessages: number;
+    crossSessionMaxSessions: number;
+  };
 }
 
 /** Deep merge helper type for settings resolution */

@@ -59,18 +59,20 @@ export interface AutoClassifierRequest {
   author?: string;
   /** Attachments on the message (optional). */
   attachments?: Attachment[];
-  /** A short chronological snippet of the recent turn history (optional). */
+  /** A short chronological snippet of the recent turn history from THIS session (optional). */
   recentHistory?: string;
+  /** Optional preview snippets from OTHER sessions for cross-session relevance checks. */
+  crossSessionHistory?: string;
   /** Candidate models — required when needed.model is true. */
   modelChoices?: ModelChoice[];
   /** Which fields should be decided by the classifier. */
   needed: {
     model?: boolean;
     currentContextLimit?: boolean;
-    currentContextIncludeThoughts?: boolean;
-    currentContextIncludeTools?: boolean;
+    currentContextIncludeWorkingContext?: boolean;
     crossContextLimit?: boolean;
     crossContextMaxSessions?: boolean;
+    crossContextIncludeWorkingContext?: boolean;
     recalledMemoryLimit?: boolean;
   };
   /** Which model the classifier should run on. Defaults to DEFAULT_CLASSIFIER_MODEL. */
@@ -88,10 +90,10 @@ export interface AutoClassifierResult {
   /** The chosen model as a {provider, name} pair. */
   selectedModel?: { provider: string; name: string };
   currentContextLimit?: number;
-  currentContextIncludeThoughts?: boolean;
-  currentContextIncludeTools?: boolean;
+  currentContextIncludeWorkingContext?: boolean;
   crossContextLimit?: number;
   crossContextMaxSessions?: number;
+  crossContextIncludeWorkingContext?: boolean;
   recalledMemoryLimit?: number;
   /** Classifier's own explanation of why it picked these values. */
   explanation?: string;
@@ -168,14 +170,9 @@ export async function runAutoClassifier(req: AutoClassifierRequest): Promise<Aut
       `- "currentContextLimit": integer 5-300. How many of the most recent messages from THIS session to include in the response context. The recent-history block tags each line with [-K], its distance from the new message ([-1] = just before it). Pick the smallest N such that messages [-N] through [-1] still cover everything relevant to the new user message. The minimum is 5 — even if the topic has fully shifted, return 5 (don't bother trying to return less). Return roughly the visible window size if everything shown still looks relevant. Return larger than the visible window only when the new message clearly references something further back than what you can see.`,
     );
   }
-  if (req.needed.currentContextIncludeThoughts) {
+  if (req.needed.currentContextIncludeWorkingContext) {
     fieldDescriptions.push(
-      `- "currentContextIncludeThoughts": boolean. Include the assistant's prior reasoning/thinking blocks in the response context. These are large, so only keep them when the new message asks the assistant to explain, justify, revisit, or continue past reasoning — phrases like "why did you", "what were you thinking", "go back to your plan", "you said X, explain" — OR when the conversation is an iterative software-building/debugging session where the assistant is mid-task and needs its own prior thought process to continue coherently. Default to false for new topics, chit-chat, and anything that doesn't reference the assistant's past thinking. In practice this usually matches currentContextIncludeTools — if one is true, the other probably is too.`,
-    );
-  }
-  if (req.needed.currentContextIncludeTools) {
-    fieldDescriptions.push(
-      `- "currentContextIncludeTools": boolean. Include prior tool calls and their results (file reads, command output, search results, etc.) in the response context. These are large, so only keep them when the new message leans on past tool work — asking about a file the assistant read, output from a command it ran, search results, follow-ups on something it fetched or wrote — OR when the conversation is an iterative software-building/debugging session where the assistant needs its prior tool output to keep working on the same task. Default to false for new topics, chit-chat, or anything that doesn't reference past tool output. In practice this usually matches currentContextIncludeThoughts.`,
+      `- "currentContextIncludeWorkingContext": boolean. Include BOTH prior reasoning/thinking blocks and prior tool calls/results from THIS session. These are large, so only keep them when the new message depends on earlier work already done in-thread — asking why the assistant did something, referring to a file or command output it already looked at, continuing an iterative coding/debugging task, or otherwise leaning on prior reasoning/tool work. Default to false for new topics, chit-chat, and standalone requests.`,
     );
   }
   if (req.needed.crossContextLimit) {
@@ -188,6 +185,11 @@ export async function runAutoClassifier(req: AutoClassifierRequest): Promise<Aut
       `- "crossContextMaxSessions": integer 0-20. How many OTHER sessions may contribute cross-session context. 0 means no cross-session context at all. For most requests this should be 0-3. Only go above that when the user is explicitly asking for synthesis across many threads, history, or project-wide recall.`,
     );
   }
+  if (req.needed.crossContextIncludeWorkingContext) {
+    fieldDescriptions.push(
+      `- "crossContextIncludeWorkingContext": boolean. Include BOTH prior reasoning/thinking blocks and prior tool calls/results from OTHER sessions. This is very expensive and should usually be false. Only set true when the user clearly needs detailed prior work from other sessions — not just a little conversational continuity, but the actual prior reasoning or tool output.`,
+    );
+  }
   if (req.needed.recalledMemoryLimit) {
     fieldDescriptions.push(
       `- "recalledMemoryLimit": integer 0-10. How many semantically-recalled memory chunks to inject. 0 for chit-chat and fresh standalone asks, 1-3 for normal personal continuity, 4-6 for memory-heavy questions that seem to reference history ("last time", "remember when", "you mentioned").`,
@@ -197,21 +199,22 @@ export async function runAutoClassifier(req: AutoClassifierRequest): Promise<Aut
   const systemPrompt = `You classify an incoming user message for an AI assistant harness. Given the message (and optional recent history), decide values for ONLY the fields listed below. Respond with a single JSON object, no prose, no markdown fences.
 
 Use this bounded policy as your guardrail:
-- LEAN: standalone, procedural, one-shot, or routine operational requests. Keep context tight. Prefer current-session only. Cross-session should usually be 0. Memory should usually be 0-1.
-- NORMAL: ordinary follow-ups in the same thread or tasks that need some nearby continuity. Keep enough current-session context to stay coherent. Cross-session should stay small unless the user clearly asks for it. Memory is usually 1-3.
-- RICH: debugging, audits, comparisons, strategy, or explicit references to previous work across sessions. Use more current-session context, allow some cross-session context, and raise memory only when the user is clearly leaning on history.
+- Standalone / light: procedural, one-shot, or routine operational requests. Keep context tight. Prefer current-session only. Cross-session should usually be 0. Memory should usually be 0-1.
+- Same-thread / moderate: ordinary follow-ups in the same thread or tasks that need some nearby continuity. Keep enough current-session context to stay coherent. Cross-session should stay small unless the user clearly asks for it. Memory is usually 1-3.
+- History-heavy / complex: debugging, audits, comparisons, strategy, or explicit references to previous work across sessions. Use more current-session context, allow some cross-session context, and raise memory only when the user is clearly leaning on history.
 
 Hard rules:
 - Bias toward the smallest context that still safely answers the message.
 - Cross-session context is the most expensive and easiest to over-inject. Do not include it unless the message actually benefits from other sessions.
+- If a cross-session preview is provided, use it only as evidence for whether outside sessions look relevant — it is a preview, not a mandate to include those sessions.
 - If the message is about "this trace", "this file", "today's task", or a direct follow-up in the same thread, prefer current-session context over cross-session context.
-- Thoughts/tools should usually move together: if prior reasoning matters, prior tool output often matters too.
+- Working context means thoughts + tools together. Keep it off unless the message really depends on earlier reasoning or tool output.
 
 Fields to decide:
 ${fieldDescriptions.join("\n")}
 
 You MUST also include:
-- "explanation": string. Two to four short sentences explaining your reasoning for the values you chose. Reference the actual user message and recent history. Name the inferred mode (LEAN, NORMAL, or RICH). If you picked a model tier, say which trigger from its description matched. If you picked context values, say why this is standalone, a same-thread follow-up, or a cross-session/history-heavy request.
+- "explanation": string. Two to four short sentences explaining your reasoning for the values you chose. Reference the actual user message and any provided current-session or cross-session preview history. Describe whether this looks standalone/light, same-thread/moderate, or history-heavy/complex. If you picked a model tier, say which trigger from its description matched. If you picked context values, say why this is standalone, a same-thread follow-up, or a cross-session/history-heavy request.
 
 Only include the keys listed above plus "explanation". Any extra keys will be ignored.`;
 
@@ -220,9 +223,15 @@ Only include the keys listed above plus "explanation". Any extra keys will be ig
     attachments: req.attachments,
   });
 
-  const userContent = req.recentHistory
-    ? `<recent-history>\n${req.recentHistory}\n</recent-history>\n\n<user-message>\n${formattedMessage}\n</user-message>`
-    : `<user-message>\n${formattedMessage}\n</user-message>`;
+  const sections: string[] = [];
+  if (req.recentHistory) {
+    sections.push(`<recent-history>\n${req.recentHistory}\n</recent-history>`);
+  }
+  if (req.crossSessionHistory) {
+    sections.push(`<cross-session-preview>\n${req.crossSessionHistory}\n</cross-session-preview>`);
+  }
+  sections.push(`<user-message>\n${formattedMessage}\n</user-message>`);
+  const userContent = sections.join("\n\n");
 
   // Resolve the classifier model (request override → default).
   const classifierModel = req.classifierModel?.provider && req.classifierModel.name
@@ -341,17 +350,17 @@ Only include the keys listed above plus "explanation". Any extra keys will be ig
     if (req.needed.currentContextLimit && typeof parsed.currentContextLimit === "number") {
       result.currentContextLimit = Math.max(5, Math.min(300, Math.round(parsed.currentContextLimit)));
     }
-    if (req.needed.currentContextIncludeThoughts && typeof parsed.currentContextIncludeThoughts === "boolean") {
-      result.currentContextIncludeThoughts = parsed.currentContextIncludeThoughts;
-    }
-    if (req.needed.currentContextIncludeTools && typeof parsed.currentContextIncludeTools === "boolean") {
-      result.currentContextIncludeTools = parsed.currentContextIncludeTools;
+    if (req.needed.currentContextIncludeWorkingContext && typeof parsed.currentContextIncludeWorkingContext === "boolean") {
+      result.currentContextIncludeWorkingContext = parsed.currentContextIncludeWorkingContext;
     }
     if (req.needed.crossContextLimit && typeof parsed.crossContextLimit === "number") {
       result.crossContextLimit = Math.max(0, Math.min(10, Math.round(parsed.crossContextLimit)));
     }
     if (req.needed.crossContextMaxSessions && typeof parsed.crossContextMaxSessions === "number") {
       result.crossContextMaxSessions = Math.max(0, Math.min(20, Math.round(parsed.crossContextMaxSessions)));
+    }
+    if (req.needed.crossContextIncludeWorkingContext && typeof parsed.crossContextIncludeWorkingContext === "boolean") {
+      result.crossContextIncludeWorkingContext = parsed.crossContextIncludeWorkingContext;
     }
     if (req.needed.recalledMemoryLimit && typeof parsed.recalledMemoryLimit === "number") {
       result.recalledMemoryLimit = Math.max(0, Math.min(10, Math.round(parsed.recalledMemoryLimit)));

@@ -94,6 +94,7 @@ export class PiHarness implements Harness {
     // Create resource loader with system prompt and Pi-native skills enabled.
     const resourceLoader = new DefaultResourceLoader({
       cwd: process.cwd(),
+      agentDir: process.cwd(),
       noExtensions: true,
       noPromptTemplates: true,
       noThemes: true,

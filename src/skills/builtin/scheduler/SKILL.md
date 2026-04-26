@@ -1,3 +1,8 @@
+---
+name: scheduler
+description: Schedule and manage cron jobs to trigger AI actions at specific times. Create one-time or recurring jobs with natural language prompts.
+---
+
 # Scheduler Skill
 
 **Description:** Schedule and manage cron jobs to trigger AI actions at specific times. Create one-time or recurring jobs with natural language prompts.

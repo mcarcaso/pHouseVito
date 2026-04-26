@@ -12,6 +12,7 @@ import {
   type AgentSession,
   type AgentSessionEvent,
 } from "@mariozechner/pi-coding-agent";
+import { discoverSkills } from "../../skills/discovery.js";
 import type { Harness, HarnessCallbacks, HarnessFactory, NormalizedEvent } from "../types.js";
 
 // ════════════════════════════════════════════════════════════════════════════
@@ -86,13 +87,17 @@ export class PiHarness implements Harness {
       });
     }
 
-    // Create resource loader with system prompt
+    const additionalSkillPaths = this.config.skillsDir
+      ? discoverSkills(this.config.skillsDir).map((skill) => skill.path)
+      : [];
+
+    // Create resource loader with system prompt and Pi-native skills enabled.
     const resourceLoader = new DefaultResourceLoader({
       cwd: process.cwd(),
       noExtensions: true,
-      noSkills: true,
       noPromptTemplates: true,
       noThemes: true,
+      additionalSkillPaths,
       systemPrompt,
     });
     await resourceLoader.reload();

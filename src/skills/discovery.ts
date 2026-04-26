@@ -78,16 +78,7 @@ export function discoverSkills(skillsDir: string): SkillMeta[] {
 export function formatSkillsForPrompt(skills: SkillMeta[]): string {
   if (skills.length === 0) return "";
 
-  const skillList = skills
-    .map((s) => {
-      const relativePath = s.isBuiltin
-        ? `src/skills/builtin/${s.name}/SKILL.md`
-        : `user/skills/${s.name}/SKILL.md`;
-      return `- **${s.name}** (${relativePath}) — ${s.description}`;
-    })
-    .join("\n");
-
-  return `The following skills are available. IMPORTANT: Before using ANY skill, you MUST read its SKILL.md file first. Do NOT assume how a skill works — the SKILL.md contains the exact commands, parameters, and usage patterns. Skipping this step leads to errors.
-
-${skillList}`;
+  return `Skills are loaded natively by Pi from their SKILL.md files.
+Before using any skill, read its SKILL.md first and follow it exactly.
+Do not guess commands, parameters, or usage patterns.`;
 }

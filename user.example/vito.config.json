@@ -50,12 +50,21 @@
         "name": "google/gemini-3.1-flash-lite-preview"
       },
       "currentContext": {
-        "includeThoughts": true,
-        "includeTools": true,
-        "limit": true
+        "limit": true,
+        "includeWorkingContext": true
+      },
+      "crossContext": {
+        "limit": true,
+        "maxSessions": true,
+        "includeWorkingContext": true
       },
       "memory": {
         "recalledMemoryLimit": true
+      },
+      "classifierContext": {
+        "currentSessionMessages": 25,
+        "crossSessionMessages": 0,
+        "crossSessionMaxSessions": 0
       }
     }
   },

@@ -133,7 +133,7 @@ Channel receives message -> `Orchestrator.handleInbound()` -> per-session queue 
 ### Key Patterns
 - **Harness decorator chain**: ProxyHarness base class, decorators wrap inner harness. Order matters: tracing -> persistence -> relay -> typing
 - **Settings cascade**: Global -> Channel -> Session (deep merge, later wins). Resolved via `getEffectiveSettings()`
-- **Auto classifier**: Per-field LLM classifier (claude-haiku-4-5 default) can auto-select: currentContext.limit, includeThoughts, includeTools, recalledMemoryLimit, pi-coding-agent model. Configurable model choices and classifier model
+- **Auto classifier**: Per-field LLM classifier (claude-haiku-4-5 default) can auto-select: currentContext.limit, currentContext.includeWorkingContext, crossContext.limit, crossContext.maxSessions, crossContext.includeWorkingContext, recalledMemoryLimit, pi-coding-agent model. Configurable model choices, classifier model, and classifierContext (how much history the classifier sees)
 - **Stream modes**: `stream` (real-time tokens), `bundled` (chunks), `final` (single message). DirectChannel and sendCondition force `final`
 - **Append-only DB**: Messages never deleted, only marked archived. `/new` command embeds then archives
 - **Hot-reload**: Config file watched with 3s debounce, reloads orchestrator + cron + dashboard
@@ -189,6 +189,9 @@ Format: `channel:target` (e.g., `dashboard:default`, `telegram:123456789`, `disc
 | currentContext.limit | 100 |
 | currentContext.includeThoughts | true |
 | currentContext.includeTools | true |
+| auto.classifierContext.currentSessionMessages | 25 |
+| auto.classifierContext.crossSessionMessages | 0 |
+| auto.classifierContext.crossSessionMaxSessions | 0 |
 | crossContext.limit | 5 |
 | crossContext.maxSessions | 15 |
 | memory.recalledMemoryLimit | 3 |

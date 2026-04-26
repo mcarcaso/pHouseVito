@@ -114,6 +114,15 @@ function buildHTML() {
   .preview-header h2 { font-size: 14px; color: var(--fg2); }
   .preview-body { flex: 1; overflow-y: auto; padding: 12px; }
   .preview-body pre { font-size: 12px; line-height: 1.5; color: var(--fg2); white-space: pre-wrap; word-break: break-all; }
+  .preview-tabs { display: flex; gap: 2px; }
+  .preview-tab { padding: 4px 12px; background: var(--bg3); border: 1px solid var(--border); border-radius: var(--radius); cursor: pointer; color: var(--fg3); font-size: 11px; transition: all 0.15s; }
+  .preview-tab:hover { color: var(--fg2); }
+  .preview-tab.active { color: var(--cyan); background: var(--bg); border-color: var(--cyan); }
+  .diff-line { margin: 0; padding: 0 8px; font-size: 12px; line-height: 1.6; font-family: inherit; }
+  .diff-add { background: rgba(158, 206, 106, 0.12); color: var(--green); }
+  .diff-del { background: rgba(247, 118, 142, 0.12); color: var(--red); }
+  .diff-ctx { color: var(--fg3); }
+  .diff-hunk { color: var(--cyan); font-weight: 600; padding: 4px 8px; margin-top: 4px; }
   .toolbar { padding: 10px 16px; background: var(--bg2); border-bottom: 1px solid var(--border); display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
   .btn { padding: 6px 14px; border-radius: var(--radius); border: 1px solid var(--border); background: var(--bg3); color: var(--fg2); font-size: 12px; cursor: pointer; font-family: inherit; transition: all 0.15s; white-space: nowrap; }
   .btn:hover { background: var(--bg4); color: var(--fg); }
@@ -189,10 +198,16 @@ function buildHTML() {
   <div class="tree-panel" id="treePanel"></div>
   <div class="preview-panel">
     <div class="preview-header">
-      <h2>Result JSON</h2>
+      <div class="preview-tabs">
+        <div class="preview-tab active" onclick="setPreviewMode('json')" id="ptJson">Result JSON</div>
+        <div class="preview-tab" onclick="setPreviewMode('diff')" id="ptDiff">Diff</div>
+      </div>
       <span id="jsonSize" style="font-size:11px;color:var(--fg3)"></span>
     </div>
-    <div class="preview-body"><pre id="jsonPreview"></pre></div>
+    <div class="preview-body">
+      <pre id="jsonPreview"></pre>
+      <div id="diffPreview" style="display:none"></div>
+    </div>
   </div>
 </div>
 <div class="toast" id="toast"></div>
@@ -208,6 +223,7 @@ let currentInstance = instanceNames[0];
 // picks[instanceName][dotPath] = "default" | "remote" | "omit"
 let picks = {};
 let collapsed = {};
+let previewMode = "json"; // "json" | "diff"
 
 function init() {
   // Build tabs
@@ -459,10 +475,15 @@ function buildResult() {
 }
 
 function updatePreview() {
+  updatePreviewContent();
+}
+
+function updatePreviewContent() {
   const result = buildResult();
   const json = JSON.stringify(result, null, 2);
   document.getElementById("jsonPreview").textContent = json;
   document.getElementById("jsonSize").textContent = json.length + " chars";
+  if (previewMode === "diff") renderDiff();
 }
 
 // ── Actions ─────────────────────────────────────────────────────
@@ -571,6 +592,101 @@ function showToast(msg, type) {
   t.className = "toast show" + (type ? " " + type : "");
   clearTimeout(toastTimer);
   if (type) toastTimer = setTimeout(() => { t.className = "toast"; }, 3000);
+}
+
+// ── Diff ───────────────────────────────────────────────────────
+
+function setPreviewMode(mode) {
+  previewMode = mode;
+  document.getElementById("ptJson").classList.toggle("active", mode === "json");
+  document.getElementById("ptDiff").classList.toggle("active", mode === "diff");
+  document.getElementById("jsonPreview").style.display = mode === "json" ? "" : "none";
+  document.getElementById("diffPreview").style.display = mode === "diff" ? "" : "none";
+  updatePreviewContent();
+}
+
+function computeDiff(oldLines, newLines) {
+  // Myers-like LCS diff
+  const n = oldLines.length, m = newLines.length;
+  // For large configs, use a simple O(nm) LCS approach
+  const dp = Array.from({ length: n + 1 }, () => new Uint16Array(m + 1));
+  for (let i = 1; i <= n; i++) {
+    for (let j = 1; j <= m; j++) {
+      dp[i][j] = oldLines[i - 1] === newLines[j - 1]
+        ? dp[i - 1][j - 1] + 1
+        : Math.max(dp[i - 1][j], dp[i][j - 1]);
+    }
+  }
+  // Backtrack to build diff operations
+  const ops = [];
+  let i = n, j = m;
+  while (i > 0 || j > 0) {
+    if (i > 0 && j > 0 && oldLines[i - 1] === newLines[j - 1]) {
+      ops.push({ type: "ctx", line: oldLines[i - 1] });
+      i--; j--;
+    } else if (j > 0 && (i === 0 || dp[i][j - 1] >= dp[i - 1][j])) {
+      ops.push({ type: "add", line: newLines[j - 1] });
+      j--;
+    } else {
+      ops.push({ type: "del", line: oldLines[i - 1] });
+      i--;
+    }
+  }
+  ops.reverse();
+  return ops;
+}
+
+function renderDiff() {
+  const inst = instances[currentInstance];
+  const diffEl = document.getElementById("diffPreview");
+  if (!inst || !inst.remoteCfg) {
+    diffEl.innerHTML = '<div style="padding:12px;color:var(--fg3)">No remote config to diff against.</div>';
+    return;
+  }
+  const remoteJson = JSON.stringify(inst.remoteCfg, null, 2);
+  const resultJson = JSON.stringify(buildResult(), null, 2);
+  const oldLines = remoteJson.split("\\n");
+  const newLines = resultJson.split("\\n");
+
+  if (remoteJson === resultJson) {
+    diffEl.innerHTML = '<div style="padding:12px;color:var(--green)">No changes — result matches remote config.</div>';
+    return;
+  }
+
+  const ops = computeDiff(oldLines, newLines);
+
+  // Render with context collapsing (show 3 lines of context around changes)
+  const CTX = 3;
+  const isChange = ops.map(o => o.type !== "ctx");
+  const show = new Uint8Array(ops.length);
+  for (let k = 0; k < ops.length; k++) {
+    if (isChange[k]) {
+      for (let c = Math.max(0, k - CTX); c <= Math.min(ops.length - 1, k + CTX); c++) {
+        show[c] = 1;
+      }
+    }
+  }
+
+  let html = "";
+  let hidden = 0;
+  for (let k = 0; k < ops.length; k++) {
+    if (!show[k]) {
+      hidden++;
+      continue;
+    }
+    if (hidden > 0) {
+      html += '<div class="diff-line diff-hunk">@@ ' + hidden + ' unchanged line' + (hidden > 1 ? 's' : '') + ' @@</div>';
+      hidden = 0;
+    }
+    const op = ops[k];
+    const cls = op.type === "add" ? "diff-add" : op.type === "del" ? "diff-del" : "diff-ctx";
+    const prefix = op.type === "add" ? "+" : op.type === "del" ? "-" : " ";
+    html += '<div class="diff-line ' + cls + '">' + prefix + ' ' + escHtml(op.line) + '</div>';
+  }
+  if (hidden > 0) {
+    html += '<div class="diff-line diff-hunk">@@ ' + hidden + ' unchanged line' + (hidden > 1 ? 's' : '') + ' @@</div>';
+  }
+  diffEl.innerHTML = html;
 }
 
 // Close context menu on scroll

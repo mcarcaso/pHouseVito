@@ -111,7 +111,7 @@ user/                       # User config directory (gitignored, created from us
   logs/                     # Trace files (.jsonl)
   images/                   # Static images
 
-src/skills/builtin/         # Built-in skills: apps, history, scheduler, semantic-history-search
+src/skills/builtin/         # Built-in skills: apps, keyword-history-search, scheduler, semantic-history-search
 ```
 
 ## Architecture
@@ -226,7 +226,7 @@ Separate embeddings database: `user/embeddings.db` (chunks table with vectors)
 
 - Discovered from `user/skills/` (user) and `src/skills/builtin/` (built-in). User skills override built-in with same name
 - Each skill is a directory with a `SKILL.md` file (gray-matter frontmatter: name, description)
-- Built-in skills: apps, history, scheduler, semantic-history-search
+- Built-in skills: apps, keyword-history-search, scheduler, semantic-history-search
 - ~36 user skills in this instance
 - Skills prompt is formatted and injected into system prompt on every request
 

@@ -29,7 +29,7 @@ Use this skill when:
 | channel | TEXT | `dashboard`, `telegram`, or `discord` |
 | channel_target | TEXT | `default`, telegram chat ID, or discord channel ID |
 | timestamp | INTEGER | Unix epoch in **milliseconds** |
-| role | TEXT | `user`, `assistant`, `system`, or `tool` |
+| type | TEXT | `user`, `thought`, `assistant`, `tool_start`, or `tool_end` |
 | content | JSON | Message content (JSON string — use `json_extract` or just cast) |
 | compacted | INTEGER | 1 = compacted (knowledge extracted to memory docs) |
 | archived | INTEGER | 1 = archived (old session, fully processed) |
@@ -49,10 +49,10 @@ Use this skill when:
 ### Search messages by keyword
 ```sql
 SELECT datetime(timestamp/1000, 'unixepoch', 'localtime') as time,
-       role, substr(content, 1, 200) as preview
+       type, substr(content, 1, 200) as preview
 FROM messages
 WHERE content LIKE '%keyword%'
-  AND role IN ('user', 'assistant')
+  AND type IN ('user', 'assistant')
 ORDER BY timestamp DESC
 LIMIT 20;
 ```
@@ -60,31 +60,31 @@ LIMIT 20;
 ### Get conversation from a specific date
 ```sql
 SELECT datetime(timestamp/1000, 'unixepoch', 'localtime') as time,
-       role, content
+       type, content
 FROM messages
 WHERE date(timestamp/1000, 'unixepoch', 'localtime') = '2026-02-13'
-  AND role IN ('user', 'assistant')
+  AND type IN ('user', 'assistant')
 ORDER BY timestamp ASC;
 ```
 
 ### Get conversation from a time range
 ```sql
 SELECT datetime(timestamp/1000, 'unixepoch', 'localtime') as time,
-       role, content
+       type, content
 FROM messages
 WHERE timestamp BETWEEN strftime('%s', '2026-02-13 09:00:00', 'utc') * 1000
                      AND strftime('%s', '2026-02-13 12:00:00', 'utc') * 1000
-  AND role IN ('user', 'assistant')
+  AND type IN ('user', 'assistant')
 ORDER BY timestamp ASC;
 ```
 
 ### Get messages from a specific channel
 ```sql
 SELECT datetime(timestamp/1000, 'unixepoch', 'localtime') as time,
-       role, substr(content, 1, 200) as preview
+       type, substr(content, 1, 200) as preview
 FROM messages
 WHERE channel = 'telegram'
-  AND role IN ('user', 'assistant')
+  AND type IN ('user', 'assistant')
 ORDER BY timestamp DESC
 LIMIT 30;
 ```
@@ -95,7 +95,7 @@ SELECT date(timestamp/1000, 'unixepoch', 'localtime') as day,
        COUNT(*) as msg_count,
        COUNT(DISTINCT session_id) as sessions
 FROM messages
-WHERE role IN ('user', 'assistant')
+WHERE type IN ('user', 'assistant')
 GROUP BY day
 ORDER BY day DESC;
 ```
@@ -105,15 +105,15 @@ ORDER BY day DESC;
 -- Step 1: Find matching messages
 SELECT id, session_id, timestamp
 FROM messages
-WHERE content LIKE '%topic%' AND role IN ('user', 'assistant');
+WHERE content LIKE '%topic%' AND type IN ('user', 'assistant');
 
 -- Step 2: Get context around a match (±10 messages in same session)
 SELECT datetime(timestamp/1000, 'unixepoch', 'localtime') as time,
-       role, content
+       type, content
 FROM messages
 WHERE session_id = 'SESSION_ID_HERE'
   AND id BETWEEN (MATCH_ID - 10) AND (MATCH_ID + 10)
-  AND role IN ('user', 'assistant')
+  AND type IN ('user', 'assistant')
 ORDER BY timestamp ASC;
 ```
 
@@ -137,6 +137,6 @@ EOF
 - **Timestamps are in milliseconds** — divide by 1000 for unix seconds
 - Use `datetime(timestamp/1000, 'unixepoch', 'localtime')` for readable times
 - **content is a JSON string** — for user/assistant messages it's typically just a quoted string
-- Filter `role IN ('user', 'assistant')` to skip tool calls/system messages
+- Filter `type IN ('user', 'assistant')` to skip thoughts and tool messages
 - Use `substr(content, 1, 200)` for previews to avoid dumping huge messages
 - **Summarize results** for the user — don't dump raw SQL output

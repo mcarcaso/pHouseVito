@@ -30,24 +30,24 @@
         "modelChoices": [
           {
             "provider": "openrouter",
-            "name": "minimax/minimax-m2.7",
-            "description": "Default. Everything text — Q&A, coding, terminal, reasoning, writing, analysis, text files. No images or PDFs."
+            "name": "deepseek/deepseek-v4-flash",
+            "description": "Quick lane. Simple Q&A, formatting, short rewrites, lightweight classification, low-risk tasks, and other easy asks. Avoid for complex debugging, deep investigations, or multi-step tool chains."
           },
           {
             "provider": "openrouter",
-            "name": "moonshotai/kimi-k2.5",
-            "description": "Multimodal only. Images and PDFs. For text files, use MiniMax instead."
+            "name": "deepseek/deepseek-v4-pro",
+            "description": "Default. Coding, debugging, tool chains, investigations, multimodal tasks, analysis, writing, and most real work."
           },
           {
             "provider": "openrouter",
-            "name": "anthropic/claude-opus-4.6",
-            "description": "Hard tasks. Last resort for complex debugging, architecture, or multi-step problems."
+            "name": "moonshotai/kimi-k2.6",
+            "description": "Multimodal only. Images and PDFs. For vision-heavy jobs, use this lane; otherwise prefer Flash or Pro."
           }
         ]
       },
       "classifierModel": {
         "provider": "openrouter",
-        "name": "google/gemini-3.1-flash-lite-preview"
+        "name": "deepseek/deepseek-v4-flash"
       },
       "currentContext": {
         "limit": true,
@@ -72,12 +72,23 @@
     "pi-coding-agent": {
       "model": {
         "provider": "openrouter",
-        "name": "minimax/minimax-m2.7"
+        "name": "deepseek/deepseek-v4-pro"
       },
       "thinkingLevel": "off"
     }
   },
-  "sessions": {},
+  "sessions": {
+    "system:profile-updater": {
+      "harness": "pi-coding-agent",
+      "pi-coding-agent": {
+        "model": {
+          "provider": "openrouter",
+          "name": "deepseek/deepseek-v4-flash"
+        },
+        "thinkingLevel": "off"
+      }
+    }
+  },
   "channels": {
     "dashboard": {
       "enabled": true

@@ -1927,6 +1927,7 @@ export class DashboardChannel implements Channel {
             let sessionId = "";
             let hasEmbedding = false;
             let userMessage = "";
+            let cost: number | null = null;
 
             if (isJsonl) {
               // Parse header from first 4KB (line 1 — always small)
@@ -1990,17 +1991,17 @@ export class DashboardChannel implements Channel {
                 closeSync(fd);
               } catch { /* ignore scan errors */ }
 
-              // Detect embedding_result — read only the TAIL of the file (it's always near the end)
+              // Detect embedding_result and footer usage — read only the TAIL of the file (both are near the end)
               try {
-                const tailSize = Math.min(size, 4096);
+                const tailSize = Math.min(size, 65536);
                 const tailBuf = Buffer.alloc(tailSize);
                 const tailFd = openSync(filePath, "r");
                 readSync(tailFd, tailBuf, 0, tailSize, Math.max(0, size - tailSize));
                 closeSync(tailFd);
                 const tail = tailBuf.toString("utf-8");
+                const tailLines = tail.split("\n");
 
                 if (tail.includes('"type":"embedding_result"')) {
-                  const tailLines = tail.split("\n");
                   for (const line of tailLines) {
                     if (!line.includes('"type":"embedding_result"')) continue;
                     try {
@@ -2008,6 +2009,21 @@ export class DashboardChannel implements Channel {
                       if (obj.type === "embedding_result" && typeof obj.chunks_created === "number" && obj.chunks_created > 0) {
                         hasEmbedding = true;
                         break;
+                      }
+                    } catch {
+                      // ignore partial/malformed lines from tail read
+                    }
+                  }
+                }
+
+                if (tail.includes('"type":"footer"')) {
+                  for (const line of tailLines) {
+                    if (!line.includes('"type":"footer"')) continue;
+                    try {
+                      const obj = JSON.parse(line);
+                      const total = obj?.usage?.cost?.total;
+                      if (obj.type === "footer" && typeof total === "number") {
+                        cost = total;
                       }
                     } catch {
                       // ignore partial/malformed lines from tail read
@@ -2046,6 +2062,7 @@ export class DashboardChannel implements Channel {
               hasEmbedding,
               userMessage,
               traceType,
+              cost,
             };
           });
 

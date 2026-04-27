@@ -7,7 +7,7 @@
 import { appendFileSync, mkdirSync, statSync } from "fs";
 import { dirname, join } from "path";
 import { ProxyHarness } from "./proxy.js";
-import type { Harness, HarnessCallbacks, NormalizedEvent } from "./types.js";
+import type { Harness, HarnessCallbacks, HarnessUsage, NormalizedEvent } from "./types.js";
 
 // Max trace file size: 50MB (prevents runaway traces from filling disk)
 const MAX_TRACE_SIZE_BYTES = 50 * 1024 * 1024;
@@ -33,7 +33,7 @@ type TraceLine =
   | { type: "auto_classifier"; ran: boolean; duration_ms: number; skipped?: string; traceFile?: string; explanation?: string; currentContextLimit?: number; currentContextIncludeWorkingContext?: boolean; crossContextLimit?: number; crossContextMaxSessions?: number; crossContextIncludeWorkingContext?: boolean; recalledMemoryLimit?: number; selectedModel?: string }
   | { type: "embedding_result"; skipped?: string; chunks_created: number; chunks: unknown[]; unembedded_messages: number; unembedded_chars: number; duration_ms: number }
   | { type: "profile_update"; skipped?: string; updated: boolean; duration_ms: number; traceFile?: string }
-  | { type: "footer"; duration_ms: number; message_count: number; tool_calls: number; success: boolean; error?: string };
+  | { type: "footer"; duration_ms: number; message_count: number; tool_calls: number; success: boolean; error?: string; usage?: HarnessUsage };
 
 export class TracingHarness extends ProxyHarness {
   private traceFile: string = "";
@@ -115,6 +115,7 @@ export class TracingHarness extends ProxyHarness {
     let messageCount = 0;
     let toolCalls = 0;
     let error: string | undefined;
+    let usage: HarnessUsage | undefined;
 
     this.writeLine({
       type: "header",
@@ -155,6 +156,11 @@ export class TracingHarness extends ProxyHarness {
         this.writeLine({ type: "normalized_event", ts: Date.now() - startTime, event });
         callbacks.onNormalizedEvent(event);
       },
+
+      onUsage: (runUsage) => {
+        usage = runUsage;
+        callbacks.onUsage?.(runUsage);
+      },
     };
 
     try {
@@ -170,6 +176,7 @@ export class TracingHarness extends ProxyHarness {
         tool_calls: toolCalls,
         success: !error,
         error,
+        usage,
       });
     }
   }

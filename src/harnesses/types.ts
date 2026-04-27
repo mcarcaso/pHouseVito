@@ -18,6 +18,21 @@ export type NormalizedEvent =
   | { kind: "tool_end"; tool: string; callId: string; result: string; success: boolean }
   | { kind: "error"; message: string };
 
+export interface HarnessUsage {
+  input: number;
+  output: number;
+  cacheRead: number;
+  cacheWrite: number;
+  totalTokens: number;
+  cost: {
+    input: number;
+    output: number;
+    cacheRead: number;
+    cacheWrite: number;
+    total: number;
+  };
+}
+
 // ════════════════════════════════════════════════════════════════════════════
 // CALLBACKS
 // ════════════════════════════════════════════════════════════════════════════
@@ -31,6 +46,9 @@ export interface HarnessCallbacks {
 
   /** Business events we care about */
   onNormalizedEvent: (event: NormalizedEvent) => void;
+
+  /** Optional per-run usage/cost summary, when the harness can expose it */
+  onUsage?: (usage: HarnessUsage) => void;
 }
 
 // ════════════════════════════════════════════════════════════════════════════

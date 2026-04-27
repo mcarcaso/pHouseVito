@@ -132,6 +132,20 @@ interface TraceFooter {
   tool_calls: number;
   success: boolean;
   error?: string;
+  usage?: {
+    input: number;
+    output: number;
+    cacheRead: number;
+    cacheWrite: number;
+    totalTokens: number;
+    cost: {
+      input: number;
+      output: number;
+      cacheRead: number;
+      cacheWrite: number;
+      total: number;
+    };
+  };
 }
 
 type TraceLine = TraceHeader | TraceInvocation | TracePrompt | TraceUserMessage | TraceRawEvent | TraceNormalizedEvent | TraceMemorySearch | TraceAutoClassifier | TraceEmbeddingResult | TraceProfileUpdate | TraceFooter;
@@ -147,6 +161,7 @@ interface LogFile {
   hasEmbedding?: boolean;
   userMessage?: string;
   traceType?: "main" | "classifier" | "profile";
+  cost?: number | null;
 }
 
 interface LogDetailJsonl {
@@ -290,6 +305,11 @@ function Traces() {
     return `${(ms / 1000).toFixed(2)}s`;
   };
 
+  const formatCost = (cost: number) => {
+    if (cost < 0.0001) return '<$0.0001';
+    return `$${cost.toFixed(4)}`;
+  };
+
   const toggleSection = (key: string) => {
     setExpandedSections(prev => {
       const next = new Set(prev);
@@ -363,10 +383,16 @@ function Traces() {
               {header.session_id}
             </div>
             {footer && (
-              <div className="flex items-center gap-4 mt-3 text-xs text-neutral-500">
+              <div className="flex items-center gap-4 mt-3 text-xs text-neutral-500 flex-wrap">
                 <span>Duration: <span className="text-neutral-300">{formatMs(footer.duration_ms)}</span></span>
                 <span>Messages: <span className="text-neutral-300">{footer.message_count}</span></span>
                 <span>Tool calls: <span className="text-neutral-300">{footer.tool_calls}</span></span>
+                {footer.usage && (
+                  <>
+                    <span>Tokens: <span className="text-neutral-300">{footer.usage.totalTokens.toLocaleString()}</span></span>
+                    <span>Cost: <span className="text-neutral-300">${footer.usage.cost.total.toFixed(4)}</span></span>
+                  </>
+                )}
               </div>
             )}
           </div>
@@ -1009,6 +1035,11 @@ function Traces() {
                 <span className="text-neutral-600 text-xs">
                   {formatSize(log.size)}
                 </span>
+                {typeof log.cost === 'number' && (
+                  <span className="text-emerald-400 bg-emerald-500/10 px-2 py-0.5 rounded text-xs font-mono">
+                    {formatCost(log.cost)}
+                  </span>
+                )}
                 <span className="text-neutral-600 ml-auto text-xs">
                   {formatDate(log.timestamp)}
                 </span>

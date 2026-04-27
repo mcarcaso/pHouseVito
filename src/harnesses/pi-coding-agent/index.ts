@@ -13,7 +13,7 @@ import {
   type AgentSessionEvent,
 } from "@mariozechner/pi-coding-agent";
 import { discoverSkills } from "../../skills/discovery.js";
-import type { Harness, HarnessCallbacks, HarnessFactory, NormalizedEvent } from "../types.js";
+import type { Harness, HarnessCallbacks, HarnessFactory, HarnessUsage, NormalizedEvent } from "../types.js";
 
 // ════════════════════════════════════════════════════════════════════════════
 // CONFIG
@@ -35,6 +35,68 @@ const DEFAULT_CONFIG: PiHarnessConfig = {
   },
   thinkingLevel: "off",
 };
+
+function toUsage(value: unknown): HarnessUsage | undefined {
+  if (!value || typeof value !== "object") return undefined;
+  const usage = value as Record<string, unknown>;
+  const cost = (usage.cost && typeof usage.cost === "object") ? usage.cost as Record<string, unknown> : {};
+
+  const input = Number(usage.input ?? 0);
+  const output = Number(usage.output ?? 0);
+  const cacheRead = Number(usage.cacheRead ?? 0);
+  const cacheWrite = Number(usage.cacheWrite ?? 0);
+  const totalTokens = Number(usage.totalTokens ?? (input + output + cacheRead + cacheWrite));
+
+  return {
+    input,
+    output,
+    cacheRead,
+    cacheWrite,
+    totalTokens,
+    cost: {
+      input: Number(cost.input ?? 0),
+      output: Number(cost.output ?? 0),
+      cacheRead: Number(cost.cacheRead ?? 0),
+      cacheWrite: Number(cost.cacheWrite ?? 0),
+      total: Number(cost.total ?? 0),
+    },
+  };
+}
+
+function addUsage(a: HarnessUsage | undefined, b: HarnessUsage | undefined): HarnessUsage | undefined {
+  if (!a) return b;
+  if (!b) return a;
+  return {
+    input: a.input + b.input,
+    output: a.output + b.output,
+    cacheRead: a.cacheRead + b.cacheRead,
+    cacheWrite: a.cacheWrite + b.cacheWrite,
+    totalTokens: a.totalTokens + b.totalTokens,
+    cost: {
+      input: a.cost.input + b.cost.input,
+      output: a.cost.output + b.cost.output,
+      cacheRead: a.cost.cacheRead + b.cost.cacheRead,
+      cacheWrite: a.cost.cacheWrite + b.cost.cacheWrite,
+      total: a.cost.total + b.cost.total,
+    },
+  };
+}
+
+function getAssistantUsageFromMessage(message: unknown): HarnessUsage | undefined {
+  if (!message || typeof message !== "object") return undefined;
+  const msg = message as Record<string, unknown>;
+  if (msg.role !== "assistant") return undefined;
+  return toUsage(msg.usage);
+}
+
+function getAssistantUsageFromMessages(messages: unknown): HarnessUsage | undefined {
+  if (!Array.isArray(messages)) return undefined;
+  let total: HarnessUsage | undefined;
+  for (const message of messages) {
+    total = addUsage(total, getAssistantUsageFromMessage(message));
+  }
+  return total;
+}
 
 // ════════════════════════════════════════════════════════════════════════════
 // HARNESS IMPLEMENTATION
@@ -125,6 +187,9 @@ export class PiHarness implements Harness {
     let currentThinkingText = "";
     let hasEmittedAssistantText = false;
     let hasEmittedThought = false;
+    let accumulatedUsage: HarnessUsage | undefined;
+    let finalUsage: HarnessUsage | undefined;
+    let hasEmittedUsage = false;
 
     // Subscribe to events
     const unsubscribe = piSession.subscribe((event: AgentSessionEvent) => {
@@ -187,6 +252,14 @@ export class PiHarness implements Harness {
           }
           break;
 
+        case "turn_end":
+          accumulatedUsage = addUsage(accumulatedUsage, getAssistantUsageFromMessage(event.message));
+          break;
+
+        case "agent_end":
+          finalUsage = getAssistantUsageFromMessages(event.messages) ?? accumulatedUsage;
+          break;
+
         case "tool_execution_start":
           callbacks.onNormalizedEvent({
             kind: "tool_start",
@@ -227,6 +300,12 @@ export class PiHarness implements Harness {
         });
         hasEmittedAssistantText = true;
       }
+
+      const usage = finalUsage ?? accumulatedUsage;
+      if (usage) {
+        callbacks.onUsage?.(usage);
+        hasEmittedUsage = true;
+      }
     } catch (err) {
       if (this.aborted) {
         // Aborted — emit an error event but don't throw
@@ -244,6 +323,10 @@ export class PiHarness implements Harness {
         throw err;
       }
     } finally {
+      const usage = finalUsage ?? accumulatedUsage;
+      if (usage && !hasEmittedUsage) {
+        callbacks.onUsage?.(usage);
+      }
       unsubscribe();
       piSession.dispose();
       this.currentSession = null;

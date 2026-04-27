@@ -125,6 +125,21 @@ export interface TraceAutoClassifier {
 /**
  * Footer - duration, counts, success/error summary
  */
+export interface TraceUsage {
+  input: number;
+  output: number;
+  cacheRead: number;
+  cacheWrite: number;
+  totalTokens: number;
+  cost: {
+    input: number;
+    output: number;
+    cacheRead: number;
+    cacheWrite: number;
+    total: number;
+  };
+}
+
 export interface TraceFooter {
   type: "footer";
   duration_ms: number;
@@ -132,6 +147,7 @@ export interface TraceFooter {
   tool_calls: number;
   success: boolean;
   error?: string;
+  usage?: TraceUsage;
 }
 
 /**

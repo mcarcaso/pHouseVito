@@ -13,6 +13,7 @@
 import { appendFileSync, mkdirSync } from "fs";
 import { dirname, join } from "path";
 import { PiHarness } from "../harnesses/index.js";
+import type { HarnessUsage } from "../harnesses/types.js";
 import { buildPromptText } from "../types.js";
 import type { Attachment, ModelChoice } from "../types.js";
 
@@ -266,6 +267,7 @@ Only include the keys listed above plus "explanation". Any extra keys will be ig
   let runError: string | undefined;
   let sawAssistantMessage = false;
   let toolCalls = 0;
+  let usage: HarnessUsage | undefined;
   const finishTrace = () => {
     if (!traceFile) return;
     traceFile.writeLine({
@@ -275,6 +277,7 @@ Only include the keys listed above plus "explanation". Any extra keys will be ig
       tool_calls: toolCalls,
       success: !runError,
       error: runError,
+      usage,
     });
   };
 
@@ -316,6 +319,9 @@ Only include the keys listed above plus "explanation". Any extra keys will be ig
           } else if (event.kind === "error") {
             runError = event.message;
           }
+        },
+        onUsage: (runUsage) => {
+          usage = runUsage;
         },
       },
     );

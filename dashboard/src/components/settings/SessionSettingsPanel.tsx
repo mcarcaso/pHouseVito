@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import type { VitoConfig, Settings } from '../../utils/settingsResolution';
 import { getEffectiveSettings } from '../../utils/settingsResolution';
 import SettingRow, { renderSelect, renderSegmented, renderNumberInput, renderToggle, renderTextarea } from './SettingRow';
+import { ClassifierModelPicker } from './GlobalSettings';
 
 interface SessionSettingsPanelProps {
   config: VitoConfig;
@@ -438,6 +439,29 @@ export default function SessionSettingsPanel({ config, onSave, initialSessionId 
             formatValue={(v) => v ? 'On' : 'Off'}
           />
 
+          <SettingRow
+            label="Exclude Embedded"
+            hint="Skip messages already covered by embeddings"
+            inheritedValue={inherited.currentContext.excludeEmbedded}
+            inheritedFrom={inheritFrom}
+            overrideValue={overrides.currentContext?.excludeEmbedded}
+            onOverride={(val) => updateSessionSetting(sessionId, 'currentContext.excludeEmbedded', val)}
+            onReset={() => resetSessionSetting(sessionId, 'currentContext.excludeEmbedded')}
+            renderInput={(val, onChange) => renderToggle(val, onChange)}
+            formatValue={(v) => v ? 'On' : 'Off'}
+          />
+
+          <SettingRow
+            label="Keep Embedded Tail"
+            hint="Recent embedded messages to keep anyway"
+            inheritedValue={inherited.currentContext.keepRecentEmbeddedMessages}
+            inheritedFrom={inheritFrom}
+            overrideValue={overrides.currentContext?.keepRecentEmbeddedMessages}
+            onOverride={(val) => updateSessionSetting(sessionId, 'currentContext.keepRecentEmbeddedMessages', val)}
+            onReset={() => resetSessionSetting(sessionId, 'currentContext.keepRecentEmbeddedMessages')}
+            renderInput={(val, onChange) => renderNumberInput(val, onChange, { min: 0, max: 50 })}
+          />
+
           {/* Cross-Session Context */}
           <div className="mt-4 mb-2">
             <span className="text-xs font-semibold text-neutral-500 uppercase tracking-wide">Cross-Session Context</span>
@@ -529,6 +553,74 @@ export default function SessionSettingsPanel({ config, onSave, initialSessionId 
             onReset={() => resetSessionSetting(sessionId, 'crossContext.includeArchived')}
             renderInput={(val, onChange) => renderToggle(val, onChange)}
             formatValue={(v) => v ? 'On' : 'Off'}
+          />
+
+          <div className="mt-4 mb-2">
+            <span className="text-xs font-semibold text-neutral-500 uppercase tracking-wide">Memory Recall</span>
+          </div>
+
+          <SettingRow
+            label="Recalled Memory Limit"
+            hint="Max semantic chunks to inject"
+            inheritedValue={inherited.memory.recalledMemoryLimit}
+            inheritedFrom={inheritFrom}
+            overrideValue={overrides.memory?.recalledMemoryLimit}
+            onOverride={(val) => updateSessionSetting(sessionId, 'memory.recalledMemoryLimit', val)}
+            onReset={() => resetSessionSetting(sessionId, 'memory.recalledMemoryLimit')}
+            renderInput={(val, onChange) => renderNumberInput(val, onChange, { min: 0, max: 50 })}
+          />
+
+          <SettingRow
+            label="Relevance Threshold"
+            inheritedValue={inherited.memory.recalledMemoryThreshold}
+            inheritedFrom={inheritFrom}
+            overrideValue={overrides.memory?.recalledMemoryThreshold}
+            onOverride={(val) => updateSessionSetting(sessionId, 'memory.recalledMemoryThreshold', val)}
+            onReset={() => resetSessionSetting(sessionId, 'memory.recalledMemoryThreshold')}
+            renderInput={(val, onChange) => renderNumberInput(val, onChange, { min: 0, max: 1, step: 0.001 })}
+          />
+
+          <SettingRow
+            label="Profile Update Context"
+            inheritedValue={inherited.memory.profileUpdateContext}
+            inheritedFrom={inheritFrom}
+            overrideValue={overrides.memory?.profileUpdateContext}
+            onOverride={(val) => updateSessionSetting(sessionId, 'memory.profileUpdateContext', val)}
+            onReset={() => resetSessionSetting(sessionId, 'memory.profileUpdateContext')}
+            renderInput={(val, onChange) => renderNumberInput(val, onChange, { min: 1, max: 10 })}
+          />
+
+          <SettingRow
+            label="Contextualize Search Query"
+            hint="Rewrite follow-up asks before semantic search"
+            inheritedValue={inherited.memory.contextualizeQuery}
+            inheritedFrom={inheritFrom}
+            overrideValue={overrides.memory?.contextualizeQuery}
+            onOverride={(val) => updateSessionSetting(sessionId, 'memory.contextualizeQuery', val)}
+            onReset={() => resetSessionSetting(sessionId, 'memory.contextualizeQuery')}
+            renderInput={(val, onChange) => renderToggle(val, onChange)}
+            formatValue={(v) => v ? 'On' : 'Off'}
+          />
+
+          <SettingRow
+            label="Query Context Messages"
+            inheritedValue={inherited.memory.queryContextMessages}
+            inheritedFrom={inheritFrom}
+            overrideValue={overrides.memory?.queryContextMessages}
+            onOverride={(val) => updateSessionSetting(sessionId, 'memory.queryContextMessages', val)}
+            onReset={() => resetSessionSetting(sessionId, 'memory.queryContextMessages')}
+            renderInput={(val, onChange) => renderNumberInput(val, onChange, { min: 0, max: 50 })}
+          />
+
+          <SettingRow
+            label="Query Contextualizer Model"
+            inheritedValue={inherited.memory.queryContextualizerModel}
+            inheritedFrom={inheritFrom}
+            overrideValue={overrides.memory?.queryContextualizerModel}
+            onOverride={(val) => updateSessionSetting(sessionId, 'memory.queryContextualizerModel', val)}
+            onReset={() => resetSessionSetting(sessionId, 'memory.queryContextualizerModel')}
+            renderInput={(val, onChange) => <ClassifierModelPicker value={val} onChange={onChange} />}
+            formatValue={(v) => v?.provider && v?.name ? `${v.provider}/${v.name}` : '—'}
           />
 
           <div className="mt-4 mb-2">

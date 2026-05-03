@@ -7,10 +7,12 @@
     "streamMode": "final",
     "traceMessageUpdates": false,
     "currentContext": {
-      "limit": 30,
+      "limit": 100,
       "includeThoughts": false,
       "includeTools": false,
-      "includeArchived": false
+      "includeArchived": false,
+      "excludeEmbedded": true,
+      "keepRecentEmbeddedMessages": 0
     },
     "crossContext": {
       "limit": 3,
@@ -21,8 +23,14 @@
     },
     "requireMention": false,
     "memory": {
-      "recalledMemoryLimit": 5,
-      "profileUpdateContext": 2
+      "recalledMemoryLimit": 20,
+      "profileUpdateContext": 2,
+      "contextualizeQuery": true,
+      "queryContextMessages": 6,
+      "queryContextualizerModel": {
+        "provider": "openrouter",
+        "name": "deepseek/deepseek-v4-flash"
+      }
     },
     "auto": {
       "pi-coding-agent": {
@@ -49,22 +57,24 @@
         "provider": "openrouter",
         "name": "deepseek/deepseek-v4-flash"
       },
+      "classifierContext": {
+        "currentSessionMessages": 100,
+        "crossSessionMessages": 5,
+        "crossSessionMaxSessions": 5
+      },
       "currentContext": {
-        "limit": true,
-        "includeWorkingContext": true
+        "includeThoughts": true,
+        "includeTools": true,
+        "limit": false,
+        "includeWorkingContext": false
       },
       "crossContext": {
-        "limit": true,
-        "maxSessions": true,
-        "includeWorkingContext": true
+        "limit": false,
+        "maxSessions": false,
+        "includeWorkingContext": false
       },
       "memory": {
-        "recalledMemoryLimit": true
-      },
-      "classifierContext": {
-        "currentSessionMessages": 25,
-        "crossSessionMessages": 0,
-        "crossSessionMaxSessions": 0
+        "recalledMemoryLimit": false
       }
     }
   },
@@ -74,7 +84,7 @@
         "provider": "openrouter",
         "name": "deepseek/deepseek-v4-pro"
       },
-      "thinkingLevel": "off"
+      "thinkingLevel": "medium"
     }
   },
   "sessions": {

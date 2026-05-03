@@ -1,10 +1,18 @@
 import type { Queries } from "../db/queries.js";
 import type { MessageRow, ResolvedSettings, VitoConfig } from "../types.js";
+import { getLastEmbeddedMessageId } from "./search.js";
 
 export interface AssembledContext {
   memoriesBlock: string;
   crossSessionBlock: string;
   currentSessionBlock: string;
+  currentSessionMeta?: {
+    excludeEmbedded: boolean;
+    lastEmbeddedMsgId: number;
+    keepRecentEmbeddedMessages: number;
+    rawMessagesIncluded: number;
+    embeddedMessagesExcluded: number;
+  };
 }
 
 // ContextOptions interface removed — now using ResolvedSettings directly
@@ -29,6 +37,8 @@ export async function assembleContext(
     includeTools: true,
     includeArchived: false,
     maxSessions: 0,
+    excludeEmbedded: false,
+    keepRecentEmbeddedMessages: 0,
   };
   const crossContext = effectiveSettings?.crossContext ?? {
     limit: 5,
@@ -36,6 +46,8 @@ export async function assembleContext(
     includeTools: false,
     includeArchived: false,
     maxSessions: 15,
+    excludeEmbedded: false,
+    keepRecentEmbeddedMessages: 0,
   };
 
   const memoriesBlock = "";
@@ -60,13 +72,26 @@ export async function assembleContext(
   // thoughts and tool calls that happened in between. Using getRecentTurns
   // instead of getRecentMessages prevents a tool-heavy turn from eating the
   // entire window when the classifier picks a small limit.
-  const currentSessionMessages = queries.getRecentTurns(
-    sessionId,
-    currentContext.limit,
-    currentContext.includeThoughts,
-    currentContext.includeTools,
-    currentContext.includeArchived
-  );
+  const lastEmbeddedMsgId = currentContext.excludeEmbedded
+    ? getLastEmbeddedMessageId(sessionId)
+    : 0;
+  const currentSessionMessages = currentContext.excludeEmbedded
+    ? queries.getRecentTurnsAfterId(
+        sessionId,
+        currentContext.limit,
+        currentContext.includeThoughts,
+        currentContext.includeTools,
+        currentContext.includeArchived,
+        lastEmbeddedMsgId,
+        currentContext.keepRecentEmbeddedMessages
+      )
+    : queries.getRecentTurns(
+        sessionId,
+        currentContext.limit,
+        currentContext.includeThoughts,
+        currentContext.includeTools,
+        currentContext.includeArchived
+      );
   const currentSessionBlock = formatCurrentSessionMessages(
     currentSessionMessages,
     sessionId,
@@ -74,7 +99,32 @@ export async function assembleContext(
     assistantLabel
   );
 
-  return { memoriesBlock, crossSessionBlock, currentSessionBlock };
+  const currentSessionMeta = currentContext.excludeEmbedded
+    ? {
+        excludeEmbedded: true,
+        lastEmbeddedMsgId,
+        keepRecentEmbeddedMessages: currentContext.keepRecentEmbeddedMessages,
+        rawMessagesIncluded: currentSessionMessages.length,
+        embeddedMessagesExcluded: Math.max(
+          0,
+          queries.countMessagesThroughId(
+            sessionId,
+            lastEmbeddedMsgId,
+            currentContext.includeThoughts,
+            currentContext.includeTools,
+            currentContext.includeArchived
+          ) - currentSessionMessages.filter((m) => m.id <= lastEmbeddedMsgId).length
+        ),
+      }
+    : {
+        excludeEmbedded: false,
+        lastEmbeddedMsgId: 0,
+        keepRecentEmbeddedMessages: 0,
+        rawMessagesIncluded: currentSessionMessages.length,
+        embeddedMessagesExcluded: 0,
+      };
+
+  return { memoriesBlock, crossSessionBlock, currentSessionBlock, currentSessionMeta };
 }
 
 /** Build the full system prompt addition from assembled context */

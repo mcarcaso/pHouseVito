@@ -85,6 +85,10 @@ export interface TraceNormalizedEvent {
 export interface TraceMemorySearch {
   type: "memory_search";
   query: string;
+  original_query?: string;
+  contextual_query?: string;
+  contextualizer_duration_ms?: number;
+  contextualizer_skipped?: string;
   duration_ms: number;
   results_found: number;
   results_injected: number;
@@ -100,6 +104,15 @@ export interface TraceMemorySearch {
     full_text: string;          // Full chunk text (for expanded view)
   }[];
   skipped?: string;             // Reason if search was skipped (e.g., "too short", "skip pattern")
+}
+
+export interface TraceCurrentContextFilter {
+  type: "current_context_filter";
+  excludeEmbedded: boolean;
+  lastEmbeddedMsgId: number;
+  keepRecentEmbeddedMessages: number;
+  rawMessagesIncluded: number;
+  embeddedMessagesExcluded: number;
 }
 
 /**
@@ -161,5 +174,6 @@ export type TraceLine =
   | TraceRawEvent
   | TraceNormalizedEvent
   | TraceMemorySearch
+  | TraceCurrentContextFilter
   | TraceAutoClassifier
   | TraceFooter;

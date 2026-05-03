@@ -138,6 +138,10 @@ export interface ContextSettings {
   includeArchived?: boolean;
   /** Max number of sessions to include for cross-session context (cross-session only) */
   maxSessions?: number;
+  /** Exclude current-session rows already covered by embeddings.db chunks. */
+  excludeEmbedded?: boolean;
+  /** Keep this many recent embedded user/assistant turns even when excludeEmbedded is true. */
+  keepRecentEmbeddedMessages?: number;
 }
 
 /** Memory recall settings for semantic search */
@@ -148,6 +152,12 @@ export interface MemorySettings {
   recalledMemoryThreshold?: number;
   /** Number of recent messages to include as context for profile updates (default 2) */
   profileUpdateContext?: number;
+  /** Use a cheap LLM to rewrite the incoming message into a contextual retrieval query. */
+  contextualizeQuery?: boolean;
+  /** Number of previous user/assistant messages shown to the query contextualizer. */
+  queryContextMessages?: number;
+  /** Model used by the query contextualizer. */
+  queryContextualizerModel?: { provider: string; name: string };
 }
 
 /** A single candidate model the auto classifier can choose between. */
@@ -231,6 +241,8 @@ export interface ResolvedContextSettings {
   includeArchived: boolean;
   /** Max sessions to include for cross-session (only used by crossContext) */
   maxSessions: number;
+  excludeEmbedded: boolean;
+  keepRecentEmbeddedMessages: number;
 }
 
 /** Resolved memory settings with all fields required */
@@ -238,6 +250,9 @@ export interface ResolvedMemorySettings {
   recalledMemoryLimit: number;
   recalledMemoryThreshold: number;
   profileUpdateContext: number;
+  contextualizeQuery: boolean;
+  queryContextMessages: number;
+  queryContextualizerModel: { provider: string; name: string };
 }
 
 /** Resolved auto flags — all fields present, defaulting to false */

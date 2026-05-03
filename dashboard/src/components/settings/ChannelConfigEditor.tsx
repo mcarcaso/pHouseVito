@@ -2,6 +2,7 @@ import { useState, useEffect, useRef } from 'react';
 import type { ChannelConfig, VitoConfig, Settings } from '../../utils/settingsResolution';
 import { getEffectiveSettings } from '../../utils/settingsResolution';
 import SettingRow, { renderSegmented, renderNumberInput, renderToggle, renderTextarea } from './SettingRow';
+import { ClassifierModelPicker } from './GlobalSettings';
 import { channelConfigComponents, CHANNEL_ICONS } from './channels';
 
 interface ChannelConfigEditorProps {
@@ -355,6 +356,29 @@ export default function ChannelConfigEditor({ name, channelConfig, config, onSav
               formatValue={(v) => v ? 'On' : 'Off'}
             />
 
+            <SettingRow
+              label="Exclude Embedded"
+              hint="Skip messages already covered by embeddings"
+              inheritedValue={globalResolved.currentContext.excludeEmbedded}
+              inheritedFrom="global"
+              overrideValue={channelSettings.currentContext?.excludeEmbedded}
+              onOverride={(val) => updateChannelSetting('currentContext.excludeEmbedded', val)}
+              onReset={() => resetChannelSetting('currentContext.excludeEmbedded')}
+              renderInput={(val, onChange) => renderToggle(val, onChange)}
+              formatValue={(v) => v ? 'On' : 'Off'}
+            />
+
+            <SettingRow
+              label="Keep Embedded Tail"
+              hint="Recent embedded messages to keep anyway"
+              inheritedValue={globalResolved.currentContext.keepRecentEmbeddedMessages}
+              inheritedFrom="global"
+              overrideValue={channelSettings.currentContext?.keepRecentEmbeddedMessages}
+              onOverride={(val) => updateChannelSetting('currentContext.keepRecentEmbeddedMessages', val)}
+              onReset={() => resetChannelSetting('currentContext.keepRecentEmbeddedMessages')}
+              renderInput={(val, onChange) => renderNumberInput(val, onChange, { min: 0, max: 50 })}
+            />
+
             {/* Cross-Session Context */}
             <div className="mt-4 mb-2">
               <span className="text-xs font-semibold text-neutral-500 uppercase tracking-wide">Cross-Session Context</span>
@@ -446,6 +470,74 @@ export default function ChannelConfigEditor({ name, channelConfig, config, onSav
               onReset={() => resetChannelSetting('crossContext.includeArchived')}
               renderInput={(val, onChange) => renderToggle(val, onChange)}
               formatValue={(v) => v ? 'On' : 'Off'}
+            />
+
+            <div className="mt-4 mb-2">
+              <span className="text-xs font-semibold text-neutral-500 uppercase tracking-wide">Memory Recall</span>
+            </div>
+
+            <SettingRow
+              label="Recalled Memory Limit"
+              hint="Max semantic chunks to inject"
+              inheritedValue={globalResolved.memory.recalledMemoryLimit}
+              inheritedFrom="global"
+              overrideValue={channelSettings.memory?.recalledMemoryLimit}
+              onOverride={(val) => updateChannelSetting('memory.recalledMemoryLimit', val)}
+              onReset={() => resetChannelSetting('memory.recalledMemoryLimit')}
+              renderInput={(val, onChange) => renderNumberInput(val, onChange, { min: 0, max: 50 })}
+            />
+
+            <SettingRow
+              label="Relevance Threshold"
+              inheritedValue={globalResolved.memory.recalledMemoryThreshold}
+              inheritedFrom="global"
+              overrideValue={channelSettings.memory?.recalledMemoryThreshold}
+              onOverride={(val) => updateChannelSetting('memory.recalledMemoryThreshold', val)}
+              onReset={() => resetChannelSetting('memory.recalledMemoryThreshold')}
+              renderInput={(val, onChange) => renderNumberInput(val, onChange, { min: 0, max: 1, step: 0.001 })}
+            />
+
+            <SettingRow
+              label="Profile Update Context"
+              inheritedValue={globalResolved.memory.profileUpdateContext}
+              inheritedFrom="global"
+              overrideValue={channelSettings.memory?.profileUpdateContext}
+              onOverride={(val) => updateChannelSetting('memory.profileUpdateContext', val)}
+              onReset={() => resetChannelSetting('memory.profileUpdateContext')}
+              renderInput={(val, onChange) => renderNumberInput(val, onChange, { min: 1, max: 10 })}
+            />
+
+            <SettingRow
+              label="Contextualize Search Query"
+              hint="Rewrite follow-up asks before semantic search"
+              inheritedValue={globalResolved.memory.contextualizeQuery}
+              inheritedFrom="global"
+              overrideValue={channelSettings.memory?.contextualizeQuery}
+              onOverride={(val) => updateChannelSetting('memory.contextualizeQuery', val)}
+              onReset={() => resetChannelSetting('memory.contextualizeQuery')}
+              renderInput={(val, onChange) => renderToggle(val, onChange)}
+              formatValue={(v) => v ? 'On' : 'Off'}
+            />
+
+            <SettingRow
+              label="Query Context Messages"
+              inheritedValue={globalResolved.memory.queryContextMessages}
+              inheritedFrom="global"
+              overrideValue={channelSettings.memory?.queryContextMessages}
+              onOverride={(val) => updateChannelSetting('memory.queryContextMessages', val)}
+              onReset={() => resetChannelSetting('memory.queryContextMessages')}
+              renderInput={(val, onChange) => renderNumberInput(val, onChange, { min: 0, max: 50 })}
+            />
+
+            <SettingRow
+              label="Query Contextualizer Model"
+              inheritedValue={globalResolved.memory.queryContextualizerModel}
+              inheritedFrom="global"
+              overrideValue={channelSettings.memory?.queryContextualizerModel}
+              onOverride={(val) => updateChannelSetting('memory.queryContextualizerModel', val)}
+              onReset={() => resetChannelSetting('memory.queryContextualizerModel')}
+              renderInput={(val, onChange) => <ClassifierModelPicker value={val} onChange={onChange} />}
+              formatValue={(v) => v?.provider && v?.name ? `${v.provider}/${v.name}` : '—'}
             />
 
             <div className="mt-4 mb-2">

@@ -9,6 +9,7 @@ import { assembleContext, formatContextForPrompt, extractMessageText } from "./m
 import { maybeEmbedNewChunks } from "./memory/embeddings.js";
 import { loadProfileForPrompt, maybeUpdateProfile, setProfileUpdaterConfig, setProfileUpdaterQueries } from "./memory/profile.js";
 import { autoSearchForContext, type AutoSearchResult } from "./memory/search.js";
+import { contextualizeSearchQuery } from "./memory/contextual-query.js";
 import { SessionManager } from "./sessions/manager.js";
 import { getEffectiveSettings } from "./settings.js";
 import { discoverSkills, formatSkillsForPrompt } from "./skills/discovery.js";
@@ -39,6 +40,105 @@ import type {
  * Includes: personality, system instructions, skills, channel prompt
  * Excludes: memory/session context (no cross-session, no current-session)
  */
+function isShortApprovalMessage(text: string): boolean {
+  const normalized = text
+    .toLowerCase()
+    .trim()
+    .replace(/[.!?,]+$/g, "")
+    .replace(/\s+/g, " ");
+
+  if (!normalized) return false;
+  if (normalized.length > 40) return false;
+
+  const exactMatches = new Set([
+    "yes",
+    "yeah",
+    "yep",
+    "yup",
+    "ok",
+    "okay",
+    "kk",
+    "do it",
+    "try it",
+    "go ahead",
+    "sounds good",
+    "lets do it",
+    "let's do it",
+    "give that a shot",
+    "give it a shot",
+    "do that",
+    "works for me",
+  ]);
+
+  return exactMatches.has(normalized);
+}
+
+function looksLikeAssistantProposal(text: string): boolean {
+  const normalized = text.toLowerCase();
+  return [
+    "if you want, i can",
+    "want me to",
+    "i can patch",
+    "i can fix",
+    "i can update",
+    "i can change",
+    "i can implement",
+    "i can wire",
+    "i can do that",
+    "should i",
+    "my recommendation",
+    "best play",
+    "next move",
+    "prompt + heuristic",
+    "prompt-only",
+    "patch this next",
+  ].some((needle) => normalized.includes(needle));
+}
+
+function looksLikeComplexActiveTask(text: string): boolean {
+  const normalized = text.toLowerCase();
+  return [
+    "debug",
+    "classifier",
+    "context",
+    "prompt",
+    "heuristic",
+    "implement",
+    "patch",
+    "fix",
+    "review",
+    "trace",
+    "code",
+    "build",
+    "commit",
+    "file",
+    "session",
+    "model",
+  ].some((needle) => normalized.includes(needle));
+}
+
+function pickMidTierModelChoice(
+  modelChoices: Array<{ provider: string; name: string; description: string }> | undefined,
+): { provider: string; name: string } | undefined {
+  if (!modelChoices || modelChoices.length === 0) return undefined;
+
+  const sonnetLike = modelChoices.find((choice) => {
+    const haystack = `${choice.provider}/${choice.name} ${choice.description}`.toLowerCase();
+    return haystack.includes("sonnet") || haystack.includes("middle tier");
+  });
+  if (sonnetLike) {
+    return { provider: sonnetLike.provider, name: sonnetLike.name };
+  }
+
+  if (modelChoices.length >= 2) {
+    const choice = modelChoices[1];
+    return { provider: choice.provider, name: choice.name };
+  }
+
+  const onlyChoice = modelChoices[0];
+  return { provider: onlyChoice.provider, name: onlyChoice.name };
+}
+
 export function buildTestSystemPrompt(
   soul: string,
   skillsDir: string,
@@ -513,19 +613,26 @@ export class Orchestrator {
       for (let i = 0; i < recent.length; i++) {
         try {
           const text = extractMessageText(recent[i].content);
-          if (!text) continue;
+          if (text == null || text === "") continue;
           const role = recent[i].type === "user" ? "user" : "assistant";
-          const authorPrefix = (recent[i].type === "user" && recent[i].author)
-            ? `${recent[i].author}: `
-            : "";
+          const author = recent[i].author;
+          const speaker = (recent[i].type === "user" && typeof author === "string" && author)
+            ? `${role} (${author})`
+            : role;
           const offset = recent.length - i; // last entry → 1, first entry → recent.length
-          historyLines.push(`[-${offset}] ${role}: ${authorPrefix}${text.slice(0, 300)}`);
+          historyLines.push(`Msg ${offset}`);
+          const preview = text.length > 200 ? `${text.slice(0, 200)}…` : text;
+          historyLines.push(`${speaker}: ${preview}`);
+          historyLines.push("");
         } catch {
           // skip malformed rows
         }
       }
+      while (historyLines.length > 0 && historyLines[historyLines.length - 1] === "") {
+        historyLines.pop();
+      }
       const recentHistory = historyLines.length > 0
-        ? `Window: showing the ${recent.length} most recent message(s) of ${totalSessionMessages} total in this session. Each line is tagged with its distance from the new message — [-1] is the message just before it, [-2] is two back, and so on.\n\n${historyLines.join("\n")}`
+        ? `Visible messages: ${recent.length} of ${totalSessionMessages} total. Msg 1 is the most recent message before the current user message. Larger Msg numbers are farther back.\n\n${historyLines.join("\n")}`
         : undefined;
 
       // Optional cross-session preview for the classifier itself.
@@ -550,26 +657,39 @@ export class Orchestrator {
           const sessionBlocks: string[] = [];
           for (const [sessionId, msgs] of grouped) {
             const displayName = aliases[sessionId] || sessionId;
-            sessionBlocks.push(`[Session: ${displayName}]`);
-            for (const msg of msgs) {
+            sessionBlocks.push(`Session ${displayName} [${sessionId}]`);
+            sessionBlocks.push(`Preview messages: up to ${classifierContext.crossSessionMessages}. Msg 1 is the most recent message in this session preview. Larger Msg numbers are farther back.`);
+            sessionBlocks.push("");
+            for (let i = 0; i < msgs.length; i++) {
+              const msg = msgs[i];
               try {
                 const text = extractMessageText(msg.content);
-                if (!text) continue;
+                if (text == null || text === "") continue;
                 const role = msg.type === "user" ? "user" : "assistant";
-                const authorPrefix = (msg.type === "user" && msg.author)
-                  ? `${msg.author}: `
-                  : "";
-                sessionBlocks.push(`${role}: ${authorPrefix}${text.slice(0, 240)}`);
+                const author = msg.author;
+                const speaker = (msg.type === "user" && typeof author === "string" && author)
+                  ? `${role} (${author})`
+                  : role;
+                const offset = msgs.length - i; // last entry → 1, first entry → msgs.length
+                sessionBlocks.push(`Msg ${offset}`);
+                const preview = text.length > 200 ? `${text.slice(0, 200)}…` : text;
+                sessionBlocks.push(`${speaker}: ${preview}`);
+                sessionBlocks.push("");
               } catch {
                 // skip malformed rows
               }
             }
+            while (sessionBlocks.length > 0 && sessionBlocks[sessionBlocks.length - 1] === "") {
+              sessionBlocks.pop();
+            }
+            sessionBlocks.push("");
+            sessionBlocks.push("---");
             sessionBlocks.push("");
           }
-          while (sessionBlocks.length > 0 && sessionBlocks[sessionBlocks.length - 1] === "") {
+          while (sessionBlocks.length > 0 && (sessionBlocks[sessionBlocks.length - 1] === "" || sessionBlocks[sessionBlocks.length - 1] === "---")) {
             sessionBlocks.pop();
           }
-          crossSessionHistory = `Preview: showing up to ${classifierContext.crossSessionMessages} recent message(s) from each of up to ${classifierContext.crossSessionMaxSessions} other session(s). Use this only to judge whether outside-session context looks relevant.\n\n${sessionBlocks.join("\n")}`;
+          crossSessionHistory = `Sessions shown: up to ${classifierContext.crossSessionMaxSessions}. Each session preview is ordered oldest to newest.\n\n${sessionBlocks.join("\n")}`;
         }
       }
 
@@ -600,6 +720,38 @@ export class Orchestrator {
 
       if (classified.ran) {
         const applied: string[] = [];
+
+        const lastAssistantMessage = [...recent]
+          .reverse()
+          .find((msg) => msg.type === "assistant");
+        const lastAssistantText = lastAssistantMessage
+          ? extractMessageText(lastAssistantMessage.content) || ""
+          : "";
+        const shouldInheritActiveThreadComplexity =
+          isShortApprovalMessage(event.content || "") &&
+          !!lastAssistantText &&
+          looksLikeAssistantProposal(lastAssistantText) &&
+          looksLikeComplexActiveTask(lastAssistantText);
+
+        if (shouldInheritActiveThreadComplexity) {
+          if (auto.currentContext.limit) {
+            classified.currentContextLimit = Math.max(classified.currentContextLimit ?? 0, 12);
+          }
+          if (auto.currentContext.includeWorkingContext) {
+            classified.currentContextIncludeWorkingContext = true;
+          }
+          if (auto["pi-coding-agent"].model) {
+            const midTierChoice = pickMidTierModelChoice(auto["pi-coding-agent"].modelChoices);
+            if (midTierChoice) {
+              classified.selectedModel = midTierChoice;
+            }
+          }
+          const heuristicExplanation = "Short approval message detected; inherited complexity from the immediately preceding assistant proposal in the current thread.";
+          classified.explanation = classified.explanation
+            ? `${classified.explanation} ${heuristicExplanation}`
+            : heuristicExplanation;
+          applied.push("heuristic=inherit-active-thread-complexity");
+        }
         if (auto.currentContext.limit && classified.currentContextLimit !== undefined) {
           effectiveSettings.currentContext.limit = classified.currentContextLimit;
           applied.push(`currentContext.limit=${classified.currentContextLimit}`);
@@ -658,13 +810,45 @@ export class Orchestrator {
     let memorySearchTrace: AutoSearchResult["trace"] | null = null;
     try {
       const rawQuery = event.content?.trim() || "";
-      const searchResult = await autoSearchForContext(rawQuery, { memory: effectiveSettings.memory });
+      let searchQuery = rawQuery;
+      let contextualQuery: string | undefined;
+      let contextualizerDurationMs: number | undefined;
+      let contextualizerSkipped: string | undefined;
+
+      if (effectiveSettings.memory.contextualizeQuery && rawQuery) {
+        const recentForQuery = this.queries.getRecentMessages(
+          vitoSession.id,
+          effectiveSettings.memory.queryContextMessages,
+          false,
+          false,
+          false
+        );
+        const contextualized = await contextualizeSearchQuery({
+          userMessage: event.content || "",
+          author: event.author,
+          attachments: event.attachments,
+          recentMessages: recentForQuery,
+          model: effectiveSettings.memory.queryContextualizerModel,
+        });
+        searchQuery = contextualized.searchText || rawQuery;
+        contextualQuery = contextualized.contextualQuery || undefined;
+        contextualizerDurationMs = contextualized.durationMs;
+        contextualizerSkipped = contextualized.skipped;
+      }
+
+      const searchResult = await autoSearchForContext(searchQuery, {
+        memory: effectiveSettings.memory,
+        originalQuery: rawQuery,
+        contextualQuery,
+        contextualizerDurationMs,
+        contextualizerSkipped,
+      });
       recalledMemories = searchResult.text;
       memorySearchTrace = searchResult.trace;
       if (recalledMemories) {
         console.log(`[Search] Auto-search found ${searchResult.trace.results_injected} relevant memories in ${searchResult.trace.duration_ms}ms for: "${rawQuery.slice(0, 60)}..."`);
-      } else if (searchResult.trace.skipped) {
-        console.log(`[Search] Auto-search skipped: ${searchResult.trace.skipped}`);
+      } else if (searchResult.trace.skipped || contextualizerSkipped) {
+        console.log(`[Search] Auto-search skipped: ${searchResult.trace.skipped || contextualizerSkipped}`);
       }
     } catch (err) {
       console.error(`[Search] Auto-search failed:`, err);
@@ -723,10 +907,20 @@ export class Orchestrator {
           : undefined,
       });
     }
+    if (ctx.currentSessionMeta) {
+      tracedHarness.writePreRunLine({
+        type: "current_context_filter",
+        ...ctx.currentSessionMeta,
+      });
+    }
     if (memorySearchTrace) {
       tracedHarness.writePreRunLine({
         type: "memory_search",
         query: memorySearchTrace.query,
+        original_query: memorySearchTrace.original_query,
+        contextual_query: memorySearchTrace.contextual_query,
+        contextualizer_duration_ms: memorySearchTrace.contextualizer_duration_ms,
+        contextualizer_skipped: memorySearchTrace.contextualizer_skipped,
         duration_ms: memorySearchTrace.duration_ms,
         results_found: memorySearchTrace.results_found,
         results_injected: memorySearchTrace.results_injected,

@@ -29,7 +29,8 @@ type TraceLine =
   | { type: "user_message"; content: string }
   | { type: "raw_event"; ts: number; event: unknown }
   | { type: "normalized_event"; ts: number; event: NormalizedEvent }
-  | { type: "memory_search"; query: string; duration_ms: number; results_found: number; results_injected: number; results: unknown[]; skipped?: string }
+  | { type: "memory_search"; query: string; original_query?: string; contextual_query?: string; contextualizer_duration_ms?: number; contextualizer_skipped?: string; duration_ms: number; results_found: number; results_injected: number; results: unknown[]; skipped?: string }
+  | { type: "current_context_filter"; excludeEmbedded: boolean; lastEmbeddedMsgId: number; keepRecentEmbeddedMessages: number; rawMessagesIncluded: number; embeddedMessagesExcluded: number }
   | { type: "auto_classifier"; ran: boolean; duration_ms: number; skipped?: string; traceFile?: string; explanation?: string; currentContextLimit?: number; currentContextIncludeWorkingContext?: boolean; crossContextLimit?: number; crossContextMaxSessions?: number; crossContextIncludeWorkingContext?: boolean; recalledMemoryLimit?: number; selectedModel?: string }
   | { type: "embedding_result"; skipped?: string; chunks_created: number; chunks: unknown[]; unembedded_messages: number; unembedded_chars: number; duration_ms: number }
   | { type: "profile_update"; skipped?: string; updated: boolean; duration_ms: number; traceFile?: string }

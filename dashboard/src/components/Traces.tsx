@@ -49,6 +49,10 @@ interface TraceNormalizedEvent {
 interface TraceMemorySearch {
   type: "memory_search";
   query: string;
+  original_query?: string;
+  contextual_query?: string;
+  contextualizer_duration_ms?: number;
+  contextualizer_skipped?: string;
   duration_ms: number;
   results_found: number;
   results_injected: number;
@@ -64,6 +68,15 @@ interface TraceMemorySearch {
     full_text?: string;  // Full chunk text (for expanded view)
   }[];
   skipped?: string;
+}
+
+interface TraceCurrentContextFilter {
+  type: "current_context_filter";
+  excludeEmbedded: boolean;
+  lastEmbeddedMsgId: number;
+  keepRecentEmbeddedMessages: number;
+  rawMessagesIncluded: number;
+  embeddedMessagesExcluded: number;
 }
 
 interface TraceAutoClassifier {
@@ -148,7 +161,7 @@ interface TraceFooter {
   };
 }
 
-type TraceLine = TraceHeader | TraceInvocation | TracePrompt | TraceUserMessage | TraceRawEvent | TraceNormalizedEvent | TraceMemorySearch | TraceAutoClassifier | TraceEmbeddingResult | TraceProfileUpdate | TraceFooter;
+type TraceLine = TraceHeader | TraceInvocation | TracePrompt | TraceUserMessage | TraceRawEvent | TraceNormalizedEvent | TraceMemorySearch | TraceCurrentContextFilter | TraceAutoClassifier | TraceEmbeddingResult | TraceProfileUpdate | TraceFooter;
 
 interface LogFile {
   filename: string;
@@ -341,6 +354,7 @@ function Traces() {
     const prompt = detail.lines.find(l => l.type === "prompt") as TracePrompt | undefined;
     const userMessage = detail.lines.find(l => l.type === "user_message") as TraceUserMessage | undefined;
     const memorySearch = detail.lines.find(l => l.type === "memory_search") as TraceMemorySearch | undefined;
+    const currentContextFilter = detail.lines.find(l => l.type === "current_context_filter") as TraceCurrentContextFilter | undefined;
     const autoClassifier = detail.lines.find(l => l.type === "auto_classifier") as TraceAutoClassifier | undefined;
     const embeddingResult = detail.lines.find(l => l.type === "embedding_result") as TraceEmbeddingResult | undefined;
     const profileUpdate = detail.lines.find(l => l.type === "profile_update") as TraceProfileUpdate | undefined;
@@ -435,6 +449,20 @@ function Traces() {
           </div>
         )}
 
+        {/* Current Context Filter */}
+        {currentContextFilter && (
+          <div className="bg-neutral-900 border border-neutral-800 rounded-lg p-4">
+            <div className="text-xs text-neutral-500 mb-2 font-medium">Current Context Filter</div>
+            <div className="flex flex-wrap gap-2 text-xs">
+              <span className="bg-neutral-800 text-neutral-300 px-2 py-1 rounded font-mono">excludeEmbedded: {String(currentContextFilter.excludeEmbedded)}</span>
+              <span className="bg-neutral-800 text-neutral-300 px-2 py-1 rounded font-mono">lastEmbeddedMsgId: {currentContextFilter.lastEmbeddedMsgId}</span>
+              <span className="bg-neutral-800 text-neutral-300 px-2 py-1 rounded font-mono">keepTail: {currentContextFilter.keepRecentEmbeddedMessages}</span>
+              <span className="bg-neutral-800 text-neutral-300 px-2 py-1 rounded font-mono">included: {currentContextFilter.rawMessagesIncluded}</span>
+              <span className="bg-neutral-800 text-neutral-300 px-2 py-1 rounded font-mono">excluded: {currentContextFilter.embeddedMessagesExcluded}</span>
+            </div>
+          </div>
+        )}
+
         {/* Memory Search */}
         {memorySearch && (
           <div className="bg-neutral-900 border border-neutral-800 rounded-lg overflow-hidden">
@@ -461,8 +489,17 @@ function Traces() {
             </button>
             {expandedSections.has('memory-search') && (
               <div className="p-4 space-y-3">
-                <div className="text-xs text-neutral-500">
-                  Query: <span className="text-neutral-300 font-mono">"{memorySearch.query}"</span>
+                <div className="text-xs text-neutral-500 space-y-2">
+                  {memorySearch.original_query && (
+                    <div>Original: <span className="text-neutral-300 font-mono">"{memorySearch.original_query}"</span></div>
+                  )}
+                  {memorySearch.contextual_query && (
+                    <div>Contextual: <span className="text-violet-300 font-mono whitespace-pre-wrap">"{memorySearch.contextual_query}"</span></div>
+                  )}
+                  {memorySearch.contextualizer_duration_ms !== undefined && (
+                    <div>Contextualizer: <span className="text-neutral-300 font-mono">{formatMs(memorySearch.contextualizer_duration_ms)}</span>{memorySearch.contextualizer_skipped ? <span className="text-neutral-600"> — {memorySearch.contextualizer_skipped}</span> : null}</div>
+                  )}
+                  <div>Search text: <span className="text-neutral-300 font-mono whitespace-pre-wrap">"{memorySearch.query}"</span></div>
                 </div>
                 {memorySearch.results.length > 0 ? (
                   <div className="space-y-2">

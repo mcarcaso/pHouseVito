@@ -15,6 +15,8 @@ const DEFAULT_CURRENT_CONTEXT: ResolvedContextSettings = {
   includeTools: true,
   includeArchived: false,
   maxSessions: 0, // Not used for current context
+  excludeEmbedded: false,
+  keepRecentEmbeddedMessages: 0,
 };
 
 const DEFAULT_CROSS_CONTEXT: ResolvedContextSettings = {
@@ -23,6 +25,8 @@ const DEFAULT_CROSS_CONTEXT: ResolvedContextSettings = {
   includeTools: false,
   includeArchived: false,
   maxSessions: 15, // Cap at 15 most recent sessions
+  excludeEmbedded: false,
+  keepRecentEmbeddedMessages: 0,
 };
 
 /** Default memory settings */
@@ -30,6 +34,12 @@ const DEFAULT_MEMORY: ResolvedMemorySettings = {
   recalledMemoryLimit: 3,
   recalledMemoryThreshold: 0.005,
   profileUpdateContext: 2,
+  contextualizeQuery: false,
+  queryContextMessages: 6,
+  queryContextualizerModel: {
+    provider: "openrouter",
+    name: "openai-codex/gpt-5.4-mini",
+  },
 };
 
 /** Default auto flags — everything off, with the default model choice list */
@@ -162,6 +172,8 @@ export function getEffectiveSettings(
       includeTools: settings.currentContext?.includeTools ?? DEFAULT_CURRENT_CONTEXT.includeTools,
       includeArchived: settings.currentContext?.includeArchived ?? DEFAULT_CURRENT_CONTEXT.includeArchived,
       maxSessions: DEFAULT_CURRENT_CONTEXT.maxSessions, // Not used for current context
+      excludeEmbedded: settings.currentContext?.excludeEmbedded ?? DEFAULT_CURRENT_CONTEXT.excludeEmbedded,
+      keepRecentEmbeddedMessages: settings.currentContext?.keepRecentEmbeddedMessages ?? DEFAULT_CURRENT_CONTEXT.keepRecentEmbeddedMessages,
     },
     crossContext: {
       limit: settings.crossContext?.limit ?? DEFAULT_CROSS_CONTEXT.limit,
@@ -169,11 +181,18 @@ export function getEffectiveSettings(
       includeTools: settings.crossContext?.includeTools ?? DEFAULT_CROSS_CONTEXT.includeTools,
       includeArchived: settings.crossContext?.includeArchived ?? DEFAULT_CROSS_CONTEXT.includeArchived,
       maxSessions: settings.crossContext?.maxSessions ?? DEFAULT_CROSS_CONTEXT.maxSessions,
+      excludeEmbedded: DEFAULT_CROSS_CONTEXT.excludeEmbedded,
+      keepRecentEmbeddedMessages: DEFAULT_CROSS_CONTEXT.keepRecentEmbeddedMessages,
     },
     memory: {
       recalledMemoryLimit: settings.memory?.recalledMemoryLimit ?? DEFAULT_MEMORY.recalledMemoryLimit,
       recalledMemoryThreshold: settings.memory?.recalledMemoryThreshold ?? DEFAULT_MEMORY.recalledMemoryThreshold,
       profileUpdateContext: settings.memory?.profileUpdateContext ?? DEFAULT_MEMORY.profileUpdateContext,
+      contextualizeQuery: settings.memory?.contextualizeQuery ?? DEFAULT_MEMORY.contextualizeQuery,
+      queryContextMessages: settings.memory?.queryContextMessages ?? DEFAULT_MEMORY.queryContextMessages,
+      queryContextualizerModel: (settings.memory?.queryContextualizerModel?.provider && settings.memory.queryContextualizerModel.name)
+        ? settings.memory.queryContextualizerModel
+        : DEFAULT_MEMORY.queryContextualizerModel,
     },
     requireMention: settings.requireMention,
     traceMessageUpdates: settings.traceMessageUpdates ?? false,

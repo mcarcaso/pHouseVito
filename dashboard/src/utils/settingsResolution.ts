@@ -12,6 +12,10 @@ export interface ContextSettings {
   includeThoughts?: boolean;
   includeTools?: boolean;
   includeArchived?: boolean;
+  /** Skip messages already covered by embeddings when assembling current-session context. */
+  excludeEmbedded?: boolean;
+  /** Keep this many recent embedded messages as tail context even when excludeEmbedded is on. */
+  keepRecentEmbeddedMessages?: number;
   /** Max number of sessions to include for cross-session context (cross-session only) */
   maxSessions?: number;
 }
@@ -21,6 +25,8 @@ export interface ResolvedContextSettings {
   includeThoughts: boolean;
   includeTools: boolean;
   includeArchived: boolean;
+  excludeEmbedded: boolean;
+  keepRecentEmbeddedMessages: number;
   /** Max sessions to include for cross-session (only used by crossContext) */
   maxSessions: number;
 }
@@ -29,12 +35,18 @@ export interface MemorySettings {
   recalledMemoryLimit?: number;
   recalledMemoryThreshold?: number;
   profileUpdateContext?: number;
+  contextualizeQuery?: boolean;
+  queryContextMessages?: number;
+  queryContextualizerModel?: { provider: string; name: string };
 }
 
 export interface ResolvedMemorySettings {
   recalledMemoryLimit: number;
   recalledMemoryThreshold: number;
   profileUpdateContext: number;
+  contextualizeQuery: boolean;
+  queryContextMessages: number;
+  queryContextualizerModel: { provider: string; name: string };
 }
 
 export interface ModelChoice {
@@ -234,6 +246,8 @@ export function getEffectiveSettings(
       includeThoughts: settings.currentContext?.includeThoughts ?? defaults.currentContext.includeThoughts,
       includeTools: settings.currentContext?.includeTools ?? defaults.currentContext.includeTools,
       includeArchived: settings.currentContext?.includeArchived ?? defaults.currentContext.includeArchived,
+      excludeEmbedded: settings.currentContext?.excludeEmbedded ?? defaults.currentContext.excludeEmbedded,
+      keepRecentEmbeddedMessages: settings.currentContext?.keepRecentEmbeddedMessages ?? defaults.currentContext.keepRecentEmbeddedMessages,
       maxSessions: defaults.currentContext.maxSessions, // Not used for current context
     },
     crossContext: {
@@ -241,12 +255,19 @@ export function getEffectiveSettings(
       includeThoughts: settings.crossContext?.includeThoughts ?? defaults.crossContext.includeThoughts,
       includeTools: settings.crossContext?.includeTools ?? defaults.crossContext.includeTools,
       includeArchived: settings.crossContext?.includeArchived ?? defaults.crossContext.includeArchived,
+      excludeEmbedded: settings.crossContext?.excludeEmbedded ?? defaults.crossContext.excludeEmbedded,
+      keepRecentEmbeddedMessages: settings.crossContext?.keepRecentEmbeddedMessages ?? defaults.crossContext.keepRecentEmbeddedMessages,
       maxSessions: settings.crossContext?.maxSessions ?? defaults.crossContext.maxSessions,
     },
     memory: {
       recalledMemoryLimit: settings.memory?.recalledMemoryLimit ?? defaults.memory.recalledMemoryLimit,
       recalledMemoryThreshold: settings.memory?.recalledMemoryThreshold ?? defaults.memory.recalledMemoryThreshold,
       profileUpdateContext: settings.memory?.profileUpdateContext ?? defaults.memory.profileUpdateContext,
+      contextualizeQuery: settings.memory?.contextualizeQuery ?? defaults.memory.contextualizeQuery,
+      queryContextMessages: settings.memory?.queryContextMessages ?? defaults.memory.queryContextMessages,
+      queryContextualizerModel: (settings.memory?.queryContextualizerModel?.provider && settings.memory.queryContextualizerModel.name)
+        ? settings.memory.queryContextualizerModel
+        : defaults.memory.queryContextualizerModel,
     },
     requireMention: settings.requireMention,
     traceMessageUpdates: settings.traceMessageUpdates ?? false,
@@ -337,6 +358,8 @@ export const CASCADING_FIELDS = [
   { key: 'currentContext.includeThoughts', label: 'Current: Thoughts', type: 'boolean' as const },
   { key: 'currentContext.includeTools', label: 'Current: Tools', type: 'boolean' as const },
   { key: 'currentContext.includeArchived', label: 'Current: Archived', type: 'boolean' as const },
+  { key: 'currentContext.excludeEmbedded', label: 'Current: Exclude Embedded', type: 'boolean' as const },
+  { key: 'currentContext.keepRecentEmbeddedMessages', label: 'Current: Keep Embedded Tail', type: 'number' as const },
   { key: 'traceMessageUpdates', label: 'Trace Message Updates', type: 'boolean' as const },
   // Cross context settings
   { key: 'crossContext.limit', label: 'Cross: Num Messages', type: 'number' as const },
@@ -348,6 +371,8 @@ export const CASCADING_FIELDS = [
   { key: 'memory.recalledMemoryLimit', label: 'Recalled Memory Limit', type: 'number' as const },
   { key: 'memory.recalledMemoryThreshold', label: 'Recalled Memory Threshold', type: 'number' as const },
   { key: 'memory.profileUpdateContext', label: 'Profile Update Context', type: 'number' as const },
+  { key: 'memory.contextualizeQuery', label: 'Contextualize Search Query', type: 'boolean' as const },
+  { key: 'memory.queryContextMessages', label: 'Query Context Messages', type: 'number' as const },
   // Per-field auto-selection flags
   { key: 'auto.currentContext.limit', label: 'Auto: Current Num Messages', type: 'boolean' as const },
   { key: 'auto.currentContext.includeWorkingContext', label: 'Auto: Current Working Context', type: 'boolean' as const },

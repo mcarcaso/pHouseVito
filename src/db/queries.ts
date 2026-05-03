@@ -159,6 +159,96 @@ export class Queries {
       .all(sessionId, sessionId, turnLimit) as MessageRow[];
   }
 
+  /**
+   * Get recent turns after an embedded cutoff, optionally keeping a small tail
+   * of recent embedded user/assistant turns. Used to prevent duplicating raw
+   * current-session messages that are already represented in embeddings.db.
+   */
+  getRecentTurnsAfterId(
+    sessionId: string,
+    turnLimit: number,
+    includeThoughts = true,
+    includeTools = true,
+    includeArchived = false,
+    afterId = 0,
+    keepRecentEmbeddedMessages = 0
+  ): MessageRow[] {
+    if (turnLimit <= 0) return [];
+
+    const archivedClause = includeArchived ? "" : " AND archived = 0";
+
+    const typeFilters: string[] = [];
+    if (!includeThoughts) typeFilters.push("type != 'thought'");
+    if (!includeTools) typeFilters.push("type NOT IN ('tool_start', 'tool_end')");
+    const typeFilterClause = typeFilters.length > 0 ? ` AND ${typeFilters.join(" AND ")}` : "";
+
+    const keepTail = Math.max(0, Math.floor(keepRecentEmbeddedMessages));
+    const scopeClause = keepTail > 0
+      ? `AND (id > ? OR id >= COALESCE(
+           (SELECT MIN(id) FROM (
+              SELECT id FROM messages
+              WHERE session_id = ?
+                AND type IN ('user', 'assistant')${archivedClause}
+              ORDER BY id DESC
+              LIMIT ?
+            )),
+           9223372036854775807
+         ))`
+      : `AND id > ?`;
+
+    const sql = `SELECT * FROM messages
+      WHERE session_id = ?
+        AND id >= COALESCE(
+          (SELECT MIN(id) FROM (
+             SELECT id FROM messages
+             WHERE session_id = ?
+               AND type IN ('user', 'assistant')${archivedClause}
+               ${scopeClause}
+             ORDER BY id DESC
+             LIMIT ?
+           )),
+          9223372036854775807
+        )
+        ${scopeClause}
+        ${archivedClause}
+        ${typeFilterClause}
+      ORDER BY id ASC`;
+
+    const params = keepTail > 0
+      ? [
+          sessionId,
+          sessionId,
+          afterId,
+          sessionId,
+          keepTail,
+          turnLimit,
+          afterId,
+          sessionId,
+          keepTail,
+        ]
+      : [sessionId, sessionId, afterId, turnLimit, afterId];
+
+    return this.db.prepare(sql).all(...params) as MessageRow[];
+  }
+
+  countMessagesThroughId(
+    sessionId: string,
+    throughId: number,
+    includeThoughts = true,
+    includeTools = true,
+    includeArchived = false
+  ): number {
+    if (throughId <= 0) return 0;
+    const filters: string[] = ["session_id = ?", "id <= ?"];
+    if (!includeTools) filters.push("type NOT IN ('tool_start', 'tool_end')");
+    if (!includeThoughts) filters.push("type != 'thought'");
+    if (!includeArchived) filters.push("archived = 0");
+    const row = this.db
+      .prepare(`SELECT COUNT(*) as count FROM messages WHERE ${filters.join(" AND ")}`)
+      .get(sessionId, throughId) as { count: number };
+    return row.count;
+  }
+
   /** Get all messages for a session (including archived) for dashboard */
   getAllMessagesForSession(sessionId: string, limit?: number, beforeId?: number, hideThoughts?: boolean, hideTools?: boolean, afterId?: number): MessageRow[] {
     // Build filter clause based on filter options

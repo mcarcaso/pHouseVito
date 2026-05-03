@@ -7,7 +7,7 @@ import HarnessConfigEditor from './HarnessConfigEditor';
 
 // Compact provider/model picker for the auto classifier model.
 // Reuses the /api/models/* endpoints that HarnessConfigEditor uses.
-function ClassifierModelPicker({
+export function ClassifierModelPicker({
   value,
   onChange,
 }: {
@@ -628,6 +628,22 @@ export default function GlobalSettings({ config, onSave }: GlobalSettingsProps) 
           value={settings.currentContext?.includeArchived ?? false}
           onChange={(val) => updateSetting('currentContext.includeArchived', val)}
         />
+
+        <ToggleRow
+          title="Exclude Embedded"
+          description="Skip older messages already covered by embeddings so current context stays lean"
+          value={settings.currentContext?.excludeEmbedded ?? getDefaults().currentContext.excludeEmbedded}
+          onChange={(val) => updateSetting('currentContext.excludeEmbedded', val)}
+        />
+
+        <NumberRow
+          label="Keep Embedded Tail"
+          hint="Recent embedded messages to keep anyway when excluding embedded history"
+          value={settings.currentContext?.keepRecentEmbeddedMessages ?? getDefaults().currentContext.keepRecentEmbeddedMessages}
+          onChange={(val) => updateSetting('currentContext.keepRecentEmbeddedMessages', val)}
+          min={0}
+          max={50}
+        />
       </section>
 
       {/* ── Cross-Session Context ── */}
@@ -709,6 +725,33 @@ export default function GlobalSettings({ config, onSave }: GlobalSettingsProps) 
             { min: 1, max: 10 }
           )}
           <span className="text-xs text-neutral-600">Messages of context for profile updates</span>
+        </div>
+
+        <ToggleRow
+          title="Contextualize Search Query"
+          description="Use a cheap model to rewrite short/follow-up asks into better semantic search queries"
+          value={settings.memory?.contextualizeQuery ?? getDefaults().memory.contextualizeQuery}
+          onChange={(val) => updateSetting('memory.contextualizeQuery', val)}
+        />
+
+        <NumberRow
+          label="Query Context Messages"
+          hint="Recent current-session messages shown to the query contextualizer"
+          value={settings.memory?.queryContextMessages ?? getDefaults().memory.queryContextMessages}
+          onChange={(val) => updateSetting('memory.queryContextMessages', val)}
+          min={0}
+          max={50}
+        />
+
+        <div className="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-4 py-3 border-b border-neutral-800/50 last:border-b-0">
+          <div className="flex flex-col sm:w-48 sm:shrink-0">
+            <span className="text-sm text-neutral-200">Query Contextualizer Model</span>
+            <span className="text-xs text-neutral-500">Cheap model used to build the retrieval query</span>
+          </div>
+          <ClassifierModelPicker
+            value={settings.memory?.queryContextualizerModel ?? getDefaults().memory.queryContextualizerModel}
+            onChange={(next) => updateSetting('memory.queryContextualizerModel', next)}
+          />
         </div>
       </section>
 

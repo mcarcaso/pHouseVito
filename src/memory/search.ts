@@ -102,6 +102,20 @@ interface ChunkRow {
   vector: Buffer;
 }
 
+/** Return the highest message id already covered by embedded chunks for a session. */
+export function getLastEmbeddedMessageId(sessionId: string): number {
+  const db = getEmbeddingsDB();
+  if (!db) return 0;
+  try {
+    const row = db
+      .prepare("SELECT MAX(msg_id_end) as last_id FROM chunks WHERE session_id = ?")
+      .get(sessionId) as { last_id: number | null } | undefined;
+    return row?.last_id ?? 0;
+  } catch {
+    return 0;
+  }
+}
+
 interface SearchResult {
   id: number;
   sessionId: string;
@@ -276,6 +290,10 @@ export interface AutoSearchResult {
   /** Trace data for the search step */
   trace: {
     query: string;
+    original_query?: string;
+    contextual_query?: string;
+    contextualizer_duration_ms?: number;
+    contextualizer_skipped?: string;
     duration_ms: number;
     results_found: number;
     results_injected: number;
@@ -299,6 +317,14 @@ export interface AutoSearchResult {
 export interface AutoSearchOptions {
   /** Memory settings from resolved config */
   memory?: ResolvedMemorySettings;
+  /** Raw incoming message, if query has been contextualized before search. */
+  originalQuery?: string;
+  /** LLM-generated contextual query used to build the embedded search text. */
+  contextualQuery?: string;
+  /** Time spent contextualizing the query, if applicable. */
+  contextualizerDurationMs?: number;
+  /** Reason contextualization was skipped/fell back, if applicable. */
+  contextualizerSkipped?: string;
 }
 
 /**
@@ -328,6 +354,10 @@ export async function autoSearchForContext(
     text,
     trace: {
       query: trimmed,
+      original_query: options.originalQuery,
+      contextual_query: options.contextualQuery,
+      contextualizer_duration_ms: options.contextualizerDurationMs,
+      contextualizer_skipped: options.contextualizerSkipped,
       duration_ms: Date.now() - startTime,
       results_found: resultsFound,
       results_injected: results.filter(r => text.length > 0).length,
@@ -424,6 +454,10 @@ export async function autoSearchForContext(
       text: chunks.join("\n\n---\n\n"),
       trace: {
         query: trimmed,
+        original_query: options.originalQuery,
+        contextual_query: options.contextualQuery,
+        contextualizer_duration_ms: options.contextualizerDurationMs,
+        contextualizer_skipped: options.contextualizerSkipped,
         duration_ms: Date.now() - startTime,
         results_found: results.length,
         results_injected: relevant.length,

@@ -168,7 +168,7 @@ export async function runAutoClassifier(req: AutoClassifierRequest): Promise<Aut
   }
   if (req.needed.currentContextLimit) {
     fieldDescriptions.push(
-      `- "currentContextLimit": integer 5-300. How many of the most recent messages from THIS session to include in the response context. The recent-history block tags each line with [-K], its distance from the new message ([-1] = just before it). Pick the smallest N such that messages [-N] through [-1] still cover everything relevant to the new user message. The minimum is 5 — even if the topic has fully shifted, return 5 (don't bother trying to return less). Return roughly the visible window size if everything shown still looks relevant. Return larger than the visible window only when the new message clearly references something further back than what you can see.`,
+      `- "currentContextLimit": integer 5-300. How many of the most recent messages from THIS session to include in the response context. The recent-history block uses a plain transcript format: "Msg N" followed by "role: text", where Msg 1 is the message just before the new one, Msg 2 is two back, and larger Msg numbers are farther back. Pick the smallest N such that messages 1 through N still cover everything relevant to the new user message. The minimum is 5 — even if the topic has fully shifted, return 5 (don't bother trying to return less). Return roughly the visible window size if everything shown still looks relevant. Return larger than the visible window only when the new message clearly references something further back than what you can see.`,
     );
   }
   if (req.needed.currentContextIncludeWorkingContext) {
@@ -205,10 +205,15 @@ Use this bounded policy as your guardrail:
 - History-heavy / complex: debugging, audits, comparisons, strategy, or explicit references to previous work across sessions. Use more current-session context, allow some cross-session context, and raise memory only when the user is clearly leaning on history.
 
 Hard rules:
+- You are choosing retrieval/context strategy, not answering the user's request.
+- History previews may be truncated per message; use them to judge relevance and how far back context likely needs to go.
 - Bias toward the smallest context that still safely answers the message.
 - Cross-session context is the most expensive and easiest to over-inject. Do not include it unless the message actually benefits from other sessions.
 - If a cross-session preview is provided, use it only as evidence for whether outside sessions look relevant — it is a preview, not a mandate to include those sessions.
 - If the message is about "this trace", "this file", "today's task", or a direct follow-up in the same thread, prefer current-session context over cross-session context.
+- Treat short acknowledgments / approvals / go-aheads (for example: "yeah", "yes", "ok", "do it", "try it", "go ahead", "sounds good") as continuations of the immediately active thread, not as standalone lightweight requests.
+- When the new user message is a short approval, classify based on the immediately preceding proposal or task in recent history. Inherit the complexity of that accepted task instead of downshifting just because the latest message is short.
+- For ongoing coding, debugging, tracing, implementation, commit/push, or file-inspection work, preserve enough current-session context to keep the active thread intact and usually keep working context on.
 - Working context means thoughts + tools together. Keep it off unless the message really depends on earlier reasoning or tool output.
 
 Fields to decide:
@@ -225,13 +230,13 @@ Only include the keys listed above plus "explanation". Any extra keys will be ig
   });
 
   const sections: string[] = [];
-  if (req.recentHistory) {
-    sections.push(`<recent-history>\n${req.recentHistory}\n</recent-history>`);
-  }
   if (req.crossSessionHistory) {
-    sections.push(`<cross-session-preview>\n${req.crossSessionHistory}\n</cross-session-preview>`);
+    sections.push(`Cross-session preview\n${req.crossSessionHistory}`);
   }
-  sections.push(`<user-message>\n${formattedMessage}\n</user-message>`);
+  if (req.recentHistory) {
+    sections.push(`Recent history\n${req.recentHistory}`);
+  }
+  sections.push(`User message\n${formattedMessage}`);
   const userContent = sections.join("\n\n");
 
   // Resolve the classifier model (request override → default).

@@ -38,6 +38,17 @@ When instructions are vague, investigate before asking:
 - Use the memory skills (keyword-history-search, semantic-history-search) to dig up context
 - Only ask if you've genuinely exhausted available context
 
+## Memory-First Reflex
+
+The visible conversation is **only the current session**. Anything outside it — a person, project, decision, file, preference, or commitment the user mentions but you don't see in this session — must be looked up before responding.
+
+- If the user references something not in the visible conversation: call **semantic-history-search** before answering.
+- If the user asks "what did I say about X" / "when did I last...": call **keyword-history-search**.
+- If the user's profile (above in `<user-profile>`) is silent on a topic and the user implies you should already know: search memory.
+- Don't fabricate continuity ("as we discussed last time") without first verifying via search.
+
+It's better to take an extra second to search than to confidently invent a fact.
+
 ## File Structure
 
 - **Database:** `user/vito.db`

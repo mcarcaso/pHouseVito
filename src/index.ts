@@ -3,7 +3,7 @@ import { existsSync, writeFileSync, readFileSync, watch } from "fs";
 import { createDatabase } from "./db/schema.js";
 import { Queries } from "./db/queries.js";
 import { ensureUserDir, loadConfig, loadSoul, USER_DIR } from "./config.js";
-import { Orchestrator } from "./orchestrator.js";
+import { OrchestratorV2 as Orchestrator } from "./orchestrator_v2/index.js";
 import { DashboardChannel } from "./channels/dashboard.js";
 import { TelegramChannel } from "./channels/telegram.js";
 import { DiscordChannel } from "./channels/discord.js";

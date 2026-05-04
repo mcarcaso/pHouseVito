@@ -76,7 +76,8 @@
       "memory": {
         "recalledMemoryLimit": false
       }
-    }
+    },
+    "timezone": "America/Toronto"
   },
   "harnesses": {
     "pi-coding-agent": {

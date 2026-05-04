@@ -586,6 +586,18 @@ export class Orchestrator {
     // 3. Log effective settings (already computed above for requireMention check)
     console.log(`[Orchestrator] Effective settings for ${event.sessionKey}: harness=${effectiveSettings.harness}, streamMode=${effectiveSettings.streamMode}, traceMessageUpdates=${effectiveSettings.traceMessageUpdates}, currentContext.limit=${effectiveSettings.currentContext.limit}, crossContext.limit=${effectiveSettings.crossContext.limit}`);
 
+    // Create the handler now and start the typing indicator before the (potentially slow)
+    // classifier + memory search work, so the user sees activity immediately. The typing
+    // harness later calls startTyping again (idempotent on all channels) and is responsible
+    // for stopTyping once harness.run completes — we only need a safety-net stopTyping for
+    // errors that occur before we hand off to harness.run.
+    const baseHandler = channel ? channel.createHandler(event) : null;
+    if (baseHandler) {
+      await baseHandler.startTyping?.();
+    }
+
+    try {
+
     // 3.5. If any auto flags are set, run the cheap classifier and overlay decisions
     //      onto effectiveSettings before context assembly / memory search / harness creation.
     const auto = effectiveSettings.auto;
@@ -855,8 +867,9 @@ export class Orchestrator {
     }
 
     // 5. Set up output handler and message tracking
-    const baseHandler = channel ? channel.createHandler(event) : null;
-    
+    // (baseHandler was created above, before the classifier, so the typing indicator
+    // could start as early as possible.)
+
     // Check if this is a cron job with sendCondition
     const sendCondition = event.raw?.sendCondition as string | null;
     
@@ -1021,6 +1034,16 @@ export class Orchestrator {
     }).catch((err) => {
       console.error(`[Profile] Background profile update failed:`, err);
     });
+
+    } catch (err) {
+      // Safety net: an error before harness.run means the typing harness's finally
+      // never fired, so we stop typing here to avoid a stuck indicator. Errors during
+      // harness.run are caught by the inner try and don't reach this block.
+      if (baseHandler) {
+        try { await baseHandler.stopTyping?.(); } catch {}
+      }
+      throw err;
+    }
 
   }
 

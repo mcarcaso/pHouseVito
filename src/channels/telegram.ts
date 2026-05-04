@@ -354,6 +354,12 @@ class TelegramOutputHandler implements OutputHandler {
 
   async startTyping(): Promise<void> {
     console.log(`[Telegram] startTyping() called for chat ${this.chatId}${this.threadId ? ` thread ${this.threadId}` : ''}`);
+    // Idempotent: clear any existing interval before starting a new one so that
+    // double-call (e.g., early start in orchestrator + typing harness) doesn't leak.
+    if (this.typingInterval) {
+      clearInterval(this.typingInterval);
+      this.typingInterval = null;
+    }
     // Send typing action immediately, then repeat every 4s
     this.sendTypingAction();
     this.typingInterval = setInterval(() => this.sendTypingAction(), 4000);

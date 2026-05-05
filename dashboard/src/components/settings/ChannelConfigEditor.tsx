@@ -4,6 +4,12 @@ import { getEffectiveSettings } from '../../utils/settingsResolution';
 import SettingRow, { renderSegmented, renderNumberInput, renderToggle, renderTextarea } from './SettingRow';
 import { ClassifierModelPicker } from './GlobalSettings';
 import { channelConfigComponents, CHANNEL_ICONS } from './channels';
+import {
+  SHOW_LEGACY_CURRENT_CONTEXT,
+  SHOW_LEGACY_CROSS_CONTEXT,
+  SHOW_LEGACY_MEMORY_RECALL,
+  SHOW_LEGACY_AUTO_CLASSIFIER,
+} from '../../utils/featureFlags';
 
 interface ChannelConfigEditorProps {
   name: string;
@@ -285,7 +291,8 @@ export default function ChannelConfigEditor({ name, channelConfig, config, onSav
               formatValue={(v) => v ? `"${(v as string).slice(0, 50)}${(v as string).length > 50 ? '...' : ''}"` : '(none)'}
             />
 
-            {/* Current Session Context */}
+            {/* Current Session Context — legacy under v2, gated behind featureFlags.SHOW_LEGACY_CURRENT_CONTEXT */}
+            {SHOW_LEGACY_CURRENT_CONTEXT && (<>
             <div className="mt-4 mb-2">
               <span className="text-xs font-semibold text-neutral-500 uppercase tracking-wide">Current Session Context</span>
             </div>
@@ -378,8 +385,10 @@ export default function ChannelConfigEditor({ name, channelConfig, config, onSav
               onReset={() => resetChannelSetting('currentContext.keepRecentEmbeddedMessages')}
               renderInput={(val, onChange) => renderNumberInput(val, onChange, { min: 0, max: 50 })}
             />
+            </>)}
 
-            {/* Cross-Session Context */}
+            {/* Cross-Session Context — legacy under v2 */}
+            {SHOW_LEGACY_CROSS_CONTEXT && (<>
             <div className="mt-4 mb-2">
               <span className="text-xs font-semibold text-neutral-500 uppercase tracking-wide">Cross-Session Context</span>
             </div>
@@ -471,11 +480,14 @@ export default function ChannelConfigEditor({ name, channelConfig, config, onSav
               renderInput={(val, onChange) => renderToggle(val, onChange)}
               formatValue={(v) => v ? 'On' : 'Off'}
             />
+            </>)}
 
+            {/* Memory section — Profile Update Context stays live; the rest is legacy. */}
             <div className="mt-4 mb-2">
-              <span className="text-xs font-semibold text-neutral-500 uppercase tracking-wide">Memory Recall</span>
+              <span className="text-xs font-semibold text-neutral-500 uppercase tracking-wide">Memory</span>
             </div>
 
+            {SHOW_LEGACY_MEMORY_RECALL && (
             <SettingRow
               label="Recalled Memory Limit"
               hint="Max semantic chunks to inject"
@@ -486,7 +498,9 @@ export default function ChannelConfigEditor({ name, channelConfig, config, onSav
               onReset={() => resetChannelSetting('memory.recalledMemoryLimit')}
               renderInput={(val, onChange) => renderNumberInput(val, onChange, { min: 0, max: 50 })}
             />
+            )}
 
+            {SHOW_LEGACY_MEMORY_RECALL && (
             <SettingRow
               label="Relevance Threshold"
               inheritedValue={globalResolved.memory.recalledMemoryThreshold}
@@ -496,6 +510,7 @@ export default function ChannelConfigEditor({ name, channelConfig, config, onSav
               onReset={() => resetChannelSetting('memory.recalledMemoryThreshold')}
               renderInput={(val, onChange) => renderNumberInput(val, onChange, { min: 0, max: 1, step: 0.001 })}
             />
+            )}
 
             <SettingRow
               label="Profile Update Context"
@@ -507,6 +522,7 @@ export default function ChannelConfigEditor({ name, channelConfig, config, onSav
               renderInput={(val, onChange) => renderNumberInput(val, onChange, { min: 1, max: 10 })}
             />
 
+            {SHOW_LEGACY_MEMORY_RECALL && (
             <SettingRow
               label="Contextualize Search Query"
               hint="Rewrite follow-up asks before semantic search"
@@ -518,7 +534,9 @@ export default function ChannelConfigEditor({ name, channelConfig, config, onSav
               renderInput={(val, onChange) => renderToggle(val, onChange)}
               formatValue={(v) => v ? 'On' : 'Off'}
             />
+            )}
 
+            {SHOW_LEGACY_MEMORY_RECALL && (
             <SettingRow
               label="Query Context Messages"
               inheritedValue={globalResolved.memory.queryContextMessages}
@@ -528,7 +546,9 @@ export default function ChannelConfigEditor({ name, channelConfig, config, onSav
               onReset={() => resetChannelSetting('memory.queryContextMessages')}
               renderInput={(val, onChange) => renderNumberInput(val, onChange, { min: 0, max: 50 })}
             />
+            )}
 
+            {SHOW_LEGACY_MEMORY_RECALL && (
             <SettingRow
               label="Query Contextualizer Model"
               inheritedValue={globalResolved.memory.queryContextualizerModel}
@@ -539,7 +559,10 @@ export default function ChannelConfigEditor({ name, channelConfig, config, onSav
               renderInput={(val, onChange) => <ClassifierModelPicker value={val} onChange={onChange} />}
               formatValue={(v) => v?.provider && v?.name ? `${v.provider}/${v.name}` : '—'}
             />
+            )}
 
+            {/* Auto Classifier — legacy under v2 */}
+            {SHOW_LEGACY_AUTO_CLASSIFIER && (<>
             <div className="mt-4 mb-2">
               <span className="text-xs font-semibold text-neutral-500 uppercase tracking-wide">Auto Classifier</span>
             </div>
@@ -576,6 +599,7 @@ export default function ChannelConfigEditor({ name, channelConfig, config, onSav
               onReset={() => resetChannelSetting('auto.classifierContext.crossSessionMessages')}
               renderInput={(val, onChange) => renderNumberInput(val, onChange, { min: 0, max: 20 })}
             />
+            </>)}
 
           </div>
         </div>

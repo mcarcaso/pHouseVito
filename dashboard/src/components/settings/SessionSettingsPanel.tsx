@@ -3,6 +3,12 @@ import type { VitoConfig, Settings } from '../../utils/settingsResolution';
 import { getEffectiveSettings } from '../../utils/settingsResolution';
 import SettingRow, { renderSelect, renderSegmented, renderNumberInput, renderToggle, renderTextarea } from './SettingRow';
 import { ClassifierModelPicker } from './GlobalSettings';
+import {
+  SHOW_LEGACY_CURRENT_CONTEXT,
+  SHOW_LEGACY_CROSS_CONTEXT,
+  SHOW_LEGACY_MEMORY_RECALL,
+  SHOW_LEGACY_AUTO_CLASSIFIER,
+} from '../../utils/featureFlags';
 
 interface SessionSettingsPanelProps {
   config: VitoConfig;
@@ -368,7 +374,8 @@ export default function SessionSettingsPanel({ config, onSave, initialSessionId 
             formatValue={(v) => v ? `"${(v as string).slice(0, 50)}${(v as string).length > 50 ? '...' : ''}"` : '(none)'}
           />
 
-          {/* Current Session Context */}
+          {/* Current Session Context — legacy under v2 */}
+          {SHOW_LEGACY_CURRENT_CONTEXT && (<>
           <div className="mt-4 mb-2">
             <span className="text-xs font-semibold text-neutral-500 uppercase tracking-wide">Current Session Context</span>
           </div>
@@ -461,8 +468,10 @@ export default function SessionSettingsPanel({ config, onSave, initialSessionId 
             onReset={() => resetSessionSetting(sessionId, 'currentContext.keepRecentEmbeddedMessages')}
             renderInput={(val, onChange) => renderNumberInput(val, onChange, { min: 0, max: 50 })}
           />
+          </>)}
 
-          {/* Cross-Session Context */}
+          {/* Cross-Session Context — legacy under v2 */}
+          {SHOW_LEGACY_CROSS_CONTEXT && (<>
           <div className="mt-4 mb-2">
             <span className="text-xs font-semibold text-neutral-500 uppercase tracking-wide">Cross-Session Context</span>
           </div>
@@ -554,11 +563,14 @@ export default function SessionSettingsPanel({ config, onSave, initialSessionId 
             renderInput={(val, onChange) => renderToggle(val, onChange)}
             formatValue={(v) => v ? 'On' : 'Off'}
           />
+          </>)}
 
+          {/* Memory section — Profile Update Context stays live; the rest is legacy. */}
           <div className="mt-4 mb-2">
-            <span className="text-xs font-semibold text-neutral-500 uppercase tracking-wide">Memory Recall</span>
+            <span className="text-xs font-semibold text-neutral-500 uppercase tracking-wide">Memory</span>
           </div>
 
+          {SHOW_LEGACY_MEMORY_RECALL && (
           <SettingRow
             label="Recalled Memory Limit"
             hint="Max semantic chunks to inject"
@@ -569,7 +581,9 @@ export default function SessionSettingsPanel({ config, onSave, initialSessionId 
             onReset={() => resetSessionSetting(sessionId, 'memory.recalledMemoryLimit')}
             renderInput={(val, onChange) => renderNumberInput(val, onChange, { min: 0, max: 50 })}
           />
+          )}
 
+          {SHOW_LEGACY_MEMORY_RECALL && (
           <SettingRow
             label="Relevance Threshold"
             inheritedValue={inherited.memory.recalledMemoryThreshold}
@@ -579,6 +593,7 @@ export default function SessionSettingsPanel({ config, onSave, initialSessionId 
             onReset={() => resetSessionSetting(sessionId, 'memory.recalledMemoryThreshold')}
             renderInput={(val, onChange) => renderNumberInput(val, onChange, { min: 0, max: 1, step: 0.001 })}
           />
+          )}
 
           <SettingRow
             label="Profile Update Context"
@@ -590,6 +605,7 @@ export default function SessionSettingsPanel({ config, onSave, initialSessionId 
             renderInput={(val, onChange) => renderNumberInput(val, onChange, { min: 1, max: 10 })}
           />
 
+          {SHOW_LEGACY_MEMORY_RECALL && (
           <SettingRow
             label="Contextualize Search Query"
             hint="Rewrite follow-up asks before semantic search"
@@ -601,7 +617,9 @@ export default function SessionSettingsPanel({ config, onSave, initialSessionId 
             renderInput={(val, onChange) => renderToggle(val, onChange)}
             formatValue={(v) => v ? 'On' : 'Off'}
           />
+          )}
 
+          {SHOW_LEGACY_MEMORY_RECALL && (
           <SettingRow
             label="Query Context Messages"
             inheritedValue={inherited.memory.queryContextMessages}
@@ -611,7 +629,9 @@ export default function SessionSettingsPanel({ config, onSave, initialSessionId 
             onReset={() => resetSessionSetting(sessionId, 'memory.queryContextMessages')}
             renderInput={(val, onChange) => renderNumberInput(val, onChange, { min: 0, max: 50 })}
           />
+          )}
 
+          {SHOW_LEGACY_MEMORY_RECALL && (
           <SettingRow
             label="Query Contextualizer Model"
             inheritedValue={inherited.memory.queryContextualizerModel}
@@ -622,7 +642,10 @@ export default function SessionSettingsPanel({ config, onSave, initialSessionId 
             renderInput={(val, onChange) => <ClassifierModelPicker value={val} onChange={onChange} />}
             formatValue={(v) => v?.provider && v?.name ? `${v.provider}/${v.name}` : '—'}
           />
+          )}
 
+          {/* Auto Classifier — legacy under v2 */}
+          {SHOW_LEGACY_AUTO_CLASSIFIER && (<>
           <div className="mt-4 mb-2">
             <span className="text-xs font-semibold text-neutral-500 uppercase tracking-wide">Auto Classifier</span>
           </div>
@@ -659,6 +682,7 @@ export default function SessionSettingsPanel({ config, onSave, initialSessionId 
             onReset={() => resetSessionSetting(sessionId, 'auto.classifierContext.crossSessionMessages')}
             renderInput={(val, onChange) => renderNumberInput(val, onChange, { min: 0, max: 20 })}
           />
+          </>)}
 
           {/* Pi Coding Agent Overrides */}
           <div className="mt-5 mb-2">

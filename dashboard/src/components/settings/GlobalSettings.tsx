@@ -2,6 +2,12 @@ import { useState, useEffect, useRef } from 'react';
 
 import { type ModelChoice, type VitoConfig } from '../../utils/settingsResolution';
 import { getDefaults } from '../../utils/defaults';
+import {
+  SHOW_LEGACY_CURRENT_CONTEXT,
+  SHOW_LEGACY_CROSS_CONTEXT,
+  SHOW_LEGACY_MEMORY_RECALL,
+  SHOW_LEGACY_AUTO_CLASSIFIER,
+} from '../../utils/featureFlags';
 import { renderSelect, renderSegmented, renderNumberInput, renderSliderToggle } from './SettingRow';
 import HarnessConfigEditor from './HarnessConfigEditor';
 
@@ -595,7 +601,8 @@ export default function GlobalSettings({ config, onSave }: GlobalSettingsProps) 
         />
       </section>
 
-      {/* ── Current Session Context ── */}
+      {/* ── Current Session Context ── (legacy, hidden under orchestrator v2 — see featureFlags.ts) */}
+      {SHOW_LEGACY_CURRENT_CONTEXT && (
       <section className="bg-neutral-900 border border-neutral-800 rounded-xl p-5">
         <h3 className="text-base font-semibold text-white mb-1">Current Session Context</h3>
         <p className="text-xs text-neutral-600 mb-4">What to include from the active session's history. Turn on <span className="text-blue-400">Auto</span> to have a cheap classifier pick the value per turn.</p>
@@ -645,8 +652,10 @@ export default function GlobalSettings({ config, onSave }: GlobalSettingsProps) 
           max={50}
         />
       </section>
+      )}
 
-      {/* ── Cross-Session Context ── */}
+      {/* ── Cross-Session Context ── (legacy, hidden under orchestrator v2) */}
+      {SHOW_LEGACY_CROSS_CONTEXT && (
       <section className="bg-neutral-900 border border-neutral-800 rounded-xl p-5">
         <h3 className="text-base font-semibold text-white mb-1">Cross-Session Context</h3>
         <p className="text-xs text-neutral-600 mb-4">What to include from other sessions.</p>
@@ -690,12 +699,14 @@ export default function GlobalSettings({ config, onSave }: GlobalSettingsProps) 
           onChange={(val) => updateSetting('crossContext.includeArchived', val)}
         />
       </section>
+      )}
 
-      {/* ── Memory / Recalled Memories ── */}
+      {/* ── Memory / Recalled Memories ── (most rows legacy under v2 — only Profile Update Context remains live) */}
       <section className="bg-neutral-900 border border-neutral-800 rounded-xl p-5">
         <h3 className="text-base font-semibold text-white mb-1">Memory Recall</h3>
         <p className="text-xs text-neutral-600 mb-4">Settings for semantic search over past conversations.</p>
 
+        {SHOW_LEGACY_MEMORY_RECALL && (
         <NumberRow
           label="Recalled Memory Limit"
           hint="Max memory chunks to inject (0 to disable)"
@@ -706,7 +717,9 @@ export default function GlobalSettings({ config, onSave }: GlobalSettingsProps) 
           auto={settings.auto?.memory?.recalledMemoryLimit ?? false}
           onAutoChange={(val) => updateSetting('auto.memory.recalledMemoryLimit', val)}
         />
+        )}
 
+        {SHOW_LEGACY_MEMORY_RECALL && (
         <div className="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-4 py-3 border-b border-neutral-800/50">
           <label className="text-sm text-neutral-400 sm:w-48 sm:shrink-0">Relevance Threshold</label>
           {renderNumberInput(
@@ -716,6 +729,7 @@ export default function GlobalSettings({ config, onSave }: GlobalSettingsProps) 
           )}
           <span className="text-xs text-neutral-600">Min RRF score (lower = more results)</span>
         </div>
+        )}
 
         <div className="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-4 py-3 border-b border-neutral-800/50">
           <label className="text-sm text-neutral-400 sm:w-48 sm:shrink-0">Profile Update Context</label>
@@ -727,13 +741,16 @@ export default function GlobalSettings({ config, onSave }: GlobalSettingsProps) 
           <span className="text-xs text-neutral-600">Messages of context for profile updates</span>
         </div>
 
+        {SHOW_LEGACY_MEMORY_RECALL && (
         <ToggleRow
           title="Contextualize Search Query"
           description="Use a cheap model to rewrite short/follow-up asks into better semantic search queries"
           value={settings.memory?.contextualizeQuery ?? getDefaults().memory.contextualizeQuery}
           onChange={(val) => updateSetting('memory.contextualizeQuery', val)}
         />
+        )}
 
+        {SHOW_LEGACY_MEMORY_RECALL && (
         <NumberRow
           label="Query Context Messages"
           hint="Recent current-session messages shown to the query contextualizer"
@@ -742,7 +759,9 @@ export default function GlobalSettings({ config, onSave }: GlobalSettingsProps) 
           min={0}
           max={50}
         />
+        )}
 
+        {SHOW_LEGACY_MEMORY_RECALL && (
         <div className="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-4 py-3 border-b border-neutral-800/50 last:border-b-0">
           <div className="flex flex-col sm:w-48 sm:shrink-0">
             <span className="text-sm text-neutral-200">Query Contextualizer Model</span>
@@ -753,6 +772,7 @@ export default function GlobalSettings({ config, onSave }: GlobalSettingsProps) 
             onChange={(next) => updateSetting('memory.queryContextualizerModel', next)}
           />
         </div>
+        )}
       </section>
 
       {/* ── Harness Configurations ── */}
@@ -764,7 +784,8 @@ export default function GlobalSettings({ config, onSave }: GlobalSettingsProps) 
         <HarnessConfigEditor config={config} onSave={onSave} />
       </section>
 
-      {/* ── Auto Classifier ── */}
+      {/* ── Auto Classifier ── (legacy, hidden under orchestrator v2) */}
+      {SHOW_LEGACY_AUTO_CLASSIFIER && (
       <section className="bg-neutral-900 border border-neutral-800 rounded-xl p-5">
         <h3 className="text-base font-semibold text-white mb-1">Auto Classifier</h3>
         <p className="text-xs text-neutral-600 mb-4">When a field's Auto toggle is on, the classifier model below picks its value per turn based on the incoming message — overriding the configured value only for that turn. Toggles for message limits, working-context inclusion, and memory recall live inline in the sections above.</p>
@@ -827,6 +848,7 @@ export default function GlobalSettings({ config, onSave }: GlobalSettingsProps) 
           onChange={(next) => updateSetting('auto.pi-coding-agent.modelChoices', next)}
         />
       </section>
+      )}
     </div>
   );
 }

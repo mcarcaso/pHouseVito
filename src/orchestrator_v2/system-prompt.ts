@@ -10,9 +10,7 @@
  *   - System rules (SYSTEM.md, via buildSystemBlock)
  *   - Channel-specific instructions
  *   - Custom instructions (from settings cascade)
- *   - User profile (profile.md) — kept inline because it's small and only changes
- *     when the user explicitly resets or via periodic background updates
- *   - A short "capabilities map" pointing at tools/skills the agent can use
+ *   - A short "capabilities map" pointing at tools/skills/files the agent can use
  *
  * What's OUT (compared to v1):
  *   - Per-turn datetime (moved to user message)
@@ -21,9 +19,12 @@
  *   - <memory> with current/cross-session messages (pi keeps current-session
  *     history in its AgentSession; cross-session is opt-in via skills)
  *   - Harness instructions (we control the harness, no quirks to document)
+ *   - User profile — pi sessions live for days/weeks, but profile.md is updated
+ *     by a background process every turn. Inlining it would freeze a stale
+ *     snapshot in the cached system prompt. Instead, the capabilities map
+ *     tells the agent to Read user/profile.md on first response in a session.
  */
 
-import { loadProfileForPrompt } from "../memory/profile.js";
 import { buildSystemBlock } from "../system-instructions.js";
 import { CAPABILITIES_MAP } from "./capabilities.js";
 
@@ -78,13 +79,6 @@ export function buildSystemPromptV2(opts: BuildSystemPromptV2Options): string {
     parts.push(`<custom-instructions>\n${opts.customInstructions}\n</custom-instructions>`);
   }
 
-  // User profile is small and stable enough to inline. Periodic updates will
-  // invalidate the cache when they happen, but that's acceptable — the win
-  // is on the many turns between profile updates.
-  const profilePrompt = loadProfileForPrompt();
-  if (profilePrompt) {
-    parts.push(`<user-profile>\n${profilePrompt}\n</user-profile>`);
-  }
 
   return parts.join("\n\n");
 }

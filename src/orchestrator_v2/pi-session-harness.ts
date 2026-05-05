@@ -22,8 +22,13 @@ import {
   type AgentSession,
   type AgentSessionEvent,
 } from "@mariozechner/pi-coding-agent";
+import { existsSync, mkdirSync, unlinkSync, writeFileSync } from "fs";
+import { join } from "path";
 import { discoverSkills } from "../skills/discovery.js";
 import type { Harness, HarnessCallbacks, HarnessUsage, NormalizedEvent } from "../harnesses/types.js";
+
+/** Filename written into a sessionDir to request "fresh on next create". */
+const FRESH_MARKER_FILE = ".fresh";
 
 export interface PiSessionHarnessConfig {
   model?: { provider: string; name: string };
@@ -124,6 +129,27 @@ export class PiSessionHarness implements Harness {
   }
 
   /**
+   * Mark this Vito session as wanting a fresh pi session on next message,
+   * then dispose the in-memory state. Persisting the request as a marker
+   * file means it survives a server restart — if the user runs /new and
+   * the server bounces before they send the next message, they still get
+   * the fresh session they asked for.
+   *
+   * Old JSONL files are left in place for the dashboard to browse.
+   */
+  async prepareFreshNextStart(): Promise<void> {
+    if (this.config.sessionDir) {
+      try {
+        mkdirSync(this.config.sessionDir, { recursive: true });
+        writeFileSync(join(this.config.sessionDir, FRESH_MARKER_FILE), "");
+      } catch (err) {
+        console.warn("[v2 pi-session] Failed to write fresh marker:", err);
+      }
+    }
+    await this.dispose();
+  }
+
+  /**
    * Tear down the AgentSession. Called on /new (clean slate) or shutdown.
    * After dispose, the next run() call will create a fresh session.
    */
@@ -175,13 +201,27 @@ export class PiSessionHarness implements Harness {
       const model = getModel(modelConfig.provider as any, modelConfig.name as any);
 
       // Persist to disk when sessionDir is configured. Pi writes one JSONL file
-      // per session under sessionDir. continueRecent resumes the most recent
-      // session if one exists in the dir (so server restarts don't lose
-      // context), or creates a fresh one if the dir is empty. Falls back to
-      // in-memory if no dir given.
-      const sessionManager = this.config.sessionDir
-        ? PiSessionManager.continueRecent(process.cwd(), this.config.sessionDir)
-        : PiSessionManager.inMemory();
+      // per session under sessionDir.
+      //
+      // Resumption rules:
+      //   - If a `.fresh` marker file is present in the dir, the user
+      //     requested a clean slate via /new — use create() and delete the
+      //     marker. Old JSONL files stay on disk as historical sessions.
+      //   - Otherwise use continueRecent() so server restarts pick up where
+      //     the conversation left off.
+      //   - With no sessionDir, fall back to in-memory.
+      let sessionManager;
+      if (this.config.sessionDir) {
+        const markerPath = join(this.config.sessionDir, FRESH_MARKER_FILE);
+        if (existsSync(markerPath)) {
+          try { unlinkSync(markerPath); } catch { /* ignore */ }
+          sessionManager = PiSessionManager.create(process.cwd(), this.config.sessionDir);
+        } else {
+          sessionManager = PiSessionManager.continueRecent(process.cwd(), this.config.sessionDir);
+        }
+      } else {
+        sessionManager = PiSessionManager.inMemory();
+      }
 
       const { session: piSession } = await createAgentSession({
         sessionManager,

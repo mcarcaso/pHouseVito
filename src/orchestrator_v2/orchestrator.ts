@@ -224,6 +224,8 @@ export class OrchestratorV2 {
       await this.handleRestartCommand(event, channel);
       return;
     }
+    // /new and /compact are non-priority — they go through the queue so they
+    // don't race with an in-flight turn. Routing happens in processMessage.
 
     if (!this.sessionQueues.has(sessionKey)) {
       this.sessionQueues.set(sessionKey, []);
@@ -270,6 +272,10 @@ export class OrchestratorV2 {
     }
     if (channel && event.content?.trim() === "/new") {
       await this.handleNewCommand(event, channel);
+      return;
+    }
+    if (channel && event.content?.trim() === "/compact") {
+      await this.handleCompactCommand(event, channel);
       return;
     }
 
@@ -540,11 +546,64 @@ export class OrchestratorV2 {
   }
 
   /**
-   * /new in v2 = manual compaction. Auto-compaction handles the routine case;
-   * this command lets the user trigger one on demand without losing continuity.
-   * (For a true reset, dispose the session via dashboard or restart.)
+   * /new = full reset. Disposes the live pi session, drops a `.fresh` marker
+   * so the next message creates a brand-new pi session (which also picks up
+   * any system-prompt changes — SOUL.md, profile, custom instructions, etc.),
+   * and archives SQLite messages so the dashboard chat view also clears.
+   *
+   * Old pi JSONL files are left in place; they show up as historical
+   * sessions in the Pi Sessions dashboard page.
    */
   private async handleNewCommand(event: InboundEvent, channel: Channel): Promise<void> {
+    const vitoSession = this.sessionManager.resolveSession(event.sessionKey);
+    const handler = channel.createHandler(event);
+
+    const existing = this.piHarnesses.get(vitoSession.id);
+    const recentMessages = this.queries.getRecentMessages(vitoSession.id, 1);
+    if (!existing && recentMessages.length === 0) {
+      await handler.relay("✅ Already starting fresh! Nothing to reset.");
+      return;
+    }
+
+    await handler.startTyping?.();
+    try {
+      // Force-embed any pending chunks before archiving so semantic search
+      // still has them available.
+      const embResult = await maybeEmbedNewChunks(vitoSession.id, { force: true });
+
+      // Archive SQLite history so the chat view in the dashboard clears.
+      if (recentMessages.length > 0) {
+        this.queries.markSessionArchived(vitoSession.id);
+      }
+
+      // Dispose the in-memory pi harness and drop a marker so the next
+      // message creates a fresh pi session (with the current system prompt).
+      if (existing) {
+        await existing.prepareFreshNextStart();
+        this.piHarnesses.delete(vitoSession.id);
+      }
+
+      await handler.stopTyping?.();
+      const embedLine = embResult?.skipped
+        ? `Embeddings: ${embResult.skipped.replace(/_/g, " ")}.\n`
+        : `Embedded ${embResult?.chunks_created ?? 0} chunk(s).\n`;
+      await handler.relay(
+        `✅ **Fresh start!**\n\n${embedLine}Pi session reset, messages archived. Next message will start a new pi session with the current system prompt. 🚀`
+      );
+    } catch (err) {
+      await handler.stopTyping?.();
+      console.error("[v2 /new] reset failed:", err);
+      await handler.relay("❌ Reset failed — see logs.");
+    }
+  }
+
+  /**
+   * /compact = manual compaction of the live pi session. Pi summarizes older
+   * turns and keeps the recent ones, so the conversation continues from
+   * where it was — just with a shorter prefix. Auto-compaction handles the
+   * routine case; this is the on-demand trigger.
+   */
+  private async handleCompactCommand(event: InboundEvent, channel: Channel): Promise<void> {
     const vitoSession = this.sessionManager.resolveSession(event.sessionKey);
     const handler = channel.createHandler(event);
 
@@ -559,8 +618,6 @@ export class OrchestratorV2 {
       const result = await existing.compact();
       await handler.stopTyping?.();
 
-      // Pi's CompactionResult fields aren't strongly typed at our edge — just
-      // surface what's there. Common fields: tokensBefore, tokensAfter, summary.
       let info = "";
       if (result && typeof result === "object") {
         const r = result as Record<string, unknown>;
@@ -578,7 +635,7 @@ export class OrchestratorV2 {
       );
     } catch (err) {
       await handler.stopTyping?.();
-      console.error("[v2 /new] compaction failed:", err);
+      console.error("[v2 /compact] failed:", err);
       await handler.relay("❌ Compaction failed — see logs.");
     }
   }

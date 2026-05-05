@@ -175,9 +175,12 @@ export class PiSessionHarness implements Harness {
       const model = getModel(modelConfig.provider as any, modelConfig.name as any);
 
       // Persist to disk when sessionDir is configured. Pi writes one JSONL file
-      // per session under sessionDir. Falls back to in-memory if no dir given.
+      // per session under sessionDir. continueRecent resumes the most recent
+      // session if one exists in the dir (so server restarts don't lose
+      // context), or creates a fresh one if the dir is empty. Falls back to
+      // in-memory if no dir given.
       const sessionManager = this.config.sessionDir
-        ? PiSessionManager.create(process.cwd(), this.config.sessionDir)
+        ? PiSessionManager.continueRecent(process.cwd(), this.config.sessionDir)
         : PiSessionManager.inMemory();
 
       const { session: piSession } = await createAgentSession({

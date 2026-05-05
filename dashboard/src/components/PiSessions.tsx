@@ -112,7 +112,7 @@ interface PiSessionListItem {
   piCwd: string;
   messageCount: number;
   lastModel: string;
-  firstUserMessage: string;
+  lastUserMessage: string;
 }
 
 interface PiSessionDetail {
@@ -774,9 +774,9 @@ function PiSessions() {
                 {item.vitoSessionId}
               </div>
             )}
-            {item.firstUserMessage && (
+            {item.lastUserMessage && (
               <div className="text-neutral-400 text-sm mt-2 line-clamp-2">
-                {item.firstUserMessage}
+                {item.lastUserMessage}
               </div>
             )}
           </div>

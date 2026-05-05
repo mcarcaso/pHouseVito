@@ -2230,7 +2230,7 @@ export class DashboardChannel implements Channel {
           let piCwd = "";
           let messageCount = 0;
           let lastModel = "";
-          let firstUserMessage = "";
+          let lastUserMessage = "";
 
           try {
             const content = readFileSync(full, "utf-8");
@@ -2244,13 +2244,13 @@ export class DashboardChannel implements Channel {
                   piCwd = obj.cwd || "";
                 } else if (obj.type === "message") {
                   messageCount++;
-                  if (!firstUserMessage && obj.message?.role === "user") {
+                  if (obj.message?.role === "user") {
                     const content = obj.message.content;
                     if (typeof content === "string") {
-                      firstUserMessage = content.slice(0, 200);
+                      lastUserMessage = content.slice(0, 200);
                     } else if (Array.isArray(content)) {
                       const text = content.find((c: any) => c?.type === "text");
-                      if (text?.text) firstUserMessage = text.text.slice(0, 200);
+                      if (text?.text) lastUserMessage = text.text.slice(0, 200);
                     }
                   }
                 } else if (obj.type === "model_change") {
@@ -2275,7 +2275,7 @@ export class DashboardChannel implements Channel {
             piCwd,
             messageCount,
             lastModel,
-            firstUserMessage,
+            lastUserMessage,
           };
         });
 

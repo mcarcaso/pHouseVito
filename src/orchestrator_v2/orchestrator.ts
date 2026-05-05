@@ -50,6 +50,15 @@ import { PiSessionHarness, writeFreshMarker } from "./pi-session-harness.js";
 import { buildSystemPromptV2, buildUserMessageV2 } from "./system-prompt.js";
 
 /**
+ * Runtime feature flag. When false, the background profile updater is
+ * skipped after every turn — the agent is expected to Edit user/profile.md
+ * itself when it learns something profile-worthy (capabilities map covers
+ * this). Flip to true to bring back per-turn automated profile updates
+ * (small haiku call with Read/Edit tools).
+ */
+const RUN_BACKGROUND_PROFILE_UPDATER = false;
+
+/**
  * Vito session IDs are "channel:target" (e.g., "dashboard:default",
  * "telegram:123456:78"). Percent-encode chars that aren't safe in path
  * components so the encoding is reversible — the dashboard decodes back to
@@ -445,20 +454,26 @@ export class OrchestratorV2 {
         console.error(`[v2 Embeddings] Background embedding failed:`, err);
       });
 
-      const currentUserMessage = event.content || "";
-      maybeUpdateProfile(vitoSession.id, currentUserMessage).then((profResult) => {
-        if (profResult) {
-          tracedHarness.writePostRunLine({
-            type: "profile_update",
-            skipped: profResult.skipped,
-            updated: profResult.updated,
-            duration_ms: profResult.duration_ms,
-            traceFile: profResult.traceFile,
-          });
-        }
-      }).catch((err) => {
-        console.error(`[v2 Profile] Background profile update failed:`, err);
-      });
+      // Background profile updater. Gated by RUN_BACKGROUND_PROFILE_UPDATER.
+      // Default off in v2 — the agent maintains user/profile.md itself via
+      // the Edit tool (see capabilities map). The code is kept in place so
+      // the flag can be flipped back on without a revert.
+      if (RUN_BACKGROUND_PROFILE_UPDATER) {
+        const currentUserMessage = event.content || "";
+        maybeUpdateProfile(vitoSession.id, currentUserMessage).then((profResult) => {
+          if (profResult) {
+            tracedHarness.writePostRunLine({
+              type: "profile_update",
+              skipped: profResult.skipped,
+              updated: profResult.updated,
+              duration_ms: profResult.duration_ms,
+              traceFile: profResult.traceFile,
+            });
+          }
+        }).catch((err) => {
+          console.error(`[v2 Profile] Background profile update failed:`, err);
+        });
+      }
     } catch (err) {
       // Safety net: stop typing on any error before/during run setup.
       if (baseHandler) {

@@ -7,6 +7,7 @@ import {
   SHOW_LEGACY_CROSS_CONTEXT,
   SHOW_LEGACY_MEMORY_RECALL,
   SHOW_LEGACY_AUTO_CLASSIFIER,
+  SHOW_LEGACY_PROFILE_UPDATE_CONTEXT,
 } from '../../utils/featureFlags';
 import { renderSelect, renderSegmented, renderNumberInput, renderSliderToggle } from './SettingRow';
 import HarnessConfigEditor from './HarnessConfigEditor';
@@ -731,6 +732,7 @@ export default function GlobalSettings({ config, onSave }: GlobalSettingsProps) 
         </div>
         )}
 
+        {SHOW_LEGACY_PROFILE_UPDATE_CONTEXT && (
         <div className="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-4 py-3 border-b border-neutral-800/50">
           <label className="text-sm text-neutral-400 sm:w-48 sm:shrink-0">Profile Update Context</label>
           {renderNumberInput(
@@ -740,6 +742,7 @@ export default function GlobalSettings({ config, onSave }: GlobalSettingsProps) 
           )}
           <span className="text-xs text-neutral-600">Messages of context for profile updates</span>
         </div>
+        )}
 
         {SHOW_LEGACY_MEMORY_RECALL && (
         <ToggleRow

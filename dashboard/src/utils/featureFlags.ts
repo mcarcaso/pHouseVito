@@ -54,3 +54,16 @@ export const SHOW_LEGACY_MEMORY_RECALL = false;
  * directly from the cascade.
  */
 export const SHOW_LEGACY_AUTO_CLASSIFIER = false;
+
+/**
+ * Profile Update Context (memory.profileUpdateContext).
+ *
+ * Obsolete in v2 because the background profile updater is gated off
+ * (orchestrator-side const RUN_BACKGROUND_PROFILE_UPDATER = false) — the
+ * agent maintains user/profile.md itself via the Edit tool when it learns
+ * profile-worthy facts.
+ *
+ * Flip to true alongside RUN_BACKGROUND_PROFILE_UPDATER if you want the
+ * automated background updater back.
+ */
+export const SHOW_LEGACY_PROFILE_UPDATE_CONTEXT = false;

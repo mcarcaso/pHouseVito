@@ -8,6 +8,7 @@ import {
   SHOW_LEGACY_CROSS_CONTEXT,
   SHOW_LEGACY_MEMORY_RECALL,
   SHOW_LEGACY_AUTO_CLASSIFIER,
+  SHOW_LEGACY_PROFILE_UPDATE_CONTEXT,
 } from '../../utils/featureFlags';
 
 interface SessionSettingsPanelProps {
@@ -595,6 +596,7 @@ export default function SessionSettingsPanel({ config, onSave, initialSessionId 
           />
           )}
 
+          {SHOW_LEGACY_PROFILE_UPDATE_CONTEXT && (
           <SettingRow
             label="Profile Update Context"
             inheritedValue={inherited.memory.profileUpdateContext}
@@ -604,6 +606,7 @@ export default function SessionSettingsPanel({ config, onSave, initialSessionId 
             onReset={() => resetSessionSetting(sessionId, 'memory.profileUpdateContext')}
             renderInput={(val, onChange) => renderNumberInput(val, onChange, { min: 1, max: 10 })}
           />
+          )}
 
           {SHOW_LEGACY_MEMORY_RECALL && (
           <SettingRow

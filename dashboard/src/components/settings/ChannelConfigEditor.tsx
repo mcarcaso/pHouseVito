@@ -9,6 +9,7 @@ import {
   SHOW_LEGACY_CROSS_CONTEXT,
   SHOW_LEGACY_MEMORY_RECALL,
   SHOW_LEGACY_AUTO_CLASSIFIER,
+  SHOW_LEGACY_PROFILE_UPDATE_CONTEXT,
 } from '../../utils/featureFlags';
 
 interface ChannelConfigEditorProps {
@@ -512,6 +513,7 @@ export default function ChannelConfigEditor({ name, channelConfig, config, onSav
             />
             )}
 
+            {SHOW_LEGACY_PROFILE_UPDATE_CONTEXT && (
             <SettingRow
               label="Profile Update Context"
               inheritedValue={globalResolved.memory.profileUpdateContext}
@@ -521,6 +523,7 @@ export default function ChannelConfigEditor({ name, channelConfig, config, onSav
               onReset={() => resetChannelSetting('memory.profileUpdateContext')}
               renderInput={(val, onChange) => renderNumberInput(val, onChange, { min: 1, max: 10 })}
             />
+            )}
 
             {SHOW_LEGACY_MEMORY_RECALL && (
             <SettingRow

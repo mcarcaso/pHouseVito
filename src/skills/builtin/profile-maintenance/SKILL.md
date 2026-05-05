@@ -96,6 +96,33 @@ Not two parallel bullets.
 
 **Cleanup pass.** While editing the Maple entry above, you notice the `## Notes` section has a stale entry: `- May be getting a dog.` Delete it (the new fact supersedes).
 
+## Refinement Pass
+
+Sometimes the user (or a scheduled job) will ask you to do a full **refinement pass** — not a single-fact update, but an audit of the whole file. Triggers:
+- User says "refine my profile", "clean up my profile", "audit my profile", or similar
+- A cron job is configured to run this on a schedule
+
+During a refinement pass:
+
+1. **Read the whole file.** Get the current state in front of you before editing anything.
+2. **Audit every entry** against the rules in this skill:
+   - Is this still durable / high-signal? Or has it gone stale?
+   - Could this be merged with a related bullet?
+   - Is this still true? (Ongoing projects may have finished; preferences may have shifted — consider checking memory with `keyword-history-search` or `semantic-history-search` if you're unsure.)
+   - Is the section right? Should this fact move?
+   - Is the wording compact, or could it be tightened?
+3. **Apply the cleanup bias aggressively.** The user prefers a lean profile. When in doubt about a low-signal entry, drop it. Replace verbose bullets with tighter ones. Merge duplicates ruthlessly.
+4. **Don't add facts** during a refinement pass unless the audit turns up an obvious gap (e.g., a `### Person` entry that's referenced elsewhere but missing). Refinement is about pruning and shaping, not gathering.
+5. **Verify before deleting** anything that looks load-bearing. If you're tempted to delete a fact because it seems specific or odd, search memory first — it might be there for a reason.
+6. **Report what changed** when you finish. A short bullet list:
+   - Merged: X and Y → single entry
+   - Removed: stale fact about Z
+   - Moved: A from `Notes` to `Interests`
+   - Tightened: B
+   This helps the user understand what shifted and gives them a chance to push back.
+
+A refinement pass is the one time it's reasonable to make a lot of edits at once. Take it seriously and leave the file in better shape than you found it.
+
 ## Profile Path
 
 `user/profile.md`

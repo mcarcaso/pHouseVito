@@ -183,6 +183,26 @@ function PiSessions() {
   const [autoRefresh, setAutoRefresh] = useState(true);
   const [showRaw, setShowRaw] = useState(false);
 
+  // Per-message expansion (line-index keyed). Messages render as a single
+  // line by default; click to expand to the full content.
+  const [expandedMessages, setExpandedMessages] = useState<Set<number>>(new Set());
+
+  // Windowing for the message list. We always render the first FIRST_N and
+  // last LAST_N messages; the middle is hidden behind an expandable placeholder.
+  // topExpanded/bottomExpanded grow in increments of STEP as the user clicks
+  // the buttons in the placeholder.
+  const [topExpanded, setTopExpanded] = useState(0);
+  const [bottomExpanded, setBottomExpanded] = useState(0);
+
+  const toggleMessageExpanded = useCallback((idx: number) => {
+    setExpandedMessages((prev) => {
+      const next = new Set(prev);
+      if (next.has(idx)) next.delete(idx);
+      else next.add(idx);
+      return next;
+    });
+  }, []);
+
   const fetchList = useCallback(async () => {
     try {
       const res = await fetch('/api/pi-sessions');
@@ -237,6 +257,11 @@ function PiSessions() {
   useEffect(() => {
     if (selectedRel) {
       setDetail(null);
+      // Reset per-detail UI state when switching files so we don't carry
+      // expansion / windowing from a previous session.
+      setExpandedMessages(new Set());
+      setTopExpanded(0);
+      setBottomExpanded(0);
       fetchDetail(selectedRel);
     } else {
       fetchList();
@@ -358,15 +383,99 @@ function PiSessions() {
           </div>
         )}
 
-        {/* Conversation timeline */}
+        {/* Conversation timeline. Messages are collapsed to a single line by
+            default, and the middle is windowed: only the first FIRST_N and
+            last LAST_N message entries render eagerly; the gap is hidden
+            behind an expandable placeholder. Non-message entries (model_change,
+            compaction, etc.) always render. */}
         <div className="space-y-3">
-          {d.lines.filter((l) => l.type !== 'session').map((line, i) => renderEntry(line, i))}
+          {renderTimeline(d)}
         </div>
 
         {showRaw && others.length === 0 && customEntries.length === 0 && labels.length === 0 ? null : null}
       </div>
     );
   };
+
+  const FIRST_N = 10;
+  const LAST_N = 10;
+  const STEP = 10;
+
+  const renderTimeline = (d: PiSessionDetail) => {
+    // Map: index in d.lines → ordinal among message entries (0-based).
+    // Used to decide whether each message falls in the visible top/bottom
+    // window or in the hidden middle.
+    const messageOrdinalByLineIndex = new Map<number, number>();
+    let messageCount = 0;
+    d.lines.forEach((line, i) => {
+      if (line.type === 'message') {
+        messageOrdinalByLineIndex.set(i, messageCount);
+        messageCount++;
+      }
+    });
+
+    const showAll = messageCount <= FIRST_N + LAST_N;
+    const visibleTop = FIRST_N + topExpanded;
+    const visibleBottom = LAST_N + bottomExpanded;
+    const hiddenStart = visibleTop;
+    const hiddenEnd = messageCount - visibleBottom;
+    const hiddenCount = showAll ? 0 : Math.max(0, hiddenEnd - hiddenStart);
+
+    const items: React.ReactNode[] = [];
+    let placeholderInserted = false;
+
+    d.lines.forEach((line, i) => {
+      if (line.type === 'session') return;
+
+      if (line.type === 'message' && !showAll) {
+        const ord = messageOrdinalByLineIndex.get(i)!;
+        const inHiddenMiddle = ord >= hiddenStart && ord < hiddenEnd;
+        if (inHiddenMiddle) {
+          if (!placeholderInserted && hiddenCount > 0) {
+            items.push(renderHiddenPlaceholder(hiddenCount));
+            placeholderInserted = true;
+          }
+          return;
+        }
+      }
+
+      items.push(renderEntry(line, i));
+    });
+
+    return items;
+  };
+
+  const renderHiddenPlaceholder = (hiddenCount: number) => (
+    <div
+      key="hidden-placeholder"
+      className="rounded-lg border border-neutral-800 bg-neutral-900/40 p-3 text-xs flex items-center gap-2 flex-wrap"
+    >
+      <span className="text-neutral-500">📦 {hiddenCount} message{hiddenCount === 1 ? '' : 's'} hidden</span>
+      <div className="flex items-center gap-2 ml-auto">
+        <button
+          className="px-2 py-1 rounded border border-neutral-700 bg-neutral-800/50 text-neutral-300 hover:bg-neutral-800 hover:text-white text-xs cursor-pointer transition-colors"
+          onClick={() => setTopExpanded((t) => t + STEP)}
+        >
+          Show {Math.min(STEP, hiddenCount)} from top ↓
+        </button>
+        <button
+          className="px-2 py-1 rounded border border-neutral-700 bg-neutral-800/50 text-neutral-300 hover:bg-neutral-800 hover:text-white text-xs cursor-pointer transition-colors"
+          onClick={() => setBottomExpanded((b) => b + STEP)}
+        >
+          Show {Math.min(STEP, hiddenCount)} from bottom ↑
+        </button>
+        <button
+          className="px-2 py-1 rounded border border-neutral-700 bg-neutral-800/50 text-neutral-400 hover:bg-neutral-800 hover:text-white text-xs cursor-pointer transition-colors"
+          onClick={() => {
+            setTopExpanded(hiddenCount);
+            setBottomExpanded(0);
+          }}
+        >
+          Show all
+        </button>
+      </div>
+    </div>
+  );
 
   const renderEntry = (line: SessionLine, i: number) => {
     const key = `${line.type}-${i}`;
@@ -377,9 +486,40 @@ function PiSessions() {
         const role = entry.message?.role || 'unknown';
         const text = extractMessageText(entry.message?.content);
         const usage = entry.message?.usage;
+        const isExpanded = expandedMessages.has(i);
+        const previewText = (text || '').replace(/\s+/g, ' ').trim();
+        const preview = previewText.length > 120 ? previewText.slice(0, 120) + '…' : previewText;
+
+        if (!isExpanded) {
+          // Collapsed: single-line summary. Click to expand.
+          return (
+            <div
+              key={key}
+              className={`rounded-lg border px-3 py-2 cursor-pointer hover:brightness-125 transition-all ${roleColor(role)}`}
+              onClick={() => toggleMessageExpanded(i)}
+            >
+              <div className="flex items-center gap-2 text-xs">
+                <span className={`px-2 py-0.5 rounded font-mono shrink-0 ${roleBadgeColor(role)}`}>
+                  {role}
+                </span>
+                <span className="text-neutral-500 font-mono shrink-0">
+                  {new Date(entry.timestamp).toLocaleTimeString()}
+                </span>
+                <span className="font-mono truncate flex-1 opacity-80">
+                  {preview || <span className="text-neutral-600 italic">(empty)</span>}
+                </span>
+                <span className="text-neutral-500 shrink-0">▶</span>
+              </div>
+            </div>
+          );
+        }
+
         return (
           <div key={key} className={`rounded-lg border p-3 ${roleColor(role)}`}>
-            <div className="flex items-center gap-2 flex-wrap mb-2">
+            <div
+              className="flex items-center gap-2 flex-wrap mb-2 cursor-pointer"
+              onClick={() => toggleMessageExpanded(i)}
+            >
               <span className={`text-xs px-2 py-0.5 rounded font-mono ${roleBadgeColor(role)}`}>
                 {role}
               </span>
@@ -387,11 +527,12 @@ function PiSessions() {
                 {new Date(entry.timestamp).toLocaleTimeString()}
               </span>
               {usage && (usage.cacheRead || usage.cacheWrite) ? (
-                <span className="text-xs text-neutral-500 ml-auto">
+                <span className="text-xs text-neutral-500">
                   {usage.cacheRead ? <>cacheR: <span className="text-emerald-300">{usage.cacheRead.toLocaleString()}</span> </> : null}
                   {usage.cacheWrite ? <>cacheW: <span className="text-amber-300">{usage.cacheWrite.toLocaleString()}</span></> : null}
                 </span>
               ) : null}
+              <span className="text-neutral-500 ml-auto text-xs">▼</span>
             </div>
             <div className="text-sm whitespace-pre-wrap break-words font-mono">
               {text || <span className="text-neutral-600 italic">(empty)</span>}

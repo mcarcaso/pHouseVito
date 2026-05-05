@@ -130,10 +130,16 @@ export class PiSessionHarness implements Harness {
 
   /**
    * Mark this Vito session as wanting a fresh pi session on next message,
-   * then dispose the in-memory state. Persisting the request as a marker
-   * file means it survives a server restart — if the user runs /new and
-   * the server bounces before they send the next message, they still get
-   * the fresh session they asked for.
+   * then drop the in-memory reference. The marker file survives a server
+   * restart — if the user runs /new and the server bounces before they
+   * send the next message, they still get the fresh session they asked for.
+   *
+   * We deliberately do NOT await pi's graceful abort/dispose here:
+   * AgentSession.abort() "waits for agent to become idle," which blocks if
+   * pi is mid-compaction or has a hung HTTP call. /new should be fast and
+   * deterministic. We trigger abort/dispose in the background — the old
+   * session's writes go to its existing JSONL file, which won't be resumed
+   * because the `.fresh` marker bypasses continueRecent on next create.
    *
    * Old JSONL files are left in place for the dashboard to browse.
    */
@@ -146,7 +152,20 @@ export class PiSessionHarness implements Harness {
         console.warn("[v2 pi-session] Failed to write fresh marker:", err);
       }
     }
-    await this.dispose();
+
+    const stale = this.piSession;
+    this.piSession = null;
+    this.storedSystemPrompt = null;
+
+    if (stale) {
+      // Background graceful teardown. Errors swallowed — at this point the
+      // session is effectively orphaned and we don't care if it's already
+      // halfway disposed.
+      (async () => {
+        try { await stale.abort(); } catch { /* ignore */ }
+        try { stale.dispose(); } catch { /* ignore */ }
+      })().catch(() => { /* ignore */ });
+    }
   }
 
   /**

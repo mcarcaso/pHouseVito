@@ -567,29 +567,36 @@ export class OrchestratorV2 {
 
     await handler.startTyping?.();
     try {
-      // Force-embed any pending chunks before archiving so semantic search
-      // still has them available.
-      const embResult = await maybeEmbedNewChunks(vitoSession.id, { force: true });
-
-      // Archive SQLite history so the chat view in the dashboard clears.
+      // The fast, deterministic part of /new: archive + reset pi session.
+      // Force-embedding can take minutes to hours on long sessions
+      // (thousands of API calls), so we kick it off in the background
+      // instead of blocking the user. New pi session creation doesn't
+      // depend on embeddings finishing — it just starts fresh.
       if (recentMessages.length > 0) {
         this.queries.markSessionArchived(vitoSession.id);
       }
-
-      // Dispose the in-memory pi harness and drop a marker so the next
-      // message creates a fresh pi session (with the current system prompt).
       if (existing) {
         await existing.prepareFreshNextStart();
         this.piHarnesses.delete(vitoSession.id);
       }
 
       await handler.stopTyping?.();
-      const embedLine = embResult?.skipped
-        ? `Embeddings: ${embResult.skipped.replace(/_/g, " ")}.\n`
-        : `Embedded ${embResult?.chunks_created ?? 0} chunk(s).\n`;
       await handler.relay(
-        `✅ **Fresh start!**\n\n${embedLine}Pi session reset, messages archived. Next message will start a new pi session with the current system prompt. 🚀`
+        `✅ **Fresh start!**\n\nPi session reset, messages archived. Next message starts a new pi session with the current system prompt.\n\nForce-embedding archived messages in the background — they'll be searchable via memory skills once it finishes. 🚀`
       );
+
+      // Background force-embed. Errors logged, not surfaced to the user.
+      maybeEmbedNewChunks(vitoSession.id, { force: true })
+        .then((embResult) => {
+          if (embResult?.skipped) {
+            console.log(`[v2 /new] background embed skipped: ${embResult.skipped}`);
+          } else {
+            console.log(`[v2 /new] background embed complete — ${embResult?.chunks_created ?? 0} chunk(s) for ${vitoSession.id}`);
+          }
+        })
+        .catch((err) => {
+          console.error(`[v2 /new] background embed failed for ${vitoSession.id}:`, err);
+        });
     } catch (err) {
       await handler.stopTyping?.();
       console.error("[v2 /new] reset failed:", err);

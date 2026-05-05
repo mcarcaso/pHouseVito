@@ -11,6 +11,7 @@ import Server from './components/Server';
 import Apps from './components/Apps';
 import Drive from './components/Drive';
 import Traces from './components/Traces';
+import PiSessions from './components/PiSessions';
 import UnifiedSettings from './components/settings/UnifiedSettings';
 import Login from './components/Login';
 import { loadDefaults } from './utils/defaults';
@@ -76,6 +77,7 @@ function App() {
     if (path.startsWith('/apps')) return 'Apps';
     if (path.startsWith('/drive')) return 'Drive';
     if (path.startsWith('/traces')) return 'Traces';
+    if (path.startsWith('/pi-sessions')) return 'Pi Sessions';
     return 'Chat';
   };
 
@@ -147,6 +149,10 @@ function App() {
       <NavLink to="/traces" className={navItemClass}>
         <span className="w-6 text-center text-base">🔍</span>
         Traces
+      </NavLink>
+      <NavLink to="/pi-sessions" className={navItemClass}>
+        <span className="w-6 text-center text-base">🧵</span>
+        Pi Sessions
       </NavLink>
 
       <div className="h-px bg-neutral-800 my-1.5 mx-2" />
@@ -245,6 +251,7 @@ function App() {
           <Route path="/apps" element={<Apps />} />
           <Route path="/drive/*" element={<Drive />} />
           <Route path="/traces" element={<Traces />} />
+          <Route path="/pi-sessions" element={<PiSessions />} />
           {/* Redirects for old routes */}
           <Route path="/channels" element={<Navigate to="/settings?tab=channels" replace />} />
           <Route path="/harnesses" element={<Navigate to="/settings" replace />} />

@@ -29,6 +29,12 @@ export interface PiSessionHarnessConfig {
   model?: { provider: string; name: string };
   thinkingLevel?: "off" | "low" | "medium" | "high";
   skillsDir?: string;
+  /**
+   * Directory pi will write its session JSONL file to. When set, the
+   * conversation persists across restarts and shows up under the dashboard's
+   * Pi Sessions page. When omitted, sessions are kept in memory only.
+   */
+  sessionDir?: string;
 }
 
 const DEFAULT_CONFIG: PiSessionHarnessConfig = {
@@ -157,8 +163,14 @@ export class PiSessionHarness implements Harness {
       const modelConfig = this.config.model || DEFAULT_CONFIG.model!;
       const model = getModel(modelConfig.provider as any, modelConfig.name as any);
 
+      // Persist to disk when sessionDir is configured. Pi writes one JSONL file
+      // per session under sessionDir. Falls back to in-memory if no dir given.
+      const sessionManager = this.config.sessionDir
+        ? PiSessionManager.create(process.cwd(), this.config.sessionDir)
+        : PiSessionManager.inMemory();
+
       const { session: piSession } = await createAgentSession({
-        sessionManager: PiSessionManager.inMemory(),
+        sessionManager,
         model,
         resourceLoader,
         thinkingLevel: this.config.thinkingLevel || "off",

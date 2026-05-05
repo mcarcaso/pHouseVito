@@ -2166,6 +2166,192 @@ export class DashboardChannel implements Channel {
       }
     });
 
+    // ── Pi Sessions (orchestrator v2) ──
+    //
+    // The v2 orchestrator persists each pi conversation as a JSONL file under
+    // user/pi-sessions/<encoded-vito-session-id>/<pi-session-id>.jsonl. These
+    // endpoints walk that tree so the dashboard can list and view them.
+
+    const piSessionsRoot = path.join(process.cwd(), "user/pi-sessions");
+
+    /** Recursively list all .jsonl files under user/pi-sessions/. Returns relative paths. */
+    const listPiSessionFiles = (): { rel: string; full: string; size: number; mtime: number }[] => {
+      if (!existsSync(piSessionsRoot)) return [];
+      const out: { rel: string; full: string; size: number; mtime: number }[] = [];
+      const walk = (dir: string, prefix: string) => {
+        const entries = readdirSync(dir, { withFileTypes: true });
+        for (const entry of entries) {
+          const full = path.join(dir, entry.name);
+          const rel = prefix ? `${prefix}/${entry.name}` : entry.name;
+          if (entry.isDirectory()) {
+            walk(full, rel);
+          } else if (entry.isFile() && entry.name.endsWith(".jsonl")) {
+            const stats = statSync(full);
+            out.push({ rel, full, size: stats.size, mtime: stats.mtime.getTime() });
+          }
+        }
+      };
+      walk(piSessionsRoot, "");
+      return out;
+    };
+
+    /** Validate a pi-session relative path: no traversal, must end in .jsonl. */
+    const isSafePiSessionRel = (rel: string): boolean => {
+      if (!rel || rel.includes("..") || rel.startsWith("/")) return false;
+      if (!rel.endsWith(".jsonl")) return false;
+      // Resolve and confirm it's still under the root
+      const full = path.resolve(piSessionsRoot, rel);
+      return full.startsWith(piSessionsRoot + path.sep);
+    };
+
+    this.app.get("/api/pi-sessions", (_req, res) => {
+      try {
+        const files = listPiSessionFiles();
+
+        // Build session alias lookup so dashboard can show friendly names.
+        const sessions = this.queries.getAllSessions();
+        const aliasMap = new Map<string, string>();
+        for (const s of sessions) {
+          if (s.alias) aliasMap.set(s.id, s.alias);
+        }
+
+        // Read first line (session header) from each file for metadata.
+        const items = files.map(({ rel, full, size, mtime }) => {
+          const dirName = rel.split("/")[0]; // encoded vito session id
+          let vitoSessionId = "";
+          try {
+            vitoSessionId = decodeURIComponent(dirName);
+          } catch {
+            vitoSessionId = dirName;
+          }
+
+          let piSessionId = "";
+          let piTimestamp = "";
+          let piCwd = "";
+          let messageCount = 0;
+          let lastModel = "";
+          let firstUserMessage = "";
+
+          try {
+            const content = readFileSync(full, "utf-8");
+            const lines = content.trim().split("\n").filter(Boolean);
+            for (const line of lines) {
+              try {
+                const obj = JSON.parse(line);
+                if (obj.type === "session") {
+                  piSessionId = obj.id || "";
+                  piTimestamp = obj.timestamp || "";
+                  piCwd = obj.cwd || "";
+                } else if (obj.type === "message") {
+                  messageCount++;
+                  if (!firstUserMessage && obj.message?.role === "user") {
+                    const content = obj.message.content;
+                    if (typeof content === "string") {
+                      firstUserMessage = content.slice(0, 200);
+                    } else if (Array.isArray(content)) {
+                      const text = content.find((c: any) => c?.type === "text");
+                      if (text?.text) firstUserMessage = text.text.slice(0, 200);
+                    }
+                  }
+                } else if (obj.type === "model_change") {
+                  lastModel = `${obj.provider}/${obj.modelId}`;
+                }
+              } catch {
+                // skip malformed lines
+              }
+            }
+          } catch {
+            // file unreadable; return what we have
+          }
+
+          return {
+            rel,
+            size,
+            mtime,
+            vitoSessionId,
+            alias: aliasMap.get(vitoSessionId) || null,
+            piSessionId,
+            piTimestamp,
+            piCwd,
+            messageCount,
+            lastModel,
+            firstUserMessage,
+          };
+        });
+
+        items.sort((a, b) => b.mtime - a.mtime);
+        res.json({ files: items });
+      } catch (e: any) {
+        res.status(500).json({ error: e.message });
+      }
+    });
+
+    // Match any subpath under /api/pi-sessions/. Express 5 named wildcard.
+    this.app.get("/api/pi-sessions/*rel", (req, res) => {
+      try {
+        const rel = (req.params.rel as string[]).join("/");
+        if (!isSafePiSessionRel(rel)) {
+          res.status(400).json({ error: "Invalid path" });
+          return;
+        }
+        const full = path.resolve(piSessionsRoot, rel);
+        if (!existsSync(full)) {
+          res.status(404).json({ error: "Pi session not found" });
+          return;
+        }
+
+        const content = readFileSync(full, "utf-8");
+        const lines = content.trim().split("\n").filter(Boolean);
+        const parsed = lines.map((line) => {
+          try {
+            return JSON.parse(line);
+          } catch {
+            return { type: "parse_error", raw: line };
+          }
+        });
+        res.json({ rel, format: "jsonl", lines: parsed });
+      } catch (e: any) {
+        res.status(500).json({ error: e.message });
+      }
+    });
+
+    this.app.delete("/api/pi-sessions/*rel", (req, res) => {
+      try {
+        const rel = (req.params.rel as string[]).join("/");
+        if (!isSafePiSessionRel(rel)) {
+          res.status(400).json({ error: "Invalid path" });
+          return;
+        }
+        const full = path.resolve(piSessionsRoot, rel);
+        if (!existsSync(full)) {
+          res.status(404).json({ error: "Pi session not found" });
+          return;
+        }
+        unlinkSync(full);
+        res.json({ success: true, deleted: rel });
+      } catch (e: any) {
+        res.status(500).json({ error: e.message });
+      }
+    });
+
+    this.app.delete("/api/pi-sessions", (_req, res) => {
+      try {
+        const files = listPiSessionFiles();
+        let deleted = 0;
+        for (const { full } of files) {
+          try {
+            unlinkSync(full);
+            deleted++;
+          } catch {
+            // ignore
+          }
+        }
+        res.json({ success: true, deleted });
+      } catch (e: any) {
+        res.status(500).json({ error: e.message });
+      }
+    });
+
     // Serve the React app for all other routes
     this.app.use((req, res) => {
       res.sendFile(path.join(__dirname, "../../dashboard/dist/index.html"));

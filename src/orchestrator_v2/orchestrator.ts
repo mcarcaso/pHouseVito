@@ -47,6 +47,16 @@ import type {
 import { PiSessionHarness } from "./pi-session-harness.js";
 import { buildSystemPromptV2, buildUserMessageV2 } from "./system-prompt.js";
 
+/**
+ * Vito session IDs are "channel:target" (e.g., "dashboard:default",
+ * "telegram:123456:78"). Percent-encode chars that aren't safe in path
+ * components so the encoding is reversible — the dashboard decodes back to
+ * the original session id when listing pi-sessions.
+ */
+function encodeSessionDirName(sessionId: string): string {
+  return encodeURIComponent(sessionId);
+}
+
 export class OrchestratorV2 {
   private sessionManager: SessionManager;
   private channels = new Map<string, Channel>();
@@ -447,13 +457,22 @@ export class OrchestratorV2 {
       };
       const thinkingLevel = cascadedOverrides.thinkingLevel || globalPiConfig?.thinkingLevel;
 
+      // Each Vito session gets its own pi sessionDir so JSONL files are
+      // grouped per-session and easy to browse from the dashboard.
+      const sessionDir = resolve(
+        process.cwd(),
+        "user/pi-sessions",
+        encodeSessionDirName(vitoSessionId),
+      );
+
       harness = new PiSessionHarness({
         model,
         thinkingLevel,
         skillsDir: this.skillsDir,
+        sessionDir,
       });
       this.piHarnesses.set(vitoSessionId, harness);
-      console.log(`[v2] 🎭 Created long-lived pi session for ${vitoSessionId} (${model.provider}/${model.name})`);
+      console.log(`[v2] 🎭 Created long-lived pi session for ${vitoSessionId} (${model.provider}/${model.name}) → ${sessionDir}`);
     }
     return harness;
   }

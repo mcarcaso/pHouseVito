@@ -373,6 +373,12 @@ export class OrchestratorV2 {
         channelPrompt: event.raw?.channelPrompt || channel?.getCustomPrompt?.() || "",
         customInstructions: effectiveSettings.customInstructions || "",
         botName: this.config.bot?.name,
+        session: {
+          id: vitoSession.id,
+          channel: event.channel,
+          target: event.target,
+          alias: vitoSession.alias ?? null,
+        },
       });
 
       // Abort wiring

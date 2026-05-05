@@ -32,6 +32,13 @@ export interface BuildSystemPromptV2Options {
   channelPrompt?: string;
   customInstructions?: string;
   botName?: string;
+  /** Stable identifiers for the Vito session this pi conversation lives inside. */
+  session?: {
+    id: string;       // e.g., "dashboard:default" or "telegram:123:456"
+    channel: string;  // e.g., "dashboard"
+    target: string;   // e.g., "default"
+    alias?: string | null;
+  };
 }
 
 export function buildSystemPromptV2(opts: BuildSystemPromptV2Options): string {
@@ -43,6 +50,22 @@ export function buildSystemPromptV2(opts: BuildSystemPromptV2Options): string {
 
   // SYSTEM.md + commands
   parts.push(buildSystemBlock(true, opts.botName));
+
+  // Stable session identity. Doesn't change for the lifetime of this pi
+  // session, so it caches with the rest of the prefix. Useful when memory
+  // skills need to scope queries by session_id, or when channels need to
+  // route per-target actions.
+  if (opts.session) {
+    const lines = [
+      `Session ID: ${opts.session.id}`,
+      `Channel: ${opts.session.channel}`,
+      `Target: ${opts.session.target}`,
+    ];
+    if (opts.session.alias) {
+      lines.push(`Alias: ${opts.session.alias}`);
+    }
+    parts.push(`<session>\n${lines.join("\n")}\n</session>`);
+  }
 
   // Capability map: short pointers to tools/skills/files
   parts.push(`<capabilities>\n${CAPABILITIES_MAP}\n</capabilities>`);

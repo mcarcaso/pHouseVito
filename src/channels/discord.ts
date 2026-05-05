@@ -189,6 +189,23 @@ export class DiscordChannel implements Channel {
         onEvent(event);
       }
 
+      if (interaction.commandName === "compact") {
+        await interaction.deferReply();
+
+        const event: InboundEvent = {
+          sessionKey: `discord:${target}`,
+          channel: "discord",
+          target: target,
+          author: interaction.user.tag,
+          timestamp: Date.now(),
+          content: "/compact",
+          raw: interaction,
+        };
+
+        console.log(`[Discord] ⚡ Slash command /compact from ${interaction.user.tag}`);
+        onEvent(event);
+      }
+
       if (interaction.commandName === "stop") {
         // Defer so we can respond after orchestrator handles it
         await interaction.deferReply();
@@ -282,7 +299,10 @@ export class DiscordChannel implements Channel {
     const commands = [
       new SlashCommandBuilder()
         .setName("new")
-        .setDescription("Start a fresh conversation — embeds and archives the current session"),
+        .setDescription("Fresh start — new pi session, picks up system prompt changes, archives chat"),
+      new SlashCommandBuilder()
+        .setName("compact")
+        .setDescription("Summarize older turns to free context — conversation continues"),
       new SlashCommandBuilder()
         .setName("stop")
         .setDescription("Stop current request and clear any queued messages"),

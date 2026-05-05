@@ -53,7 +53,8 @@ export class TelegramChannel implements Channel {
     if (!this.bot) throw new Error("Bot not initialized");
     
     const commands = [
-      { command: "new", description: "Start a new conversation (archive current)" },
+      { command: "new", description: "Fresh start — new pi session, archive chat" },
+      { command: "compact", description: "Summarize older turns to free context" },
       { command: "stop", description: "Abort the current request" },
     ];
     

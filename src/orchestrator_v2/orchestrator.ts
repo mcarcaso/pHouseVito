@@ -32,8 +32,10 @@ import { getEffectiveSettings } from "../settings.js";
 import { discoverSkills } from "../skills/discovery.js";
 
 import { randomBytes } from "crypto";
-import { mkdirSync, writeFileSync } from "fs";
+import { existsSync, mkdirSync, writeFileSync } from "fs";
 import { join, resolve } from "path";
+
+import { extractMessageText } from "../memory/context.js";
 
 import type {
   Channel,
@@ -362,7 +364,7 @@ export class OrchestratorV2 {
       const harness = withTyping(relayHarness, handler);
 
       // Per-turn user message: [datetime, from author, via channel] <content>
-      const promptText = buildUserMessageV2({
+      let promptText = buildUserMessageV2({
         content: event.content || "",
         author: event.author,
         channel: event.channel,
@@ -371,6 +373,23 @@ export class OrchestratorV2 {
           ?.map((a) => a.path)
           .filter((p): p is string => Boolean(p)),
       });
+
+      // If this is the first message of a freshly-/new'd pi session, seed
+      // the prompt with the tail of the prior conversation as a <history>
+      // block. The marker file is the signal — it's present iff the next
+      // run() will create a new pi session via SessionManager.create().
+      // We DON'T seed on plain restart-resume (no marker), because pi has
+      // the conversation in its own state. We DON'T seed on subsequent
+      // turns (harness already initialized).
+      const sessionDir = this.getSessionDir(vitoSession.id);
+      const isFreshAfterNew = existsSync(join(sessionDir, ".fresh"));
+      if (isFreshAfterNew) {
+        const historyBlock = this.buildHistoryBlock(vitoSession.id, 10);
+        if (historyBlock) {
+          promptText = `${historyBlock}\n\n${promptText}`;
+          console.log(`[v2] Seeded fresh pi session for ${vitoSession.id} with history (${historyBlock.length} chars)`);
+        }
+      }
 
       // System prompt is captured by the pi session ON FIRST RUN ONLY. We pass
       // it on every call (cheap), but the harness ignores it on subsequent runs.
@@ -488,6 +507,52 @@ export class OrchestratorV2 {
   /** Filesystem path for a Vito session's pi-session JSONLs and markers. */
   private getSessionDir(vitoSessionId: string): string {
     return resolve(process.cwd(), "user/pi-sessions", encodeSessionDirName(vitoSessionId));
+  }
+
+  /**
+   * Format the last N messages from a Vito session as a <history> block,
+   * to be prepended to the first user message of a fresh pi session.
+   *
+   * Returns null if there are no messages to include. We pull including
+   * archived because /new archives messages immediately, so the messages
+   * we want to seed with are flagged archived by the time we get here.
+   * Skips thoughts and tool messages — only conversational user/assistant
+   * turns are useful as context.
+   */
+  private buildHistoryBlock(vitoSessionId: string, limit: number): string | null {
+    const recent = this.queries.getRecentMessages(
+      vitoSessionId,
+      limit,
+      true,  // includeArchived
+      false, // includeThoughts
+      false, // includeTools
+    );
+    if (recent.length === 0) return null;
+
+    const lines: string[] = [];
+    for (const msg of recent) {
+      let text: string;
+      try {
+        text = extractMessageText(msg.content);
+      } catch {
+        continue;
+      }
+      if (!text) continue;
+      const speaker = msg.type === "user"
+        ? (typeof msg.author === "string" && msg.author ? msg.author : "user")
+        : "assistant";
+      lines.push(`${speaker}: ${text}`);
+    }
+
+    if (lines.length === 0) return null;
+
+    return [
+      "<history>",
+      "These are the last messages from before /new — provided as context only. Treat as background; the user's actual new message follows below.",
+      "",
+      lines.join("\n\n"),
+      "</history>",
+    ].join("\n");
   }
 
   private getModelString(settings: ResolvedSettings): string {

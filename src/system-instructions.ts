@@ -8,7 +8,7 @@
 import { readFileSync } from "fs";
 import { join } from "path";
 
-const COMMANDS_SECTION = `Available commands: /new (embed + archive session), /stop (abort current request + clear queue)`;
+const COMMANDS_SECTION = `Available commands: /new (compact this session — summarizes older turns, keeps recent context), /stop (abort current request + clear queue)`;
 
 /** Default timezone — used when config doesn't specify one */
 export const DEFAULT_TIMEZONE = "America/Toronto";

@@ -113,6 +113,17 @@ export class PiSessionHarness implements Harness {
   }
 
   /**
+   * Manually compact the live pi session. Pi summarizes older turns into a
+   * single compaction entry while keeping recent turns intact, so the
+   * conversation continues from where it was — just with a shorter prefix.
+   * Returns null if there's no live session to compact.
+   */
+  async compact(customInstructions?: string): Promise<unknown | null> {
+    if (!this.piSession) return null;
+    return await this.piSession.compact(customInstructions);
+  }
+
+  /**
    * Tear down the AgentSession. Called on /new (clean slate) or shutdown.
    * After dispose, the next run() call will create a fresh session.
    */
@@ -175,6 +186,16 @@ export class PiSessionHarness implements Harness {
         resourceLoader,
         thinkingLevel: this.config.thinkingLevel || "off",
       });
+
+      // Auto-compaction lets pi summarize older turns when the session nears
+      // its context limit, instead of overflowing or forcing a manual reset.
+      // The compaction itself does invalidate the cache for one turn, but
+      // subsequent turns re-cache from the compacted prefix.
+      try {
+        piSession.setAutoCompactionEnabled(true);
+      } catch (err) {
+        console.warn("[v2 pi-session] Failed to enable auto-compaction:", err);
+      }
 
       this.piSession = piSession;
       this.storedSystemPrompt = systemPrompt;

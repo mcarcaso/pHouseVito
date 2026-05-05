@@ -533,46 +533,47 @@ export class OrchestratorV2 {
     child.unref();
   }
 
+  /**
+   * /new in v2 = manual compaction. Auto-compaction handles the routine case;
+   * this command lets the user trigger one on demand without losing continuity.
+   * (For a true reset, dispose the session via dashboard or restart.)
+   */
   private async handleNewCommand(event: InboundEvent, channel: Channel): Promise<void> {
     const vitoSession = this.sessionManager.resolveSession(event.sessionKey);
     const handler = channel.createHandler(event);
 
-    const recentMessages = this.queries.getRecentMessages(vitoSession.id, 1);
-    if (recentMessages.length === 0) {
-      // Even with no messages, we may still have a stale pi session lying around.
-      const existing = this.piHarnesses.get(vitoSession.id);
-      if (existing) {
-        await existing.dispose();
-        this.piHarnesses.delete(vitoSession.id);
-      }
-      await handler.relay("✅ Already starting fresh! No messages to archive.");
+    const existing = this.piHarnesses.get(vitoSession.id);
+    if (!existing || !existing.isInitialized()) {
+      await handler.relay("✅ Nothing to compact — no active pi session yet.");
       return;
     }
 
     await handler.startTyping?.();
     try {
-      const embResult = await maybeEmbedNewChunks(vitoSession.id, { force: true });
-      this.queries.markSessionArchived(vitoSession.id);
+      const result = await existing.compact();
+      await handler.stopTyping?.();
 
-      // The whole point of /new in v2: drop the long-lived pi session so the
-      // next message starts a fresh one (with a fresh system prompt + fresh history).
-      const existing = this.piHarnesses.get(vitoSession.id);
-      if (existing) {
-        await existing.dispose();
-        this.piHarnesses.delete(vitoSession.id);
+      // Pi's CompactionResult fields aren't strongly typed at our edge — just
+      // surface what's there. Common fields: tokensBefore, tokensAfter, summary.
+      let info = "";
+      if (result && typeof result === "object") {
+        const r = result as Record<string, unknown>;
+        const before = typeof r.tokensBefore === "number" ? r.tokensBefore : undefined;
+        const after = typeof r.tokensAfter === "number" ? r.tokensAfter : undefined;
+        if (before !== undefined && after !== undefined) {
+          info = `\n${before.toLocaleString()} → ${after.toLocaleString()} tokens`;
+        } else if (before !== undefined) {
+          info = `\n${before.toLocaleString()} tokens compacted`;
+        }
       }
 
-      await handler.stopTyping?.();
-      const embedLine = embResult?.skipped
-        ? `Embeddings: ${embResult.skipped.replace(/_/g, " ")}.\n`
-        : `Embedded ${embResult?.chunks_created ?? 0} chunk(s).\n`;
       await handler.relay(
-        `✅ **Fresh start!**\n\n${embedLine}All messages archived, pi session reset. Same Vito session, clean slate.\n\nReady for a new conversation! 🚀`
+        `✅ **Compacted.**${info}\n\nOlder turns summarized; recent context kept. Conversation continues. 🧵`
       );
     } catch (err) {
       await handler.stopTyping?.();
-      console.error("[v2 /new] failed:", err);
-      await handler.relay("❌ Sorry, something went wrong. Please try again.");
+      console.error("[v2 /new] compaction failed:", err);
+      await handler.relay("❌ Compaction failed — see logs.");
     }
   }
 

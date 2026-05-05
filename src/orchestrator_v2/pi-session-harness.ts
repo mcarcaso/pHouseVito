@@ -133,6 +133,24 @@ export class PiSessionHarness implements Harness {
     return this.piSession !== null;
   }
 
+  getModelString(): string {
+    const modelConfig = this.config.model || DEFAULT_CONFIG.model!;
+    return `${modelConfig.provider}/${modelConfig.name}`;
+  }
+
+  /**
+   * Change the model for this long-lived pi session without requiring /new.
+   * If the underlying AgentSession hasn't been created yet, this only updates
+   * the harness config so first run starts on the requested model.
+   */
+  async setModel(modelConfig: { provider: string; name: string }): Promise<void> {
+    this.config.model = modelConfig;
+    if (!this.piSession) return;
+
+    const model = getModel(modelConfig.provider as any, modelConfig.name as any);
+    await this.piSession.setModel(model);
+  }
+
   /**
    * Manually compact the live pi session. Pi summarizes older turns into a
    * single compaction entry while keeping recent turns intact, so the
@@ -423,8 +441,7 @@ export class PiSessionHarness implements Harness {
   }
 
   private buildCliCommand(userMessage: string): string {
-    const modelConfig = this.config.model || DEFAULT_CONFIG.model!;
     const escape = (s: string) => s.replace(/'/g, "'\\''");
-    return `pi-coding-agent --model ${modelConfig.provider}/${modelConfig.name} -p '${escape(userMessage)}' (long-lived session)`;
+    return `pi-coding-agent --model ${this.getModelString()} -p '${escape(userMessage)}' (long-lived session)`;
   }
 }

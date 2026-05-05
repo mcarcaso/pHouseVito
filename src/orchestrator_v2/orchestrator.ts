@@ -20,6 +20,7 @@
  */
 
 import { CronScheduler } from "../cron/scheduler.js";
+import { loadConfig } from "../config.js";
 import type { Queries } from "../db/queries.js";
 import { withPersistence, withRelay, withTracing, withTyping } from "../harnesses/index.js";
 import { withNoReplyCheck } from "../harness/decorators/index.js";
@@ -32,7 +33,7 @@ import { getEffectiveSettings } from "../settings.js";
 import { discoverSkills } from "../skills/discovery.js";
 
 import { randomBytes } from "crypto";
-import { existsSync, mkdirSync, writeFileSync } from "fs";
+import { existsSync, mkdirSync, readdirSync, statSync, writeFileSync } from "fs";
 import { join, resolve } from "path";
 
 import { extractMessageText } from "../memory/context.js";
@@ -88,6 +89,10 @@ export class OrchestratorV2 {
    */
   private piHarnesses = new Map<string, PiSessionHarness>();
 
+  /** Last observed mtime for user/vito.config.json. Used as a lazy fallback
+   * in case the fs watcher debounce hasn't fired before the next message. */
+  private configMtimeMs = 0;
+
   constructor(
     private queries: Queries,
     private config: VitoConfig,
@@ -110,6 +115,7 @@ export class OrchestratorV2 {
 
     setProfileUpdaterConfig(config);
     setProfileUpdaterQueries(queries);
+    this.configMtimeMs = this.getConfigMtimeMs();
 
     const skills = this.getSkills();
     if (skills.length > 0) {
@@ -140,11 +146,16 @@ export class OrchestratorV2 {
 
   reloadConfig(config: VitoConfig): void {
     this.config = config;
+    this.configMtimeMs = this.getConfigMtimeMs();
     setProfileUpdaterConfig(config);
     console.log(`[OrchestratorV2] Config reloaded`);
-    // Note: hot config reload does NOT automatically rebuild pi sessions. If
-    // the user changes their model/profile mid-session, /new is the way to
-    // pick up the new system prompt. We could be smarter here later.
+
+    // Keep live pi sessions in sync with top-level config changes.
+    // Session-specific overrides still win; we just hot-apply the new
+    // effective model to any already-initialized AgentSession.
+    void this.syncLivePiSessionsToConfig().catch((err) => {
+      console.error(`[OrchestratorV2] Failed to sync live pi sessions after config reload:`, err);
+    });
   }
 
   async ask(options: {
@@ -188,6 +199,30 @@ export class OrchestratorV2 {
     this.getDirectChannel();
     if (this.directChannelReady) {
       await this.directChannelReady;
+    }
+  }
+
+  private getConfigMtimeMs(): number {
+    try {
+      return statSync(resolve(process.cwd(), "user/vito.config.json")).mtimeMs;
+    } catch {
+      return 0;
+    }
+  }
+
+  private async reloadConfigIfChanged(): Promise<void> {
+    const latestMtime = this.getConfigMtimeMs();
+    if (!latestMtime || latestMtime <= this.configMtimeMs) return;
+
+    try {
+      const newConfig = loadConfig();
+      this.config = newConfig;
+      this.configMtimeMs = latestMtime;
+      setProfileUpdaterConfig(newConfig);
+      console.log(`[OrchestratorV2] Lazily reloaded config before message`);
+      await this.syncLivePiSessionsToConfig();
+    } catch (err) {
+      console.error(`[OrchestratorV2] Lazy config reload failed:`, err);
     }
   }
 
@@ -277,6 +312,8 @@ export class OrchestratorV2 {
   // ────────────────────────────────────────────────────────────────────────
 
   private async processMessage(event: InboundEvent, channel: Channel | null): Promise<void> {
+    await this.reloadConfigIfChanged();
+
     if (channel && event.content?.trim() === "/stop") {
       await this.handleStopCommand(event, channel);
       return;
@@ -287,6 +324,10 @@ export class OrchestratorV2 {
     }
     if (channel && event.content?.trim() === "/compact") {
       await this.handleCompactCommand(event, channel);
+      return;
+    }
+    if (channel && /^\/model(?:\s|$)/i.test(event.content?.trim() || "")) {
+      await this.handleModelCommand(event, channel);
       return;
     }
 
@@ -350,13 +391,14 @@ export class OrchestratorV2 {
 
       // Get or create the long-lived pi harness for this Vito session.
       const piHarness = this.getOrCreatePiHarness(vitoSession.id, event, effectiveSettings, channel);
+      const actualModelString = piHarness.getModelString();
 
       // Per-turn decorator chain wraps the long-lived inner harness.
       const tracedHarness = withTracing(piHarness, {
         session_id: vitoSession.id,
         channel: event.channel,
         target: event.target,
-        model: this.getModelString(effectiveSettings),
+        model: actualModelString,
         traceMessageUpdates: effectiveSettings.traceMessageUpdates ?? false,
       });
 
@@ -383,20 +425,22 @@ export class OrchestratorV2 {
           .filter((p): p is string => Boolean(p)),
       });
 
-      // If this is the first message of a freshly-/new'd pi session, seed
-      // the prompt with the tail of the prior conversation as a <history>
-      // block. The marker file is the signal — it's present iff the next
-      // run() will create a new pi session via SessionManager.create().
-      // We DON'T seed on plain restart-resume (no marker), because pi has
-      // the conversation in its own state. We DON'T seed on subsequent
-      // turns (harness already initialized).
+      // If this run is going to create a BRAND-NEW pi AgentSession, seed
+      // the first prompt with the tail of this Vito session's SQLite history.
+      // This covers both:
+      //   - /new: .fresh marker forces PiSessionManager.create()
+      //   - first v2 run for an existing Vito session: no pi JSONL exists yet
+      // We DON'T seed on restart-resume when a pi JSONL exists, because pi
+      // already has the conversation in its own state and this would duplicate.
       const sessionDir = this.getSessionDir(vitoSession.id);
       const isFreshAfterNew = existsSync(join(sessionDir, ".fresh"));
-      if (isFreshAfterNew) {
+      const willCreateBrandNewPiSession = !piHarness.isInitialized()
+        && (isFreshAfterNew || !this.hasPiSessionHistory(sessionDir));
+      if (willCreateBrandNewPiSession) {
         const historyBlock = this.buildHistoryBlock(vitoSession.id, 10);
         if (historyBlock) {
           promptText = `${historyBlock}\n\n${promptText}`;
-          console.log(`[v2] Seeded fresh pi session for ${vitoSession.id} with history (${historyBlock.length} chars)`);
+          console.log(`[v2] Seeded new pi session for ${vitoSession.id} with history (${historyBlock.length} chars)`);
         }
       }
 
@@ -524,6 +568,15 @@ export class OrchestratorV2 {
     return resolve(process.cwd(), "user/pi-sessions", encodeSessionDirName(vitoSessionId));
   }
 
+  private hasPiSessionHistory(sessionDir: string): boolean {
+    try {
+      if (!existsSync(sessionDir)) return false;
+      return readdirSync(sessionDir).some((name) => name.endsWith(".jsonl"));
+    } catch {
+      return false;
+    }
+  }
+
   /**
    * Format the last N messages from a Vito session as a <history> block,
    * to be prepended to the first user message of a fresh pi session.
@@ -538,9 +591,9 @@ export class OrchestratorV2 {
     const recent = this.queries.getRecentMessages(
       vitoSessionId,
       limit,
-      true,  // includeArchived
-      false, // includeThoughts
       false, // includeTools
+      false, // includeThoughts
+      true,  // includeArchived — /new archives the messages we want to seed from
     );
     if (recent.length === 0) return null;
 
@@ -577,6 +630,42 @@ export class OrchestratorV2 {
       name: "claude-sonnet-4-20250514",
     };
     return `${model.provider}/${model.name}`;
+  }
+
+  private parseModelSpec(spec: string, fallbackProvider = "anthropic"): { provider: string; name: string } | null {
+    const trimmed = spec.trim();
+    if (!trimmed) return null;
+
+    const slash = trimmed.indexOf("/");
+    if (slash > 0) {
+      const provider = trimmed.slice(0, slash).trim();
+      const name = trimmed.slice(slash + 1).trim();
+      if (provider && name) return { provider, name };
+      return null;
+    }
+
+    return { provider: fallbackProvider, name: trimmed };
+  }
+
+  private async syncLivePiSessionsToConfig(): Promise<void> {
+    for (const [sessionId, harness] of this.piHarnesses) {
+      const colonIdx = sessionId.indexOf(":");
+      const channelName = colonIdx > 0 ? sessionId.slice(0, colonIdx) : sessionId;
+      const settings = getEffectiveSettings(this.config, channelName, sessionId);
+      const desired = settings["pi-coding-agent"]?.model || this.config.harnesses?.["pi-coding-agent"]?.model || {
+        provider: "anthropic",
+        name: "claude-sonnet-4-20250514",
+      };
+      const desiredString = `${desired.provider}/${desired.name}`;
+      if (harness.getModelString() !== desiredString) {
+        try {
+          await harness.setModel(desired);
+          console.log(`[v2] Synced live pi model for ${sessionId} → ${desiredString}`);
+        } catch (err) {
+          console.error(`[v2] Failed to sync pi model for ${sessionId}:`, err);
+        }
+      }
+    }
   }
 
   // ────────────────────────────────────────────────────────────────────────
@@ -691,6 +780,51 @@ export class OrchestratorV2 {
     } catch (err) {
       console.error("[v2 /new] reset failed:", err);
       await handler.relay("❌ Reset failed — see logs.");
+      await handler.stopTyping?.();
+    }
+  }
+
+  /**
+   * /model [provider/name] = switch the live long-lived pi session's model
+   * without starting a new conversation. If there's no active pi session yet,
+   * the harness config is updated so the next turn starts on that model.
+   */
+  private async handleModelCommand(event: InboundEvent, channel: Channel): Promise<void> {
+    const vitoSession = this.sessionManager.resolveSession(event.sessionKey);
+    const handler = channel.createHandler(event);
+    const raw = event.content?.trim() || "";
+    const spec = raw.replace(/^\/model\b/i, "").trim();
+    const effectiveSettings = getEffectiveSettings(this.config, event.channel, event.sessionKey);
+    const currentModel = this.piHarnesses.get(vitoSession.id)?.getModelString() || this.getModelString(effectiveSettings);
+
+    if (!spec) {
+      await handler.relay(
+        `Current pi model: \`${currentModel}\`\n\nUse \`/model provider/model-name\`, e.g. \`/model anthropic/claude-sonnet-4-20250514\` or \`/model openrouter/deepseek/deepseek-v4-pro\`.`
+      );
+      await handler.stopTyping?.();
+      return;
+    }
+
+    const fallbackProvider = currentModel.includes("/") ? currentModel.slice(0, currentModel.indexOf("/")) : "anthropic";
+    const model = this.parseModelSpec(spec, fallbackProvider);
+    if (!model) {
+      await handler.relay("Couldn't parse that model, boss. Use `/model provider/model-name`.");
+      await handler.stopTyping?.();
+      return;
+    }
+
+    await handler.startTyping?.();
+    try {
+      const piHarness = this.getOrCreatePiHarness(vitoSession.id, event, effectiveSettings, channel);
+      await piHarness.setModel(model);
+      await handler.relay(
+        `✅ Switched live pi model: \`${currentModel}\` → \`${model.provider}/${model.name}\`\n\nNo /new needed. This is a runtime session change; config stays untouched.`
+      );
+      await handler.stopTyping?.();
+    } catch (err) {
+      console.error("[v2 /model] failed:", err);
+      const message = err instanceof Error ? err.message : String(err);
+      await handler.relay(`❌ Model switch failed: ${message}`);
       await handler.stopTyping?.();
     }
   }

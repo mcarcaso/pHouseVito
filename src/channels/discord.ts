@@ -206,6 +206,24 @@ export class DiscordChannel implements Channel {
         onEvent(event);
       }
 
+      if (interaction.commandName === "model") {
+        await interaction.deferReply();
+        const model = interaction.options.getString("model", false)?.trim() || "";
+
+        const event: InboundEvent = {
+          sessionKey: `discord:${target}`,
+          channel: "discord",
+          target: target,
+          author: interaction.user.tag,
+          timestamp: Date.now(),
+          content: model ? `/model ${model}` : "/model",
+          raw: interaction,
+        };
+
+        console.log(`[Discord] ⚡ Slash command /model from ${interaction.user.tag}`);
+        onEvent(event);
+      }
+
       if (interaction.commandName === "stop") {
         // Defer so we can respond after orchestrator handles it
         await interaction.deferReply();
@@ -303,6 +321,15 @@ export class DiscordChannel implements Channel {
       new SlashCommandBuilder()
         .setName("compact")
         .setDescription("Summarize older turns to free context — conversation continues"),
+      new SlashCommandBuilder()
+        .setName("model")
+        .setDescription("Switch or inspect the live pi model for this session")
+        .addStringOption((option) =>
+          option
+            .setName("model")
+            .setDescription("provider/model-name, e.g. anthropic/claude-sonnet-4-20250514")
+            .setRequired(false)
+        ),
       new SlashCommandBuilder()
         .setName("stop")
         .setDescription("Stop current request and clear any queued messages"),

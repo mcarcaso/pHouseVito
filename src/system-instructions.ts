@@ -8,7 +8,7 @@
 import { readFileSync } from "fs";
 import { join } from "path";
 
-const COMMANDS_SECTION = `Available commands: /new (full reset — start a fresh pi session, archives the current chat), /compact (summarize older turns to free context, conversation continues), /stop (abort current request + clear queue)`;
+const COMMANDS_SECTION = `Available commands: /new (full reset — start a fresh pi session, archives the current chat), /compact (summarize older turns to free context, conversation continues), /model [provider/model] (inspect or switch the live pi model for this session), /stop (abort current request + clear queue)`;
 
 /** Default timezone — used when config doesn't specify one */
 export const DEFAULT_TIMEZONE = "America/Toronto";

@@ -570,12 +570,38 @@ function PiSessions() {
 
       case 'compaction': {
         const entry = line as CompactionEntry;
+        const isExpanded = expandedMessages.has(i);
+        const summary = (entry.summary || '').replace(/\s+/g, ' ').trim();
+        const preview = summary.length > 120 ? summary.slice(0, 120) + '…' : summary;
+
+        if (!isExpanded) {
+          return (
+            <div
+              key={key}
+              className="rounded-lg border border-cyan-900/40 bg-cyan-950/10 px-3 py-2 cursor-pointer hover:brightness-125 transition-all"
+              onClick={() => toggleMessageExpanded(i)}
+            >
+              <div className="flex items-center gap-2 text-xs">
+                <span className="bg-cyan-500/20 text-cyan-300 px-2 py-0.5 rounded font-mono shrink-0">compaction</span>
+                <span className="text-neutral-500 shrink-0">tokensBefore: {entry.tokensBefore.toLocaleString()}</span>
+                <span className="text-cyan-100/70 truncate flex-1">{preview || <span className="text-neutral-600 italic">(empty)</span>}</span>
+                <span className="text-neutral-500 shrink-0">{new Date(entry.timestamp).toLocaleTimeString()}</span>
+                <span className="text-neutral-500 shrink-0">▶</span>
+              </div>
+            </div>
+          );
+        }
+
         return (
           <div key={key} className="rounded-lg border border-cyan-900/40 bg-cyan-950/10 p-3 text-sm">
-            <div className="flex items-center gap-2 flex-wrap mb-2">
+            <div
+              className="flex items-center gap-2 flex-wrap mb-2 cursor-pointer"
+              onClick={() => toggleMessageExpanded(i)}
+            >
               <span className="bg-cyan-500/20 text-cyan-300 px-2 py-0.5 rounded text-xs font-mono">compaction</span>
               <span className="text-xs text-neutral-500">tokensBefore: {entry.tokensBefore.toLocaleString()}</span>
               <span className="text-xs text-neutral-500 ml-auto">{new Date(entry.timestamp).toLocaleTimeString()}</span>
+              <span className="text-xs text-neutral-500">▼</span>
             </div>
             <div className="text-cyan-100/80 whitespace-pre-wrap text-xs">{entry.summary}</div>
           </div>
@@ -584,12 +610,38 @@ function PiSessions() {
 
       case 'branch_summary': {
         const entry = line as BranchSummaryEntry;
+        const isExpanded = expandedMessages.has(i);
+        const summary = (entry.summary || '').replace(/\s+/g, ' ').trim();
+        const preview = summary.length > 120 ? summary.slice(0, 120) + '…' : summary;
+
+        if (!isExpanded) {
+          return (
+            <div
+              key={key}
+              className="rounded-lg border border-orange-900/40 bg-orange-950/10 px-3 py-2 cursor-pointer hover:brightness-125 transition-all"
+              onClick={() => toggleMessageExpanded(i)}
+            >
+              <div className="flex items-center gap-2 text-xs">
+                <span className="bg-orange-500/20 text-orange-300 px-2 py-0.5 rounded font-mono shrink-0">branch_summary</span>
+                <span className="text-neutral-500 font-mono shrink-0">from {entry.fromId.slice(0, 8)}…</span>
+                <span className="text-orange-100/70 truncate flex-1">{preview || <span className="text-neutral-600 italic">(empty)</span>}</span>
+                <span className="text-neutral-500 shrink-0">{new Date(entry.timestamp).toLocaleTimeString()}</span>
+                <span className="text-neutral-500 shrink-0">▶</span>
+              </div>
+            </div>
+          );
+        }
+
         return (
           <div key={key} className="rounded-lg border border-orange-900/40 bg-orange-950/10 p-3 text-sm">
-            <div className="flex items-center gap-2 flex-wrap mb-2">
+            <div
+              className="flex items-center gap-2 flex-wrap mb-2 cursor-pointer"
+              onClick={() => toggleMessageExpanded(i)}
+            >
               <span className="bg-orange-500/20 text-orange-300 px-2 py-0.5 rounded text-xs font-mono">branch_summary</span>
               <span className="text-xs text-neutral-500 font-mono break-all">from {entry.fromId}</span>
               <span className="text-xs text-neutral-500 ml-auto">{new Date(entry.timestamp).toLocaleTimeString()}</span>
+              <span className="text-xs text-neutral-500">▼</span>
             </div>
             <div className="text-orange-100/80 whitespace-pre-wrap text-xs">{entry.summary}</div>
           </div>

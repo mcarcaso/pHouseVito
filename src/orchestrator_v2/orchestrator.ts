@@ -580,10 +580,14 @@ export class OrchestratorV2 {
         this.piHarnesses.delete(vitoSession.id);
       }
 
-      await handler.stopTyping?.();
       await handler.relay(
         `✅ **Fresh start!**\n\nPi session reset, messages archived. Next message starts a new pi session with the current system prompt.\n\nForce-embedding archived messages in the background — they'll be searchable via memory skills once it finishes. 🚀`
       );
+      // stopTyping AFTER relay so the buffer actually flushes (the Discord
+      // handler buffers relay() and only flushes on stopTyping/endMessage).
+      // For slash commands this is what calls editReply on the deferred
+      // interaction; without it the user sees "Vito is thinking..." forever.
+      await handler.stopTyping?.();
 
       // Background force-embed. Errors logged, not surfaced to the user.
       maybeEmbedNewChunks(vitoSession.id, { force: true })
@@ -598,9 +602,9 @@ export class OrchestratorV2 {
           console.error(`[v2 /new] background embed failed for ${vitoSession.id}:`, err);
         });
     } catch (err) {
-      await handler.stopTyping?.();
       console.error("[v2 /new] reset failed:", err);
       await handler.relay("❌ Reset failed — see logs.");
+      await handler.stopTyping?.();
     }
   }
 
@@ -623,7 +627,6 @@ export class OrchestratorV2 {
     await handler.startTyping?.();
     try {
       const result = await existing.compact();
-      await handler.stopTyping?.();
 
       let info = "";
       if (result && typeof result === "object") {
@@ -640,10 +643,12 @@ export class OrchestratorV2 {
       await handler.relay(
         `✅ **Compacted.**${info}\n\nOlder turns summarized; recent context kept. Conversation continues. 🧵`
       );
-    } catch (err) {
+      // stopTyping after relay so the buffer flushes (see /new for details).
       await handler.stopTyping?.();
+    } catch (err) {
       console.error("[v2 /compact] failed:", err);
       await handler.relay("❌ Compaction failed — see logs.");
+      await handler.stopTyping?.();
     }
   }
 

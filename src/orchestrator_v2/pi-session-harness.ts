@@ -30,6 +30,22 @@ import type { Harness, HarnessCallbacks, HarnessUsage, NormalizedEvent } from ".
 /** Filename written into a sessionDir to request "fresh on next create". */
 const FRESH_MARKER_FILE = ".fresh";
 
+/**
+ * Write a `.fresh` marker into the given sessionDir so the next AgentSession
+ * created in that dir will use SessionManager.create() instead of
+ * continueRecent(). Static so it can be called without an in-memory harness
+ * — important because /new might run after a server restart when the
+ * orchestrator's harness map is empty.
+ */
+export function writeFreshMarker(sessionDir: string): void {
+  try {
+    mkdirSync(sessionDir, { recursive: true });
+    writeFileSync(join(sessionDir, FRESH_MARKER_FILE), "");
+  } catch (err) {
+    console.warn("[v2 pi-session] Failed to write fresh marker:", err);
+  }
+}
+
 export interface PiSessionHarnessConfig {
   model?: { provider: string; name: string };
   thinkingLevel?: "off" | "low" | "medium" | "high";

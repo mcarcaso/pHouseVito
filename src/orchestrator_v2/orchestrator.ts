@@ -44,7 +44,7 @@ import type {
   VitoConfig,
 } from "../types.js";
 
-import { PiSessionHarness } from "./pi-session-harness.js";
+import { PiSessionHarness, writeFreshMarker } from "./pi-session-harness.js";
 import { buildSystemPromptV2, buildUserMessageV2 } from "./system-prompt.js";
 
 /**
@@ -471,11 +471,7 @@ export class OrchestratorV2 {
 
       // Each Vito session gets its own pi sessionDir so JSONL files are
       // grouped per-session and easy to browse from the dashboard.
-      const sessionDir = resolve(
-        process.cwd(),
-        "user/pi-sessions",
-        encodeSessionDirName(vitoSessionId),
-      );
+      const sessionDir = this.getSessionDir(vitoSessionId);
 
       harness = new PiSessionHarness({
         model,
@@ -487,6 +483,11 @@ export class OrchestratorV2 {
       console.log(`[v2] 🎭 Created long-lived pi session for ${vitoSessionId} (${model.provider}/${model.name}) → ${sessionDir}`);
     }
     return harness;
+  }
+
+  /** Filesystem path for a Vito session's pi-session JSONLs and markers. */
+  private getSessionDir(vitoSessionId: string): string {
+    return resolve(process.cwd(), "user/pi-sessions", encodeSessionDirName(vitoSessionId));
   }
 
   private getModelString(settings: ResolvedSettings): string {
@@ -575,6 +576,12 @@ export class OrchestratorV2 {
       if (recentMessages.length > 0) {
         this.queries.markSessionArchived(vitoSession.id);
       }
+      // Write the .fresh marker UNCONDITIONALLY — its job is to bias the
+      // next AgentSession creation, which has nothing to do with whether
+      // a harness happens to be in memory right now. Skipping this when
+      // there's no in-memory harness (e.g., after a server restart) was
+      // the bug that left /new resuming the old JSONL.
+      writeFreshMarker(this.getSessionDir(vitoSession.id));
       if (existing) {
         await existing.prepareFreshNextStart();
         this.piHarnesses.delete(vitoSession.id);

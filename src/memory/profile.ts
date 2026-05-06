@@ -192,10 +192,9 @@ async function _doProfileUpdate(sessionId: string, currentUserMessage: string, s
   // Session format: "system:profile-updater" → channel = "system", sessionKey = full string
   const effectiveSettings = getEffectiveSettings(_config, "system", PROFILE_UPDATER_SESSION);
   
-  // Get profile update context setting (default 2)
-  // This is the number of CONTEXT messages we want (excluding the current trigger message)
-  // So if contextLimit = 2, we want 2 context messages + the current message as the prompt
-  const contextLimit = effectiveSettings.memory.profileUpdateContext;
+  // Background updater is disabled in orchestrator_v2. Keep this dormant path
+  // self-contained instead of exposing dead config in the Settings UI.
+  const contextLimit = 2;
 
   // When maybeUpdateProfile runs, the DB has:
   // [..., previous messages, currentUserMessage, thisAssistantResponse]

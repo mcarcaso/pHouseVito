@@ -5,82 +5,17 @@
  *   Global (config.settings) → Channel (config.channels[name].settings) → Session (config.sessions[key])
  */
 
-import { DEFAULT_CLASSIFIER_MODEL, DEFAULT_PI_MODEL_CHOICES } from "./memory/auto-classifier.js";
-import type { ResolvedAutoFlags, ResolvedSettings, ResolvedContextSettings, ResolvedMemorySettings, Settings, VitoConfig } from "./types.js";
-
-/** Default context settings */
-const DEFAULT_CURRENT_CONTEXT: ResolvedContextSettings = {
-  limit: 100,
-  includeThoughts: true,
-  includeTools: true,
-  includeArchived: false,
-  maxSessions: 0, // Not used for current context
-  excludeEmbedded: false,
-  keepRecentEmbeddedMessages: 0,
-};
-
-const DEFAULT_CROSS_CONTEXT: ResolvedContextSettings = {
-  limit: 5,
-  includeThoughts: false,
-  includeTools: false,
-  includeArchived: false,
-  maxSessions: 15, // Cap at 15 most recent sessions
-  excludeEmbedded: false,
-  keepRecentEmbeddedMessages: 0,
-};
-
-/** Default memory settings */
-const DEFAULT_MEMORY: ResolvedMemorySettings = {
-  recalledMemoryLimit: 3,
-  recalledMemoryThreshold: 0.005,
-  profileUpdateContext: 2,
-  contextualizeQuery: false,
-  queryContextMessages: 6,
-  queryContextualizerModel: {
-    provider: "openrouter",
-    name: "openai-codex/gpt-5.4-mini",
-  },
-};
-
-/** Default auto flags — everything off, with the default model choice list */
-const DEFAULT_AUTO: ResolvedAutoFlags = {
-  currentContext: {
-    limit: false,
-    includeWorkingContext: false,
-  },
-  crossContext: {
-    limit: false,
-    maxSessions: false,
-    includeWorkingContext: false,
-  },
-  memory: {
-    recalledMemoryLimit: false,
-  },
-  "pi-coding-agent": {
-    model: false,
-    modelChoices: DEFAULT_PI_MODEL_CHOICES,
-  },
-  classifierModel: DEFAULT_CLASSIFIER_MODEL,
-  classifierContext: {
-    currentSessionMessages: 25,
-    crossSessionMessages: 0,
-    crossSessionMaxSessions: 0,
-  },
-};
+import type { ResolvedSettings, Settings, VitoConfig } from "./types.js";
 
 /** Default settings when nothing is specified */
 const DEFAULTS: ResolvedSettings = {
   harness: "pi-coding-agent",
   streamMode: "stream",
-  currentContext: DEFAULT_CURRENT_CONTEXT,
-  crossContext: DEFAULT_CROSS_CONTEXT,
-  memory: DEFAULT_MEMORY,
-  auto: DEFAULT_AUTO,
 };
 
 /**
  * Deep merge two Settings objects. Later values win.
- * Merges context objects deeply; other fields are replaced.
+ * Merges nested settings objects deeply where needed; other fields are replaced.
  */
 function mergeSettings(base: Settings, override: Settings): Settings {
   const result: Settings = { ...base };
@@ -94,15 +29,6 @@ function mergeSettings(base: Settings, override: Settings): Settings {
   if (override.customInstructions !== undefined) {
     result.customInstructions = override.customInstructions;
   }
-  if (override.currentContext !== undefined) {
-    result.currentContext = { ...base.currentContext, ...override.currentContext };
-  }
-  if (override.crossContext !== undefined) {
-    result.crossContext = { ...base.crossContext, ...override.crossContext };
-  }
-  if (override.memory !== undefined) {
-    result.memory = { ...base.memory, ...override.memory };
-  }
   if (override["pi-coding-agent"] !== undefined) {
     result["pi-coding-agent"] = { ...base["pi-coding-agent"], ...override["pi-coding-agent"] };
   }
@@ -111,17 +37,6 @@ function mergeSettings(base: Settings, override: Settings): Settings {
   }
   if (override.traceMessageUpdates !== undefined) {
     result.traceMessageUpdates = override.traceMessageUpdates;
-  }
-  if (override.auto !== undefined) {
-    result.auto = {
-      ...base.auto,
-      ...override.auto,
-      currentContext: { ...base.auto?.currentContext, ...override.auto?.currentContext },
-      crossContext: { ...base.auto?.crossContext, ...override.auto?.crossContext },
-      memory: { ...base.auto?.memory, ...override.auto?.memory },
-      "pi-coding-agent": { ...base.auto?.["pi-coding-agent"], ...override.auto?.["pi-coding-agent"] },
-      classifierContext: { ...base.auto?.classifierContext, ...override.auto?.classifierContext },
-    };
   }
 
   return result;
@@ -166,65 +81,9 @@ export function getEffectiveSettings(
     harness: settings.harness || DEFAULTS.harness,
     streamMode: settings.streamMode || DEFAULTS.streamMode,
     customInstructions: settings.customInstructions,
-    currentContext: {
-      limit: settings.currentContext?.limit ?? DEFAULT_CURRENT_CONTEXT.limit,
-      includeThoughts: settings.currentContext?.includeThoughts ?? DEFAULT_CURRENT_CONTEXT.includeThoughts,
-      includeTools: settings.currentContext?.includeTools ?? DEFAULT_CURRENT_CONTEXT.includeTools,
-      includeArchived: settings.currentContext?.includeArchived ?? DEFAULT_CURRENT_CONTEXT.includeArchived,
-      maxSessions: DEFAULT_CURRENT_CONTEXT.maxSessions, // Not used for current context
-      excludeEmbedded: settings.currentContext?.excludeEmbedded ?? DEFAULT_CURRENT_CONTEXT.excludeEmbedded,
-      keepRecentEmbeddedMessages: settings.currentContext?.keepRecentEmbeddedMessages ?? DEFAULT_CURRENT_CONTEXT.keepRecentEmbeddedMessages,
-    },
-    crossContext: {
-      limit: settings.crossContext?.limit ?? DEFAULT_CROSS_CONTEXT.limit,
-      includeThoughts: settings.crossContext?.includeThoughts ?? DEFAULT_CROSS_CONTEXT.includeThoughts,
-      includeTools: settings.crossContext?.includeTools ?? DEFAULT_CROSS_CONTEXT.includeTools,
-      includeArchived: settings.crossContext?.includeArchived ?? DEFAULT_CROSS_CONTEXT.includeArchived,
-      maxSessions: settings.crossContext?.maxSessions ?? DEFAULT_CROSS_CONTEXT.maxSessions,
-      excludeEmbedded: DEFAULT_CROSS_CONTEXT.excludeEmbedded,
-      keepRecentEmbeddedMessages: DEFAULT_CROSS_CONTEXT.keepRecentEmbeddedMessages,
-    },
-    memory: {
-      recalledMemoryLimit: settings.memory?.recalledMemoryLimit ?? DEFAULT_MEMORY.recalledMemoryLimit,
-      recalledMemoryThreshold: settings.memory?.recalledMemoryThreshold ?? DEFAULT_MEMORY.recalledMemoryThreshold,
-      profileUpdateContext: settings.memory?.profileUpdateContext ?? DEFAULT_MEMORY.profileUpdateContext,
-      contextualizeQuery: settings.memory?.contextualizeQuery ?? DEFAULT_MEMORY.contextualizeQuery,
-      queryContextMessages: settings.memory?.queryContextMessages ?? DEFAULT_MEMORY.queryContextMessages,
-      queryContextualizerModel: (settings.memory?.queryContextualizerModel?.provider && settings.memory.queryContextualizerModel.name)
-        ? settings.memory.queryContextualizerModel
-        : DEFAULT_MEMORY.queryContextualizerModel,
-    },
     requireMention: settings.requireMention,
     traceMessageUpdates: settings.traceMessageUpdates ?? false,
     "pi-coding-agent": settings["pi-coding-agent"],
-    auto: {
-      currentContext: {
-        limit: settings.auto?.currentContext?.limit ?? DEFAULT_AUTO.currentContext.limit,
-        includeWorkingContext: settings.auto?.currentContext?.includeWorkingContext ?? DEFAULT_AUTO.currentContext.includeWorkingContext,
-      },
-      crossContext: {
-        limit: settings.auto?.crossContext?.limit ?? DEFAULT_AUTO.crossContext.limit,
-        maxSessions: settings.auto?.crossContext?.maxSessions ?? DEFAULT_AUTO.crossContext.maxSessions,
-        includeWorkingContext: settings.auto?.crossContext?.includeWorkingContext ?? DEFAULT_AUTO.crossContext.includeWorkingContext,
-      },
-      memory: {
-        recalledMemoryLimit: settings.auto?.memory?.recalledMemoryLimit ?? DEFAULT_AUTO.memory.recalledMemoryLimit,
-      },
-      "pi-coding-agent": {
-        model: settings.auto?.["pi-coding-agent"]?.model ?? DEFAULT_AUTO["pi-coding-agent"].model,
-        modelChoices: (settings.auto?.["pi-coding-agent"]?.modelChoices && settings.auto["pi-coding-agent"].modelChoices.length > 0)
-          ? settings.auto["pi-coding-agent"].modelChoices
-          : DEFAULT_AUTO["pi-coding-agent"].modelChoices,
-      },
-      classifierModel: (settings.auto?.classifierModel?.provider && settings.auto.classifierModel.name)
-        ? settings.auto.classifierModel
-        : DEFAULT_AUTO.classifierModel,
-      classifierContext: {
-        currentSessionMessages: settings.auto?.classifierContext?.currentSessionMessages ?? DEFAULT_AUTO.classifierContext.currentSessionMessages,
-        crossSessionMessages: settings.auto?.classifierContext?.crossSessionMessages ?? DEFAULT_AUTO.classifierContext.crossSessionMessages,
-        crossSessionMaxSessions: settings.auto?.classifierContext?.crossSessionMaxSessions ?? DEFAULT_AUTO.classifierContext.crossSessionMaxSessions,
-      },
-    },
   };
 }
 

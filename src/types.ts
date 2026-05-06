@@ -126,88 +126,6 @@ export interface PiHarnessConfig {
 // This is the cascading settings type: Global → Channel → Session
 // Each level can override any setting. More specific wins.
 
-/** Context window settings for current or cross-session */
-export interface ContextSettings {
-  /** Number of messages to include */
-  limit?: number;
-  /** Include thought messages */
-  includeThoughts?: boolean;
-  /** Include tool_start/tool_end messages */
-  includeTools?: boolean;
-  /** Include archived messages */
-  includeArchived?: boolean;
-  /** Max number of sessions to include for cross-session context (cross-session only) */
-  maxSessions?: number;
-  /** Exclude current-session rows already covered by embeddings.db chunks. */
-  excludeEmbedded?: boolean;
-  /** Keep this many recent embedded user/assistant turns even when excludeEmbedded is true. */
-  keepRecentEmbeddedMessages?: number;
-}
-
-/** Memory recall settings for semantic search */
-export interface MemorySettings {
-  /** Max number of memory chunks to inject (default 3) */
-  recalledMemoryLimit?: number;
-  /** Minimum RRF score to include (default 0.005) */
-  recalledMemoryThreshold?: number;
-  /** Number of recent messages to include as context for profile updates (default 2) */
-  profileUpdateContext?: number;
-  /** Use a cheap LLM to rewrite the incoming message into a contextual retrieval query. */
-  contextualizeQuery?: boolean;
-  /** Number of previous user/assistant messages shown to the query contextualizer. */
-  queryContextMessages?: number;
-  /** Model used by the query contextualizer. */
-  queryContextualizerModel?: { provider: string; name: string };
-}
-
-/** A single candidate model the auto classifier can choose between. */
-export interface ModelChoice {
-  provider: string;
-  name: string;
-  /** Human-readable description shown to the classifier — tell it when to pick this one. */
-  description: string;
-}
-
-/** Settings for how much context the auto classifier itself gets to inspect. */
-export interface ClassifierContextSettings {
-  /** How many recent user/assistant messages from THIS session the classifier sees. */
-  currentSessionMessages?: number;
-  /** How many recent messages per OTHER session the classifier sees as a preview. */
-  crossSessionMessages?: number;
-  /** How many OTHER sessions may contribute preview context for the classifier. */
-  crossSessionMaxSessions?: number;
-}
-
-/**
- * Per-field auto-selection flags. When a field is true, a cheap LLM classifier
- * decides the value for that field on every turn (overriding the configured value).
- * Cascades through Global → Channel → Session like other settings.
- */
-export interface AutoFlags {
-  currentContext?: {
-    limit?: boolean;
-    includeWorkingContext?: boolean;
-  };
-  crossContext?: {
-    limit?: boolean;
-    maxSessions?: boolean;
-    includeWorkingContext?: boolean;
-  };
-  memory?: {
-    recalledMemoryLimit?: boolean;
-  };
-  "pi-coding-agent"?: {
-    /** If true, a classifier picks the pi-coding-agent model per turn from modelChoices. */
-    model?: boolean;
-    /** Candidate models for the classifier to pick between. Defaults to DEFAULT_PI_MODEL_CHOICES. */
-    modelChoices?: ModelChoice[];
-  };
-  /** Which LLM the classifier itself runs on. Defaults to anthropic/claude-haiku-4-5. */
-  classifierModel?: { provider: string; name: string };
-  /** How much current/cross-session preview context the classifier gets to inspect. */
-  classifierContext?: ClassifierContextSettings;
-}
-
 export interface Settings {
   /** Which harness to use */
   harness?: string;
@@ -215,12 +133,6 @@ export interface Settings {
   streamMode?: StreamMode;
   /** Custom instructions injected into the system prompt — cascades Global → Channel → Session (most specific wins) */
   customInstructions?: string;
-  /** Current session context settings */
-  currentContext?: ContextSettings;
-  /** Cross-session context settings */
-  crossContext?: ContextSettings;
-  /** Memory recall settings */
-  memory?: MemorySettings;
   /** Require @mention to respond (Discord/Telegram) — still logs all messages */
   requireMention?: boolean;
   /** Log message_update raw events to trace files (noisy). Default false */
@@ -229,71 +141,14 @@ export interface Settings {
   timezone?: string;
   /** Pi Coding Agent harness overrides */
   "pi-coding-agent"?: Partial<PiHarnessConfig>;
-  /** Per-field auto-selection flags — cascades like other settings */
-  auto?: AutoFlags;
-}
-
-/** Resolved context settings with all fields required */
-export interface ResolvedContextSettings {
-  limit: number;
-  includeThoughts: boolean;
-  includeTools: boolean;
-  includeArchived: boolean;
-  /** Max sessions to include for cross-session (only used by crossContext) */
-  maxSessions: number;
-  excludeEmbedded: boolean;
-  keepRecentEmbeddedMessages: number;
-}
-
-/** Resolved memory settings with all fields required */
-export interface ResolvedMemorySettings {
-  recalledMemoryLimit: number;
-  recalledMemoryThreshold: number;
-  profileUpdateContext: number;
-  contextualizeQuery: boolean;
-  queryContextMessages: number;
-  queryContextualizerModel: { provider: string; name: string };
-}
-
-/** Resolved auto flags — all fields present, defaulting to false */
-export interface ResolvedAutoFlags {
-  currentContext: {
-    limit: boolean;
-    includeWorkingContext: boolean;
-  };
-  crossContext: {
-    limit: boolean;
-    maxSessions: boolean;
-    includeWorkingContext: boolean;
-  };
-  memory: {
-    recalledMemoryLimit: boolean;
-  };
-  "pi-coding-agent": {
-    model: boolean;
-    /** Fully-resolved list of candidate models (always populated — from config or default). */
-    modelChoices: ModelChoice[];
-  };
-  /** Fully-resolved classifier model (always populated — from config or default). */
-  classifierModel: { provider: string; name: string };
-  /** Fully-resolved preview window settings for the classifier itself. */
-  classifierContext: {
-    currentSessionMessages: number;
-    crossSessionMessages: number;
-    crossSessionMaxSessions: number;
-  };
 }
 
 /** Deep merge helper type for settings resolution */
 export type ResolvedSettings = Required<Pick<Settings, "harness" | "streamMode">> & {
   customInstructions?: string;
-  currentContext: ResolvedContextSettings;
-  crossContext: ResolvedContextSettings;
-  memory: ResolvedMemorySettings;
   requireMention?: boolean;
   traceMessageUpdates?: boolean;
   "pi-coding-agent"?: Partial<PiHarnessConfig>;
-  auto: ResolvedAutoFlags;
 };
 
 export interface VitoConfig {

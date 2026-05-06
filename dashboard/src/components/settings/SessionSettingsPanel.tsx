@@ -1,15 +1,7 @@
 import { useState, useEffect } from 'react';
 import type { VitoConfig, Settings } from '../../utils/settingsResolution';
-import { getEffectiveSettings } from '../../utils/settingsResolution';
-import SettingRow, { renderSelect, renderSegmented, renderNumberInput, renderToggle, renderTextarea } from './SettingRow';
-import { ClassifierModelPicker } from './GlobalSettings';
-import {
-  SHOW_LEGACY_CURRENT_CONTEXT,
-  SHOW_LEGACY_CROSS_CONTEXT,
-  SHOW_LEGACY_MEMORY_RECALL,
-  SHOW_LEGACY_AUTO_CLASSIFIER,
-  SHOW_LEGACY_PROFILE_UPDATE_CONTEXT,
-} from '../../utils/featureFlags';
+import { countActiveSettingOverrides, getEffectiveSettings } from '../../utils/settingsResolution';
+import SettingRow, { renderSelect, renderSegmented, renderToggle, renderTextarea } from './SettingRow';
 
 interface SessionSettingsPanelProps {
   config: VitoConfig;
@@ -46,11 +38,6 @@ const THINKING_LEVELS = [
   { value: 'low', label: 'Low' },
   { value: 'medium', label: 'Medium' },
   { value: 'high', label: 'High' },
-];
-
-// System sessions that always appear in the list (no message history required)
-const SYSTEM_SESSIONS = [
-  { id: 'system:profile-updater', label: 'Profile Updater', description: 'Background process that updates user/profile.md when new facts are revealed' },
 ];
 
 function setNestedValue(target: Record<string, any>, path: string, value: any) {
@@ -92,7 +79,7 @@ export default function SessionSettingsPanel({ config, onSave, initialSessionId 
   const [loading, setLoading] = useState(true);
   const [expandedSession, setExpandedSession] = useState<string | null>(initialSessionId || null);
   const [showPicker, setShowPicker] = useState(false);
-  
+
   // For pi-coding-agent model selection
   const [providers, setProviders] = useState<string[]>([]);
   const [authStatus, setAuthStatus] = useState<Record<string, AuthStatus>>({});
@@ -107,7 +94,7 @@ export default function SessionSettingsPanel({ config, onSave, initialSessionId 
         setLoading(false);
       })
       .catch(() => setLoading(false));
-    
+
     // Fetch providers for pi-coding-agent overrides
     fetch('/api/models/providers')
       .then((r) => r.json())
@@ -245,10 +232,10 @@ export default function SessionSettingsPanel({ config, onSave, initialSessionId 
     // inherited['pi-coding-agent'] might be empty object, so check for model property
     const rawInherited = inherited['pi-coding-agent'];
     const piInherited = (rawInherited && rawInherited.model) ? rawInherited : globalPi;
-    
+
     // Provider from override or inherited
     const currentProvider = piOverrides.model?.provider || piInherited.model?.provider || '';
-    
+
     const providerOptions = sortedProviders.map(p => ({ value: p, label: p }));
     const modelOptions = (models[currentProvider] || []).map(m => ({ value: m.id, label: m.id }));
 
@@ -375,317 +362,9 @@ export default function SessionSettingsPanel({ config, onSave, initialSessionId 
             formatValue={(v) => v ? `"${(v as string).slice(0, 50)}${(v as string).length > 50 ? '...' : ''}"` : '(none)'}
           />
 
-          {/* Current Session Context — legacy under v2 */}
-          {SHOW_LEGACY_CURRENT_CONTEXT && (<>
-          <div className="mt-4 mb-2">
-            <span className="text-xs font-semibold text-neutral-500 uppercase tracking-wide">Current Session Context</span>
-          </div>
 
-          <SettingRow
-            label="Num Messages"
-            inheritedValue={inherited.currentContext.limit}
-            inheritedFrom={inheritFrom}
-            overrideValue={overrides.currentContext?.limit}
-            onOverride={(val) => updateSessionSetting(sessionId, 'currentContext.limit', val)}
-            onReset={() => resetSessionSetting(sessionId, 'currentContext.limit')}
-            renderInput={(val, onChange) => renderNumberInput(val, onChange, { min: 0 })}
-          />
 
-          <SettingRow
-            label="Auto: Num Messages"
-            hint="Classifier decides the current-session message window"
-            inheritedValue={inherited.auto.currentContext.limit}
-            inheritedFrom={inheritFrom}
-            overrideValue={overrides.auto?.currentContext?.limit}
-            onOverride={(val) => updateSessionSetting(sessionId, 'auto.currentContext.limit', val)}
-            onReset={() => resetSessionSetting(sessionId, 'auto.currentContext.limit')}
-            renderInput={(val, onChange) => renderToggle(val, onChange)}
-            formatValue={(v) => v ? 'On' : 'Off'}
-          />
 
-          <SettingRow
-            label="Working Context"
-            hint="Thoughts + tools together"
-            inheritedValue={inherited.currentContext.includeThoughts && inherited.currentContext.includeTools}
-            inheritedFrom={inheritFrom}
-            overrideValue={overrides.currentContext?.includeThoughts === undefined && overrides.currentContext?.includeTools === undefined
-              ? undefined
-              : (overrides.currentContext?.includeThoughts ?? inherited.currentContext.includeThoughts)
-                && (overrides.currentContext?.includeTools ?? inherited.currentContext.includeTools)}
-            onOverride={(val) => updateSessionSettingsBatch(sessionId, [
-              { field: 'currentContext.includeThoughts', value: val },
-              { field: 'currentContext.includeTools', value: val },
-            ])}
-            onReset={() => resetSessionSettingsBatch(sessionId, [
-              'currentContext.includeThoughts',
-              'currentContext.includeTools',
-            ])}
-            renderInput={(val, onChange) => renderToggle(val, onChange)}
-            formatValue={(v) => v ? 'On' : 'Off'}
-          />
-
-          <SettingRow
-            label="Auto: Working Context"
-            hint="Classifier decides whether to include thoughts + tools"
-            inheritedValue={inherited.auto.currentContext.includeWorkingContext}
-            inheritedFrom={inheritFrom}
-            overrideValue={overrides.auto?.currentContext?.includeWorkingContext}
-            onOverride={(val) => updateSessionSetting(sessionId, 'auto.currentContext.includeWorkingContext', val)}
-            onReset={() => resetSessionSetting(sessionId, 'auto.currentContext.includeWorkingContext')}
-            renderInput={(val, onChange) => renderToggle(val, onChange)}
-            formatValue={(v) => v ? 'On' : 'Off'}
-          />
-
-          <SettingRow
-            label="Archived"
-            inheritedValue={inherited.currentContext.includeArchived}
-            inheritedFrom={inheritFrom}
-            overrideValue={overrides.currentContext?.includeArchived}
-            onOverride={(val) => updateSessionSetting(sessionId, 'currentContext.includeArchived', val)}
-            onReset={() => resetSessionSetting(sessionId, 'currentContext.includeArchived')}
-            renderInput={(val, onChange) => renderToggle(val, onChange)}
-            formatValue={(v) => v ? 'On' : 'Off'}
-          />
-
-          <SettingRow
-            label="Exclude Embedded"
-            hint="Skip messages already covered by embeddings"
-            inheritedValue={inherited.currentContext.excludeEmbedded}
-            inheritedFrom={inheritFrom}
-            overrideValue={overrides.currentContext?.excludeEmbedded}
-            onOverride={(val) => updateSessionSetting(sessionId, 'currentContext.excludeEmbedded', val)}
-            onReset={() => resetSessionSetting(sessionId, 'currentContext.excludeEmbedded')}
-            renderInput={(val, onChange) => renderToggle(val, onChange)}
-            formatValue={(v) => v ? 'On' : 'Off'}
-          />
-
-          <SettingRow
-            label="Keep Embedded Tail"
-            hint="Recent embedded messages to keep anyway"
-            inheritedValue={inherited.currentContext.keepRecentEmbeddedMessages}
-            inheritedFrom={inheritFrom}
-            overrideValue={overrides.currentContext?.keepRecentEmbeddedMessages}
-            onOverride={(val) => updateSessionSetting(sessionId, 'currentContext.keepRecentEmbeddedMessages', val)}
-            onReset={() => resetSessionSetting(sessionId, 'currentContext.keepRecentEmbeddedMessages')}
-            renderInput={(val, onChange) => renderNumberInput(val, onChange, { min: 0, max: 50 })}
-          />
-          </>)}
-
-          {/* Cross-Session Context — legacy under v2 */}
-          {SHOW_LEGACY_CROSS_CONTEXT && (<>
-          <div className="mt-4 mb-2">
-            <span className="text-xs font-semibold text-neutral-500 uppercase tracking-wide">Cross-Session Context</span>
-          </div>
-
-          <SettingRow
-            label="Max Sessions"
-            inheritedValue={inherited.crossContext.maxSessions}
-            inheritedFrom={inheritFrom}
-            overrideValue={overrides.crossContext?.maxSessions}
-            onOverride={(val) => updateSessionSetting(sessionId, 'crossContext.maxSessions', val)}
-            onReset={() => resetSessionSetting(sessionId, 'crossContext.maxSessions')}
-            renderInput={(val, onChange) => renderNumberInput(val, onChange, { min: 0 })}
-          />
-
-          <SettingRow
-            label="Auto: Max Sessions"
-            hint="Classifier decides how many other sessions to pull from"
-            inheritedValue={inherited.auto.crossContext.maxSessions}
-            inheritedFrom={inheritFrom}
-            overrideValue={overrides.auto?.crossContext?.maxSessions}
-            onOverride={(val) => updateSessionSetting(sessionId, 'auto.crossContext.maxSessions', val)}
-            onReset={() => resetSessionSetting(sessionId, 'auto.crossContext.maxSessions')}
-            renderInput={(val, onChange) => renderToggle(val, onChange)}
-            formatValue={(v) => v ? 'On' : 'Off'}
-          />
-
-          <SettingRow
-            label="Num Messages"
-            inheritedValue={inherited.crossContext.limit}
-            inheritedFrom={inheritFrom}
-            overrideValue={overrides.crossContext?.limit}
-            onOverride={(val) => updateSessionSetting(sessionId, 'crossContext.limit', val)}
-            onReset={() => resetSessionSetting(sessionId, 'crossContext.limit')}
-            renderInput={(val, onChange) => renderNumberInput(val, onChange, { min: 0 })}
-          />
-
-          <SettingRow
-            label="Auto: Num Messages"
-            hint="Classifier decides the cross-session message window"
-            inheritedValue={inherited.auto.crossContext.limit}
-            inheritedFrom={inheritFrom}
-            overrideValue={overrides.auto?.crossContext?.limit}
-            onOverride={(val) => updateSessionSetting(sessionId, 'auto.crossContext.limit', val)}
-            onReset={() => resetSessionSetting(sessionId, 'auto.crossContext.limit')}
-            renderInput={(val, onChange) => renderToggle(val, onChange)}
-            formatValue={(v) => v ? 'On' : 'Off'}
-          />
-
-          <SettingRow
-            label="Working Context"
-            hint="Thoughts + tools together"
-            inheritedValue={inherited.crossContext.includeThoughts && inherited.crossContext.includeTools}
-            inheritedFrom={inheritFrom}
-            overrideValue={overrides.crossContext?.includeThoughts === undefined && overrides.crossContext?.includeTools === undefined
-              ? undefined
-              : (overrides.crossContext?.includeThoughts ?? inherited.crossContext.includeThoughts)
-                && (overrides.crossContext?.includeTools ?? inherited.crossContext.includeTools)}
-            onOverride={(val) => updateSessionSettingsBatch(sessionId, [
-              { field: 'crossContext.includeThoughts', value: val },
-              { field: 'crossContext.includeTools', value: val },
-            ])}
-            onReset={() => resetSessionSettingsBatch(sessionId, [
-              'crossContext.includeThoughts',
-              'crossContext.includeTools',
-            ])}
-            renderInput={(val, onChange) => renderToggle(val, onChange)}
-            formatValue={(v) => v ? 'On' : 'Off'}
-          />
-
-          <SettingRow
-            label="Auto: Working Context"
-            hint="Classifier decides whether to include thoughts + tools from other sessions"
-            inheritedValue={inherited.auto.crossContext.includeWorkingContext}
-            inheritedFrom={inheritFrom}
-            overrideValue={overrides.auto?.crossContext?.includeWorkingContext}
-            onOverride={(val) => updateSessionSetting(sessionId, 'auto.crossContext.includeWorkingContext', val)}
-            onReset={() => resetSessionSetting(sessionId, 'auto.crossContext.includeWorkingContext')}
-            renderInput={(val, onChange) => renderToggle(val, onChange)}
-            formatValue={(v) => v ? 'On' : 'Off'}
-          />
-
-          <SettingRow
-            label="Archived"
-            inheritedValue={inherited.crossContext.includeArchived}
-            inheritedFrom={inheritFrom}
-            overrideValue={overrides.crossContext?.includeArchived}
-            onOverride={(val) => updateSessionSetting(sessionId, 'crossContext.includeArchived', val)}
-            onReset={() => resetSessionSetting(sessionId, 'crossContext.includeArchived')}
-            renderInput={(val, onChange) => renderToggle(val, onChange)}
-            formatValue={(v) => v ? 'On' : 'Off'}
-          />
-          </>)}
-
-          {/* Memory section — Profile Update Context stays live; the rest is legacy. */}
-          <div className="mt-4 mb-2">
-            <span className="text-xs font-semibold text-neutral-500 uppercase tracking-wide">Memory</span>
-          </div>
-
-          {SHOW_LEGACY_MEMORY_RECALL && (
-          <SettingRow
-            label="Recalled Memory Limit"
-            hint="Max semantic chunks to inject"
-            inheritedValue={inherited.memory.recalledMemoryLimit}
-            inheritedFrom={inheritFrom}
-            overrideValue={overrides.memory?.recalledMemoryLimit}
-            onOverride={(val) => updateSessionSetting(sessionId, 'memory.recalledMemoryLimit', val)}
-            onReset={() => resetSessionSetting(sessionId, 'memory.recalledMemoryLimit')}
-            renderInput={(val, onChange) => renderNumberInput(val, onChange, { min: 0, max: 50 })}
-          />
-          )}
-
-          {SHOW_LEGACY_MEMORY_RECALL && (
-          <SettingRow
-            label="Relevance Threshold"
-            inheritedValue={inherited.memory.recalledMemoryThreshold}
-            inheritedFrom={inheritFrom}
-            overrideValue={overrides.memory?.recalledMemoryThreshold}
-            onOverride={(val) => updateSessionSetting(sessionId, 'memory.recalledMemoryThreshold', val)}
-            onReset={() => resetSessionSetting(sessionId, 'memory.recalledMemoryThreshold')}
-            renderInput={(val, onChange) => renderNumberInput(val, onChange, { min: 0, max: 1, step: 0.001 })}
-          />
-          )}
-
-          {SHOW_LEGACY_PROFILE_UPDATE_CONTEXT && (
-          <SettingRow
-            label="Profile Update Context"
-            inheritedValue={inherited.memory.profileUpdateContext}
-            inheritedFrom={inheritFrom}
-            overrideValue={overrides.memory?.profileUpdateContext}
-            onOverride={(val) => updateSessionSetting(sessionId, 'memory.profileUpdateContext', val)}
-            onReset={() => resetSessionSetting(sessionId, 'memory.profileUpdateContext')}
-            renderInput={(val, onChange) => renderNumberInput(val, onChange, { min: 1, max: 10 })}
-          />
-          )}
-
-          {SHOW_LEGACY_MEMORY_RECALL && (
-          <SettingRow
-            label="Contextualize Search Query"
-            hint="Rewrite follow-up asks before semantic search"
-            inheritedValue={inherited.memory.contextualizeQuery}
-            inheritedFrom={inheritFrom}
-            overrideValue={overrides.memory?.contextualizeQuery}
-            onOverride={(val) => updateSessionSetting(sessionId, 'memory.contextualizeQuery', val)}
-            onReset={() => resetSessionSetting(sessionId, 'memory.contextualizeQuery')}
-            renderInput={(val, onChange) => renderToggle(val, onChange)}
-            formatValue={(v) => v ? 'On' : 'Off'}
-          />
-          )}
-
-          {SHOW_LEGACY_MEMORY_RECALL && (
-          <SettingRow
-            label="Query Context Messages"
-            inheritedValue={inherited.memory.queryContextMessages}
-            inheritedFrom={inheritFrom}
-            overrideValue={overrides.memory?.queryContextMessages}
-            onOverride={(val) => updateSessionSetting(sessionId, 'memory.queryContextMessages', val)}
-            onReset={() => resetSessionSetting(sessionId, 'memory.queryContextMessages')}
-            renderInput={(val, onChange) => renderNumberInput(val, onChange, { min: 0, max: 50 })}
-          />
-          )}
-
-          {SHOW_LEGACY_MEMORY_RECALL && (
-          <SettingRow
-            label="Query Contextualizer Model"
-            inheritedValue={inherited.memory.queryContextualizerModel}
-            inheritedFrom={inheritFrom}
-            overrideValue={overrides.memory?.queryContextualizerModel}
-            onOverride={(val) => updateSessionSetting(sessionId, 'memory.queryContextualizerModel', val)}
-            onReset={() => resetSessionSetting(sessionId, 'memory.queryContextualizerModel')}
-            renderInput={(val, onChange) => <ClassifierModelPicker value={val} onChange={onChange} />}
-            formatValue={(v) => v?.provider && v?.name ? `${v.provider}/${v.name}` : '—'}
-          />
-          )}
-
-          {/* Auto Classifier — legacy under v2 */}
-          {SHOW_LEGACY_AUTO_CLASSIFIER && (<>
-          <div className="mt-4 mb-2">
-            <span className="text-xs font-semibold text-neutral-500 uppercase tracking-wide">Auto Classifier</span>
-          </div>
-
-          <SettingRow
-            label="Classifier: Current Session Messages"
-            hint="How many recent messages from this session the classifier reads"
-            inheritedValue={inherited.auto.classifierContext.currentSessionMessages}
-            inheritedFrom={inheritFrom}
-            overrideValue={overrides.auto?.classifierContext?.currentSessionMessages}
-            onOverride={(val) => updateSessionSetting(sessionId, 'auto.classifierContext.currentSessionMessages', val)}
-            onReset={() => resetSessionSetting(sessionId, 'auto.classifierContext.currentSessionMessages')}
-            renderInput={(val, onChange) => renderNumberInput(val, onChange, { min: 0, max: 300 })}
-          />
-
-          <SettingRow
-            label="Classifier: Cross-Session Max Sessions"
-            hint="How many other sessions the classifier may preview"
-            inheritedValue={inherited.auto.classifierContext.crossSessionMaxSessions}
-            inheritedFrom={inheritFrom}
-            overrideValue={overrides.auto?.classifierContext?.crossSessionMaxSessions}
-            onOverride={(val) => updateSessionSetting(sessionId, 'auto.classifierContext.crossSessionMaxSessions', val)}
-            onReset={() => resetSessionSetting(sessionId, 'auto.classifierContext.crossSessionMaxSessions')}
-            renderInput={(val, onChange) => renderNumberInput(val, onChange, { min: 0, max: 20 })}
-          />
-
-          <SettingRow
-            label="Classifier: Cross-Session Messages"
-            hint="How many recent messages per other session the classifier may preview"
-            inheritedValue={inherited.auto.classifierContext.crossSessionMessages}
-            inheritedFrom={inheritFrom}
-            overrideValue={overrides.auto?.classifierContext?.crossSessionMessages}
-            onOverride={(val) => updateSessionSetting(sessionId, 'auto.classifierContext.crossSessionMessages', val)}
-            onReset={() => resetSessionSetting(sessionId, 'auto.classifierContext.crossSessionMessages')}
-            renderInput={(val, onChange) => renderNumberInput(val, onChange, { min: 0, max: 20 })}
-          />
-          </>)}
 
           {/* Pi Coding Agent Overrides */}
           <div className="mt-5 mb-2">
@@ -701,70 +380,10 @@ export default function SessionSettingsPanel({ config, onSave, initialSessionId 
     );
   };
 
-  // Separate system sessions from regular ones
   const regularSessionIds = sessionIds.filter(id => !id.startsWith('system:'));
-  const systemSessionIds = SYSTEM_SESSIONS.map(s => s.id);
 
   return (
     <div className="space-y-6">
-      {/* System Sessions - always visible */}
-      <div>
-        <div className="flex items-center gap-2 mb-3">
-          <span className="text-xs font-semibold text-neutral-500 uppercase tracking-wide">System Sessions</span>
-          <span className="text-xs text-neutral-600">— background processes</span>
-        </div>
-        <div className="space-y-3">
-          {SYSTEM_SESSIONS.map((systemSession) => {
-            const overrideCount = Object.keys(sessionOverrides[systemSession.id] || {}).length;
-            const isExpanded = expandedSession === systemSession.id;
-
-            return (
-              <div key={systemSession.id} className="bg-[#151515] border border-purple-900/50 rounded-xl overflow-hidden">
-                <button
-                  className="w-full p-4 text-left hover:bg-neutral-800/30 transition-colors"
-                  onClick={() => setExpandedSession(isExpanded ? null : systemSession.id)}
-                >
-                  {/* Top row: system badge + metadata */}
-                  <div className="flex items-center justify-between mb-2">
-                    <span className="text-purple-400 text-xs font-medium uppercase tracking-wide">
-                      ⚙️ System
-                    </span>
-                    <div className="flex items-center gap-3">
-                      {overrideCount > 0 && (
-                        <span className="text-xs bg-purple-900/40 text-purple-400 px-2 py-0.5 rounded-full">
-                          {overrideCount} override{overrideCount !== 1 ? 's' : ''}
-                        </span>
-                      )}
-                      <span className={`text-neutral-500 transition-transform ${isExpanded ? 'rotate-180' : ''}`}>
-                        ▼
-                      </span>
-                    </div>
-                  </div>
-                  
-                  {/* Main content: label prominently displayed */}
-                  <div className="text-neutral-200 text-base font-medium">
-                    {systemSession.label}
-                  </div>
-                  
-                  {/* Description */}
-                  <div className="text-neutral-500 text-xs mt-1">
-                    {systemSession.description}
-                  </div>
-                  
-                  {/* Session ID */}
-                  <div className="text-neutral-600 text-xs font-mono mt-1">
-                    {systemSession.id}
-                  </div>
-                </button>
-
-                {isExpanded && renderSessionOverrides(systemSession.id)}
-              </div>
-            );
-          })}
-        </div>
-      </div>
-
-      {/* Regular Sessions */}
       <div>
         <div className="flex items-center justify-between mb-3">
           <div className="flex items-center gap-2">
@@ -832,7 +451,7 @@ export default function SessionSettingsPanel({ config, onSave, initialSessionId 
 
           {regularSessionIds.map((sessionId) => {
             const session = sessions.find((s) => s.id === sessionId);
-            const overrideCount = Object.keys(sessionOverrides[sessionId] || {}).length;
+            const overrideCount = countActiveSettingOverrides(sessionOverrides[sessionId]);
             const isExpanded = expandedSession === sessionId;
 
             return (
@@ -860,12 +479,12 @@ export default function SessionSettingsPanel({ config, onSave, initialSessionId 
                       </span>
                     </div>
                   </div>
-                  
+
                   {/* Main content: alias name prominently displayed */}
                   <div className="text-neutral-200 text-base font-medium">
                     {session?.alias || sessionId.split(':')[1] || sessionId}
                   </div>
-                  
+
                   {/* Bottom row: full session ID (only if alias exists) */}
                   {session?.alias && (
                     <div className="text-neutral-500 text-xs font-mono mt-1">

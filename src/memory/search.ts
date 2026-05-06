@@ -1,13 +1,9 @@
 /**
  * MEMORY SEARCH — Hybrid Retrieval (Embeddings + FTS5 BM25)
  * 
- * Two entry points:
+ * Entry point:
  * 
- * 1. `autoSearchForContext(query)` — lightweight auto-search that runs before every response.
- *    Returns formatted text to inject into the system prompt if relevant results are found.
- *    Returns empty string if nothing scores above threshold (no noise).
- * 
- * 2. `searchMemory(query, options)` — full search for the CLI tool / deep digs.
+ * `searchMemory(query, options)` — full search for the CLI tool / deep digs.
  *    Returns structured results with scores and metadata.
  * 
  * Uses the same embeddings.db as the incremental embeddings pipeline.
@@ -17,16 +13,12 @@
 import Database from "better-sqlite3";
 import { join, resolve } from "path";
 import { createEmbedding } from "./client.js";
-import type { ResolvedMemorySettings } from "../types.js";
 
 // ── Config ─────────────────────────────────────────────────
 
 const ROOT = resolve(process.cwd());
 const EMBEDDINGS_DB_PATH = join(ROOT, "user", "embeddings.db");
 
-// Default auto-search settings (used if not provided via config)
-const DEFAULT_AUTO_SEARCH_LIMIT = 3;           // Max chunks to inject
-const DEFAULT_AUTO_SEARCH_RRF_THRESHOLD = 0.005; // Minimum RRF score to include (filters noise)
 const RRF_K = 60;                              // RRF constant
 
 
@@ -280,192 +272,4 @@ export async function searchMemory(
       ...scores,
     };
   });
-}
-
-// ── Auto-Search ────────────────────────────────────────────
-
-export interface AutoSearchResult {
-  /** Formatted text to inject into system prompt (empty string if nothing relevant) */
-  text: string;
-  /** Trace data for the search step */
-  trace: {
-    query: string;
-    original_query?: string;
-    contextual_query?: string;
-    contextualizer_duration_ms?: number;
-    contextualizer_skipped?: string;
-    duration_ms: number;
-    results_found: number;
-    results_injected: number;
-    results: {
-      id: number;
-      session_id: string;
-      day: string;
-      context: string | null;
-      rrf_score: number;
-      embedding_score: number;
-      raw_embedding_score: number;
-      recency_factor: number;
-      days_ago: number;
-      bm25_score: number;
-      text_preview: string;
-    }[];
-    skipped?: string;
-  };
-}
-
-export interface AutoSearchOptions {
-  /** Memory settings from resolved config */
-  memory?: ResolvedMemorySettings;
-  /** Raw incoming message, if query has been contextualized before search. */
-  originalQuery?: string;
-  /** LLM-generated contextual query used to build the embedded search text. */
-  contextualQuery?: string;
-  /** Time spent contextualizing the query, if applicable. */
-  contextualizerDurationMs?: number;
-  /** Reason contextualization was skipped/fell back, if applicable. */
-  contextualizerSkipped?: string;
-}
-
-/**
- * Lightweight auto-search that runs before every response.
- * Embeds the user's message, searches the memory, and returns
- * formatted text to inject into the system prompt + trace data.
- * 
- * Returns empty text if:
- * - No embeddings exist yet
- * - Nothing scores above the threshold
- * - The query is too short/generic to be useful
- * 
- * Cost: ~200ms (one embedding call + SQLite queries)
- */
-export async function autoSearchForContext(
-  userMessage: string,
-  options: AutoSearchOptions = {}
-): Promise<AutoSearchResult> {
-  const startTime = Date.now();
-  const trimmed = userMessage.trim();
-
-  // Use config values or fall back to defaults
-  const limit = options.memory?.recalledMemoryLimit ?? DEFAULT_AUTO_SEARCH_LIMIT;
-  const threshold = options.memory?.recalledMemoryThreshold ?? DEFAULT_AUTO_SEARCH_RRF_THRESHOLD;
-
-  const makeResult = (text: string, results: AutoSearchResult["trace"]["results"], resultsFound: number, skipped?: string): AutoSearchResult => ({
-    text,
-    trace: {
-      query: trimmed,
-      original_query: options.originalQuery,
-      contextual_query: options.contextualQuery,
-      contextualizer_duration_ms: options.contextualizerDurationMs,
-      contextualizer_skipped: options.contextualizerSkipped,
-      duration_ms: Date.now() - startTime,
-      results_found: resultsFound,
-      results_injected: results.filter(r => text.length > 0).length,
-      results,
-      skipped,
-    },
-  });
-
-  // Only skip if truly empty
-  if (trimmed.length === 0) return makeResult("", [], 0, "empty query");
-
-  try {
-    const results = await searchMemory(trimmed, { limit });
-    
-    const traceResults = results.map(r => ({
-      id: r.id,
-      session_id: r.sessionId,
-      day: r.day,
-      context: r.context,
-      rrf_score: r.rrfScore,
-      embedding_score: r.embeddingScore,
-      raw_embedding_score: r.rawEmbeddingScore,
-      recency_factor: r.recencyFactor,
-      days_ago: r.daysAgo,
-      bm25_score: r.bm25Score,
-      text_preview: r.text.slice(0, 200),
-      full_text: r.text,
-    }));
-
-    if (results.length === 0) return makeResult("", traceResults, 0);
-
-    // Filter by RRF threshold — only include genuinely relevant results
-    const relevant = results.filter((r) => r.rrfScore >= threshold);
-    if (relevant.length === 0) return makeResult("", traceResults, results.length);
-
-    // Group by session, then sort each group by date (chronological within session)
-    // Sessions themselves are sorted by their earliest chunk date
-    const sessionGroups = new Map<string, typeof relevant>();
-    for (const r of relevant) {
-      const group = sessionGroups.get(r.sessionId) || [];
-      group.push(r);
-      sessionGroups.set(r.sessionId, group);
-    }
-
-    // Sort chunks within each session by date (chronological)
-    for (const group of sessionGroups.values()) {
-      group.sort((a, b) => new Date(a.day).getTime() - new Date(b.day).getTime());
-    }
-
-    // Sort sessions by their earliest chunk date
-    const sortedSessions = [...sessionGroups.entries()].sort((a, b) => {
-      const aEarliest = new Date(a[1][0].day).getTime();
-      const bEarliest = new Date(b[1][0].day).getTime();
-      return aEarliest - bEarliest;
-    });
-
-    // Format as recalled memories block — grouped by session, chronological
-    // No memory numbers, and don't repeat session ID for consecutive chunks
-    const chunks: string[] = [];
-    let lastSessionId: string | null = null;
-    
-    for (const [sessionId, group] of sortedSessions) {
-      for (const r of group) {
-        // Only show session ID header if it's different from the previous chunk
-        // Date is already in r.text, so don't duplicate it in the header
-        if (sessionId !== lastSessionId) {
-          chunks.push(`[${r.sessionId}]\n${r.text}`);
-        } else {
-          // Same session, just add the text (which has its own date header)
-          chunks.push(r.text);
-        }
-        lastSessionId = sessionId;
-      }
-    }
-
-    // Build injected results in the same grouped/sorted order
-    const orderedRelevant = sortedSessions.flatMap(([_, group]) => group);
-    const injectedResults = orderedRelevant.map(r => ({
-      id: r.id,
-      session_id: r.sessionId,
-      day: r.day,
-      context: r.context,
-      rrf_score: r.rrfScore,
-      embedding_score: r.embeddingScore,
-      raw_embedding_score: r.rawEmbeddingScore,
-      recency_factor: r.recencyFactor,
-      days_ago: r.daysAgo,
-      bm25_score: r.bm25Score,
-      text_preview: r.text.slice(0, 200),
-      full_text: r.text,
-    }));
-
-    return {
-      text: chunks.join("\n\n---\n\n"),
-      trace: {
-        query: trimmed,
-        original_query: options.originalQuery,
-        contextual_query: options.contextualQuery,
-        contextualizer_duration_ms: options.contextualizerDurationMs,
-        contextualizer_skipped: options.contextualizerSkipped,
-        duration_ms: Date.now() - startTime,
-        results_found: results.length,
-        results_injected: relevant.length,
-        results: traceResults,
-      },
-    };
-  } catch (err) {
-    console.error("[Search] Auto-search failed:", err);
-    return makeResult("", [], 0, `error: ${err instanceof Error ? err.message : String(err)}`);
-  }
 }

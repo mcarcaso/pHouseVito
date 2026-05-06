@@ -1,16 +1,8 @@
 import { useState, useEffect, useRef } from 'react';
 import type { ChannelConfig, VitoConfig, Settings } from '../../utils/settingsResolution';
-import { getEffectiveSettings } from '../../utils/settingsResolution';
-import SettingRow, { renderSegmented, renderNumberInput, renderToggle, renderTextarea } from './SettingRow';
-import { ClassifierModelPicker } from './GlobalSettings';
+import { countActiveSettingOverrides, getEffectiveSettings } from '../../utils/settingsResolution';
+import SettingRow, { renderSegmented, renderToggle, renderTextarea } from './SettingRow';
 import { channelConfigComponents, CHANNEL_ICONS } from './channels';
-import {
-  SHOW_LEGACY_CURRENT_CONTEXT,
-  SHOW_LEGACY_CROSS_CONTEXT,
-  SHOW_LEGACY_MEMORY_RECALL,
-  SHOW_LEGACY_AUTO_CLASSIFIER,
-  SHOW_LEGACY_PROFILE_UPDATE_CONTEXT,
-} from '../../utils/featureFlags';
 
 interface ChannelConfigEditorProps {
   name: string;
@@ -70,6 +62,7 @@ export default function ChannelConfigEditor({ name, channelConfig, config, onSav
   // Get what the global settings resolve to (for showing inheritance)
   const globalResolved = getEffectiveSettings(config);
   const channelSettings = channelConfig.settings || {};
+  const activeOverrideCount = countActiveSettingOverrides(channelSettings);
 
   const updateChannelField = async (key: string, value: any) => {
     const updatedChannel = { ...channelConfig, [key]: value };
@@ -192,9 +185,9 @@ export default function ChannelConfigEditor({ name, channelConfig, config, onSav
           ) : (
             <span className="text-xs bg-red-900/40 text-red-400 px-2 py-0.5 rounded-full">disabled</span>
           )}
-          {channelSettings && Object.keys(channelSettings).length > 0 && (
+          {activeOverrideCount > 0 && (
             <span className="text-xs bg-blue-900/40 text-blue-400 px-2 py-0.5 rounded-full">
-              {Object.keys(channelSettings).length} override{Object.keys(channelSettings).length !== 1 ? 's' : ''}
+              {activeOverrideCount} override{activeOverrideCount !== 1 ? 's' : ''}
             </span>
           )}
         </div>
@@ -292,317 +285,8 @@ export default function ChannelConfigEditor({ name, channelConfig, config, onSav
               formatValue={(v) => v ? `"${(v as string).slice(0, 50)}${(v as string).length > 50 ? '...' : ''}"` : '(none)'}
             />
 
-            {/* Current Session Context — legacy under v2, gated behind featureFlags.SHOW_LEGACY_CURRENT_CONTEXT */}
-            {SHOW_LEGACY_CURRENT_CONTEXT && (<>
-            <div className="mt-4 mb-2">
-              <span className="text-xs font-semibold text-neutral-500 uppercase tracking-wide">Current Session Context</span>
-            </div>
 
-            <SettingRow
-              label="Num Messages"
-              inheritedValue={globalResolved.currentContext.limit}
-              inheritedFrom="global"
-              overrideValue={channelSettings.currentContext?.limit}
-              onOverride={(val) => updateChannelSetting('currentContext.limit', val)}
-              onReset={() => resetChannelSetting('currentContext.limit')}
-              renderInput={(val, onChange) => renderNumberInput(val, onChange, { min: 0 })}
-            />
 
-            <SettingRow
-              label="Auto: Num Messages"
-              hint="Classifier decides the current-session message window"
-              inheritedValue={globalResolved.auto.currentContext.limit}
-              inheritedFrom="global"
-              overrideValue={channelSettings.auto?.currentContext?.limit}
-              onOverride={(val) => updateChannelSetting('auto.currentContext.limit', val)}
-              onReset={() => resetChannelSetting('auto.currentContext.limit')}
-              renderInput={(val, onChange) => renderToggle(val, onChange)}
-              formatValue={(v) => v ? 'On' : 'Off'}
-            />
-
-            <SettingRow
-              label="Working Context"
-              hint="Thoughts + tools together"
-              inheritedValue={globalResolved.currentContext.includeThoughts && globalResolved.currentContext.includeTools}
-              inheritedFrom="global"
-              overrideValue={channelSettings.currentContext?.includeThoughts === undefined && channelSettings.currentContext?.includeTools === undefined
-                ? undefined
-                : (channelSettings.currentContext?.includeThoughts ?? globalResolved.currentContext.includeThoughts)
-                  && (channelSettings.currentContext?.includeTools ?? globalResolved.currentContext.includeTools)}
-              onOverride={(val) => updateChannelSettingsBatch([
-                { field: 'currentContext.includeThoughts', value: val },
-                { field: 'currentContext.includeTools', value: val },
-              ])}
-              onReset={() => resetChannelSettingsBatch([
-                'currentContext.includeThoughts',
-                'currentContext.includeTools',
-              ])}
-              renderInput={(val, onChange) => renderToggle(val, onChange)}
-              formatValue={(v) => v ? 'On' : 'Off'}
-            />
-
-            <SettingRow
-              label="Auto: Working Context"
-              hint="Classifier decides whether to include thoughts + tools"
-              inheritedValue={globalResolved.auto.currentContext.includeWorkingContext}
-              inheritedFrom="global"
-              overrideValue={channelSettings.auto?.currentContext?.includeWorkingContext}
-              onOverride={(val) => updateChannelSetting('auto.currentContext.includeWorkingContext', val)}
-              onReset={() => resetChannelSetting('auto.currentContext.includeWorkingContext')}
-              renderInput={(val, onChange) => renderToggle(val, onChange)}
-              formatValue={(v) => v ? 'On' : 'Off'}
-            />
-
-            <SettingRow
-              label="Archived"
-              inheritedValue={globalResolved.currentContext.includeArchived}
-              inheritedFrom="global"
-              overrideValue={channelSettings.currentContext?.includeArchived}
-              onOverride={(val) => updateChannelSetting('currentContext.includeArchived', val)}
-              onReset={() => resetChannelSetting('currentContext.includeArchived')}
-              renderInput={(val, onChange) => renderToggle(val, onChange)}
-              formatValue={(v) => v ? 'On' : 'Off'}
-            />
-
-            <SettingRow
-              label="Exclude Embedded"
-              hint="Skip messages already covered by embeddings"
-              inheritedValue={globalResolved.currentContext.excludeEmbedded}
-              inheritedFrom="global"
-              overrideValue={channelSettings.currentContext?.excludeEmbedded}
-              onOverride={(val) => updateChannelSetting('currentContext.excludeEmbedded', val)}
-              onReset={() => resetChannelSetting('currentContext.excludeEmbedded')}
-              renderInput={(val, onChange) => renderToggle(val, onChange)}
-              formatValue={(v) => v ? 'On' : 'Off'}
-            />
-
-            <SettingRow
-              label="Keep Embedded Tail"
-              hint="Recent embedded messages to keep anyway"
-              inheritedValue={globalResolved.currentContext.keepRecentEmbeddedMessages}
-              inheritedFrom="global"
-              overrideValue={channelSettings.currentContext?.keepRecentEmbeddedMessages}
-              onOverride={(val) => updateChannelSetting('currentContext.keepRecentEmbeddedMessages', val)}
-              onReset={() => resetChannelSetting('currentContext.keepRecentEmbeddedMessages')}
-              renderInput={(val, onChange) => renderNumberInput(val, onChange, { min: 0, max: 50 })}
-            />
-            </>)}
-
-            {/* Cross-Session Context — legacy under v2 */}
-            {SHOW_LEGACY_CROSS_CONTEXT && (<>
-            <div className="mt-4 mb-2">
-              <span className="text-xs font-semibold text-neutral-500 uppercase tracking-wide">Cross-Session Context</span>
-            </div>
-
-            <SettingRow
-              label="Max Sessions"
-              inheritedValue={globalResolved.crossContext.maxSessions}
-              inheritedFrom="global"
-              overrideValue={channelSettings.crossContext?.maxSessions}
-              onOverride={(val) => updateChannelSetting('crossContext.maxSessions', val)}
-              onReset={() => resetChannelSetting('crossContext.maxSessions')}
-              renderInput={(val, onChange) => renderNumberInput(val, onChange, { min: 0 })}
-            />
-
-            <SettingRow
-              label="Auto: Max Sessions"
-              hint="Classifier decides how many other sessions to pull from"
-              inheritedValue={globalResolved.auto.crossContext.maxSessions}
-              inheritedFrom="global"
-              overrideValue={channelSettings.auto?.crossContext?.maxSessions}
-              onOverride={(val) => updateChannelSetting('auto.crossContext.maxSessions', val)}
-              onReset={() => resetChannelSetting('auto.crossContext.maxSessions')}
-              renderInput={(val, onChange) => renderToggle(val, onChange)}
-              formatValue={(v) => v ? 'On' : 'Off'}
-            />
-
-            <SettingRow
-              label="Num Messages"
-              inheritedValue={globalResolved.crossContext.limit}
-              inheritedFrom="global"
-              overrideValue={channelSettings.crossContext?.limit}
-              onOverride={(val) => updateChannelSetting('crossContext.limit', val)}
-              onReset={() => resetChannelSetting('crossContext.limit')}
-              renderInput={(val, onChange) => renderNumberInput(val, onChange, { min: 0 })}
-            />
-
-            <SettingRow
-              label="Auto: Num Messages"
-              hint="Classifier decides the cross-session message window"
-              inheritedValue={globalResolved.auto.crossContext.limit}
-              inheritedFrom="global"
-              overrideValue={channelSettings.auto?.crossContext?.limit}
-              onOverride={(val) => updateChannelSetting('auto.crossContext.limit', val)}
-              onReset={() => resetChannelSetting('auto.crossContext.limit')}
-              renderInput={(val, onChange) => renderToggle(val, onChange)}
-              formatValue={(v) => v ? 'On' : 'Off'}
-            />
-
-            <SettingRow
-              label="Working Context"
-              hint="Thoughts + tools together"
-              inheritedValue={globalResolved.crossContext.includeThoughts && globalResolved.crossContext.includeTools}
-              inheritedFrom="global"
-              overrideValue={channelSettings.crossContext?.includeThoughts === undefined && channelSettings.crossContext?.includeTools === undefined
-                ? undefined
-                : (channelSettings.crossContext?.includeThoughts ?? globalResolved.crossContext.includeThoughts)
-                  && (channelSettings.crossContext?.includeTools ?? globalResolved.crossContext.includeTools)}
-              onOverride={(val) => updateChannelSettingsBatch([
-                { field: 'crossContext.includeThoughts', value: val },
-                { field: 'crossContext.includeTools', value: val },
-              ])}
-              onReset={() => resetChannelSettingsBatch([
-                'crossContext.includeThoughts',
-                'crossContext.includeTools',
-              ])}
-              renderInput={(val, onChange) => renderToggle(val, onChange)}
-              formatValue={(v) => v ? 'On' : 'Off'}
-            />
-
-            <SettingRow
-              label="Auto: Working Context"
-              hint="Classifier decides whether to include thoughts + tools from other sessions"
-              inheritedValue={globalResolved.auto.crossContext.includeWorkingContext}
-              inheritedFrom="global"
-              overrideValue={channelSettings.auto?.crossContext?.includeWorkingContext}
-              onOverride={(val) => updateChannelSetting('auto.crossContext.includeWorkingContext', val)}
-              onReset={() => resetChannelSetting('auto.crossContext.includeWorkingContext')}
-              renderInput={(val, onChange) => renderToggle(val, onChange)}
-              formatValue={(v) => v ? 'On' : 'Off'}
-            />
-
-            <SettingRow
-              label="Archived"
-              inheritedValue={globalResolved.crossContext.includeArchived}
-              inheritedFrom="global"
-              overrideValue={channelSettings.crossContext?.includeArchived}
-              onOverride={(val) => updateChannelSetting('crossContext.includeArchived', val)}
-              onReset={() => resetChannelSetting('crossContext.includeArchived')}
-              renderInput={(val, onChange) => renderToggle(val, onChange)}
-              formatValue={(v) => v ? 'On' : 'Off'}
-            />
-            </>)}
-
-            {/* Memory section — Profile Update Context stays live; the rest is legacy. */}
-            <div className="mt-4 mb-2">
-              <span className="text-xs font-semibold text-neutral-500 uppercase tracking-wide">Memory</span>
-            </div>
-
-            {SHOW_LEGACY_MEMORY_RECALL && (
-            <SettingRow
-              label="Recalled Memory Limit"
-              hint="Max semantic chunks to inject"
-              inheritedValue={globalResolved.memory.recalledMemoryLimit}
-              inheritedFrom="global"
-              overrideValue={channelSettings.memory?.recalledMemoryLimit}
-              onOverride={(val) => updateChannelSetting('memory.recalledMemoryLimit', val)}
-              onReset={() => resetChannelSetting('memory.recalledMemoryLimit')}
-              renderInput={(val, onChange) => renderNumberInput(val, onChange, { min: 0, max: 50 })}
-            />
-            )}
-
-            {SHOW_LEGACY_MEMORY_RECALL && (
-            <SettingRow
-              label="Relevance Threshold"
-              inheritedValue={globalResolved.memory.recalledMemoryThreshold}
-              inheritedFrom="global"
-              overrideValue={channelSettings.memory?.recalledMemoryThreshold}
-              onOverride={(val) => updateChannelSetting('memory.recalledMemoryThreshold', val)}
-              onReset={() => resetChannelSetting('memory.recalledMemoryThreshold')}
-              renderInput={(val, onChange) => renderNumberInput(val, onChange, { min: 0, max: 1, step: 0.001 })}
-            />
-            )}
-
-            {SHOW_LEGACY_PROFILE_UPDATE_CONTEXT && (
-            <SettingRow
-              label="Profile Update Context"
-              inheritedValue={globalResolved.memory.profileUpdateContext}
-              inheritedFrom="global"
-              overrideValue={channelSettings.memory?.profileUpdateContext}
-              onOverride={(val) => updateChannelSetting('memory.profileUpdateContext', val)}
-              onReset={() => resetChannelSetting('memory.profileUpdateContext')}
-              renderInput={(val, onChange) => renderNumberInput(val, onChange, { min: 1, max: 10 })}
-            />
-            )}
-
-            {SHOW_LEGACY_MEMORY_RECALL && (
-            <SettingRow
-              label="Contextualize Search Query"
-              hint="Rewrite follow-up asks before semantic search"
-              inheritedValue={globalResolved.memory.contextualizeQuery}
-              inheritedFrom="global"
-              overrideValue={channelSettings.memory?.contextualizeQuery}
-              onOverride={(val) => updateChannelSetting('memory.contextualizeQuery', val)}
-              onReset={() => resetChannelSetting('memory.contextualizeQuery')}
-              renderInput={(val, onChange) => renderToggle(val, onChange)}
-              formatValue={(v) => v ? 'On' : 'Off'}
-            />
-            )}
-
-            {SHOW_LEGACY_MEMORY_RECALL && (
-            <SettingRow
-              label="Query Context Messages"
-              inheritedValue={globalResolved.memory.queryContextMessages}
-              inheritedFrom="global"
-              overrideValue={channelSettings.memory?.queryContextMessages}
-              onOverride={(val) => updateChannelSetting('memory.queryContextMessages', val)}
-              onReset={() => resetChannelSetting('memory.queryContextMessages')}
-              renderInput={(val, onChange) => renderNumberInput(val, onChange, { min: 0, max: 50 })}
-            />
-            )}
-
-            {SHOW_LEGACY_MEMORY_RECALL && (
-            <SettingRow
-              label="Query Contextualizer Model"
-              inheritedValue={globalResolved.memory.queryContextualizerModel}
-              inheritedFrom="global"
-              overrideValue={channelSettings.memory?.queryContextualizerModel}
-              onOverride={(val) => updateChannelSetting('memory.queryContextualizerModel', val)}
-              onReset={() => resetChannelSetting('memory.queryContextualizerModel')}
-              renderInput={(val, onChange) => <ClassifierModelPicker value={val} onChange={onChange} />}
-              formatValue={(v) => v?.provider && v?.name ? `${v.provider}/${v.name}` : '—'}
-            />
-            )}
-
-            {/* Auto Classifier — legacy under v2 */}
-            {SHOW_LEGACY_AUTO_CLASSIFIER && (<>
-            <div className="mt-4 mb-2">
-              <span className="text-xs font-semibold text-neutral-500 uppercase tracking-wide">Auto Classifier</span>
-            </div>
-
-            <SettingRow
-              label="Classifier: Current Session Messages"
-              hint="How many recent messages from this session the classifier reads"
-              inheritedValue={globalResolved.auto.classifierContext.currentSessionMessages}
-              inheritedFrom="global"
-              overrideValue={channelSettings.auto?.classifierContext?.currentSessionMessages}
-              onOverride={(val) => updateChannelSetting('auto.classifierContext.currentSessionMessages', val)}
-              onReset={() => resetChannelSetting('auto.classifierContext.currentSessionMessages')}
-              renderInput={(val, onChange) => renderNumberInput(val, onChange, { min: 0, max: 300 })}
-            />
-
-            <SettingRow
-              label="Classifier: Cross-Session Max Sessions"
-              hint="How many other sessions the classifier may preview"
-              inheritedValue={globalResolved.auto.classifierContext.crossSessionMaxSessions}
-              inheritedFrom="global"
-              overrideValue={channelSettings.auto?.classifierContext?.crossSessionMaxSessions}
-              onOverride={(val) => updateChannelSetting('auto.classifierContext.crossSessionMaxSessions', val)}
-              onReset={() => resetChannelSetting('auto.classifierContext.crossSessionMaxSessions')}
-              renderInput={(val, onChange) => renderNumberInput(val, onChange, { min: 0, max: 20 })}
-            />
-
-            <SettingRow
-              label="Classifier: Cross-Session Messages"
-              hint="How many recent messages per other session the classifier may preview"
-              inheritedValue={globalResolved.auto.classifierContext.crossSessionMessages}
-              inheritedFrom="global"
-              overrideValue={channelSettings.auto?.classifierContext?.crossSessionMessages}
-              onOverride={(val) => updateChannelSetting('auto.classifierContext.crossSessionMessages', val)}
-              onReset={() => resetChannelSetting('auto.classifierContext.crossSessionMessages')}
-              renderInput={(val, onChange) => renderNumberInput(val, onChange, { min: 0, max: 20 })}
-            />
-            </>)}
 
           </div>
         </div>

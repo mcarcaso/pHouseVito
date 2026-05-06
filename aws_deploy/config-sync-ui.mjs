@@ -21,6 +21,14 @@ const REMOTE_CONFIG_PATH = "/opt/vito/user/vito.config.json";
 const KEY_PATH = resolve(process.env.HOME, ".ssh", "vito-deploy.pem");
 const SSH_OPTS = `-i ${KEY_PATH} -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o LogLevel=ERROR -o ConnectTimeout=10`;
 
+const LEGACY_CONFIG_PREFIXES = [
+  "settings.currentContext",
+  "settings.crossContext",
+  "settings.memory",
+  "settings.auto",
+  "sessions.system:profile-updater",
+];
+
 // ── Helpers ─────────────────────────────────────────────────────────
 
 function loadState(name) {
@@ -51,6 +59,10 @@ function sshWrite(ip, remotePath, content) {
 function fetchRemoteConfig(ip) {
   const raw = ssh(ip, `cat ${REMOTE_CONFIG_PATH}`);
   return JSON.parse(raw);
+}
+
+function isLegacyConfigPath(path) {
+  return LEGACY_CONFIG_PREFIXES.some((prefix) => path === prefix || path.startsWith(prefix + "."));
 }
 
 // ── Main ────────────────────────────────────────────────────────────
@@ -217,6 +229,7 @@ function buildHTML() {
 const DATA = __DATA_PLACEHOLDER__;
 const defaultCfg = DATA.defaultCfg;
 const instances = DATA.instances;
+const legacyConfigPrefixes = DATA.legacyConfigPrefixes || [];
 const instanceNames = Object.keys(instances);
 
 let currentInstance = instanceNames[0];
@@ -254,7 +267,9 @@ function initPicks(name) {
     const rv = getByPath(inst.remoteCfg, p);
     const inDefault = dv !== undefined;
     const inRemote = rv !== undefined;
-    if (inRemote && inDefault) {
+    if (isLegacyPath(p)) {
+      picks[name][p] = "omit"; // v2 cleanup: prune old context/auto/profile-updater config by default
+    } else if (inRemote && inDefault) {
       picks[name][p] = "remote"; // keep remote for existing
     } else if (!inRemote && inDefault) {
       picks[name][p] = "default"; // add missing from default
@@ -547,6 +562,10 @@ async function restartPm2() {
 
 // ── Utilities ───────────────────────────────────────────────────
 
+function isLegacyPath(path) {
+  return legacyConfigPrefixes.some(prefix => path === prefix || path.startsWith(prefix + "."));
+}
+
 function getByPath(obj, path) {
   return path.split(".").reduce((o, k) => (o != null ? o[k] : undefined), obj);
 }
@@ -704,7 +723,7 @@ const PORT = 9384;
 
 const server = createServer((req, res) => {
   if (req.method === "GET" && (req.url === "/" || req.url === "/index.html")) {
-    const dataPayload = JSON.stringify({ defaultCfg, instances });
+    const dataPayload = JSON.stringify({ defaultCfg, instances, legacyConfigPrefixes: LEGACY_CONFIG_PREFIXES });
     const html = buildHTML().replace("__DATA_PLACEHOLDER__", dataPayload);
     res.writeHead(200, { "Content-Type": "text/html; charset=utf-8" });
     res.end(html);

@@ -742,6 +742,7 @@ export class OrchestratorV2 {
     const recentMessages = this.queries.getRecentMessages(vitoSession.id, 1);
     if (!existing && recentMessages.length === 0) {
       await handler.relay("✅ Already starting fresh! Nothing to reset.");
+      await handler.stopTyping?.();
       return;
     }
 
@@ -852,6 +853,7 @@ export class OrchestratorV2 {
     const existing = this.piHarnesses.get(vitoSession.id);
     if (!existing || !existing.isInitialized()) {
       await handler.relay("✅ Nothing to compact — no active pi session yet.");
+      await handler.stopTyping?.();
       return;
     }
 

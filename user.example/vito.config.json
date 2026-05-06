@@ -2,81 +2,15 @@
   "bot": {
     "name": "Assistant"
   },
+  "apps": {
+    "baseDomain": "localhost",
+    "portStart": 3100
+  },
   "settings": {
     "harness": "pi-coding-agent",
     "streamMode": "final",
     "traceMessageUpdates": false,
-    "currentContext": {
-      "limit": 100,
-      "includeThoughts": false,
-      "includeTools": false,
-      "includeArchived": false,
-      "excludeEmbedded": true,
-      "keepRecentEmbeddedMessages": 0
-    },
-    "crossContext": {
-      "limit": 3,
-      "includeThoughts": false,
-      "includeTools": false,
-      "includeArchived": false,
-      "maxSessions": 5
-    },
     "requireMention": false,
-    "memory": {
-      "recalledMemoryLimit": 20,
-      "profileUpdateContext": 2,
-      "contextualizeQuery": true,
-      "queryContextMessages": 6,
-      "queryContextualizerModel": {
-        "provider": "openrouter",
-        "name": "deepseek/deepseek-v4-flash"
-      }
-    },
-    "auto": {
-      "pi-coding-agent": {
-        "model": true,
-        "modelChoices": [
-          {
-            "provider": "openrouter",
-            "name": "deepseek/deepseek-v4-flash",
-            "description": "Quick lane. Simple Q&A, formatting, short rewrites, lightweight classification, low-risk tasks, and other easy asks. Avoid for complex debugging, deep investigations, or multi-step tool chains."
-          },
-          {
-            "provider": "openrouter",
-            "name": "deepseek/deepseek-v4-pro",
-            "description": "Default. Coding, debugging, tool chains, investigations, multimodal tasks, analysis, writing, and most real work."
-          },
-          {
-            "provider": "openrouter",
-            "name": "moonshotai/kimi-k2.6",
-            "description": "Multimodal only. Images and PDFs. For vision-heavy jobs, use this lane; otherwise prefer Flash or Pro."
-          }
-        ]
-      },
-      "classifierModel": {
-        "provider": "openrouter",
-        "name": "deepseek/deepseek-v4-flash"
-      },
-      "classifierContext": {
-        "currentSessionMessages": 100,
-        "crossSessionMessages": 5,
-        "crossSessionMaxSessions": 5
-      },
-      "currentContext": {
-        "includeThoughts": true,
-        "includeTools": true,
-        "limit": false,
-        "includeWorkingContext": false
-      },
-      "crossContext": {
-        "limit": false,
-        "maxSessions": false,
-        "includeWorkingContext": false
-      },
-      "memory": {
-        "recalledMemoryLimit": false
-      }
-    },
     "timezone": "America/Toronto"
   },
   "harnesses": {
@@ -88,18 +22,7 @@
       "thinkingLevel": "medium"
     }
   },
-  "sessions": {
-    "system:profile-updater": {
-      "harness": "pi-coding-agent",
-      "pi-coding-agent": {
-        "model": {
-          "provider": "openrouter",
-          "name": "deepseek/deepseek-v4-flash"
-        },
-        "thinkingLevel": "off"
-      }
-    }
-  },
+  "sessions": {},
   "channels": {
     "dashboard": {
       "enabled": true
@@ -111,8 +34,7 @@
     "discord": {
       "enabled": false,
       "allowedGuildIds": [],
-      "allowedChannelIds": [],
-      "requireMention": false
+      "allowedChannelIds": []
     }
   },
   "cron": {

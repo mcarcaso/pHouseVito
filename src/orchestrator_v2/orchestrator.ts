@@ -69,6 +69,10 @@ function encodeSessionDirName(sessionId: string): string {
   return encodeURIComponent(sessionId);
 }
 
+function normalizeSlashCommand(content?: string): string {
+  return (content || "").trim().replace(/^\/([A-Za-z0-9_]+)@[^\s]+(?=\s|$)/, "/$1");
+}
+
 export class OrchestratorV2 {
   private sessionManager: SessionManager;
   private channels = new Map<string, Channel>();
@@ -262,12 +266,15 @@ export class OrchestratorV2 {
     const sessionKey = event.sessionKey;
     console.log(`[v2 handleInbound] ⚡ from ${sessionKey}: "${event.content?.slice(0, 50)}"`);
 
-    if (channel && event.content?.trim() === "/stop") {
-      await this.handleStopCommand(event, channel);
+    const commandText = normalizeSlashCommand(event.content);
+    const commandEvent = commandText !== (event.content || "").trim() ? { ...event, content: commandText } : event;
+
+    if (channel && commandText === "/stop") {
+      await this.handleStopCommand(commandEvent, channel);
       return;
     }
-    if (channel && event.content?.trim() === "/restart") {
-      await this.handleRestartCommand(event, channel);
+    if (channel && commandText === "/restart") {
+      await this.handleRestartCommand(commandEvent, channel);
       return;
     }
     // /new and /compact are non-priority — they go through the queue so they
@@ -314,20 +321,23 @@ export class OrchestratorV2 {
   private async processMessage(event: InboundEvent, channel: Channel | null): Promise<void> {
     await this.reloadConfigIfChanged();
 
-    if (channel && event.content?.trim() === "/stop") {
-      await this.handleStopCommand(event, channel);
+    const commandText = normalizeSlashCommand(event.content);
+    const commandEvent = commandText !== (event.content || "").trim() ? { ...event, content: commandText } : event;
+
+    if (channel && commandText === "/stop") {
+      await this.handleStopCommand(commandEvent, channel);
       return;
     }
-    if (channel && event.content?.trim() === "/new") {
-      await this.handleNewCommand(event, channel);
+    if (channel && commandText === "/new") {
+      await this.handleNewCommand(commandEvent, channel);
       return;
     }
-    if (channel && event.content?.trim() === "/compact") {
-      await this.handleCompactCommand(event, channel);
+    if (channel && commandText === "/compact") {
+      await this.handleCompactCommand(commandEvent, channel);
       return;
     }
-    if (channel && /^\/model(?:\s|$)/i.test(event.content?.trim() || "")) {
-      await this.handleModelCommand(event, channel);
+    if (channel && /^\/model(?:\s|$)/i.test(commandText)) {
+      await this.handleModelCommand(commandEvent, channel);
       return;
     }
 

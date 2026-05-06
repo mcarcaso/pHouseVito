@@ -56,6 +56,7 @@ export class TelegramChannel implements Channel {
       { command: "new", description: "Fresh start — new pi session, archive chat" },
       { command: "compact", description: "Summarize older turns to free context" },
       { command: "stop", description: "Abort the current request" },
+      { command: "model", description: "Show or switch the live pi model" },
     ];
     
     await this.bot.api.setMyCommands(commands);
@@ -127,6 +128,9 @@ export class TelegramChannel implements Channel {
       const botName = this.config.bot?.name;
       let content = ctx.message.text;
       if (botUsername) {
+        // In groups, Telegram commands arrive as /command@botusername.
+        // Strip that suffix so orchestrator command matching sees /command.
+        content = content.replace(new RegExp(`^/(\\w+)@${botUsername}(?=\\s|$)`, "i"), "/$1");
         content = content.replace(new RegExp(`@${botUsername}`, "gi"), `@${botName}`);
       }
 
@@ -165,7 +169,9 @@ export class TelegramChannel implements Channel {
       const botUsername = this.bot!.botInfo.username;
       const botName = this.config.bot?.name;
       if (botUsername) {
-        return text.replace(new RegExp(`@${botUsername}`, "gi"), `@${botName}`);
+        return text
+          .replace(new RegExp(`^/(\\w+)@${botUsername}(?=\\s|$)`, "i"), "/$1")
+          .replace(new RegExp(`@${botUsername}`, "gi"), `@${botName}`);
       }
       return text;
     };

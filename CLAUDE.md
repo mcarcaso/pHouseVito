@@ -1,243 +1,122 @@
-# CLAUDE.md — Vito 3.0
+# CLAUDE.md
 
-Personal AI agent framework. Multi-channel (Dashboard, Discord, Telegram, Direct/API) with a pluggable harness system, semantic memory pipeline, skills, and per-field auto classifier.
+This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
-## Tech Stack
+## Project
 
-- **Backend**: Node.js, TypeScript 5.7+, Express 5.2, better-sqlite3 (WAL mode), WebSocket (ws)
-- **Frontend**: React 18.3, Vite 6.4, Tailwind CSS 4.1, React Router 7, react-markdown
-- **AI Harness**: `@mariozechner/pi-coding-agent` + `@mariozechner/pi-ai` — supports Anthropic, OpenAI, Google, OpenRouter, Groq, xAI
-- **Embeddings**: OpenAI `text-embedding-3-small` via OpenRouter (falls back to native OpenAI)
-- **Channels**: grammy (Telegram), discord.js 14 (Discord), Express+WS (Dashboard), DirectChannel (API)
-- **Process**: PM2 (`vito-server`), croner for cron scheduling
-- **Other**: axios, playwright, googleapis, gray-matter, ajv, execa, @viz-js/viz, dotenv
+Vito — personal AI agent that runs as a long-lived service across Dashboard, Discord, Telegram, and a programmatic Direct/API channel. Single Pi conversation per Vito session, lives for days/weeks, persisted to disk so the prompt prefix caches and survives restarts.
 
 ## Commands
 
 ```bash
-npm run dev              # Backend watch mode (tsx watch src/index.ts)
-npm run dev:dashboard    # Dashboard dev server (Vite, separate terminal)
-npm run build            # TypeScript compile (tsc → dist/)
-npm run build:dashboard  # Vite build (dashboard/dist/)
-npm start                # Build dashboard + start with PM2 (user/ecosystem.config.cjs)
-npm stop / npm restart   # PM2 lifecycle (pm2 stop/restart vito-server)
-npm logs                 # PM2 logs (pm2 logs vito-server)
-npm run status           # PM2 status
+npm run dev              # tsx watch src/index.ts
+npm run dev:dashboard    # Vite dev server (separate terminal)
+npm run build            # tsc → dist/
+npm run build:dashboard  # Vite build → dashboard/dist/
+npm start                # build dashboard + pm2 start user/ecosystem.config.cjs
+npm run logs             # pm2 logs vito-server
+npm run status / stop / restart   # pm2 wrappers (service name: vito-server)
 ```
 
-Always rebuild after source changes before running in production.
-
-## Project Structure
-
-```
-src/
-  index.ts                  # Entry point — loads config, secrets, creates orchestrator, registers channels, watches config
-  orchestrator.ts           # Core message routing, context assembly, auto classifier, harness execution, /stop /new /restart commands
-  types.ts                  # Shared types (VitoConfig, Settings, Channel, Harness, InboundEvent, MsgType, etc.)
-  config.ts                 # Loads vito.config.json and SOUL.md from user/
-  settings.ts               # Settings cascade: Global -> Channel -> Session (with deep merge)
-  secrets.ts                # Loads user/secrets.json into process.env, provider key management
-  system-instructions.ts    # Reads SYSTEM.md, builds <system> block for prompts
-  workspace.ts              # Sandbox enforcement (dev mode = full access, package mode = ~/vito only)
-  traceTypes.ts             # TypeScript types for .jsonl trace file format
-
-  channels/
-    dashboard.ts            # Express + WS server (port 3030), auth, REST API, file serving, drive
-    telegram.ts             # grammy bot, long polling, photo/document attachments
-    discord.ts              # discord.js client, guild messages + DMs, slash commands, attachments
-    direct.ts               # Programmatic API channel — captures response, used by Orchestrator.ask()
-
-  harnesses/
-    types.ts                # Harness interface, NormalizedEvent, HarnessCallbacks, HarnessFactory
-    proxy.ts                # ProxyHarness — base class for decorator pattern (delegates all calls)
-    pi-coding-agent/
-      index.ts              # PiHarness — wraps @mariozechner/pi-coding-agent, default model claude-sonnet-4
-    index.ts                # Re-exports: PiHarness, ProxyHarness, TracingHarness, PersistenceHarness, RelayHarness, TypingHarness
-    tracing.ts              # withTracing() — logs all events to .jsonl trace files (user/logs/)
-    persistence.ts          # withPersistence() — saves user/assistant/tool messages to SQLite
-    relay.ts                # withRelay() — forwards messages to channel OutputHandler (stream/bundled/final modes)
-    typing.ts               # withTyping() — manages typing indicators on channels that support them
-
-  harness/decorators/
-    index.ts                # Re-exports withNoReplyCheck
-    no-reply-final-message.ts  # Suppresses relay if response contains NO_REPLY (for conditional cron jobs)
-
-  db/
-    schema.ts               # SQLite schema creation + migrations (sessions, messages, memories, traces tables)
-    queries.ts              # Prepared statement wrappers (Queries class) for all DB operations
-
-  memory/
-    models.ts               # Shared model identifier: openai/text-embedding-3-small
-    client.ts               # OpenAI-compatible client for embeddings (OpenRouter > native OpenAI fallback)
-    context.ts              # assembleContext() — builds 3-layer context: memories, cross-session, current-session
-    embeddings.ts           # Incremental embeddings — chunks messages (2-4K chars), generates contextual sentence, embeds to embeddings.db
-    search.ts               # Hybrid retrieval: embedding cosine similarity + FTS5 BM25 + RRF merge
-    auto-classifier.ts      # Per-field auto classifier — cheap LLM (claude-haiku-4-5) decides settings per turn
-    profile.ts              # User profile (user/profile.md) — auto-updated after each turn via LLM with Read/Edit tools
-
-  skills/
-    discovery.ts            # Scans user/skills/ and src/skills/builtin/ for SKILL.md files (gray-matter frontmatter)
-
-  sessions/
-    manager.ts              # Session resolution — resolves or creates sessions by key (channel:target format)
-
-  cron/
-    scheduler.ts            # Croner-based scheduler — timezone-aware, one-time jobs, sendCondition support
-
-SYSTEM.md                   # System instructions (hot-loaded into every prompt, ~94 lines)
-
-dashboard/                  # React SPA
-  src/
-    App.tsx                 # Routes: Chat, Sessions, Memory, Skills, Secrets, Jobs, System, Server, Apps, Drive, Traces, Settings
-    components/
-      Chat.tsx, ChatView.tsx, Sessions.tsx, Memory.tsx, Skills.tsx,
-      Secrets.tsx, Jobs.tsx, System.tsx, Server.tsx, Apps.tsx,
-      Drive.tsx, Traces.tsx, Login.tsx, FilterButton.tsx
-      settings/             # Unified settings UI
-
-user/                       # User config directory (gitignored, created from user.example/ on first run)
-  vito.config.json          # Main config: bot, settings, harnesses, channels, sessions, cron
-  secrets.json              # API keys (flat key-value, injected into process.env)
-  SOUL.md                   # Agent personality
-  profile.md                # Auto-managed user profile (markdown)
-  profile.json              # Auto-managed user profile (structured)
-  vito.db                   # Main SQLite database
-  embeddings.db             # Embeddings database (chunks + vectors)
-  ecosystem.config.cjs      # PM2 config
-  skills/                   # User-defined skills (SKILL.md format, ~36 skills)
-  apps/                     # User apps
-  drive/                    # File storage (images/, with .meta.json for public/private)
-  logs/                     # Trace files (.jsonl)
-  images/                   # Static images
-
-src/skills/builtin/         # Built-in skills: apps, keyword-history-search, scheduler, semantic-history-search
-```
+Production deploy: `./aws_deploy/deploy.sh mike5` (git pull → npm ci → builds → pm2 restart on the EC2 box).
 
 ## Architecture
 
-### Message Flow
-Channel receives message -> `Orchestrator.handleInbound()` -> per-session queue (sequential within session, parallel across sessions) -> `processMessage()`:
-1. Resolve/create session via `SessionManager`
-2. Download remote attachments (e.g., Telegram photos) to `user/drive/images/`
-3. Check `requireMention` setting (if not mentioned, store message silently and return)
-4. Resolve effective settings via `getEffectiveSettings()` (Global -> Channel -> Session cascade)
-5. If any `auto` flags enabled, run auto classifier (cheap LLM call) to decide per-turn settings
-6. Assemble context: memories list, cross-session messages, current-session messages
-7. Auto-search embeddings for relevant historical chunks (hybrid: embedding + FTS5 BM25 + RRF)
-8. Build harness with decorator chain: `PiHarness` -> `withTracing()` -> `withPersistence()` -> `withRelay()` -> `withTyping()`
-9. Build system prompt: datetime, personality (SOUL.md), system block (SYSTEM.md), skills, channel prompt, harness instructions, custom instructions, user profile, recalled memories, session context
-10. Execute harness with abort signal support
-11. Background: embed new chunks, update user profile
+### Entry point
 
-### Key Patterns
-- **Harness decorator chain**: ProxyHarness base class, decorators wrap inner harness. Order matters: tracing -> persistence -> relay -> typing
-- **Settings cascade**: Global -> Channel -> Session (deep merge, later wins). Resolved via `getEffectiveSettings()`
-- **Auto classifier**: Per-field LLM classifier (claude-haiku-4-5 default) can auto-select: currentContext.limit, currentContext.includeWorkingContext, crossContext.limit, crossContext.maxSessions, crossContext.includeWorkingContext, recalledMemoryLimit, pi-coding-agent model. Configurable model choices, classifier model, and classifierContext (how much history the classifier sees)
-- **Stream modes**: `stream` (real-time tokens), `bundled` (chunks), `final` (single message). DirectChannel and sendCondition force `final`
-- **Append-only DB**: Messages never deleted, only marked archived. `/new` command embeds then archives
-- **Hot-reload**: Config file watched with 3s debounce, reloads orchestrator + cron + dashboard
-- **Per-session queues**: Messages queue per session, process sequentially. `/stop` bypasses queue, aborts active request, releases session lock
-- **Trace files**: .jsonl format in user/logs/ — header, invocation, prompt, user_message, raw_events, normalized_events, memory_search, embedding_result, profile_update, footer
-- **Conditional cron**: Jobs with `sendCondition` force final mode, wrap handler with NO_REPLY check
+`src/index.ts` boots in this order: ensure `user/` exists (copied from `user.example/` on first run), load secrets into `process.env`, load `vito.config.json` and `SOUL.md`, set `process.env.TZ` from `config.settings.timezone`, open SQLite, construct `OrchestratorV2`, register the three real channels (Dashboard, Telegram, Discord — Direct is registered lazily by `Orchestrator.ask()`), `orchestrator.start()`, then watch the config file with a 3s debounce for hot-reload.
 
-### Memory System
-- **User profile** (`user/profile.md`): Freeform markdown, always injected into system prompt. Auto-updated after each turn by a lightweight LLM call with Read/Edit tools
-- **Current session context**: Recent messages from current session (default 100, configurable)
-- **Cross-session context**: Last N messages from other sessions (default 5 per session, max 15 sessions)
-- **Semantic search**: Incremental embeddings (2-4K char chunks) stored in embeddings.db. Auto-search runs before every response using hybrid retrieval (cosine similarity + FTS5 BM25 + RRF merge). Contextual sentence generated per chunk via gpt-4o-mini
-- **Auto-search tuning**: recalledMemoryLimit (default 3), recalledMemoryThreshold (default 0.005 RRF score)
+### Orchestrator V2 (`src/orchestrator_v2/`)
 
-### Sessions
-Format: `channel:target` (e.g., `dashboard:default`, `telegram:123456789`, `discord:guild:channel`, `api:default`)
-- Session key is built by the channel, orchestrator treats it as opaque
-- Sessions have optional aliases for human-readable display
-- Special session `system:profile-updater` configures the profile update harness
+The whole point of v2 is **one long-lived `PiSessionHarness` per Vito session**, reused across every turn. The system prompt is set once at creation; subsequent turns just call `piSession.prompt(userMessage)`. This is what gets Anthropic prompt caching to hit on every turn.
 
-### Commands
-- `/new` — Force embed unembedded messages, then archive all messages in session (clean slate)
-- `/stop` — Abort current request, clear queue, release stuck session lock (bypasses queue)
-- `/restart` — Sends confirmation, spawns delayed `pm2 restart vito-server` (5s delay)
+`orchestrator.ts` owns: per-session FIFO queues (sequential within a session, parallel across sessions), abort tracking for `/stop`, the harness map keyed by Vito session id, and inbound routing. `pi-session-harness.ts` is the actual long-lived wrapper around `@mariozechner/pi-coding-agent`, including `setModel()` and `compact()` for live mutation. `system-prompt.ts` builds the deliberately small/stable system prompt; `capabilities.ts` is the static "capabilities map" string injected into it.
 
-### DirectChannel / API
-`Orchestrator.ask()` provides a programmatic API that routes through the full pipeline (context, search, decorators, persistence). Used by external integrations (Bland.ai phone, webhooks). 2-minute timeout. Forces `final` stream mode.
+### Per-turn flow
 
-## Code Conventions
+Channel emits `InboundEvent` → `Orchestrator.handleInbound()` → per-session queue → `processMessage()`:
 
-- ESM modules only (`"type": "module"`)
-- Explicit `.js` extensions in imports (even for .ts files — required by Node16 module resolution)
-- `import type { ... }` for type-only imports
-- Files: kebab-case. Interfaces/Classes: PascalCase. Functions/vars: camelCase
-- TypeScript strict mode, target ES2022, module Node16, moduleResolution Node16
-- Single responsibility per file
-- Decorators follow proxy pattern (extend ProxyHarness)
+1. Resolve/create Vito session (`SessionManager`).
+2. Download remote attachments (e.g., Telegram photos) into `user/drive/images/`.
+3. If `requireMention` is on and the bot wasn't mentioned, store and return.
+4. Resolve effective settings via `getEffectiveSettings()` (Global → Channel → Session deep merge).
+5. Get-or-create the long-lived `PiSessionHarness` for `vitoSession.id`. If a `.fresh` marker exists in the session dir (written by `/new`), force a brand-new pi `SessionManager.create()` instead of `continueRecent()`.
+6. Wrap with the decorator chain: `withTracing` → `withPersistence` → `withRelay` → `withTyping`.
+7. Build system prompt (only on first run for this pi session — afterwards ignored): personality (SOUL.md) + `<system>` block (SYSTEM.md, hot-loaded from project root) + capabilities map + channel prompt + custom instructions + session identity. Datetime, author, channel, and the user message itself go into the per-turn user message instead, so the prefix stays cacheable.
+8. Run with abort signal.
+9. Background: `maybeEmbedNewChunks()` chunks new messages (2–4K chars) and embeds them into `user/embeddings.db` via OpenRouter (`text-embedding-3-small`, falling back to native OpenAI).
 
-## Configuration
+### Memory: agent-initiated, not pre-loaded
 
-- `user/vito.config.json` — Main config: `bot` (name), `settings` (global defaults), `harnesses` (pi-coding-agent model/thinking), `channels` (enabled + per-channel settings), `sessions` (per-session overrides), `cron` (jobs array)
-- `user/secrets.json` — Flat key-value. Provider keys: ANTHROPIC_API_KEY, OPENAI_API_KEY, GOOGLE_GENERATIVE_AI_API_KEY, GROQ_API_KEY, XAI_API_KEY, OPENROUTER_API_KEY. Channel tokens: TELEGRAM_BOT_TOKEN, DISCORD_BOT_TOKEN. Dashboard: DASHBOARD_PASSWORD_HASH. Webhook: BLAND_WEBHOOK_SECRET
-- `user/SOUL.md` — Agent personality (injected into every prompt)
-- `user/profile.md` — Auto-managed user profile (freeform markdown, always in prompt)
-- `user/profile.json` — Auto-managed structured user profile
-- `SYSTEM.md` — System instructions (hot-loaded from project root, not user/)
+v2 does **not** auto-search embeddings on every turn and does **not** stuff prior messages into the system prompt. The agent calls memory skills explicitly when it needs them — `semantic-history-search` (hybrid: cosine + FTS5 BM25 + RRF, in `src/memory/search.ts`) and `keyword-history-search` (raw SQL). Within a single Vito session the conversation history lives in pi's `AgentSession`; cross-session lookup is only via those skills. `user/profile.md` is **not** inlined into the prompt — the capabilities map tells the agent to `Read` it on first response and `Edit` it when it learns something profile-worthy (see the `profile-maintenance` built-in skill for the rules).
 
-### Settings Defaults
-| Setting | Default |
-|---|---|
-| harness | `pi-coding-agent` |
-| streamMode | `stream` |
-| currentContext.limit | 100 |
-| currentContext.includeThoughts | true |
-| currentContext.includeTools | true |
-| auto.classifierContext.currentSessionMessages | 25 |
-| auto.classifierContext.crossSessionMessages | 0 |
-| auto.classifierContext.crossSessionMaxSessions | 0 |
-| crossContext.limit | 5 |
-| crossContext.maxSessions | 15 |
-| memory.recalledMemoryLimit | 3 |
-| memory.recalledMemoryThreshold | 0.005 |
-| memory.profileUpdateContext | 2 |
-| auto.* | all false (off) |
-| auto.classifierModel | anthropic/claude-haiku-4-5 |
-| timezone | America/Toronto |
+### Pi sessions on disk
 
-## Dashboard
+Each Vito session id (`channel:target`, e.g., `dashboard:default`, `telegram:123:456`) maps to a directory under `user/pi-sessions/<urlencoded-id>/`. Pi writes its own JSONL state there, which is why a process restart can resume the same conversation. `/new` writes a `.fresh` marker (handled even without an in-memory harness, e.g., right after a server restart) so the next create starts clean. `/compact` calls `piSession.compact()` to summarize older turns in place.
 
-- Port 3030, Express HTTP + WebSocket server (same port)
-- Optional auth: password hash in secrets.json, cookie-based sessions, 7-day TTL, rate-limited login (5 attempts/15 min)
-- Pages: Chat, Sessions, Memory search, Skills, Secrets, Cron Jobs, System (SYSTEM.md), Server, Apps, Drive (file browser with public/private via .meta.json), Traces (JSONL viewer), Settings (unified)
-- File serving: `/api/drive/*` for user/drive/, `/api/attachments/*` for data/attachments/
-- REST API: auth, sessions, messages, config, secrets, skills, cron, memory search, traces, drive, provider models/status
+### Channels (`src/channels/`)
 
-## Database (SQLite — user/vito.db)
+Four channels: `dashboard.ts` (Express + WS on port 3030, REST API, file serving, optional cookie auth, password rate-limited 5/15min), `telegram.ts` (grammy long polling + photo/document attachments + `allowedChatIds`), `discord.ts` (discord.js, guild messages + DMs + slash commands), `direct.ts` (programmatic — `Orchestrator.ask()` routes through the full pipeline with `streamMode: "final"` and a 2-min timeout). Each implements `Channel` from `src/types.ts` and builds its own opaque `sessionKey`. `requireMention` is a per-channel/session toggle.
 
-```sql
-sessions (id TEXT PK, channel, channel_target, created_at, last_active_at, config JSON, alias TEXT)
-messages (id INTEGER PK, session_id FK, channel, channel_target, timestamp, type CHECK('user','thought','assistant','tool_start','tool_end'), content JSON, compacted, archived, author)
-memories (id INTEGER PK, timestamp, title, content, embedding BLOB)
-traces   (id INTEGER PK, session_id, channel, timestamp, user_message, system_prompt, model)
+### Settings cascade
+
+`getEffectiveSettings(config, channelName, sessionKey)` in `src/settings.ts` deep-merges Global → Channel → Session. The whole live surface is just: `harness`, `streamMode` (`stream`/`bundled`/`final`), `customInstructions`, `requireMention`, `traceMessageUpdates`, `timezone`, and `pi-coding-agent` (with `model.{provider,name}` and `thinkingLevel`). Defaults: `harness=pi-coding-agent`, `streamMode=stream`, `timezone=America/Toronto`, default model `anthropic/claude-sonnet-4-20250514`.
+
+### Slash commands (priority, bypass queue)
+
+- `/stop` — abort active request, clear queue, release session lock.
+- `/restart` — confirm, then spawn delayed `pm2 restart vito-server`.
+- `/new` — write `.fresh` marker; next turn starts a brand-new pi session (history archived in `messages.archived`, embedded first).
+- `/compact` — summarize older turns of the live pi session in place.
+- `/model <name>` — hot-swap the model on the live pi session.
+
+### Cron
+
+`src/cron/scheduler.ts` (croner, timezone-aware). Jobs are defined in `vito.config.json` under `cron.jobs` and re-applied on hot-reload. `oneTime: true` removes the job from the config after firing. `sendCondition` forces `streamMode: "final"` and wraps the handler with `withNoReplyCheck` — if the response contains `NO_REPLY`, nothing gets relayed.
+
+### Harness layer (`src/harnesses/`)
+
+Currently single-harness. Decorators wrap a `Harness` (`PiSessionHarness` is the only implementation): `ProxyHarness` is the base for `TracingHarness`, `PersistenceHarness`, `RelayHarness`, `TypingHarness`. The decorator chain order matters: tracing (writes `.jsonl` into `user/logs/`, capped at 50MB) → persistence (writes user/assistant/tool rows into SQLite; never deletes — `/new` only archives) → relay (delivers to the channel's `OutputHandler` per `streamMode`) → typing.
+
+### Skills (`src/skills/`)
+
+`discovery.ts` scans `user/skills/` and `src/skills/builtin/` for `SKILL.md` (gray-matter frontmatter: `name`, `description`). User skills override built-ins with the same name. Built-ins: `apps`, `keyword-history-search`, `profile-maintenance`, `scheduler`, `semantic-history-search`. The agent calls them via the Skill tool exposed by pi-coding-agent — they're not pre-listed in the system prompt.
+
+### Database
+
+`user/vito.db` (SQLite WAL):
+
+```
+sessions  (id PK, channel, channel_target, created_at, last_active_at, config JSON, alias)
+messages  (id PK, session_id FK, channel, channel_target, timestamp,
+           type CHECK('user','thought','assistant','tool_start','tool_end'),
+           content JSON, compacted, archived, author)
+memories  (legacy table, no live readers/writers)
+traces    (id PK, session_id, channel, timestamp, user_message, system_prompt, model)
 ```
 
-Indexes: messages(session_id), messages(compacted), messages(timestamp), messages(archived), messages(type), sessions(last_active_at), traces(timestamp)
+Separate `user/embeddings.db` holds chunk vectors + FTS5 index used by `semantic-history-search`. Schema migrations live in `src/db/schema.ts` and run on startup.
 
-Separate embeddings database: `user/embeddings.db` (chunks table with vectors)
+### Configuration files
 
-## Skills
+- `user/vito.config.json` — `bot`, `settings` (global), `harnesses["pi-coding-agent"]`, `channels[]`, `sessions{}` (per-key overrides), `cron.jobs[]`. Hot-reloaded with 3s debounce; live pi sessions get their model re-synced on reload.
+- `user/secrets.json` — flat key-value, injected into `process.env` at boot. Provider keys: `ANTHROPIC_API_KEY`, `OPENAI_API_KEY`, `GOOGLE_GENERATIVE_AI_API_KEY`, `GROQ_API_KEY`, `XAI_API_KEY`, `OPENROUTER_API_KEY`. Channel tokens: `TELEGRAM_BOT_TOKEN`, `DISCORD_BOT_TOKEN`. Other: `DASHBOARD_PASSWORD_HASH` (managed by the dashboard, don't hand-edit), `BLAND_WEBHOOK_SECRET`.
+- `SYSTEM.md` (project root, **not** under `user/`) — hot-loaded into every system prompt.
+- `user/SOUL.md` — agent personality, hot-loaded.
+- `user/profile.md` — agent-managed user profile. Read by the agent on first response in a session.
+- `~/.pi/agent/auth.json` — pi's OAuth tokens (separate from `secrets.json`).
 
-- Discovered from `user/skills/` (user) and `src/skills/builtin/` (built-in). User skills override built-in with same name
-- Each skill is a directory with a `SKILL.md` file (gray-matter frontmatter: name, description)
-- Built-in skills: apps, keyword-history-search, scheduler, semantic-history-search
-- ~36 user skills in this instance
-- Skills prompt is formatted and injected into system prompt on every request
+## Code conventions
 
-## Important Notes
+- ESM only (`"type": "module"`). Imports use explicit `.js` extensions even for `.ts` sources — required by Node16 module resolution.
+- TypeScript strict, target ES2022, `module: Node16`, `moduleResolution: Node16`.
+- `import type { ... }` for type-only.
+- Files: kebab-case. Interfaces/Classes: PascalCase. Functions/vars: camelCase.
+- Decorators extend `ProxyHarness`.
 
-- PM2 service name is `vito-server` — scripts use bare `pm2` (not `npx pm2`)
-- Dashboard needs devDependencies: run `npm install` in dashboard/ (vite, typescript, etc.)
-- Config hot-reloads on save (3s debounce) — reloads orchestrator config, cron jobs, and dashboard config
-- Default model for pi-coding-agent: `anthropic/claude-sonnet-4-20250514` (configurable per Global/Channel/Session)
-- Auto classifier default model choices (via OpenRouter): claude-haiku-4.5, claude-sonnet-4.6, claude-opus-4.6
-- Timezone set via `config.settings.timezone` (default: America/Toronto), propagated to `process.env.TZ`
-- Heartbeat log every 30 minutes (server alive + active cron job count)
-- Trace files capped at 50MB per file
-- Embedding chunk size: 2-4K chars, contextual sentence via gpt-4o-mini
-- Pi auth tokens stored at `~/.pi/agent/auth.json` (OAuth providers)
+## Operational notes
+
+- PM2 service is `vito-server`; npm scripts call bare `pm2`, not `npx pm2`.
+- The dashboard has its own `node_modules` — run `npm install` inside `dashboard/` to get `vite`/`typescript` etc.
+- Heartbeat log every 30 minutes (server alive + active cron count).
+- After a server restart, in-memory harness state is gone but pi-session JSONL on disk remains, so the next message resumes the same conversation. Vito's own message DB is append-only.

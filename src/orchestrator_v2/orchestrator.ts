@@ -27,7 +27,6 @@ import { withNoReplyCheck } from "../harness/decorators/index.js";
 import { getDirectChannel, type DirectChannel } from "../channels/direct.js";
 
 import { maybeEmbedNewChunks } from "../memory/embeddings.js";
-import { maybeUpdateProfile, setProfileUpdaterConfig, setProfileUpdaterQueries } from "../memory/profile.js";
 import { SessionManager } from "../sessions/manager.js";
 import { getEffectiveSettings } from "../settings.js";
 import { discoverSkills } from "../skills/discovery.js";
@@ -49,15 +48,6 @@ import type {
 
 import { PiSessionHarness, writeFreshMarker } from "./pi-session-harness.js";
 import { buildSystemPromptV2, buildUserMessageV2 } from "./system-prompt.js";
-
-/**
- * Runtime feature flag. When false, the background profile updater is
- * skipped after every turn — the agent is expected to Edit user/profile.md
- * itself when it learns something profile-worthy (capabilities map covers
- * this). Flip to true to bring back per-turn automated profile updates
- * (small haiku call with Read/Edit tools).
- */
-const RUN_BACKGROUND_PROFILE_UPDATER = false;
 
 /**
  * Vito session IDs are "channel:target" (e.g., "dashboard:default",
@@ -117,8 +107,6 @@ export class OrchestratorV2 {
       }
     );
 
-    setProfileUpdaterConfig(config);
-    setProfileUpdaterQueries(queries);
     this.configMtimeMs = this.getConfigMtimeMs();
 
     const skills = this.getSkills();
@@ -151,7 +139,6 @@ export class OrchestratorV2 {
   reloadConfig(config: VitoConfig): void {
     this.config = config;
     this.configMtimeMs = this.getConfigMtimeMs();
-    setProfileUpdaterConfig(config);
     console.log(`[OrchestratorV2] Config reloaded`);
 
     // Keep live pi sessions in sync with top-level config changes.
@@ -222,7 +209,6 @@ export class OrchestratorV2 {
       const newConfig = loadConfig();
       this.config = newConfig;
       this.configMtimeMs = latestMtime;
-      setProfileUpdaterConfig(newConfig);
       console.log(`[OrchestratorV2] Lazily reloaded config before message`);
       await this.syncLivePiSessionsToConfig();
     } catch (err) {
@@ -507,27 +493,6 @@ export class OrchestratorV2 {
       }).catch((err) => {
         console.error(`[v2 Embeddings] Background embedding failed:`, err);
       });
-
-      // Background profile updater. Gated by RUN_BACKGROUND_PROFILE_UPDATER.
-      // Default off in v2 — the agent maintains user/profile.md itself via
-      // the Edit tool (see capabilities map). The code is kept in place so
-      // the flag can be flipped back on without a revert.
-      if (RUN_BACKGROUND_PROFILE_UPDATER) {
-        const currentUserMessage = event.content || "";
-        maybeUpdateProfile(vitoSession.id, currentUserMessage).then((profResult) => {
-          if (profResult) {
-            tracedHarness.writePostRunLine({
-              type: "profile_update",
-              skipped: profResult.skipped,
-              updated: profResult.updated,
-              duration_ms: profResult.duration_ms,
-              traceFile: profResult.traceFile,
-            });
-          }
-        }).catch((err) => {
-          console.error(`[v2 Profile] Background profile update failed:`, err);
-        });
-      }
     } catch (err) {
       // Safety net: stop typing on any error before/during run setup.
       if (baseHandler) {

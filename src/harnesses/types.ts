@@ -84,15 +84,3 @@ export interface Harness {
 
 }
 
-// ════════════════════════════════════════════════════════════════════════════
-// FACTORY (for config/dashboard)
-// ════════════════════════════════════════════════════════════════════════════
-
-export interface HarnessFactory {
-  readonly name: string;
-  readonly displayName: string;
-
-  create(config: unknown): Harness;
-  getConfigSchema(): unknown;  // JSON Schema for dashboard UI
-  getDefaultConfig(): unknown;
-}

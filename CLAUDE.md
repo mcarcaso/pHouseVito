@@ -8,7 +8,7 @@ Personal AI agent framework. Multi-channel (Dashboard, Discord, Telegram, Direct
 - **Frontend**: React 18.3, Vite 6.4, Tailwind CSS 4.1, React Router 7, react-markdown
 - **AI Harness**: `@mariozechner/pi-coding-agent` + `@mariozechner/pi-ai` — supports Anthropic, OpenAI, Google, OpenRouter, Groq, xAI
 - **Embeddings**: OpenAI `text-embedding-3-small` via OpenRouter (falls back to native OpenAI)
-- **Channels**: grammy (Telegram), discord.js 14 (Discord), Express+WS (Dashboard), readline (CLI), DirectChannel (API)
+- **Channels**: grammy (Telegram), discord.js 14 (Discord), Express+WS (Dashboard), DirectChannel (API)
 - **Process**: PM2 (`vito-server`), croner for cron scheduling
 - **Other**: axios, playwright, googleapis, gray-matter, ajv, execa, @viz-js/viz, dotenv
 
@@ -45,7 +45,6 @@ src/
     dashboard.ts            # Express + WS server (port 3030), auth, REST API, file serving, drive
     telegram.ts             # grammy bot, long polling, photo/document attachments
     discord.ts              # discord.js client, guild messages + DMs, slash commands, attachments
-    cli.ts                  # readline-based interactive channel (streaming capable)
     direct.ts               # Programmatic API channel — captures response, used by Orchestrator.ask()
 
   harnesses/
@@ -238,8 +237,6 @@ Separate embeddings database: `user/embeddings.db` (chunks table with vectors)
 - Default model for pi-coding-agent: `anthropic/claude-sonnet-4-20250514` (configurable per Global/Channel/Session)
 - Auto classifier default model choices (via OpenRouter): claude-haiku-4.5, claude-sonnet-4.6, claude-opus-4.6
 - Timezone set via `config.settings.timezone` (default: America/Toronto), propagated to `process.env.TZ`
-- Dev mode (has .git): full filesystem access. Package mode: sandboxed to ~/vito workspace
-- VITO_WORKSPACE env var overrides workspace location. VITO_SANDBOX=false disables sandbox
 - Heartbeat log every 30 minutes (server alive + active cron job count)
 - Trace files capped at 50MB per file
 - Embedding chunk size: 2-4K chars, contextual sentence via gpt-4o-mini

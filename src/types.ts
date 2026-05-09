@@ -118,10 +118,6 @@ export interface PiHarnessConfig {
   thinkingLevel?: "off" | "low" | "medium" | "high";
 }
 
-// Add more harness configs here as we add harnesses
-// export interface OpenAIHarnessConfig { ... }
-// export interface LocalLlamaHarnessConfig { ... }
-
 // ── Unified Settings Type ──
 // This is the cascading settings type: Global → Channel → Session
 // Each level can override any setting. More specific wins.
@@ -214,17 +210,13 @@ export interface MessageRow {
   author: string | null; // username/tag of the sender (for user messages)
 }
 
-// SessionConfig is now just Settings — keeping the alias for backward compat
-// (some code may still reference SessionConfig)
-export type SessionConfig = Settings;
-
 export interface SessionRow {
   id: string;
   channel: string | null;
   channel_target: string | null;
   created_at: number;
   last_active_at: number;
-  config: string; // JSON string of SessionConfig
+  config: string; // JSON string of Settings
   alias: string | null;
 }
 

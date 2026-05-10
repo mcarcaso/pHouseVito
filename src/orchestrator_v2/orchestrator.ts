@@ -22,7 +22,17 @@
 import { CronScheduler } from "../cron/scheduler.js";
 import { loadConfig } from "../config.js";
 import type { Queries } from "../db/queries.js";
-import { withPersistence, withRelay, withTracing, withTyping } from "../harnesses/index.js";
+import {
+  createHarness,
+  HarnessUnsupportedError,
+  HarnessSessionLostError,
+  withPersistence,
+  withRelay,
+  withTracing,
+  withTyping,
+  type Harness,
+  type HarnessName,
+} from "../harnesses/index.js";
 import { withNoReplyCheck } from "../harness/decorators/index.js";
 import { getDirectChannel, type DirectChannel } from "../channels/direct.js";
 
@@ -46,7 +56,6 @@ import type {
   VitoConfig,
 } from "../types.js";
 
-import { PiSessionHarness, writeFreshMarker } from "./pi-session-harness.js";
 import { buildSystemPromptV2, buildUserMessageV2 } from "./system-prompt.js";
 
 /**
@@ -78,10 +87,20 @@ export class OrchestratorV2 {
   private activeRequests = new Map<string, { abort: AbortController; aborted: boolean }>();
 
   /**
-   * Long-lived pi harnesses, keyed by Vito session id.
-   * The whole point: same AgentSession reused across turns → cached system prompt.
+   * Long-lived harnesses, keyed by Vito session id. Same harness instance
+   * reused across turns — that's what enables Anthropic prompt caching to
+   * hit on every turn.
    */
-  private piHarnesses = new Map<string, PiSessionHarness>();
+  private harnesses = new Map<string, Harness>();
+
+  /**
+   * Vito session ids whose harness has produced at least one completed turn.
+   * Used to decide whether to seed the next prompt with a <history> block:
+   *   - First turn for a brand-new harness instance → maybe seed
+   *   - Any subsequent turn → never seed (state lives in the harness)
+   * Cleared on /new alongside harness reset.
+   */
+  private firstTurnDone = new Set<string>();
 
   /** Last observed mtime for user/vito.config.json. Used as a lazy fallback
    * in case the fs watcher debounce hasn't fired before the next message. */
@@ -237,11 +256,12 @@ export class OrchestratorV2 {
     for (const [, channel] of this.channels) {
       await channel.stop();
     }
-    // Tear down all long-lived pi sessions
-    for (const [, harness] of this.piHarnesses) {
-      await harness.dispose();
+    // Tear down all long-lived harness sessions
+    for (const [, harness] of this.harnesses) {
+      try { await harness.dispose?.(); } catch { /* ignore */ }
     }
-    this.piHarnesses.clear();
+    this.harnesses.clear();
+    this.firstTurnDone.clear();
   }
 
   // ────────────────────────────────────────────────────────────────────────
@@ -385,12 +405,12 @@ export class OrchestratorV2 {
         streamMode = "final";
       }
 
-      // Get or create the long-lived pi harness for this Vito session.
-      const piHarness = this.getOrCreatePiHarness(vitoSession.id, event, effectiveSettings, channel);
-      const actualModelString = piHarness.getModelString();
+      // Get or create the long-lived harness for this Vito session.
+      const innerHarness = this.getOrCreateHarness(vitoSession.id, event, effectiveSettings, channel);
+      const actualModelString = innerHarness.getModel?.() ?? this.getModelString(effectiveSettings);
 
       // Per-turn decorator chain wraps the long-lived inner harness.
-      const tracedHarness = withTracing(piHarness, {
+      const tracedHarness = withTracing(innerHarness, {
         session_id: vitoSession.id,
         channel: event.channel,
         target: event.target,
@@ -430,13 +450,13 @@ export class OrchestratorV2 {
       // already has the conversation in its own state and this would duplicate.
       const sessionDir = this.getSessionDir(vitoSession.id);
       const isFreshAfterNew = existsSync(join(sessionDir, ".fresh"));
-      const willCreateBrandNewPiSession = !piHarness.isInitialized()
+      const willCreateBrandNewSession = !this.firstTurnDone.has(vitoSession.id)
         && (isFreshAfterNew || !this.hasPiSessionHistory(sessionDir));
-      if (willCreateBrandNewPiSession) {
+      if (willCreateBrandNewSession) {
         const historyBlock = this.buildHistoryBlock(vitoSession.id, 10);
         if (historyBlock) {
           promptText = `${historyBlock}\n\n${promptText}`;
-          console.log(`[v2] Seeded new pi session for ${vitoSession.id} with history (${historyBlock.length} chars)`);
+          console.log(`[v2] Seeded new harness session for ${vitoSession.id} with history (${historyBlock.length} chars)`);
         }
       }
 
@@ -466,7 +486,21 @@ export class OrchestratorV2 {
           { onRawEvent: () => {}, onNormalizedEvent: () => {} },
           abortController.signal
         );
+        this.firstTurnDone.add(vitoSession.id);
       } catch (err) {
+        if (err instanceof HarnessSessionLostError) {
+          // Underlying session storage is gone. Drop the harness so the next
+          // /new (or fresh start) recreates cleanly, and tell the user.
+          this.harnesses.delete(vitoSession.id);
+          this.firstTurnDone.delete(vitoSession.id);
+          if (baseHandler) {
+            await baseHandler.relay(
+              "⚠️ Your harness session is no longer available (the underlying conversation file is gone). Run `/new` to start a fresh one."
+            );
+          }
+          console.warn(`[v2] HarnessSessionLost for ${event.sessionKey}: ${err.message}`);
+          return;
+        }
         console.error(`[v2] Error during LLM call: ${err instanceof Error ? err.message : err}`);
         return;
       } finally {
@@ -506,14 +540,15 @@ export class OrchestratorV2 {
   // PI SESSION LIFECYCLE
   // ────────────────────────────────────────────────────────────────────────
 
-  private getOrCreatePiHarness(
+  private getOrCreateHarness(
     vitoSessionId: string,
     _event: InboundEvent,
     settings: ResolvedSettings,
     _channel: Channel | null
-  ): PiSessionHarness {
-    let harness = this.piHarnesses.get(vitoSessionId);
+  ): Harness {
+    let harness = this.harnesses.get(vitoSessionId);
     if (!harness) {
+      const harnessName = this.resolveHarnessName(settings);
       const globalPiConfig = this.config.harnesses?.["pi-coding-agent"];
       const cascadedOverrides = settings["pi-coding-agent"] || {};
       const model = cascadedOverrides.model || globalPiConfig?.model || {
@@ -522,20 +557,27 @@ export class OrchestratorV2 {
       };
       const thinkingLevel = cascadedOverrides.thinkingLevel || globalPiConfig?.thinkingLevel;
 
-      // Each Vito session gets its own pi sessionDir so JSONL files are
+      // Each Vito session gets its own sessionDir so on-disk artifacts are
       // grouped per-session and easy to browse from the dashboard.
       const sessionDir = this.getSessionDir(vitoSessionId);
 
-      harness = new PiSessionHarness({
+      harness = createHarness(harnessName, {
+        sessionDir,
         model,
         thinkingLevel,
         skillsDir: this.skillsDir,
-        sessionDir,
       });
-      this.piHarnesses.set(vitoSessionId, harness);
-      console.log(`[v2] 🎭 Created long-lived pi session for ${vitoSessionId} (${model.provider}/${model.name}) → ${sessionDir}`);
+      this.harnesses.set(vitoSessionId, harness);
+      console.log(`[v2] 🎭 Created long-lived ${harnessName} session for ${vitoSessionId} (${model.provider}/${model.name}) → ${sessionDir}`);
     }
     return harness;
+  }
+
+  private resolveHarnessName(settings: ResolvedSettings): HarnessName {
+    const name = settings.harness ?? "pi-coding-agent";
+    if (name === "pi-coding-agent") return name;
+    console.warn(`[v2] Unknown harness "${name}", falling back to pi-coding-agent`);
+    return "pi-coding-agent";
   }
 
   /** Filesystem path for a Vito session's pi-session JSONLs and markers. */
@@ -623,7 +665,7 @@ export class OrchestratorV2 {
   }
 
   private async syncLivePiSessionsToConfig(): Promise<void> {
-    for (const [sessionId, harness] of this.piHarnesses) {
+    for (const [sessionId, harness] of this.harnesses) {
       const colonIdx = sessionId.indexOf(":");
       const channelName = colonIdx > 0 ? sessionId.slice(0, colonIdx) : sessionId;
       const settings = getEffectiveSettings(this.config, channelName, sessionId);
@@ -632,12 +674,12 @@ export class OrchestratorV2 {
         name: "claude-sonnet-4-20250514",
       };
       const desiredString = `${desired.provider}/${desired.name}`;
-      if (harness.getModelString() !== desiredString) {
+      if (harness.getModel?.() !== desiredString && harness.setModel) {
         try {
           await harness.setModel(desired);
-          console.log(`[v2] Synced live pi model for ${sessionId} → ${desiredString}`);
+          console.log(`[v2] Synced live model for ${sessionId} → ${desiredString}`);
         } catch (err) {
-          console.error(`[v2] Failed to sync pi model for ${sessionId}:`, err);
+          console.error(`[v2] Failed to sync model for ${sessionId}:`, err);
         }
       }
     }
@@ -703,7 +745,7 @@ export class OrchestratorV2 {
     const vitoSession = this.sessionManager.resolveSession(event.sessionKey);
     const handler = channel.createHandler(event);
 
-    const existing = this.piHarnesses.get(vitoSession.id);
+    const existing = this.harnesses.get(vitoSession.id);
     const recentMessages = this.queries.getRecentMessages(vitoSession.id, 1);
     if (!existing && recentMessages.length === 0) {
       await handler.relay("✅ Already starting fresh! Nothing to reset.");
@@ -713,27 +755,32 @@ export class OrchestratorV2 {
 
     await handler.startTyping?.();
     try {
-      // The fast, deterministic part of /new: archive + reset pi session.
+      // The fast, deterministic part of /new: archive + reset harness session.
       // Force-embedding can take minutes to hours on long sessions
       // (thousands of API calls), so we kick it off in the background
-      // instead of blocking the user. New pi session creation doesn't
+      // instead of blocking the user. New harness session creation doesn't
       // depend on embeddings finishing — it just starts fresh.
       if (recentMessages.length > 0) {
         this.queries.markSessionArchived(vitoSession.id);
       }
-      // Write the .fresh marker UNCONDITIONALLY — its job is to bias the
-      // next AgentSession creation, which has nothing to do with whether
-      // a harness happens to be in memory right now. Skipping this when
-      // there's no in-memory harness (e.g., after a server restart) was
-      // the bug that left /new resuming the old JSONL.
-      writeFreshMarker(this.getSessionDir(vitoSession.id));
-      if (existing) {
-        await existing.prepareFreshNextStart();
-        this.piHarnesses.delete(vitoSession.id);
-      }
+
+      // Reset must happen unconditionally so the next message starts fresh,
+      // even if no in-memory harness exists right now (e.g., /new fired after
+      // a server restart, before any message rehydrated the harness). We
+      // construct a transient harness to call reset() — its constructor is
+      // cheap and reset() handles the "no live session yet" path.
+      const harnessForReset = existing ?? this.getOrCreateHarness(
+        vitoSession.id,
+        event,
+        getEffectiveSettings(this.config, event.channel, event.sessionKey),
+        channel
+      );
+      await harnessForReset.reset?.();
+      this.harnesses.delete(vitoSession.id);
+      this.firstTurnDone.delete(vitoSession.id);
 
       await handler.relay(
-        `✅ **Fresh start!**\n\nPi session reset, messages archived. Next message starts a new pi session with the current system prompt.\n\nForce-embedding archived messages in the background — they'll be searchable via memory skills once it finishes. 🚀`
+        `✅ **Fresh start!**\n\nHarness session reset, messages archived. Next message starts a new session with the current system prompt.\n\nForce-embedding archived messages in the background — they'll be searchable via memory skills once it finishes. 🚀`
       );
       // stopTyping AFTER relay so the buffer actually flushes (the Discord
       // handler buffers relay() and only flushes on stopTyping/endMessage).
@@ -771,11 +818,11 @@ export class OrchestratorV2 {
     const raw = event.content?.trim() || "";
     const spec = raw.replace(/^\/model\b/i, "").trim();
     const effectiveSettings = getEffectiveSettings(this.config, event.channel, event.sessionKey);
-    const currentModel = this.piHarnesses.get(vitoSession.id)?.getModelString() || this.getModelString(effectiveSettings);
+    const currentModel = this.harnesses.get(vitoSession.id)?.getModel?.() || this.getModelString(effectiveSettings);
 
     if (!spec) {
       await handler.relay(
-        `Current pi model: \`${currentModel}\`\n\nUse \`/model provider/model-name\`, e.g. \`/model anthropic/claude-sonnet-4-20250514\` or \`/model openrouter/deepseek/deepseek-v4-pro\`.`
+        `Current model: \`${currentModel}\`\n\nUse \`/model provider/model-name\`, e.g. \`/model anthropic/claude-sonnet-4-20250514\` or \`/model openrouter/deepseek/deepseek-v4-pro\`.`
       );
       await handler.stopTyping?.();
       return;
@@ -791,10 +838,15 @@ export class OrchestratorV2 {
 
     await handler.startTyping?.();
     try {
-      const piHarness = this.getOrCreatePiHarness(vitoSession.id, event, effectiveSettings, channel);
-      await piHarness.setModel(model);
+      const innerHarness = this.getOrCreateHarness(vitoSession.id, event, effectiveSettings, channel);
+      if (!innerHarness.setModel) {
+        await handler.relay(`❌ This harness does not support hot-swapping the model.`);
+        await handler.stopTyping?.();
+        return;
+      }
+      await innerHarness.setModel(model);
       await handler.relay(
-        `✅ Switched live pi model: \`${currentModel}\` → \`${model.provider}/${model.name}\`\n\nNo /new needed. This is a runtime session change; config stays untouched.`
+        `✅ Switched live model: \`${currentModel}\` → \`${model.provider}/${model.name}\`\n\nNo /new needed. This is a runtime session change; config stays untouched.`
       );
       await handler.stopTyping?.();
     } catch (err) {
@@ -815,9 +867,14 @@ export class OrchestratorV2 {
     const vitoSession = this.sessionManager.resolveSession(event.sessionKey);
     const handler = channel.createHandler(event);
 
-    const existing = this.piHarnesses.get(vitoSession.id);
-    if (!existing || !existing.isInitialized()) {
-      await handler.relay("✅ Nothing to compact — no active pi session yet.");
+    const existing = this.harnesses.get(vitoSession.id);
+    if (!existing || !this.firstTurnDone.has(vitoSession.id)) {
+      await handler.relay("✅ Nothing to compact — no active session yet.");
+      await handler.stopTyping?.();
+      return;
+    }
+    if (!existing.compact) {
+      await handler.relay("❌ This harness does not support manual compaction.");
       await handler.stopTyping?.();
       return;
     }
@@ -844,6 +901,11 @@ export class OrchestratorV2 {
       // stopTyping after relay so the buffer flushes (see /new for details).
       await handler.stopTyping?.();
     } catch (err) {
+      if (err instanceof HarnessUnsupportedError) {
+        await handler.relay("❌ This harness does not support manual compaction.");
+        await handler.stopTyping?.();
+        return;
+      }
       console.error("[v2 /compact] failed:", err);
       await handler.relay("❌ Compaction failed — see logs.");
       await handler.stopTyping?.();

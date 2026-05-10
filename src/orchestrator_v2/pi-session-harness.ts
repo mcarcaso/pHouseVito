@@ -30,14 +30,7 @@ import type { Harness, HarnessCallbacks, HarnessUsage, NormalizedEvent } from ".
 /** Filename written into a sessionDir to request "fresh on next create". */
 const FRESH_MARKER_FILE = ".fresh";
 
-/**
- * Write a `.fresh` marker into the given sessionDir so the next AgentSession
- * created in that dir will use SessionManager.create() instead of
- * continueRecent(). Static so it can be called without an in-memory harness
- * — important because /new might run after a server restart when the
- * orchestrator's harness map is empty.
- */
-export function writeFreshMarker(sessionDir: string): void {
+function writeFreshMarker(sessionDir: string): void {
   try {
     mkdirSync(sessionDir, { recursive: true });
     writeFileSync(join(sessionDir, FRESH_MARKER_FILE), "");
@@ -133,7 +126,7 @@ export class PiSessionHarness implements Harness {
     return this.piSession !== null;
   }
 
-  getModelString(): string {
+  getModel(): string {
     const modelConfig = this.config.model || DEFAULT_CONFIG.model!;
     return `${modelConfig.provider}/${modelConfig.name}`;
   }
@@ -163,10 +156,14 @@ export class PiSessionHarness implements Harness {
   }
 
   /**
-   * Mark this Vito session as wanting a fresh pi session on next message,
+   * /new — mark this session as wanting a fresh pi session on next message,
    * then drop the in-memory reference. The marker file survives a server
-   * restart — if the user runs /new and the server bounces before they
-   * send the next message, they still get the fresh session they asked for.
+   * restart, so if the user runs /new and the server bounces before they
+   * send the next message they still get the fresh session they asked for.
+   *
+   * Safe to call without an existing AgentSession: this just writes the
+   * marker. That's the path used when /new fires before any message has
+   * created an in-memory session for this Vito session id.
    *
    * We deliberately do NOT await pi's graceful abort/dispose here:
    * AgentSession.abort() "waits for agent to become idle," which blocks if
@@ -177,14 +174,9 @@ export class PiSessionHarness implements Harness {
    *
    * Old JSONL files are left in place for the dashboard to browse.
    */
-  async prepareFreshNextStart(): Promise<void> {
+  async reset(): Promise<void> {
     if (this.config.sessionDir) {
-      try {
-        mkdirSync(this.config.sessionDir, { recursive: true });
-        writeFileSync(join(this.config.sessionDir, FRESH_MARKER_FILE), "");
-      } catch (err) {
-        console.warn("[v2 pi-session] Failed to write fresh marker:", err);
-      }
+      writeFreshMarker(this.config.sessionDir);
     }
 
     const stale = this.piSession;
@@ -442,6 +434,6 @@ export class PiSessionHarness implements Harness {
 
   private buildCliCommand(userMessage: string): string {
     const escape = (s: string) => s.replace(/'/g, "'\\''");
-    return `pi-coding-agent --model ${this.getModelString()} -p '${escape(userMessage)}' (long-lived session)`;
+    return `pi-coding-agent --model ${this.getModel()} -p '${escape(userMessage)}' (long-lived session)`;
   }
 }

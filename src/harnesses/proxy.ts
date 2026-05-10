@@ -6,6 +6,11 @@
  *
  * Extend this to add behavior (logging, tracing, retries, etc.)
  * without modifying the underlying harness.
+ *
+ * Lifecycle methods (getModel/setModel/reset/compact/dispose) are NOT
+ * forwarded — the orchestrator calls those on the inner (unwrapped)
+ * harness only, since lifecycle is per-Vito-session and the decorator
+ * chain is rebuilt per turn.
  */
 
 import type { Harness, HarnessCallbacks } from "./types.js";

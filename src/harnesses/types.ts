@@ -1,8 +1,15 @@
 /**
  * HARNESS INTERFACE
- * 
+ *
  * A harness wraps an AI model/agent and provides a unified way to
- * send prompts and receive events. Dead simple.
+ * send prompts, receive events, and manage long-lived session state.
+ *
+ * Two implementations are envisioned:
+ *   - PiSessionHarness — in-process @mariozechner/pi-coding-agent AgentSession
+ *   - ClaudeCodeHarness — subprocess `claude -p ... --resume <id>` CLI
+ *
+ * Both keep a stable system prompt across turns so Anthropic prompt caching
+ * hits on every turn.
  */
 
 // ════════════════════════════════════════════════════════════════════════════
@@ -52,12 +59,39 @@ export interface HarnessCallbacks {
 }
 
 // ════════════════════════════════════════════════════════════════════════════
+// ERRORS
+// ════════════════════════════════════════════════════════════════════════════
+
+/**
+ * Thrown when a caller invokes a lifecycle method the harness doesn't support
+ * (e.g., manual /compact on a harness that has no equivalent operation).
+ */
+export class HarnessUnsupportedError extends Error {
+  constructor(public readonly operation: string, message?: string) {
+    super(message ?? `Harness does not support: ${operation}`);
+    this.name = "HarnessUnsupportedError";
+  }
+}
+
+/**
+ * Thrown when the underlying session storage is gone — e.g., the Claude Code
+ * JSONL referenced by a stored session id was deleted from ~/.claude/projects/.
+ * The orchestrator surfaces this and instructs the user to run /new.
+ */
+export class HarnessSessionLostError extends Error {
+  constructor(message?: string) {
+    super(message ?? "Harness session is no longer available");
+    this.name = "HarnessSessionLostError";
+  }
+}
+
+// ════════════════════════════════════════════════════════════════════════════
 // THE HARNESS
 // ════════════════════════════════════════════════════════════════════════════
 
 export interface Harness {
   /**
-   * Unique harness identifier (e.g., "pi-coding-agent")
+   * Unique harness identifier (e.g., "pi-coding-agent", "claude-code").
    */
   getName(): string;
 
@@ -74,6 +108,11 @@ export interface Harness {
    * System prompt has tools embedded.
    * User message has attachment paths embedded.
    * Harness figures out the rest.
+   *
+   * The system prompt is set once on first call and reused on subsequent calls
+   * — implementations should ignore `systemPrompt` after initialization so the
+   * cached prefix stays stable. The orchestrator passes it on every call so
+   * the harness can capture it lazily.
    */
   run(
     systemPrompt: string,
@@ -82,5 +121,36 @@ export interface Harness {
     signal?: AbortSignal
   ): Promise<void>;
 
-}
+  // ──────────────────────────────────────────────────────────────────────────
+  // LIFECYCLE — optional. Orchestrator no-ops gracefully when missing.
+  // ──────────────────────────────────────────────────────────────────────────
 
+  /** Current model identifier for logging/tracing (e.g., "anthropic/claude-sonnet-4"). */
+  getModel?(): string;
+
+  /**
+   * Hot-swap the model. May be a no-op if the underlying system can't change
+   * model mid-session (in which case the new model takes effect on the next run).
+   */
+  setModel?(model: { provider: string; name: string }): Promise<void>;
+
+  /**
+   * Reset session state. Equivalent to /new — the next run() call starts a
+   * brand-new conversation. Implementations must persist any "fresh next
+   * start" intent to disk so a server restart between /new and the next
+   * message still results in a fresh session.
+   */
+  reset?(): Promise<void>;
+
+  /**
+   * Manually summarize older turns of the live session.
+   * May throw HarnessUnsupportedError on harnesses without an equivalent.
+   * Returns implementation-defined metadata (e.g., tokensBefore/tokensAfter).
+   */
+  compact?(customInstructions?: string): Promise<unknown>;
+
+  /**
+   * Tear down session resources. Called on shutdown. Should not throw.
+   */
+  dispose?(): Promise<void>;
+}

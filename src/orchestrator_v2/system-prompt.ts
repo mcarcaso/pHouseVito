@@ -32,6 +32,14 @@ export interface BuildSystemPromptV2Options {
   soul: string;
   channelPrompt?: string;
   customInstructions?: string;
+  /**
+   * Harness-specific instructions injected via Harness.getCustomInstructions().
+   * Used when a harness needs to document its own quirks (e.g., "the Skill
+   * tool here only sees ~/.claude/skills/ — for Vito skills, Read SKILL.md
+   * directly"). Rendered after the capabilities map so it can override or
+   * clarify pieces of the generic guidance.
+   */
+  harnessInstructions?: string;
   botName?: string;
   /** Stable identifiers for the Vito session this pi conversation lives inside. */
   session?: {
@@ -70,6 +78,10 @@ export function buildSystemPromptV2(opts: BuildSystemPromptV2Options): string {
 
   // Capability map: short pointers to tools/skills/files
   parts.push(`<capabilities>\n${CAPABILITIES_MAP}\n</capabilities>`);
+
+  if (opts.harnessInstructions) {
+    parts.push(`<harness>\n${opts.harnessInstructions}\n</harness>`);
+  }
 
   if (opts.channelPrompt) {
     parts.push(`<channel>\n${opts.channelPrompt}\n</channel>`);

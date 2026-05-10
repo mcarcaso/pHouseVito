@@ -143,6 +143,17 @@ export interface Harness {
   reset?(): Promise<void>;
 
   /**
+   * Whether the next run() call will create a brand-new session (true) or
+   * resume existing on-disk state (false). Used by the orchestrator to
+   * decide whether to seed the first prompt with a <history> block from
+   * Vito's own message DB.
+   *
+   * Default behavior when not implemented: pessimistic (false) — assume
+   * the harness has its own state and don't seed.
+   */
+  isFresh?(): boolean;
+
+  /**
    * Manually summarize older turns of the live session.
    * May throw HarnessUnsupportedError on harnesses without an equivalent.
    * Returns implementation-defined metadata (e.g., tokensBefore/tokensAfter).

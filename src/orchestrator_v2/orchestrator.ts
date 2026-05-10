@@ -42,7 +42,7 @@ import { getEffectiveSettings } from "../settings.js";
 import { discoverSkills } from "../skills/discovery.js";
 
 import { randomBytes } from "crypto";
-import { existsSync, mkdirSync, readdirSync, statSync, writeFileSync } from "fs";
+import { mkdirSync, statSync, writeFileSync } from "fs";
 import { join, resolve } from "path";
 
 import { extractMessageText } from "../memory/context.js";
@@ -448,10 +448,12 @@ export class OrchestratorV2 {
       //   - first v2 run for an existing Vito session: no pi JSONL exists yet
       // We DON'T seed on restart-resume when a pi JSONL exists, because pi
       // already has the conversation in its own state and this would duplicate.
-      const sessionDir = this.getSessionDir(vitoSession.id);
-      const isFreshAfterNew = existsSync(join(sessionDir, ".fresh"));
+      // Seed history on the first prompt of a brand-new harness session,
+      // regardless of which harness is in use. The harness reports whether
+      // the next run() will start fresh; if it has resumable state we skip
+      // seeding to avoid duplicating context the harness already has.
       const willCreateBrandNewSession = !this.firstTurnDone.has(vitoSession.id)
-        && (isFreshAfterNew || !this.hasPiSessionHistory(sessionDir));
+        && (innerHarness.isFresh?.() ?? false);
       if (willCreateBrandNewSession) {
         const historyBlock = this.buildHistoryBlock(vitoSession.id, 10);
         if (historyBlock) {
@@ -460,12 +462,13 @@ export class OrchestratorV2 {
         }
       }
 
-      // System prompt is captured by the pi session ON FIRST RUN ONLY. We pass
+      // System prompt is captured by the harness ON FIRST RUN ONLY. We pass
       // it on every call (cheap), but the harness ignores it on subsequent runs.
       const systemPrompt = buildSystemPromptV2({
         soul: this.soul,
         channelPrompt: event.raw?.channelPrompt || channel?.getCustomPrompt?.() || "",
         customInstructions: effectiveSettings.customInstructions || "",
+        harnessInstructions: innerHarness.getCustomInstructions?.() || "",
         botName: this.config.bot?.name,
         session: {
           id: vitoSession.id,
@@ -550,22 +553,30 @@ export class OrchestratorV2 {
     if (!harness) {
       const harnessName = this.resolveHarnessName(settings);
       const globalPiConfig = this.config.harnesses?.["pi-coding-agent"];
-      const cascadedOverrides = settings["pi-coding-agent"] || {};
-      const model = cascadedOverrides.model || globalPiConfig?.model || {
-        provider: "anthropic",
-        name: "claude-sonnet-4-20250514",
-      };
-      const thinkingLevel = cascadedOverrides.thinkingLevel || globalPiConfig?.thinkingLevel;
+      const piOverrides = settings["pi-coding-agent"] || {};
+      const globalCcConfig = this.config.harnesses?.["claude-code"];
+      const ccOverrides = settings["claude-code"] || {};
+
+      const model = (harnessName === "claude-code"
+        ? ccOverrides.model || globalCcConfig?.model
+        : piOverrides.model || globalPiConfig?.model)
+        || { provider: "anthropic", name: "claude-sonnet-4-20250514" };
+
+      const thinkingLevel = piOverrides.thinkingLevel || globalPiConfig?.thinkingLevel;
+      const permissionMode = ccOverrides.permissionMode || globalCcConfig?.permissionMode;
+      const binaryPath = ccOverrides.binaryPath || globalCcConfig?.binaryPath;
 
       // Each Vito session gets its own sessionDir so on-disk artifacts are
       // grouped per-session and easy to browse from the dashboard.
-      const sessionDir = this.getSessionDir(vitoSessionId);
+      const sessionDir = this.getSessionDir(vitoSessionId, harnessName);
 
       harness = createHarness(harnessName, {
         sessionDir,
         model,
         thinkingLevel,
         skillsDir: this.skillsDir,
+        permissionMode,
+        binaryPath,
       });
       this.harnesses.set(vitoSessionId, harness);
       console.log(`[v2] 🎭 Created long-lived ${harnessName} session for ${vitoSessionId} (${model.provider}/${model.name}) → ${sessionDir}`);
@@ -575,23 +586,19 @@ export class OrchestratorV2 {
 
   private resolveHarnessName(settings: ResolvedSettings): HarnessName {
     const name = settings.harness ?? "pi-coding-agent";
-    if (name === "pi-coding-agent") return name;
+    if (name === "pi-coding-agent" || name === "claude-code") return name;
     console.warn(`[v2] Unknown harness "${name}", falling back to pi-coding-agent`);
     return "pi-coding-agent";
   }
 
-  /** Filesystem path for a Vito session's pi-session JSONLs and markers. */
-  private getSessionDir(vitoSessionId: string): string {
-    return resolve(process.cwd(), "user/pi-sessions", encodeSessionDirName(vitoSessionId));
-  }
-
-  private hasPiSessionHistory(sessionDir: string): boolean {
-    try {
-      if (!existsSync(sessionDir)) return false;
-      return readdirSync(sessionDir).some((name) => name.endsWith(".jsonl"));
-    } catch {
-      return false;
-    }
+  /**
+   * Filesystem path for a Vito session's harness on-disk state. Each harness
+   * implementation owns its subdirectory layout — pi writes pi.jsonl files
+   * directly into this dir, claude-code writes a session.json pointer.
+   */
+  private getSessionDir(vitoSessionId: string, harnessName: HarnessName = "pi-coding-agent"): string {
+    const subdir = harnessName === "claude-code" ? "cc-sessions" : "pi-sessions";
+    return resolve(process.cwd(), "user", subdir, encodeSessionDirName(vitoSessionId));
   }
 
   /**
@@ -641,12 +648,13 @@ export class OrchestratorV2 {
   }
 
   private getModelString(settings: ResolvedSettings): string {
-    const globalPiConfig = this.config.harnesses?.["pi-coding-agent"];
-    const model = settings["pi-coding-agent"]?.model || globalPiConfig?.model || {
-      provider: "anthropic",
-      name: "claude-sonnet-4-20250514",
-    };
-    return `${model.provider}/${model.name}`;
+    const harnessName = this.resolveHarnessName(settings);
+    const model = harnessName === "claude-code"
+      ? settings["claude-code"]?.model || this.config.harnesses?.["claude-code"]?.model
+      : settings["pi-coding-agent"]?.model || this.config.harnesses?.["pi-coding-agent"]?.model;
+    const fallback = { provider: "anthropic", name: "claude-sonnet-4-20250514" };
+    const m = model ?? fallback;
+    return `${m.provider}/${m.name}`;
   }
 
   private parseModelSpec(spec: string, fallbackProvider = "anthropic"): { provider: string; name: string } | null {
@@ -669,10 +677,11 @@ export class OrchestratorV2 {
       const colonIdx = sessionId.indexOf(":");
       const channelName = colonIdx > 0 ? sessionId.slice(0, colonIdx) : sessionId;
       const settings = getEffectiveSettings(this.config, channelName, sessionId);
-      const desired = settings["pi-coding-agent"]?.model || this.config.harnesses?.["pi-coding-agent"]?.model || {
-        provider: "anthropic",
-        name: "claude-sonnet-4-20250514",
-      };
+      const harnessName = this.resolveHarnessName(settings);
+      const desired = (harnessName === "claude-code"
+        ? settings["claude-code"]?.model || this.config.harnesses?.["claude-code"]?.model
+        : settings["pi-coding-agent"]?.model || this.config.harnesses?.["pi-coding-agent"]?.model)
+        || { provider: "anthropic", name: "claude-sonnet-4-20250514" };
       const desiredString = `${desired.provider}/${desired.name}`;
       if (harness.getModel?.() !== desiredString && harness.setModel) {
         try {

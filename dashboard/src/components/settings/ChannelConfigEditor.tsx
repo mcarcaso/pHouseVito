@@ -17,6 +17,11 @@ const STREAM_MODES = [
   { value: 'final', label: 'Final' },
 ];
 
+const HARNESSES = [
+  { value: 'pi-coding-agent', label: 'Pi' },
+  { value: 'claude-code', label: 'Claude Code' },
+];
+
 function setNestedValue(target: Record<string, any>, path: string, value: any) {
   const parts = path.split('.');
   let cursor: Record<string, any> = target;
@@ -239,6 +244,16 @@ export default function ChannelConfigEditor({ name, channelConfig, config, onSav
           <div className="mt-6">
             <h5 className="text-xs font-semibold text-neutral-500 uppercase tracking-wider mb-3">Setting Overrides</h5>
             <p className="text-xs text-neutral-600 mb-3">Override global defaults for this channel. Unset values inherit from Global.</p>
+
+            <SettingRow
+              label="Harness"
+              inheritedValue={globalResolved.harness}
+              inheritedFrom="global"
+              overrideValue={channelSettings.harness}
+              onOverride={(val) => updateChannelSetting('harness', val)}
+              onReset={() => resetChannelSetting('harness')}
+              renderInput={(val, onChange) => renderSegmented(val, onChange, HARNESSES)}
+            />
 
             <SettingRow
               label="Stream Mode"

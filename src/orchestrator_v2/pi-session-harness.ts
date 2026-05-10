@@ -22,7 +22,7 @@ import {
   type AgentSession,
   type AgentSessionEvent,
 } from "@mariozechner/pi-coding-agent";
-import { existsSync, mkdirSync, unlinkSync, writeFileSync } from "fs";
+import { existsSync, mkdirSync, readdirSync, unlinkSync, writeFileSync } from "fs";
 import { join } from "path";
 import { discoverSkills } from "../skills/discovery.js";
 import type { Harness, HarnessCallbacks, HarnessUsage, NormalizedEvent } from "../harnesses/types.js";
@@ -124,6 +124,25 @@ export class PiSessionHarness implements Harness {
   /** Whether the underlying AgentSession has been created and is reusable. */
   isInitialized(): boolean {
     return this.piSession !== null;
+  }
+
+  /**
+   * True if the next run() will create a brand-new pi AgentSession rather
+   * than resume one. Either we've never run yet AND there's no resumable
+   * JSONL on disk, or the `.fresh` marker (written by /new) overrides any
+   * existing JSONL.
+   */
+  isFresh(): boolean {
+    if (this.piSession) return false;
+    if (!this.config.sessionDir) return true;
+    const dir = this.config.sessionDir;
+    if (existsSync(join(dir, FRESH_MARKER_FILE))) return true;
+    try {
+      if (!existsSync(dir)) return true;
+      return !readdirSync(dir).some((name) => name.endsWith(".jsonl"));
+    } catch {
+      return true;
+    }
   }
 
   getModel(): string {

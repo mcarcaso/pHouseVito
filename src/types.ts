@@ -118,6 +118,18 @@ export interface PiHarnessConfig {
   thinkingLevel?: "off" | "low" | "medium" | "high";
 }
 
+export interface ClaudeCodeHarnessConfig {
+  /** Model name passed via `--model`. Provider is informational; CC routes via its own auth. */
+  model?: {
+    provider: string;
+    name: string;
+  };
+  /** CC --permission-mode flag. Defaults to "acceptEdits" for non-interactive Vito use. */
+  permissionMode?: "default" | "acceptEdits" | "bypassPermissions" | "plan";
+  /** Override the `claude` binary path (e.g., for nvm-managed installs). */
+  binaryPath?: string;
+}
+
 // ── Unified Settings Type ──
 // This is the cascading settings type: Global → Channel → Session
 // Each level can override any setting. More specific wins.
@@ -137,6 +149,8 @@ export interface Settings {
   timezone?: string;
   /** Pi Coding Agent harness overrides */
   "pi-coding-agent"?: Partial<PiHarnessConfig>;
+  /** Claude Code harness overrides */
+  "claude-code"?: Partial<ClaudeCodeHarnessConfig>;
 }
 
 /** Deep merge helper type for settings resolution */
@@ -145,6 +159,7 @@ export type ResolvedSettings = Required<Pick<Settings, "harness" | "streamMode">
   requireMention?: boolean;
   traceMessageUpdates?: boolean;
   "pi-coding-agent"?: Partial<PiHarnessConfig>;
+  "claude-code"?: Partial<ClaudeCodeHarnessConfig>;
 };
 
 export interface VitoConfig {
@@ -157,6 +172,7 @@ export interface VitoConfig {
   /** Global harness configurations (full configs, not overrides) */
   harnesses: {
     "pi-coding-agent"?: PiHarnessConfig;
+    "claude-code"?: ClaudeCodeHarnessConfig;
   };
   /** Per-channel configuration */
   channels: Record<string, ChannelConfig>;

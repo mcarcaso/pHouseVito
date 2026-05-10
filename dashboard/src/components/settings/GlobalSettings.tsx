@@ -15,6 +15,11 @@ const STREAM_MODES = [
   { value: 'final', label: 'Final' },
 ];
 
+const HARNESSES = [
+  { value: 'pi-coding-agent', label: 'Pi' },
+  { value: 'claude-code', label: 'Claude Code' },
+];
+
 const TIMEZONE_OPTIONS = [
   { value: 'America/Toronto', label: 'America/Toronto' },
   { value: 'America/New_York', label: 'America/New_York' },
@@ -156,6 +161,11 @@ export default function GlobalSettings({ config, onSave }: GlobalSettingsProps) 
       <section className="bg-neutral-900 border border-neutral-800 rounded-xl p-5">
         <h3 className="text-base font-semibold text-white mb-1">Default Settings</h3>
         <p className="text-xs text-neutral-600 mb-4">Baseline defaults — channels and sessions inherit from here.</p>
+
+        <div className="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-4 py-3 border-b border-neutral-800/50">
+          <label className="text-sm text-neutral-400 sm:w-48 sm:shrink-0">Harness</label>
+          {renderSegmented(settings.harness || 'pi-coding-agent', (val) => updateSetting('harness', val), HARNESSES)}
+        </div>
 
         <div className="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-4 py-3 border-b border-neutral-800/50">
           <label className="text-sm text-neutral-400 sm:w-48 sm:shrink-0">Stream Mode</label>

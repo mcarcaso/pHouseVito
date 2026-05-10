@@ -33,6 +33,11 @@ const STREAM_MODES = [
   { value: 'final', label: 'Final' },
 ];
 
+const HARNESSES = [
+  { value: 'pi-coding-agent', label: 'Pi' },
+  { value: 'claude-code', label: 'Claude Code' },
+];
+
 const THINKING_LEVELS = [
   { value: 'off', label: 'Off' },
   { value: 'low', label: 'Low' },
@@ -317,6 +322,16 @@ export default function SessionSettingsPanel({ config, onSave, initialSessionId 
         </div>
 
         <div className="mt-3">
+          <SettingRow
+            label="Harness"
+            inheritedValue={inherited.harness}
+            inheritedFrom={inheritFrom}
+            overrideValue={overrides.harness}
+            onOverride={(val) => updateSessionSetting(sessionId, 'harness', val)}
+            onReset={() => resetSessionSetting(sessionId, 'harness')}
+            renderInput={(val, onChange) => renderSegmented(val, onChange, HARNESSES)}
+          />
+
           <SettingRow
             label="Stream Mode"
             inheritedValue={inherited.streamMode}

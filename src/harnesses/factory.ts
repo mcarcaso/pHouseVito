@@ -8,9 +8,10 @@
  */
 
 import { PiSessionHarness, type PiSessionHarnessConfig } from "../orchestrator_v2/pi-session-harness.js";
+import { ClaudeCodeHarness, type ClaudeCodeHarnessConfig } from "./claude-code-harness.js";
 import type { Harness } from "./types.js";
 
-export type HarnessName = "pi-coding-agent";
+export type HarnessName = "pi-coding-agent" | "claude-code";
 
 export interface HarnessFactoryConfig {
   /** Per-Vito-session directory for any on-disk session state. */
@@ -21,6 +22,10 @@ export interface HarnessFactoryConfig {
   thinkingLevel?: "off" | "low" | "medium" | "high";
   /** Skill discovery root. */
   skillsDir?: string;
+  /** Claude-code-only: permission mode. Other harnesses ignore. */
+  permissionMode?: ClaudeCodeHarnessConfig["permissionMode"];
+  /** Claude-code-only: override the binary path. */
+  binaryPath?: string;
 }
 
 export function createHarness(name: HarnessName, cfg: HarnessFactoryConfig): Harness {
@@ -32,6 +37,14 @@ export function createHarness(name: HarnessName, cfg: HarnessFactoryConfig): Har
         skillsDir: cfg.skillsDir,
         sessionDir: cfg.sessionDir,
       } satisfies PiSessionHarnessConfig);
+    case "claude-code":
+      return new ClaudeCodeHarness({
+        model: cfg.model,
+        sessionDir: cfg.sessionDir,
+        permissionMode: cfg.permissionMode,
+        binaryPath: cfg.binaryPath,
+        skillsDir: cfg.skillsDir,
+      } satisfies ClaudeCodeHarnessConfig);
     default: {
       const _exhaustive: never = name;
       throw new Error(`Unknown harness: ${_exhaustive}`);

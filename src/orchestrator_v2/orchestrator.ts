@@ -733,9 +733,12 @@ export class OrchestratorV2 {
   private async handleRestartCommand(event: InboundEvent, channel: Channel): Promise<void> {
     const { spawn } = await import("child_process");
     const handler = channel.createHandler(event);
-    await handler.relay("🔄 Restarting in 5 seconds...");
+    await handler.relay("🔄 Rebuilding dashboard and restarting...");
     await handler.stopTyping?.();
-    const child = spawn("bash", ["-c", "sleep 5 && pm2 restart vito-server"], {
+    // Mirror the dashboard restart button: rebuild the React bundle, then
+    // pm2 restart. `;` (not `&&`) so a failed build still restarts the
+    // backend — matches the dashboard endpoint's try/catch behavior.
+    const child = spawn("bash", ["-c", "sleep 2; npm run build:dashboard; pm2 restart vito-server"], {
       detached: true,
       stdio: "ignore",
     });

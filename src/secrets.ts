@@ -15,6 +15,9 @@ export const SYSTEM_KEYS: Record<string, string> = {
   DASHBOARD_PASSWORD_HASH: "Dashboard password hash (managed automatically — do not edit manually)",
   // Bland AI webhook
   BLAND_WEBHOOK_SECRET: "Bland AI webhook secret — add as ?secret=VALUE to your Bland webhook URL",
+  // MCP server — required pair; if either is missing, MCP routes are not mounted
+  MCP_CLIENT_ID: "MCP OAuth static client id (paired with MCP_CLIENT_SECRET — both required to mount /mcp)",
+  MCP_CLIENT_SECRET: "MCP OAuth static client secret (paired with MCP_CLIENT_ID — both required to mount /mcp)",
   // Provider API keys (auto-populated from PROVIDER_API_KEYS below)
 };
 

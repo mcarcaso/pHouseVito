@@ -19,6 +19,7 @@ import { getProviders, getModels } from "@mariozechner/pi-ai";
 import { getOAuthProviders } from "@mariozechner/pi-ai/oauth";
 import { AuthStorage } from "@mariozechner/pi-coding-agent";
 import { searchMemory } from "../memory/search.js";
+import { mountMcp } from "../mcp-server.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const ATTACHMENTS_DIR = path.join(process.cwd(), "data", "attachments");
@@ -250,6 +251,22 @@ export class DashboardChannel implements Channel {
 
     this.app.use(express.json({ limit: "200mb" }));
     this.app.use(express.static(path.join(__dirname, "../../dashboard/dist")));
+
+    // ── MCP routes (before auth — has its own OAuth bearer auth) ──
+    // Mounted only if MCP_CLIENT_ID + MCP_CLIENT_SECRET are set in user/secrets.json.
+    // Only the pre-registered static client (Claude) can authorize — no dynamic
+    // registration, no password-based browser login, no URL path-token bypass.
+    const mcpClientId = process.env.MCP_CLIENT_ID;
+    const mcpClientSecret = process.env.MCP_CLIENT_SECRET;
+    if (mcpClientId && mcpClientSecret) {
+      mountMcp(this.app, {
+        staticClientId: mcpClientId,
+        staticClientSecret: mcpClientSecret,
+        botName: this.config?.bot?.name || "Vito",
+      });
+    } else {
+      console.log("[MCP] not mounted (set MCP_CLIENT_ID + MCP_CLIENT_SECRET in user/secrets.json to enable).");
+    }
 
     // Ensure attachments dir exists (served behind auth below)
     if (!existsSync(ATTACHMENTS_DIR)) mkdirSync(ATTACHMENTS_DIR, { recursive: true });

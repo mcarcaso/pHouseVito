@@ -39,6 +39,11 @@ export interface VitoConfig {
       model: { provider: string; name: string };
       thinkingLevel?: string;
     };
+    'claude-code'?: {
+      model?: { provider: string; name: string };
+      permissionMode?: 'default' | 'acceptEdits' | 'bypassPermissions' | 'plan';
+      binaryPath?: string;
+    };
   };
   channels: Record<string, ChannelConfig>;
   sessions?: Record<string, Settings>;

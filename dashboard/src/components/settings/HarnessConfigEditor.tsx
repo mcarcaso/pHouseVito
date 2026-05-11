@@ -33,6 +33,39 @@ const THINKING_LEVELS = [
   { id: 'high', label: 'High' },
 ];
 
+// Claude Code --model values, grouped by category. Aliases auto-track the
+// latest version; pinned IDs lock to a specific version for reproducibility.
+// Update this list when Anthropic ships new Claude models.
+const CC_MODEL_OPTIONS: { group: string; items: { value: string; label: string }[] }[] = [
+  {
+    group: 'Aliases (auto-update)',
+    items: [
+      { value: 'opus', label: 'opus — latest Opus' },
+      { value: 'sonnet', label: 'sonnet — latest Sonnet' },
+      { value: 'haiku', label: 'haiku — latest Haiku' },
+      { value: 'opusplan', label: 'opusplan — Opus for planning, Sonnet for execution' },
+    ],
+  },
+  {
+    group: 'Pinned versions',
+    items: [
+      { value: 'claude-opus-4-7', label: 'claude-opus-4-7 — Opus 4.7 (Apr 2026)' },
+      { value: 'claude-opus-4-6', label: 'claude-opus-4-6 — Opus 4.6 (Feb 2026)' },
+      { value: 'claude-sonnet-4-6', label: 'claude-sonnet-4-6 — Sonnet 4.6 (Feb 2026)' },
+      { value: 'claude-haiku-4-5', label: 'claude-haiku-4-5 — Haiku 4.5 (Oct 2025)' },
+    ],
+  },
+];
+
+const ALL_CC_MODEL_VALUES = CC_MODEL_OPTIONS.flatMap((g) => g.items.map((i) => i.value));
+
+const CC_PERMISSION_MODES = [
+  { id: 'default', label: 'Default' },
+  { id: 'acceptEdits', label: 'Accept Edits' },
+  { id: 'bypassPermissions', label: 'Bypass Permissions' },
+  { id: 'plan', label: 'Plan' },
+];
+
 const selectClass = "w-full sm:w-64 bg-neutral-950 border border-neutral-700 rounded-md px-3 py-2 text-neutral-200 text-sm focus:outline-none focus:border-blue-600 transition-colors cursor-pointer appearance-none bg-[url('data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20width%3D%2210%22%20height%3D%2210%22%20viewBox%3D%220%200%2012%2012%22%3E%3Cpath%20fill%3D%22%23666%22%20d%3D%22M6%208L1%203h10z%22%2F%3E%3C%2Fsvg%3E')] bg-no-repeat bg-[right_0.75rem_center] pr-8";
 
 export default function HarnessConfigEditor({ config, onSave }: HarnessConfigEditorProps) {
@@ -48,6 +81,13 @@ export default function HarnessConfigEditor({ config, onSave }: HarnessConfigEdi
   const [selectedModel, setSelectedModel] = useState('');
   const [selectedThinking, setSelectedThinking] = useState('off');
   const [savingPi, setSavingPi] = useState(false);
+
+  // Claude Code state
+  const [editingCC, setEditingCC] = useState(false);
+  const [ccModel, setCcModel] = useState('');
+  const [ccPermissionMode, setCcPermissionMode] = useState<'default' | 'acceptEdits' | 'bypassPermissions' | 'plan'>('bypassPermissions');
+  const [ccBinaryPath, setCcBinaryPath] = useState('');
+  const [savingCC, setSavingCC] = useState(false);
 
   // OAuth login state
   const [loggingIn, setLoggingIn] = useState<string | null>(null);
@@ -88,6 +128,11 @@ export default function HarnessConfigEditor({ config, onSave }: HarnessConfigEdi
     if (piConfig?.thinkingLevel) {
       setSelectedThinking(piConfig.thinkingLevel);
     }
+
+    const ccConfig = config.harnesses?.['claude-code'];
+    if (ccConfig?.model?.name) setCcModel(ccConfig.model.name);
+    if (ccConfig?.permissionMode) setCcPermissionMode(ccConfig.permissionMode);
+    if (ccConfig?.binaryPath) setCcBinaryPath(ccConfig.binaryPath);
   }, [config]);
 
   const loadModelsForProvider = async (provider: string) => {
@@ -173,6 +218,27 @@ export default function HarnessConfigEditor({ config, onSave }: HarnessConfigEdi
     await onSave({ harnesses: { ...config.harnesses, 'pi-coding-agent': piConfig } });
     setEditingPi(false);
     setSavingPi(false);
+  };
+
+  const saveCC = async () => {
+    if (!ccModel.trim()) return;
+    setSavingCC(true);
+    // Always persist as { provider, name } object — never a bare string. The
+    // provider field is informational for CC (it routes via its own auth),
+    // but the object shape is required by the harness and the rest of v2.
+    const ccConfig: any = {
+      ...config.harnesses?.['claude-code'],
+      model: { provider: 'anthropic', name: ccModel.trim() },
+      permissionMode: ccPermissionMode,
+    };
+    if (ccBinaryPath.trim()) {
+      ccConfig.binaryPath = ccBinaryPath.trim();
+    } else {
+      delete ccConfig.binaryPath;
+    }
+    await onSave({ harnesses: { ...config.harnesses, 'claude-code': ccConfig } });
+    setEditingCC(false);
+    setSavingCC(false);
   };
 
   // Show providers that have auth OR that support OAuth login (so user can log in)
@@ -330,6 +396,105 @@ export default function HarnessConfigEditor({ config, onSave }: HarnessConfigEdi
             </div>
           </div>
         ) : null}
+      </section>
+
+      {/* ── Claude Code ── */}
+      <section className="bg-[#151515] border border-neutral-800 rounded-xl p-5">
+        <div className="flex items-center justify-between mb-3">
+          <div className="flex items-center gap-3">
+            <span className="text-xl">🤖</span>
+            <h4 className="text-sm font-semibold text-white">claude-code</h4>
+          </div>
+          {!editingCC ? (
+            <button onClick={() => setEditingCC(true)} className="text-xs text-blue-400 hover:text-blue-300 transition-colors">
+              Edit
+            </button>
+          ) : (
+            <div className="flex gap-2">
+              <button onClick={() => setEditingCC(false)} className="text-xs text-neutral-400 hover:text-neutral-300">Cancel</button>
+              <button
+                onClick={saveCC}
+                disabled={savingCC || !ccModel.trim()}
+                className="px-3 py-1 text-xs bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white rounded-md transition-colors"
+              >
+                {savingCC ? 'Saving...' : 'Save'}
+              </button>
+            </div>
+          )}
+        </div>
+
+        {!editingCC ? (
+          <div className="bg-neutral-900/50 border border-neutral-800 rounded-md p-3 font-mono text-sm space-y-1">
+            <div className="flex gap-2">
+              <span className="text-neutral-500">Model:</span>
+              <span className="text-purple-400">
+                {config.harnesses?.['claude-code']?.model?.name || <span className="text-neutral-600 italic">default</span>}
+              </span>
+            </div>
+            <div className="flex gap-2">
+              <span className="text-neutral-500">Permission:</span>
+              <span className="text-purple-400">
+                {config.harnesses?.['claude-code']?.permissionMode || 'bypassPermissions'}
+              </span>
+            </div>
+            {config.harnesses?.['claude-code']?.binaryPath && (
+              <div className="flex gap-2">
+                <span className="text-neutral-500">Binary:</span>
+                <span className="text-purple-400">{config.harnesses['claude-code'].binaryPath}</span>
+              </div>
+            )}
+          </div>
+        ) : (
+          <div className="space-y-4">
+            <div className="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-4">
+              <label className="text-sm text-neutral-400 sm:w-24 shrink-0">Model</label>
+              <div className="flex flex-col gap-1 flex-1">
+                <select
+                  className={selectClass}
+                  value={ccModel}
+                  onChange={(e) => setCcModel(e.target.value)}
+                >
+                  <option value="">Select a model...</option>
+                  {/* If the saved model isn't in our known list, surface it so the
+                      dropdown can still display it (e.g. custom or legacy value). */}
+                  {ccModel && !ALL_CC_MODEL_VALUES.includes(ccModel) && (
+                    <option value={ccModel}>{ccModel} (current)</option>
+                  )}
+                  {CC_MODEL_OPTIONS.map((group) => (
+                    <optgroup key={group.group} label={group.group}>
+                      {group.items.map((item) => (
+                        <option key={item.value} value={item.value}>{item.label}</option>
+                      ))}
+                    </optgroup>
+                  ))}
+                </select>
+                <span className="text-xs text-neutral-600">
+                  Passed to <code className="text-neutral-500">claude --model</code>. CC handles auth and routing.
+                </span>
+              </div>
+            </div>
+            <div className="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-4">
+              <label className="text-sm text-neutral-400 sm:w-24 shrink-0">Permission</label>
+              <select
+                className={selectClass}
+                value={ccPermissionMode}
+                onChange={(e) => setCcPermissionMode(e.target.value as any)}
+              >
+                {CC_PERMISSION_MODES.map((m) => <option key={m.id} value={m.id}>{m.label}</option>)}
+              </select>
+            </div>
+            <div className="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-4">
+              <label className="text-sm text-neutral-400 sm:w-24 shrink-0">Binary Path</label>
+              <input
+                type="text"
+                value={ccBinaryPath}
+                onChange={(e) => setCcBinaryPath(e.target.value)}
+                placeholder="claude (leave blank for default)"
+                className="w-full sm:w-64 bg-neutral-950 border border-neutral-700 rounded-md px-3 py-2 text-neutral-200 text-sm focus:outline-none focus:border-blue-600 transition-colors"
+              />
+            </div>
+          </div>
+        )}
       </section>
 
     </div>

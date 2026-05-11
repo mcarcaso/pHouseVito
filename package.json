@@ -15,8 +15,8 @@
     "dev:dashboard": "cd dashboard && npm run dev"
   },
   "dependencies": {
-    "@mariozechner/pi-ai": "^0.70.2",
-    "@mariozechner/pi-coding-agent": "^0.70.2",
+    "@earendil-works/pi-ai": "^0.74.0",
+    "@earendil-works/pi-coding-agent": "^0.74.0",
     "@modelcontextprotocol/sdk": "^1.29.0",
     "@viz-js/viz": "^3.25.0",
     "ajv": "^8.18.0",

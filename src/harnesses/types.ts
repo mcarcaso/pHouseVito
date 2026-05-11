@@ -5,7 +5,7 @@
  * send prompts, receive events, and manage long-lived session state.
  *
  * Two implementations are envisioned:
- *   - PiSessionHarness — in-process @mariozechner/pi-coding-agent AgentSession
+ *   - PiSessionHarness — in-process @earendil-works/pi-coding-agent AgentSession
  *   - ClaudeCodeHarness — subprocess `claude -p ... --resume <id>` CLI
  *
  * Both keep a stable system prompt across turns so Anthropic prompt caching

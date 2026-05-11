@@ -1,7 +1,7 @@
 /**
  * Long-lived Pi Session Harness (v2)
  *
- * Wraps @mariozechner/pi-coding-agent so a single AgentSession is reused across
+ * Wraps @earendil-works/pi-coding-agent so a single AgentSession is reused across
  * multiple inbound user messages within the same Vito session. This is what
  * unlocks Anthropic prompt caching: the system prompt is set once at session
  * creation and the conversation history grows inside pi's own state, so every
@@ -14,14 +14,14 @@
  *   - dispose(): tears down the AgentSession (called from /new, shutdown).
  */
 
-import { getModel } from "@mariozechner/pi-ai";
+import { getModel } from "@earendil-works/pi-ai";
 import {
   createAgentSession,
   DefaultResourceLoader,
   SessionManager as PiSessionManager,
   type AgentSession,
   type AgentSessionEvent,
-} from "@mariozechner/pi-coding-agent";
+} from "@earendil-works/pi-coding-agent";
 import { existsSync, mkdirSync, readdirSync, unlinkSync, writeFileSync } from "fs";
 import { join } from "path";
 import { discoverSkills } from "../skills/discovery.js";

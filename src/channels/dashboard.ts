@@ -15,9 +15,9 @@ import { fileURLToPath } from "url";
 import crypto from "crypto";
 import { readSecrets, writeSecrets, loadSecrets, getSecretsForDashboard, SYSTEM_KEYS, PROVIDER_API_KEYS, getProviderKeyStatus, getProviderAuthStatus, readPiAuth } from "../secrets.js";
 import Database from "better-sqlite3";
-import { getProviders, getModels } from "@mariozechner/pi-ai";
-import { getOAuthProviders } from "@mariozechner/pi-ai/oauth";
-import { AuthStorage } from "@mariozechner/pi-coding-agent";
+import { getProviders, getModels } from "@earendil-works/pi-ai";
+import { getOAuthProviders } from "@earendil-works/pi-ai/oauth";
+import { AuthStorage } from "@earendil-works/pi-coding-agent";
 import { searchMemory } from "../memory/search.js";
 import { mountMcp } from "../mcp-server.js";
 

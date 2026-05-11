@@ -30,7 +30,7 @@ Production deploy: `./aws_deploy/deploy.sh mike5` (git pull → npm ci → build
 
 The whole point of v2 is **one long-lived `PiSessionHarness` per Vito session**, reused across every turn. The system prompt is set once at creation; subsequent turns just call `piSession.prompt(userMessage)`. This is what gets Anthropic prompt caching to hit on every turn.
 
-`orchestrator.ts` owns: per-session FIFO queues (sequential within a session, parallel across sessions), abort tracking for `/stop`, the harness map keyed by Vito session id, and inbound routing. `pi-session-harness.ts` is the actual long-lived wrapper around `@mariozechner/pi-coding-agent`, including `setModel()` and `compact()` for live mutation. `system-prompt.ts` builds the deliberately small/stable system prompt; `capabilities.ts` is the static "capabilities map" string injected into it.
+`orchestrator.ts` owns: per-session FIFO queues (sequential within a session, parallel across sessions), abort tracking for `/stop`, the harness map keyed by Vito session id, and inbound routing. `pi-session-harness.ts` is the actual long-lived wrapper around `@earendil-works/pi-coding-agent`, including `setModel()` and `compact()` for live mutation. `system-prompt.ts` builds the deliberately small/stable system prompt; `capabilities.ts` is the static "capabilities map" string injected into it.
 
 ### Per-turn flow
 

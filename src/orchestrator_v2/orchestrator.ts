@@ -515,7 +515,8 @@ export class OrchestratorV2 {
       }
 
       // Background: chunk + embed; periodic profile update.
-      maybeEmbedNewChunks(vitoSession.id).then((embResult) => {
+      const contextualizerModel = effectiveSettings.memory?.chunkContextualizerModel?.name;
+      maybeEmbedNewChunks(vitoSession.id, { contextualizerModel }).then((embResult) => {
         if (embResult) {
           tracedHarness.writePostRunLine({
             type: "embedding_result",
@@ -798,7 +799,9 @@ export class OrchestratorV2 {
       await handler.stopTyping?.();
 
       // Background force-embed. Errors logged, not surfaced to the user.
-      maybeEmbedNewChunks(vitoSession.id, { force: true })
+      const newSettings = getEffectiveSettings(this.config, event.channel, event.sessionKey);
+      const contextualizerModel = newSettings.memory?.chunkContextualizerModel?.name;
+      maybeEmbedNewChunks(vitoSession.id, { force: true, contextualizerModel })
         .then((embResult) => {
           if (embResult?.skipped) {
             console.log(`[v2 /new] background embed skipped: ${embResult.skipped}`);

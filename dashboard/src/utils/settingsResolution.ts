@@ -18,6 +18,9 @@ export interface Settings {
     model?: { provider: string; name: string };
     thinkingLevel?: 'off' | 'low' | 'medium' | 'high';
   };
+  memory?: {
+    chunkContextualizerModel?: { provider: string; name: string };
+  };
 }
 
 export interface ResolvedSettings {

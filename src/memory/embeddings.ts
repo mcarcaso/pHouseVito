@@ -28,7 +28,9 @@ const EMBEDDINGS_DB_PATH = join(ROOT, "user", "embeddings.db");
 const MIN_CHUNK_CHARS = 2000;  // Start chunking when buffer hits this
 const MAX_CHUNK_CHARS = 4000;  // Hard cap per chunk
 const ASSISTANT_LABEL = "assistant";
-const CONTEXTUAL_MODEL = "openai/gpt-4o-mini";
+/** Default model used to write the per-chunk context sentence. Override via
+ *  settings.memory.chunkContextualizerModel.name in vito.config.json. */
+const DEFAULT_CONTEXTUAL_MODEL = "openai/gpt-5.5-nano";
 
 
 // ── Global Lock ────────────────────────────────────────────
@@ -233,7 +235,7 @@ function produceCompleteChunks(
 
 // ── OpenAI Calls ───────────────────────────────────────────
 
-async function generateContext(currentText: string, previousText: string | null): Promise<string> {
+async function generateContext(currentText: string, previousText: string | null, model: string): Promise<string> {
   const openai = getClient();
 
   const prevSection = previousText
@@ -250,7 +252,7 @@ Write a short, succinct context (1-2 sentences max) to situate this conversation
 Do NOT summarize the full conversation. Just provide enough context so that if someone searches for related topics, this chunk can be found. Respond with ONLY the context sentence(s), nothing else.`;
 
   const response = await openai.chat.completions.create({
-    model: resolveModel(CONTEXTUAL_MODEL),
+    model: resolveModel(model),
     max_tokens: 200,
     messages: [{ role: "user", content: prompt }],
   });
@@ -287,6 +289,11 @@ export interface EmbeddingResult {
 export interface EmbedOptions {
   /** Force emitting a final chunk even if below MIN_CHUNK_CHARS */
   force?: boolean;
+  /**
+   * OpenRouter-format model identifier used to write the per-chunk context
+   * sentence (e.g. "openai/gpt-5.5-nano"). Defaults to DEFAULT_CONTEXTUAL_MODEL.
+   */
+  contextualizerModel?: string;
 }
 
 /**
@@ -405,7 +412,7 @@ async function _doEmbedding(
       const prevText = prevRow?.text ?? null;
 
       // Generate contextual sentence
-      const context = await generateContext(chunk.text, prevText);
+      const context = await generateContext(chunk.text, prevText, options.contextualizerModel ?? DEFAULT_CONTEXTUAL_MODEL);
 
       // Combine for embedding
       const embeddedText = `${context}\n\n${chunk.text}`;

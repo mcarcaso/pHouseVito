@@ -151,6 +151,15 @@ export interface Settings {
   "pi-coding-agent"?: Partial<PiHarnessConfig>;
   /** Claude Code harness overrides */
   "claude-code"?: Partial<ClaudeCodeHarnessConfig>;
+  /** Memory pipeline settings */
+  memory?: {
+    /**
+     * Model used to write the 1-2 sentence context prepended to each chunk
+     * before embedding. Format mirrors queryContextualizerModel — `name` is
+     * the OpenRouter-format identifier (e.g. "openai/gpt-5.5-nano").
+     */
+    chunkContextualizerModel?: { provider: string; name: string };
+  };
 }
 
 /** Deep merge helper type for settings resolution */
@@ -160,6 +169,7 @@ export type ResolvedSettings = Required<Pick<Settings, "harness" | "streamMode">
   traceMessageUpdates?: boolean;
   "pi-coding-agent"?: Partial<PiHarnessConfig>;
   "claude-code"?: Partial<ClaudeCodeHarnessConfig>;
+  memory?: Settings["memory"];
 };
 
 export interface VitoConfig {

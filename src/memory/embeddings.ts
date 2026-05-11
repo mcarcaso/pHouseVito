@@ -30,7 +30,7 @@ const MAX_CHUNK_CHARS = 4000;  // Hard cap per chunk
 const ASSISTANT_LABEL = "assistant";
 /** Default model used to write the per-chunk context sentence. Override via
  *  settings.memory.chunkContextualizerModel.name in vito.config.json. */
-const DEFAULT_CONTEXTUAL_MODEL = "openai/gpt-5.5-nano";
+const DEFAULT_CONTEXTUAL_MODEL = "openai/gpt-5.4-nano";
 
 
 // ── Global Lock ────────────────────────────────────────────

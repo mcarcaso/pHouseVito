@@ -66,7 +66,7 @@ function ToggleRow({ title, description, value, onChange, auto, onAutoChange }: 
 
 // ─────────────────────────────────────────────────────────────────────────────
 
-const CHUNK_CONTEXTUALIZER_DEFAULT = { provider: 'openai', name: 'gpt-5.5-nano' };
+const CHUNK_CONTEXTUALIZER_DEFAULT = { provider: 'openrouter', name: 'openai/gpt-5.4-nano' };
 
 // Shared style with HarnessConfigEditor's selects so the Memory picker looks
 // identical to the Pi/CC pickers.

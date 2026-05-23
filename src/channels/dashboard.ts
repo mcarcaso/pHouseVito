@@ -596,6 +596,15 @@ export class DashboardChannel implements Channel {
             });
           });
         },
+        onManualCodeInput: async () => {
+          return new Promise<string>((resolve) => {
+            pendingLogins.set(providerId, {
+              status: "prompt",
+              promptMessage: "After the browser redirects to localhost, copy the full redirected URL and paste it here:",
+              resolvePrompt: resolve,
+            });
+          });
+        },
         onProgress: (message) => {
           console.log(`[oauth/${providerId}] ${message}`);
         },

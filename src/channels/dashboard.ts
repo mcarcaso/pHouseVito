@@ -553,14 +553,30 @@ export class DashboardChannel implements Channel {
       pendingLogins.set(providerId, { status: "pending" });
 
       const authStorage = AuthStorage.create();
-      let authUrl = "";
+      let responseSent = false;
 
-      // Start login flow - returns immediately with the URL
+      // Start login flow - returns immediately with the URL/device code
       authStorage.login(providerId, {
         onAuth: (info) => {
-          authUrl = info.url;
+          if (responseSent) return;
+          responseSent = true;
           // Send URL back to frontend immediately
           res.json({ status: "login_started", url: info.url });
+        },
+        onDeviceCode: (info) => {
+          if (responseSent) return;
+          responseSent = true;
+          res.json({
+            status: "device_code_started",
+            userCode: info.userCode,
+            verificationUri: info.verificationUri,
+            intervalSeconds: info.intervalSeconds,
+            expiresInSeconds: info.expiresInSeconds,
+          });
+        },
+        onSelect: async (info) => {
+          const browserOption = info.options.find((option) => /browser|oauth/i.test(`${option.id} ${option.label}`));
+          return browserOption?.id ?? info.options[0]?.id;
         },
         onPrompt: async () => {
           // Dashboard doesn't support manual code entry
@@ -576,8 +592,9 @@ export class DashboardChannel implements Channel {
         const message = err instanceof Error ? err.message : String(err);
         pendingLogins.set(providerId, { status: "error", error: message });
         console.error(`[oauth/${providerId}] Login failed:`, message);
-        // If we haven't sent a response yet (onAuth never called), send error
-        if (!authUrl) {
+        // If we haven't sent a response yet, send error
+        if (!responseSent) {
+          responseSent = true;
           res.status(500).json({ error: message });
         }
       });

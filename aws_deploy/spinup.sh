@@ -21,7 +21,7 @@ STATE_FILE="$STATE_DIR/$NAME.json"
 KEY_NAME="vito-deploy"
 KEY_PATH="$HOME/.ssh/${KEY_NAME}.pem"
 REGION="${AWS_DEFAULT_REGION:-us-east-1}"
-INSTANCE_TYPE="t3.small"
+INSTANCE_TYPE="t4g.micro"
 REPO_URL="https://github.com/mcarcaso/pHouseVito.git"
 ROLE_NAME="vito-certbot-role"
 PROFILE_NAME="vito-certbot-profile"
@@ -139,7 +139,7 @@ ok "IAM role: $ROLE_NAME"
 log "Looking up Ubuntu 22.04 AMI …"
 AMI_ID=$(aws ec2 describe-images \
   --owners 099720109477 \
-  --filters "Name=name,Values=ubuntu/images/hvm-ssd/ubuntu-jammy-22.04-amd64-server-*" \
+  --filters "Name=name,Values=ubuntu/images/hvm-ssd/ubuntu-jammy-22.04-arm64-server-*" \
              "Name=state,Values=available" \
   --region "$REGION" \
   --query 'sort_by(Images,&CreationDate)[-1].ImageId' --output text)
@@ -251,6 +251,17 @@ OPENROUTER_API_KEY="$4"
 FQDN="${NAME}.${DOMAIN}"
 
 export DEBIAN_FRONTEND=noninteractive
+
+echo ">>> Creating 2GB swapfile …"
+if [ ! -f /swapfile ]; then
+  sudo fallocate -l 2G /swapfile || sudo dd if=/dev/zero of=/swapfile bs=1M count=2048
+  sudo chmod 600 /swapfile
+  sudo mkswap /swapfile
+  sudo swapon /swapfile
+  echo '/swapfile none swap sw 0 0' | sudo tee -a /etc/fstab >/dev/null
+else
+  sudo swapon /swapfile || true
+fi
 
 echo ">>> Installing system packages …"
 sudo apt-get update -qq

@@ -17,7 +17,7 @@
     "pi-coding-agent": {
       "model": {
         "provider": "openrouter",
-        "name": "deepseek/deepseek-v4-pro"
+        "name": "deepseek/deepseek-v4-flash"
       },
       "thinkingLevel": "medium"
     }

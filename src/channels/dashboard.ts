@@ -532,7 +532,12 @@ export class DashboardChannel implements Channel {
 
     // OAuth login/logout endpoints for subscription-based providers
     // Tracks in-progress login flows so the frontend can poll for completion
-    const pendingLogins = new Map<string, { status: "pending" | "success" | "error"; error?: string }>();
+    const pendingLogins = new Map<string, {
+      status: "pending" | "prompt" | "success" | "error";
+      error?: string;
+      promptMessage?: string;
+      resolvePrompt?: (value: string) => void;
+    }>();
 
     this.app.post("/api/auth/provider/:id/login", (req, res) => {
       const providerId = req.params.id;
@@ -545,7 +550,8 @@ export class DashboardChannel implements Channel {
       }
 
       // Check if a login is already in progress
-      if (pendingLogins.get(providerId)?.status === "pending") {
+      const existingLogin = pendingLogins.get(providerId);
+      if (existingLogin?.status === "pending" || existingLogin?.status === "prompt") {
         res.status(409).json({ error: "Login already in progress" });
         return;
       }
@@ -575,12 +581,20 @@ export class DashboardChannel implements Channel {
           });
         },
         onSelect: async (info) => {
-          const browserOption = info.options.find((option) => /browser|oauth/i.test(`${option.id} ${option.label}`));
-          return browserOption?.id ?? info.options[0]?.id;
+          // The dashboard runs on a remote server, so browser OAuth redirecting
+          // to localhost would target the user's laptop, not the EC2 instance.
+          // Prefer device-code auth when providers offer it.
+          const deviceOption = info.options.find((option) => /device|code/i.test(`${option.id} ${option.label}`));
+          return deviceOption?.id ?? info.options[0]?.id;
         },
-        onPrompt: async () => {
-          // Dashboard doesn't support manual code entry
-          throw new Error("Manual code entry not supported via dashboard. Complete the login in your browser.");
+        onPrompt: async (info) => {
+          return new Promise<string>((resolve) => {
+            pendingLogins.set(providerId, {
+              status: "prompt",
+              promptMessage: info.message,
+              resolvePrompt: resolve,
+            });
+          });
         },
         onProgress: (message) => {
           console.log(`[oauth/${providerId}] ${message}`);
@@ -613,11 +627,29 @@ export class DashboardChannel implements Channel {
         }
         return;
       }
-      res.json(pending);
+      const { resolvePrompt, ...safePending } = pending;
+      res.json(safePending);
       // Clean up completed statuses after they've been read
-      if (pending.status !== "pending") {
+      if (pending.status !== "pending" && pending.status !== "prompt") {
         pendingLogins.delete(providerId);
       }
+    });
+
+    this.app.post("/api/auth/provider/:id/login/prompt", express.json(), (req, res) => {
+      const providerId = req.params.id;
+      const pending = pendingLogins.get(providerId);
+      if (!pending || pending.status !== "prompt" || !pending.resolvePrompt) {
+        res.status(409).json({ error: "No login prompt is waiting for this provider" });
+        return;
+      }
+      const value = typeof req.body?.value === "string" ? req.body.value.trim() : "";
+      if (!value) {
+        res.status(400).json({ error: "Missing prompt value" });
+        return;
+      }
+      pending.resolvePrompt(value);
+      pendingLogins.set(providerId, { status: "pending" });
+      res.json({ status: "submitted" });
     });
 
     this.app.post("/api/auth/provider/:id/logout", (_req, res) => {

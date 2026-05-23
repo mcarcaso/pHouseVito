@@ -92,6 +92,9 @@ export default function HarnessConfigEditor({ config, onSave }: HarnessConfigEdi
   // OAuth login state
   const [loggingIn, setLoggingIn] = useState<string | null>(null);
   const [loginError, setLoginError] = useState<string | null>(null);
+  const [deviceLogin, setDeviceLogin] = useState<{ providerId: string; userCode: string; verificationUri: string; expiresInSeconds?: number } | null>(null);
+  const [promptLogin, setPromptLogin] = useState<{ providerId: string; message?: string } | null>(null);
+  const [promptValue, setPromptValue] = useState('');
   const loginPollRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   const refreshProviders = useCallback(() => {
@@ -155,6 +158,9 @@ export default function HarnessConfigEditor({ config, onSave }: HarnessConfigEdi
   const handleOAuthLogin = async (providerId: string) => {
     setLoggingIn(providerId);
     setLoginError(null);
+    setDeviceLogin(null);
+    setPromptLogin(null);
+    setPromptValue('');
     try {
       const res = await fetch(`/api/auth/provider/${providerId}/login`, { method: 'POST' });
       const data = await res.json();
@@ -168,9 +174,18 @@ export default function HarnessConfigEditor({ config, onSave }: HarnessConfigEdi
         refreshProviders();
         return;
       }
-      // Open the auth URL in a new tab
+      // Open browser OAuth URLs, or show a device code for remote-dashboard-safe auth.
       if (data.url) {
         window.open(data.url, '_blank');
+      }
+      if (data.status === 'device_code_started') {
+        setDeviceLogin({
+          providerId,
+          userCode: data.userCode,
+          verificationUri: data.verificationUri,
+          expiresInSeconds: data.expiresInSeconds,
+        });
+        window.open(data.verificationUri, '_blank');
       }
       // Poll for login completion
       loginPollRef.current = setInterval(async () => {
@@ -181,12 +196,18 @@ export default function HarnessConfigEditor({ config, onSave }: HarnessConfigEdi
             if (loginPollRef.current) clearInterval(loginPollRef.current);
             loginPollRef.current = null;
             setLoggingIn(null);
+            setDeviceLogin(null);
+            setPromptLogin(null);
             refreshProviders();
+          } else if (statusData.status === 'prompt') {
+            setPromptLogin({ providerId, message: statusData.promptMessage });
           } else if (statusData.status === 'error') {
             if (loginPollRef.current) clearInterval(loginPollRef.current);
             loginPollRef.current = null;
             setLoginError(statusData.error || 'Login failed');
             setLoggingIn(null);
+            setDeviceLogin(null);
+            setPromptLogin(null);
           }
         } catch {
           // Ignore poll errors
@@ -195,6 +216,26 @@ export default function HarnessConfigEditor({ config, onSave }: HarnessConfigEdi
     } catch (err: any) {
       setLoginError(err.message || 'Login request failed');
       setLoggingIn(null);
+    }
+  };
+
+  const submitOAuthPrompt = async (providerId: string) => {
+    setLoginError(null);
+    try {
+      const res = await fetch(`/api/auth/provider/${providerId}/login/prompt`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ value: promptValue }),
+      });
+      const data = await res.json();
+      if (data.error) {
+        setLoginError(data.error);
+        return;
+      }
+      setPromptLogin(null);
+      setPromptValue('');
+    } catch (err: any) {
+      setLoginError(err.message || 'Failed to submit login response');
     }
   };
 
@@ -347,13 +388,38 @@ export default function HarnessConfigEditor({ config, onSave }: HarnessConfigEdi
                           className="text-xs text-blue-400 hover:text-blue-300 disabled:text-neutral-500 transition-colors"
                         >
                           {loggingIn === selectedProvider
-                            ? 'Waiting for browser login...'
+                            ? 'Waiting for login...'
                             : `Log in with ${getOAuthProviderName(selectedProvider) || 'subscription'}`}
                         </button>
                       )}
                     </div>
                   )}
-                  {loginError && loggingIn === null && (
+                  {deviceLogin && deviceLogin.providerId === selectedProvider && (
+                    <div className="mt-2 max-w-md rounded-md border border-blue-900/60 bg-blue-950/30 p-3 text-xs text-neutral-200 space-y-2">
+                      <div>Enter this code at <a href={deviceLogin.verificationUri} target="_blank" rel="noreferrer" className="text-blue-300 underline">{deviceLogin.verificationUri}</a>:</div>
+                      <div className="font-mono text-lg tracking-widest text-white">{deviceLogin.userCode}</div>
+                      {deviceLogin.expiresInSeconds && <div className="text-neutral-400">Expires in about {Math.round(deviceLogin.expiresInSeconds / 60)} minutes.</div>}
+                    </div>
+                  )}
+                  {promptLogin && promptLogin.providerId === selectedProvider && (
+                    <div className="mt-2 max-w-md rounded-md border border-amber-900/60 bg-amber-950/20 p-3 text-xs text-neutral-200 space-y-2">
+                      <div>{promptLogin.message || 'After the browser redirects to localhost, copy the full redirected URL and paste it here:'}</div>
+                      <input
+                        value={promptValue}
+                        onChange={(e) => setPromptValue(e.target.value)}
+                        placeholder="http://localhost:..."
+                        className="w-full bg-neutral-950 border border-neutral-700 rounded-md px-2 py-1.5 text-neutral-200 focus:outline-none focus:border-amber-600"
+                      />
+                      <button
+                        onClick={() => submitOAuthPrompt(selectedProvider)}
+                        disabled={!promptValue.trim()}
+                        className="px-3 py-1 text-xs bg-amber-600 hover:bg-amber-700 disabled:opacity-50 text-white rounded-md transition-colors"
+                      >
+                        Submit redirect URL
+                      </button>
+                    </div>
+                  )}
+                  {loginError && (loggingIn === null || promptLogin) && (
                     <span className="text-xs text-red-400 mt-1">{loginError}</span>
                   )}
                 </div>
@@ -372,7 +438,7 @@ export default function HarnessConfigEditor({ config, onSave }: HarnessConfigEdi
                       disabled={loggingIn === op.id}
                       className="block text-xs text-blue-400 hover:text-blue-300 disabled:text-neutral-500 transition-colors"
                     >
-                      {loggingIn === op.id ? 'Waiting for browser login...' : `Log in with ${op.name}`}
+                      {loggingIn === op.id ? 'Waiting for login...' : `Log in with ${op.name}`}
                     </button>
                   ))}
               </div>

@@ -28,6 +28,14 @@ log "Deploying to $NAME ($ELASTIC_IP) …"
 ssh $SSH_OPTS "ubuntu@$ELASTIC_IP" bash -s << 'REMOTE'
 set -euo pipefail
 cd /opt/vito
+echo ">>> Ensuring Node.js 22 …"
+NODE_MAJOR=$(node -p "process.versions.node.split('.')[0]" 2>/dev/null || echo 0)
+NODE_MINOR=$(node -p "process.versions.node.split('.')[1]" 2>/dev/null || echo 0)
+if [ "$NODE_MAJOR" -lt 22 ] || { [ "$NODE_MAJOR" -eq 22 ] && [ "$NODE_MINOR" -lt 19 ]; }; then
+  curl -fsSL https://deb.nodesource.com/setup_22.x | sudo -E bash -
+  sudo apt-get install -y nodejs
+fi
+echo "Node: $(node --version) at $(which node)"
 echo ">>> Pulling latest …"
 git pull
 echo ">>> Installing dependencies …"
@@ -36,7 +44,9 @@ cd dashboard && npm ci && npm run build && cd ..
 echo ">>> Building …"
 npm run build
 echo ">>> Restarting Vito …"
-pm2 restart vito-server
+pm2 restart vito-server --update-env
+echo ">>> Saving PM2 process list …"
+pm2 save
 echo ">>> Done!"
 REMOTE
 

@@ -267,8 +267,8 @@ echo ">>> Installing system packages …"
 sudo apt-get update -qq
 sudo apt-get install -y -qq git sqlite3 python3 python3-pip build-essential curl jq
 
-echo ">>> Installing Node.js 20 …"
-curl -fsSL https://deb.nodesource.com/setup_20.x | sudo -E bash -
+echo ">>> Installing Node.js 22 …"
+curl -fsSL https://deb.nodesource.com/setup_22.x | sudo -E bash -
 sudo apt-get install -y -qq nodejs
 NODE_PATH=$(which node)
 echo "Node: $(node --version) at $NODE_PATH"

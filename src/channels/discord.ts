@@ -575,57 +575,94 @@ class DiscordOutputHandler implements OutputHandler {
 
 /**
  * Split text into chunks that fit within Discord's message limit.
- * Tries to split at code block boundaries, then paragraphs,
- * then lines, then words, and finally does a hard split.
+ * Keeps fenced code blocks valid across chunk boundaries by closing and
+ * reopening the fence when a split must happen inside one.
  */
 function splitMessage(text: string, maxLength: number): string[] {
   if (text.length <= maxLength) return [text];
 
   const chunks: string[] = [];
   let remaining = text;
+  let openFence: string | null = null;
 
   while (remaining.length > 0) {
-    if (remaining.length <= maxLength) {
-      chunks.push(remaining);
+    const prefix = openFence ? `${openFence}\n` : "";
+
+    if (prefix.length + remaining.length <= maxLength) {
+      chunks.push(prefix + remaining);
       break;
     }
 
-    let splitAt = -1;
-
-    // Try code block boundary
-    const codeBlockIdx = remaining.lastIndexOf("\n```", maxLength);
-    if (codeBlockIdx > 0) {
-      // Include the closing ``` in this chunk
-      const endOfBlock = remaining.indexOf("\n", codeBlockIdx + 4);
-      if (endOfBlock > 0 && endOfBlock <= maxLength) {
-        splitAt = endOfBlock;
-      }
+    const closeFence = openFence ? "\n```" : "";
+    const available = maxLength - prefix.length - closeFence.length;
+    if (available <= 0) {
+      // Should never happen with normal Discord limits, but avoid an infinite loop.
+      chunks.push((prefix + closeFence).slice(0, maxLength));
+      openFence = null;
+      continue;
     }
 
-    // Try paragraph boundary
-    if (splitAt === -1) {
-      const paraIdx = remaining.lastIndexOf("\n\n", maxLength);
-      if (paraIdx > 0) splitAt = paraIdx;
-    }
+    const splitAt = findSplitPoint(remaining, available);
+    const body = remaining.slice(0, splitAt);
+    chunks.push(prefix + body + closeFence);
 
-    // Try line boundary
-    if (splitAt === -1) {
-      const lineIdx = remaining.lastIndexOf("\n", maxLength);
-      if (lineIdx > 0) splitAt = lineIdx;
-    }
-
-    // Try word boundary
-    if (splitAt === -1) {
-      const spaceIdx = remaining.lastIndexOf(" ", maxLength);
-      if (spaceIdx > 0) splitAt = spaceIdx;
-    }
-
-    // Hard split
-    if (splitAt === -1) splitAt = maxLength;
-
-    chunks.push(remaining.slice(0, splitAt));
+    openFence = getOpenFenceAfter(prefix + body);
     remaining = remaining.slice(splitAt).replace(/^\n+/, "");
   }
 
   return chunks;
+}
+
+function findSplitPoint(text: string, maxBodyLength: number): number {
+  if (text.length <= maxBodyLength) return text.length;
+
+  // Prefer splitting immediately after a complete fenced code block.
+  const fenceBoundary = findLastClosedFenceBoundary(text, maxBodyLength);
+  if (fenceBoundary > 0) return fenceBoundary;
+
+  const paraIdx = text.lastIndexOf("\n\n", maxBodyLength);
+  if (paraIdx > 0) return paraIdx;
+
+  const lineIdx = text.lastIndexOf("\n", maxBodyLength);
+  if (lineIdx > 0) return lineIdx;
+
+  const spaceIdx = text.lastIndexOf(" ", maxBodyLength);
+  if (spaceIdx > 0) return spaceIdx;
+
+  return maxBodyLength;
+}
+
+function findLastClosedFenceBoundary(text: string, limit: number): number {
+  let inFence = false;
+  let lastClosedBoundary = -1;
+  const fenceRegex = /(^|\n)(```[^\n]*)/g;
+  let match: RegExpExecArray | null;
+
+  while ((match = fenceRegex.exec(text)) !== null) {
+    const fenceStart = match.index + match[1].length;
+    if (fenceStart >= limit) break;
+
+    const lineEnd = text.indexOf("\n", fenceStart);
+    const boundary = lineEnd === -1 ? text.length : lineEnd + 1;
+    inFence = !inFence;
+
+    if (!inFence && boundary <= limit) {
+      lastClosedBoundary = boundary;
+    }
+  }
+
+  return lastClosedBoundary;
+}
+
+function getOpenFenceAfter(text: string): string | null {
+  let openFence: string | null = null;
+  const fenceRegex = /(^|\n)(```[^\n]*)/g;
+  let match: RegExpExecArray | null;
+
+  while ((match = fenceRegex.exec(text)) !== null) {
+    const fenceLine = match[2];
+    openFence = openFence ? null : fenceLine;
+  }
+
+  return openFence;
 }

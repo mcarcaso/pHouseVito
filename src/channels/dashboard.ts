@@ -561,15 +561,22 @@ export class DashboardChannel implements Channel {
       const authStorage = AuthStorage.create();
       let responseSent = false;
 
-      // Start login flow - returns immediately with the URL/device code
-      authStorage.login(providerId, {
-        onAuth: (info) => {
+      // Start login flow - returns immediately with the URL/device code.
+      // Keep this as a variable instead of an inline object so newer pi-ai
+      // callback fields can exist without breaking older installed types.
+      const loginCallbacks = {
+        onAuth: (info: { url: string; instructions?: string }) => {
           if (responseSent) return;
           responseSent = true;
           // Send URL back to frontend immediately
-          res.json({ status: "login_started", url: info.url });
+          res.json({ status: "login_started", url: info.url, instructions: info.instructions });
         },
-        onDeviceCode: (info) => {
+        onDeviceCode: (info: {
+          userCode: string;
+          verificationUri: string;
+          intervalSeconds?: number;
+          expiresInSeconds?: number;
+        }) => {
           if (responseSent) return;
           responseSent = true;
           res.json({
@@ -580,14 +587,14 @@ export class DashboardChannel implements Channel {
             expiresInSeconds: info.expiresInSeconds,
           });
         },
-        onSelect: async (info) => {
+        onSelect: async (info: { options: Array<{ id: string; label: string }> }) => {
           // The dashboard runs on a remote server, so browser OAuth redirecting
           // to localhost would target the user's laptop, not the EC2 instance.
           // Prefer device-code auth when providers offer it.
           const deviceOption = info.options.find((option) => /device|code/i.test(`${option.id} ${option.label}`));
           return deviceOption?.id ?? info.options[0]?.id;
         },
-        onPrompt: async (info) => {
+        onPrompt: async (info: { message: string }) => {
           return new Promise<string>((resolve) => {
             pendingLogins.set(providerId, {
               status: "prompt",
@@ -605,10 +612,12 @@ export class DashboardChannel implements Channel {
             });
           });
         },
-        onProgress: (message) => {
+        onProgress: (message: string) => {
           console.log(`[oauth/${providerId}] ${message}`);
         },
-      }).then(() => {
+      };
+
+      authStorage.login(providerId, loginCallbacks).then(() => {
         pendingLogins.set(providerId, { status: "success" });
         console.log(`[oauth/${providerId}] Login successful`);
       }).catch((err) => {

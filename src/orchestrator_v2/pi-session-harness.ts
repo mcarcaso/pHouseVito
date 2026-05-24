@@ -103,6 +103,28 @@ function getAssistantUsageFromMessage(message: unknown): HarnessUsage | undefine
   return toUsage(msg.usage);
 }
 
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+async function waitForPiSessionSettled(piSession: AgentSession, getLastEventAt: () => number): Promise<void> {
+  const startedAt = Date.now();
+  const maxWaitMs = 30 * 60 * 1000;
+  const quietMs = 500;
+
+  while (Date.now() - startedAt < maxWaitMs) {
+    await piSession.agent.waitForIdle();
+
+    const active = piSession.isStreaming || piSession.isCompacting || piSession.agent.hasQueuedMessages();
+    const quiet = Date.now() - getLastEventAt() >= quietMs;
+
+    if (!active && quiet) return;
+    await sleep(100);
+  }
+
+  console.warn("[v2 pi-session] Timed out waiting for pi session to settle after prompt; continuing to avoid a stuck relay.");
+}
+
 export class PiSessionHarness implements Harness {
   private config: PiSessionHarnessConfig;
   private piSession: AgentSession | null = null;
@@ -330,7 +352,9 @@ export class PiSessionHarness implements Harness {
     let finalUsage: HarnessUsage | undefined;
     let hasEmittedUsage = false;
 
+    let lastPiEventAt = Date.now();
     const unsubscribe = piSession.subscribe((event: AgentSessionEvent) => {
+      lastPiEventAt = Date.now();
       callbacks.onRawEvent(event);
 
       switch (event.type) {
@@ -417,6 +441,7 @@ export class PiSessionHarness implements Harness {
 
     try {
       await piSession.prompt(userMessage);
+      await waitForPiSessionSettled(piSession, () => lastPiEventAt);
 
       if (currentThinkingText && !hasEmittedThought) {
         callbacks.onNormalizedEvent({ kind: "assistant", content: currentThinkingText });

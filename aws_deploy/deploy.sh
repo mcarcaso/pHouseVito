@@ -40,6 +40,7 @@ echo ">>> Pulling latest …"
 git pull
 echo ">>> Installing dependencies …"
 npm ci
+./scripts/install-runtime-deps.sh
 cd dashboard && npm ci && npm run build && cd ..
 echo ">>> Building …"
 npm run build

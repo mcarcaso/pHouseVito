@@ -18,10 +18,12 @@ function usage(exitCode = 1) {
   mcp-client list <skill-md-or-url-or-dir>
   mcp-client schema <skill-md-or-url-or-dir> <tool_name>
   mcp-client call <skill-md-or-url-or-dir> <tool_name> '<json_args>'
+  mcp-client batch <skill-md-or-url-or-dir> '<json_steps>'
 
 Examples:
   node src/skills/builtin/mcp-client/mcp-client.mjs list user/skills/tavily/SKILL.md
   node src/skills/builtin/mcp-client/mcp-client.mjs call user/skills/tavily/SKILL.md tavily_search '{"query":"news"}'
+  node src/skills/builtin/mcp-client/mcp-client.mjs batch user/skills/playwright/SKILL.md '[{"tool":"browser_navigate","args":{"url":"https://example.com"}},{"tool":"browser_snapshot","args":{}}]'
 `);
   process.exit(exitCode);
 }
@@ -149,9 +151,9 @@ function capOutput(value, maxBytes) {
 }
 
 async function main() {
-  const [rawCommand, target, toolName, jsonArgs = '{}'] = process.argv.slice(2);
-  const command = rawCommand === 'tools' ? 'list' : rawCommand === 'invoke' ? 'call' : rawCommand;
-  if (!command || !target || !['list', 'schema', 'call'].includes(command)) usage();
+  const [rawCommand, target, toolNameOrSteps, jsonArgs = '{}'] = process.argv.slice(2);
+  const command = rawCommand === 'tools' ? 'list' : rawCommand === 'invoke' ? 'call' : rawCommand === 'sequence' ? 'batch' : rawCommand;
+  if (!command || !target || !['list', 'schema', 'call', 'batch'].includes(command)) usage();
 
   const config = normalizeConfig(resolveTarget(target));
   let client;
@@ -161,15 +163,47 @@ async function main() {
     const tools = await listTools(client, config);
 
     if (command === 'list') {
-      const output = tools.map((tool) => ({
-        name: tool.name,
-        description: tool.description || '',
-        inputSchema: tool.inputSchema || null,
-      }));
+      const output = tools
+        .filter((tool) => isToolAllowed(config, tool.name))
+        .map((tool) => ({
+          name: tool.name,
+          description: tool.description || '',
+          inputSchema: tool.inputSchema || null,
+        }));
       console.log(capOutput(output, config.maxOutputBytes));
       return;
     }
 
+    if (command === 'batch') {
+      if (!toolNameOrSteps) usage();
+      let steps;
+      try {
+        steps = JSON.parse(toolNameOrSteps);
+      } catch (err) {
+        throw new Error(`Invalid JSON steps: ${err.message}`);
+      }
+      if (!Array.isArray(steps) || steps.length === 0) throw new Error('Batch steps must be a non-empty JSON array');
+
+      const outputs = [];
+      for (const [index, step] of steps.entries()) {
+        const stepToolName = step?.tool || step?.name;
+        if (!stepToolName) throw new Error(`Batch step ${index + 1} is missing tool/name`);
+        const stepTool = tools.find((t) => t.name === stepToolName);
+        if (!stepTool) throw new Error(`Tool not found in batch step ${index + 1}: ${stepToolName}. Run list first.`);
+        if (!isToolAllowed(config, stepToolName)) throw new Error(`Tool blocked by skill MCP allowlist/prefix in batch step ${index + 1}: ${stepToolName}`);
+        const stepArgs = step.args || step.arguments || {};
+        const result = await withTimeout(
+          client.request({ method: 'tools/call', params: { name: stepToolName, arguments: stepArgs } }, CallToolResultSchema),
+          config.timeoutMs,
+          `tools/call ${stepToolName}`,
+        );
+        outputs.push({ step: index + 1, tool: stepToolName, result });
+      }
+      console.log(capOutput(outputs, config.maxOutputBytes));
+      return;
+    }
+
+    const toolName = toolNameOrSteps;
     if (!toolName) usage();
     const tool = tools.find((t) => t.name === toolName);
     if (!tool) throw new Error(`Tool not found: ${toolName}. Run list first.`);

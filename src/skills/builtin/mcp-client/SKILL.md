@@ -45,12 +45,14 @@ Secrets are resolved from `process.env` first, then `user/secrets.json`. Never h
 ```bash
 node src/skills/builtin/mcp-client/mcp-client.mjs list <skill-md-or-url-or-dir>
 node src/skills/builtin/mcp-client/mcp-client.mjs call <skill-md-or-url-or-dir> <tool_name> '<json_args>'
+node src/skills/builtin/mcp-client/mcp-client.mjs batch <skill-md-or-url-or-dir> '<json_steps>'
 node src/skills/builtin/mcp-client/mcp-client.mjs schema <skill-md-or-url-or-dir> <tool_name>
 ```
 
 Aliases:
 - `tools` = `list`
 - `invoke` = `call`
+- `sequence` = `batch`
 
 ## Examples
 
@@ -66,6 +68,12 @@ Call a discovered tool:
 node src/skills/builtin/mcp-client/mcp-client.mjs call user/skills/tavily/SKILL.md tavily_search '{"query":"Forrest Frank Nashville GEODIS Park tickets","max_results":5}'
 ```
 
+Call multiple tools over one MCP connection/session — useful for browser MCP servers where state matters:
+
+```bash
+node src/skills/builtin/mcp-client/mcp-client.mjs batch user/skills/playwright/SKILL.md '[{"tool":"browser_navigate","args":{"url":"https://example.com"}},{"tool":"browser_snapshot","args":{}}]'
+```
+
 Use a raw remote MCP URL directly:
 
 ```bash
@@ -77,6 +85,7 @@ node src/skills/builtin/mcp-client/mcp-client.mjs list 'https://mcp.example.com/
 - `list` returns current tool names, descriptions, and input schemas.
 - `schema` returns one tool's input schema.
 - `call` returns the MCP tool result content as JSON, with text/resource/image blocks preserved.
+- `batch` returns an array of step results from one shared MCP connection.
 
 ## Safety Rules
 

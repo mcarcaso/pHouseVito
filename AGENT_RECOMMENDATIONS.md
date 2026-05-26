@@ -1,12 +1,12 @@
 # Agent Recommendations
 
-Recommended add-ons for another Vito/user-agent setup. Keep this file intentionally short.
+Recommended add-ons for a personal user-agent setup. Keep this file intentionally short.
 
 ## 1. Daily Profile Updating
 
 Use a scheduled prompt job to keep `user/profile.md` fresh without adding new scheduler plumbing.
 
-Add to `user/vito.config.json` under `cron.jobs` and adjust `session` / `timezone`:
+Add to the agent's user config under `cron.jobs` and adjust `session` / `timezone`:
 
 ```json
 {
@@ -15,7 +15,7 @@ Add to `user/vito.config.json` under `cron.jobs` and adjust `session` / `timezon
   "timezone": "America/Toronto",
   "session": "dashboard:default",
   "oneTime": false,
-  "prompt": "Vito, run the profile-discovery skill for the last 24 hours. Read user/skills/profile-discovery/SKILL.md, src/skills/builtin/profile-maintenance/SKILL.md, and user/profile.md first. Use the adaptive raw-vs-semantic process. Apply only high-confidence durable profile updates directly to user/profile.md. Keep the final report short: applied edits, skipped/uncertain candidates, or no changes. Do not create extra report files unless needed."
+  "prompt": "Run the profile-discovery skill for the last 24 hours. Read user/skills/profile-discovery/SKILL.md, src/skills/builtin/profile-maintenance/SKILL.md, and user/profile.md first. Use the adaptive raw-vs-semantic process. Apply only high-confidence durable profile updates directly to user/profile.md. Keep the final report short: applied edits, skipped/uncertain candidates, or no changes. Do not create extra report files unless needed."
 }
 ```
 

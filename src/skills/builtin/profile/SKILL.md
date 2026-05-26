@@ -131,12 +131,12 @@ SQL
 Use **semantic probe mode** when raw transcript would be too large. Run broad durable-fact probes, then fetch exact surrounding messages before editing. Example probes:
 
 ```bash
-node user/scripts/search-memory.mjs "durable user preference changed going forward remember default" --limit 8
-node user/scripts/search-memory.mjs "family wife parents siblings personal update durable" --limit 8
-node user/scripts/search-memory.mjs "tools workflow coding UI dashboard durable preference" --limit 8
-node user/scripts/search-memory.mjs "fitness injury training workout durable preference equipment" --limit 8
-node user/scripts/search-memory.mjs "travel packing hotel airport durable preference" --limit 8
-node user/scripts/search-memory.mjs "music guitar Bible music durable preference" --limit 8
+node src/skills/builtin/semantic-history-search/search-memory.mjs "durable user preference changed going forward remember default" --limit 8
+node src/skills/builtin/semantic-history-search/search-memory.mjs "family wife parents siblings personal update durable" --limit 8
+node src/skills/builtin/semantic-history-search/search-memory.mjs "tools workflow coding UI dashboard durable preference" --limit 8
+node src/skills/builtin/semantic-history-search/search-memory.mjs "fitness injury training workout durable preference equipment" --limit 8
+node src/skills/builtin/semantic-history-search/search-memory.mjs "travel packing hotel airport durable preference" --limit 8
+node src/skills/builtin/semantic-history-search/search-memory.mjs "music guitar Bible music durable preference" --limit 8
 ```
 
 ### Step 3 — Candidate Criteria

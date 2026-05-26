@@ -21,7 +21,7 @@ Use this skill when:
 ## Usage
 
 ```bash
-node user/scripts/search-memory.mjs "your search query" [--limit N] [--session id] [--mode hybrid|embedding|bm25]
+node src/skills/builtin/semantic-history-search/search-memory.mjs "your search query" [--limit N] [--session id] [--mode hybrid|embedding|bm25]
 ```
 
 **Arguments:**
@@ -37,19 +37,19 @@ node user/scripts/search-memory.mjs "your search query" [--limit N] [--session i
 
 ```bash
 # Find conversations about shoulder rehab
-node user/scripts/search-memory.mjs "shoulder rehab exercises"
+node src/skills/builtin/semantic-history-search/search-memory.mjs "shoulder rehab exercises"
 
 # Search for a specific person
-node user/scripts/search-memory.mjs "Norma" --mode bm25
+node src/skills/builtin/semantic-history-search/search-memory.mjs "Norma" --mode bm25
 
 # Deep dig into a topic with more results
-node user/scripts/search-memory.mjs "DCA investment strategy QQQ" --limit 10
+node src/skills/builtin/semantic-history-search/search-memory.mjs "DCA investment strategy QQQ" --limit 10
 
 # Search within a specific channel
-node user/scripts/search-memory.mjs "workout programming" --session discord:fitness
+node src/skills/builtin/semantic-history-search/search-memory.mjs "workout programming" --session discord:fitness
 
 # Conceptual search (no exact keywords needed)
-node user/scripts/search-memory.mjs "that time we built the phone calling feature" --mode embedding
+node src/skills/builtin/semantic-history-search/search-memory.mjs "that time we built the phone calling feature" --mode embedding
 ```
 
 ## Output

@@ -15,11 +15,11 @@ Add to the agent's user config under `cron.jobs` and adjust `session` / `timezon
   "timezone": "America/Toronto",
   "session": "dashboard:default",
   "oneTime": false,
-  "prompt": "Run profile discovery for the last 24 hours. Read src/skills/builtin/profile-maintenance/SKILL.md and user/profile.md first. Count recent user/assistant activity in user/vito.db. If the last 24 hours are manageable, inspect the raw transcript; if too large, use semantic-history-search probes and then verify promising candidates against exact messages. Apply only high-confidence durable profile updates directly to user/profile.md. Keep the final report short: applied edits, skipped/uncertain candidates, or no changes. Do not create extra report files unless needed."
+  "prompt": "Run profile discovery for the last 24 hours. Read src/skills/builtin/profile/SKILL.md and user/profile.md first. Use the adaptive raw-vs-semantic process from the profile skill. Apply only high-confidence durable profile updates directly to user/profile.md. Keep the final report short: applied edits, skipped/uncertain candidates, or no changes. Do not create extra report files unless needed."
 }
 ```
 
-This relies on the built-in `profile-maintenance` skill plus the built-in history search tools. A separate `profile-discovery` user skill is optional, but not required.
+This relies on the built-in `profile` skill plus the built-in history search tools.
 
 The job should:
 - count recent message volume

@@ -58,6 +58,7 @@ export class DirectChannel implements Channel {
     session?: string;  // e.g., "api:bland-phone" — defaults to "api:default"
     author?: string;
     channelPrompt?: string;
+    timeoutMs?: number | null; // 0/null disables timeout
   }): Promise<string> {
     if (!this.eventHandler) {
       throw new Error("DirectChannel not started — call start() and listen() first");
@@ -108,8 +109,12 @@ Do NOT use markdown formatting unless specifically requested.`;
     // Fire the event through the normal pipeline
     this.eventHandler(event);
 
-    // Wait for response (with timeout)
-    const timeout = 120000; // 2 minutes max
+    // Wait for response. timeoutMs: 0/null disables timeout for long-running pipeline steps.
+    const timeout = options.timeoutMs === undefined ? 120000 : options.timeoutMs;
+    if (timeout === null || timeout <= 0) {
+      return responsePromise;
+    }
+
     const timeoutPromise = new Promise<string>((_, reject) => {
       setTimeout(() => {
         this.pendingRequests.delete(requestId);

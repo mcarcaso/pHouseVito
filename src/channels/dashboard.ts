@@ -141,6 +141,7 @@ export class DashboardChannel implements Channel {
     session?: string;
     author?: string;
     channelPrompt?: string;
+    timeoutMs?: number | null;
   }) => Promise<string>;
 
   constructor(private db: any, private queries: any, private config: any) {
@@ -190,6 +191,7 @@ export class DashboardChannel implements Channel {
     session?: string;
     author?: string;
     channelPrompt?: string;
+    timeoutMs?: number | null;
   }) => Promise<string>) {
     this.askHandler = handler;
   }
@@ -1393,7 +1395,7 @@ export class DashboardChannel implements Channel {
         return;
       }
 
-      const { question, session, author, channelPrompt } = req.body;
+      const { question, session, author, channelPrompt, timeoutMs } = req.body;
       if (!question || typeof question !== "string") {
         res.status(400).json({ error: "Missing or invalid 'question' field" });
         return;
@@ -1408,6 +1410,7 @@ export class DashboardChannel implements Channel {
           session: session || undefined,
           author: author || undefined,
           channelPrompt: channelPrompt || undefined,
+          timeoutMs: typeof timeoutMs === "number" ? timeoutMs : undefined,
         });
         const elapsed = Date.now() - start;
         console.log(`[Dashboard] /api/ask response (${elapsed}ms): "${answer.slice(0, 100)}"`);

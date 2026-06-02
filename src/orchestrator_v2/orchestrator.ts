@@ -177,6 +177,7 @@ export class OrchestratorV2 {
     session?: string;
     author?: string;
     channelPrompt?: string;
+    timeoutMs?: number | null;
   }): Promise<string> {
     await this.ensureDirectChannelReady();
     const directChannel = this.getDirectChannel();
@@ -186,6 +187,7 @@ export class OrchestratorV2 {
         session: options.session,
         author: options.author,
         channelPrompt: options.channelPrompt,
+        timeoutMs: options.timeoutMs,
       });
       return response || "I couldn't come up with an answer for that one.";
     } catch (err) {

@@ -78,6 +78,8 @@ export class PersistenceHarness extends ProxyHarness {
         if (event.kind === "assistant" && event.content) {
           const msgId = this.insertMsg("thought", event.content);
           this.assistantMessageIds.push(msgId);
+        } else if (event.kind === "error") {
+          this.insertMsg("assistant", `⚠️ ${event.message}`);
         }
 
         if (event.kind === "tool_start") {

@@ -351,6 +351,7 @@ export class PiSessionHarness implements Harness {
     let accumulatedUsage: HarnessUsage | undefined;
     let finalUsage: HarnessUsage | undefined;
     let hasEmittedUsage = false;
+    let turnErrorMessage: string | undefined;
 
     let lastPiEventAt = Date.now();
     const unsubscribe = piSession.subscribe((event: AgentSessionEvent) => {
@@ -377,6 +378,11 @@ export class PiSessionHarness implements Harness {
 
         case "message_end":
           if (event.message.role === "assistant") {
+            const messageAny = event.message as any;
+            if (messageAny?.stopReason === "error" || messageAny?.errorMessage) {
+              turnErrorMessage = messageAny?.errorMessage || "The model returned an error before producing a response.";
+            }
+
             if ((!currentThinkingText || !currentMessageText) && Array.isArray((event.message as any)?.content)) {
               for (const block of (event.message as any).content) {
                 if (!currentThinkingText && block?.type === "thinking" && typeof block.thinking === "string") {
@@ -450,6 +456,11 @@ export class PiSessionHarness implements Harness {
       if (currentMessageText && !hasEmittedAssistantText) {
         callbacks.onNormalizedEvent({ kind: "assistant", content: currentMessageText });
         hasEmittedAssistantText = true;
+      }
+
+      if (turnErrorMessage && !hasEmittedAssistantText) {
+        callbacks.onNormalizedEvent({ kind: "error", message: turnErrorMessage });
+        throw new Error(turnErrorMessage);
       }
 
       const usage = finalUsage ?? accumulatedUsage;

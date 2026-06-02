@@ -8,6 +8,7 @@
  *   node index.js schedule --name "once" --schedule "2025-12-25T00:00:00" --prompt "Merry Christmas!" --oneTime
  *   node index.js schedule --name "london" --schedule "0 9 * * *" --prompt "London report" --timezone "Europe/London"
  *   node index.js schedule --name "weather" --schedule "0 8 * * *" --prompt "Check weather" --sendCondition "Only send if rain"
+ *   node index.js schedule --name "watch" --schedule "every-10-minutes" --prompt "Summarize updates" --precheckCommand "python3 check.py --has-changes"
  *   node index.js cancel --name "morning"
  *   node index.js list
  */
@@ -62,7 +63,7 @@ async function main() {
         const args = parseArgs(rest);
         if (!args.name || !args.schedule || !args.prompt) {
           console.error('Required: --name, --schedule, --prompt');
-          console.error('Optional: --session, --oneTime, --timezone, --sendCondition');
+          console.error('Optional: --session, --oneTime, --timezone, --sendCondition, --precheckCommand');
           process.exit(1);
         }
         
@@ -81,6 +82,10 @@ async function main() {
         
         if (args.sendCondition) {
           jobData.sendCondition = args.sendCondition;
+        }
+
+        if (args.precheckCommand) {
+          jobData.precheckCommand = args.precheckCommand;
         }
 
         const response = await axios.post(API_URL, jobData);
@@ -131,6 +136,9 @@ async function main() {
             }
             if (job.sendCondition) {
               console.log(`  condition: ${job.sendCondition}`);
+            }
+            if (job.precheckCommand) {
+              console.log(`  precheck: ${job.precheckCommand}`);
             }
             console.log('');
           }

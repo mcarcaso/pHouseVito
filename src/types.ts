@@ -210,6 +210,8 @@ export interface CronJobConfig {
   prompt: string;
   oneTime?: boolean; // If true, job will be removed from config after firing
   sendCondition?: string; // If set, response is only sent if condition is met (must NOT contain "NO_REPLY")
+  /** Optional deterministic shell command run before invoking the AI. If it outputs true/1/yes or exits 0 with no false-y output, the job proceeds; false/0/no or exit code 2 skips. */
+  precheckCommand?: string;
 }
 
 // ── DB row types ──

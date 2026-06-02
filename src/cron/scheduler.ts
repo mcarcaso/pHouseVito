@@ -1,6 +1,10 @@
+import { exec } from "node:child_process";
+import { promisify } from "node:util";
 import { Cron } from "croner";
 import type { CronJobConfig, InboundEvent } from "../types.js";
 import { DEFAULT_TIMEZONE } from "../system-instructions.js";
+
+const execAsync = promisify(exec);
 
 export class CronScheduler {
   private jobs = new Map<string, Cron>(); // job name -> Cron instance
@@ -45,8 +49,40 @@ export class CronScheduler {
     this.jobConfigs.clear();
   }
 
+  /** Run an optional deterministic precheck before spending AI tokens. */
+  private async shouldRunJob(jobConfig: CronJobConfig): Promise<boolean> {
+    if (!jobConfig.precheckCommand) return true;
+
+    try {
+      const { stdout } = await execAsync(jobConfig.precheckCommand, {
+        cwd: process.cwd(),
+        timeout: 30_000,
+        maxBuffer: 1024 * 1024,
+      });
+      const out = stdout.trim().toLowerCase();
+      if (["false", "0", "no", "skip", "no_reply"].includes(out)) {
+        console.log(`[Cron] Precheck skipped job: ${jobConfig.name}`);
+        return false;
+      }
+      if (["true", "1", "yes", "run"].includes(out) || out === "") {
+        console.log(`[Cron] Precheck passed job: ${jobConfig.name}${out ? ` (${out})` : ""}`);
+        return true;
+      }
+      console.log(`[Cron] Precheck output for ${jobConfig.name}: ${out.slice(0, 200)} — proceeding`);
+      return true;
+    } catch (err: any) {
+      if (err?.code === 2) {
+        console.log(`[Cron] Precheck skipped job: ${jobConfig.name}`);
+        return false;
+      }
+      console.error(`[Cron] Precheck failed for ${jobConfig.name}; running job so the issue can be reported:`, err);
+      return true;
+    }
+  }
+
   /** Execute a job */
   private async executeJob(jobConfig: CronJobConfig): Promise<void> {
+    if (!(await this.shouldRunJob(jobConfig))) return;
     // Extract channel and target from session (e.g., "dashboard:default" -> channel="dashboard", target="default")
     const sessionParts = jobConfig.session.split(":");
     const channelName = sessionParts[0] || "cron";
@@ -135,8 +171,11 @@ export class CronScheduler {
       const nextRun = cronJob.nextRun();
       const nextRunStr = nextRun ? nextRun.toLocaleString("en-US", { timeZone: tz }) : "N/A";
       console.log(
-        `Scheduled cron job: ${jobConfig.name} (${jobConfig.schedule}) [${tz}]${jobConfig.oneTime ? " [ONE-TIME]" : ""} — next run: ${nextRunStr}`
+        `Scheduled cron job: ${jobConfig.name} (${jobConfig.schedule}) [${tz}]${jobConfig.oneTime ? " [ONE-TIME]" : ""}${jobConfig.precheckCommand ? " [PRECHECK]" : ""} — next run: ${nextRunStr}`
       );
+      if (jobConfig.precheckCommand) {
+        console.log(`[Cron] Precheck for ${jobConfig.name}: ${jobConfig.precheckCommand}`);
+      }
     } catch (err) {
       console.error(`Invalid cron schedule for job ${jobConfig.name}: ${jobConfig.schedule}`, err);
     }

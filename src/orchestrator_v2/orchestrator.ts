@@ -178,6 +178,7 @@ export class OrchestratorV2 {
     author?: string;
     channelPrompt?: string;
     timeoutMs?: number | null;
+    relayToSession?: boolean;
   }): Promise<string> {
     await this.ensureDirectChannelReady();
     const directChannel = this.getDirectChannel();
@@ -189,10 +190,41 @@ export class OrchestratorV2 {
         channelPrompt: options.channelPrompt,
         timeoutMs: options.timeoutMs,
       });
-      return response || "I couldn't come up with an answer for that one.";
+      const answer = response || "I couldn't come up with an answer for that one.";
+      if (options.relayToSession && options.session) {
+        await this.relayDirectAnswerToSession(options.session, answer, options.author);
+      }
+      return answer;
     } catch (err) {
       console.error(`[OrchestratorV2.ask] Error: ${err instanceof Error ? err.message : err}`);
       return "I hit a snag trying to think about that. Try asking again.";
+    }
+  }
+
+  private async relayDirectAnswerToSession(session: string, answer: string, author?: string): Promise<void> {
+    const sessionParts = session.split(":");
+    const channelName = sessionParts[0] || "api";
+    const target = sessionParts.slice(1).join(":") || "default";
+    const channel = this.channels.get(channelName);
+    if (!channel || channelName === "direct" || channelName === "api") return;
+
+    const event: InboundEvent = {
+      sessionKey: `${channelName}:${target}`,
+      channel: channelName,
+      target,
+      author: author || "api",
+      timestamp: Date.now(),
+      content: "",
+      hasMention: true,
+      raw: { synthetic: true, source: "direct-channel-relay" },
+    };
+
+    try {
+      const handler = channel.createHandler(event);
+      await handler.relay(answer);
+      await handler.endMessage?.();
+    } catch (err) {
+      console.error(`[OrchestratorV2.ask] Failed to relay answer to ${session}:`, err);
     }
   }
 

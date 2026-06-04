@@ -304,6 +304,14 @@ export class Queries {
     }
   }
 
+  /** Delete all messages for a session (dashboard clear chat) */
+  deleteMessagesForSession(sessionId: string): number {
+    const result = this.db
+      .prepare("DELETE FROM messages WHERE session_id = ?")
+      .run(sessionId);
+    return result.changes;
+  }
+
   /** Count total messages for a session */
   countMessagesForSession(sessionId: string, hideThoughts?: boolean, hideTools?: boolean): number {
     let sql = "SELECT COUNT(*) as count FROM messages WHERE session_id = ?";

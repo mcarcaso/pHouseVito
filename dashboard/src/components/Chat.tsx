@@ -34,8 +34,27 @@ interface DashboardMessage {
   author?: string | null;
 }
 
+interface DashboardSession {
+  id: string;
+  channel: string;
+  channel_target: string;
+  last_active_at: number;
+  alias?: string | null;
+}
+
+const DEFAULT_SESSION_ID = 'dashboard:default';
+const CHAT_SESSION_STORAGE_KEY = 'chat-selected-session-id';
+
 function Chat() {
   const [allMessages, setAllMessages] = useState<ParsedMessage[]>([]);
+  const [sessions, setSessions] = useState<DashboardSession[]>([]);
+  const [selectedSessionId, setSelectedSessionId] = useState<string>(() => {
+    try {
+      return localStorage.getItem(CHAT_SESSION_STORAGE_KEY) || DEFAULT_SESSION_ID;
+    } catch {
+      return DEFAULT_SESSION_ID;
+    }
+  });
   const [input, setInput] = useState('');
   const [isTyping] = useState(false); // Unused but kept for ChatView prop
   const [attachments, setAttachments] = useState<Attachment[]>([]);
@@ -54,6 +73,33 @@ function Chat() {
   const lastMessageIdRef = useRef<number | null>(null);
   const initialLoadRef = useRef(true);
   const pollTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  const formatSessionLabel = useCallback((session: DashboardSession) => {
+    const name = session.alias || session.id;
+    return name === session.id ? session.id : `${name} — ${session.id}`;
+  }, []);
+
+  const fetchSessions = useCallback(() => {
+    fetch('/api/sessions')
+      .then((res) => res.json())
+      .then((data) => {
+        if (!Array.isArray(data)) return;
+        setSessions(data as DashboardSession[]);
+      })
+      .catch((err) => console.error('Failed to load sessions:', err));
+  }, []);
+
+  useEffect(() => {
+    fetchSessions();
+  }, [fetchSessions]);
+
+  useEffect(() => {
+    try { localStorage.setItem(CHAT_SESSION_STORAGE_KEY, selectedSessionId); } catch {}
+    initialLoadRef.current = true;
+    lastAssistantTsRef.current = null;
+    lastMessageIdRef.current = null;
+    setAllMessages([]);
+  }, [selectedSessionId]);
 
   const applyMessages = useCallback((rawMessages: DashboardMessage[], mode: 'replace' | 'append') => {
     if (!Array.isArray(rawMessages) || rawMessages.length === 0) return;
@@ -93,7 +139,7 @@ function Chat() {
     if (mode === 'append' && lastMessageIdRef.current) {
       params.set('after', String(lastMessageIdRef.current));
     }
-    const url = `/api/sessions/dashboard:default/messages${params.toString() ? '?' + params.toString() : ''}`;
+    const url = `/api/sessions/${encodeURIComponent(selectedSessionId)}/messages${params.toString() ? '?' + params.toString() : ''}`;
     fetch(url)
       .then((res) => res.json())
       .then((data) => {
@@ -116,7 +162,7 @@ function Chat() {
         applyMessages(rawMessages as DashboardMessage[], 'replace');
       })
       .catch((err) => console.error('Failed to load messages:', err));
-  }, [applyMessages]);
+  }, [applyMessages, selectedSessionId]);
 
   // Polling — initial full load, then incremental append every 5s
   useEffect(() => {
@@ -200,7 +246,7 @@ function Chat() {
       type: 'chat' as const,
       content: text,
       attachments: uploaded.length > 0 ? uploaded : undefined,
-      sessionId: 'dashboard:default',
+      sessionId: selectedSessionId,
     };
 
     // Send via HTTP POST
@@ -214,8 +260,11 @@ function Chat() {
       console.error('Failed to send message:', err);
     }
 
-    // Fetch immediately to show our sent message
-    setTimeout(() => fetchMessages(filterState, 'append'), 200);
+    // Fetch immediately to show our sent message, and refresh sessions in case this created/updated one
+    setTimeout(() => {
+      fetchMessages(filterState, 'append');
+      fetchSessions();
+    }, 200);
   };
 
   const handleKeyPress = (e: React.KeyboardEvent) => {
@@ -270,11 +319,28 @@ function Chat() {
       {/* Fixed status bar */}
       <div className="fixed top-[52px] md:top-0 left-0 right-0 md:left-[200px] bg-neutral-900 z-[90] px-2 py-2 md:px-3 border-b border-neutral-700">
         <div className="flex items-center justify-between max-w-[1200px] mx-auto">
-          <div className="flex items-center gap-2 bg-neutral-800 rounded-lg px-3 py-2 text-sm">
-            <span className="w-2 h-2 rounded-full bg-green-400 animate-pulse" />
-            Polling
+          <div className="flex items-center gap-2 min-w-0">
+            <div className="flex items-center gap-2 bg-neutral-800 rounded-lg px-3 py-2 text-sm shrink-0">
+              <span className="w-2 h-2 rounded-full bg-green-400 animate-pulse" />
+              Polling
+            </div>
+            <select
+              value={selectedSessionId}
+              onChange={(e) => setSelectedSessionId(e.target.value)}
+              className="bg-neutral-950 border border-neutral-700 rounded-lg px-3 py-2 text-sm text-neutral-200 min-w-[220px] max-w-[520px] truncate focus:outline-none focus:border-neutral-500"
+              title="Chat session"
+            >
+              {!sessions.some((s) => s.id === selectedSessionId) && (
+                <option value={selectedSessionId}>{selectedSessionId}</option>
+              )}
+              {sessions.map((session) => (
+                <option key={session.id} value={session.id}>
+                  {formatSessionLabel(session)}
+                </option>
+              ))}
+            </select>
           </div>
-          <div className="flex gap-2">
+          <div className="flex gap-2 shrink-0">
             <FilterButton
               active={!filterState.showThoughts}
               onClick={() => setFilterState(prev => ({ ...prev, showThoughts: !prev.showThoughts }))}
@@ -291,7 +357,7 @@ function Chat() {
               onClick={async () => {
                 if (!confirm('Clear all messages in this chat?')) return;
                 try {
-                  await fetch('/api/sessions/dashboard:default/messages', { method: 'DELETE' });
+                  await fetch(`/api/sessions/${encodeURIComponent(selectedSessionId)}/messages`, { method: 'DELETE' });
                   initialLoadRef.current = false;
                   lastAssistantTsRef.current = null;
                   lastMessageIdRef.current = null;
@@ -369,7 +435,7 @@ function Chat() {
             onChange={(e) => setInput(e.target.value)}
             onKeyPress={handleKeyPress}
             onPaste={handlePaste}
-            placeholder="Type a message..."
+            placeholder={`Message ${selectedSessionId}...`}
             rows={3}
             className="flex-1 bg-neutral-950 border border-neutral-700 rounded-md p-2.5 md:p-3 text-neutral-200 resize-none text-base focus:outline-none focus:border-neutral-500 disabled:opacity-50 disabled:cursor-not-allowed"
           />

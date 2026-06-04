@@ -142,6 +142,7 @@ export class DashboardChannel implements Channel {
     author?: string;
     channelPrompt?: string;
     timeoutMs?: number | null;
+    relayToSession?: boolean;
   }) => Promise<string>;
 
   constructor(private db: any, private queries: any, private config: any) {
@@ -192,6 +193,7 @@ export class DashboardChannel implements Channel {
     author?: string;
     channelPrompt?: string;
     timeoutMs?: number | null;
+    relayToSession?: boolean;
   }) => Promise<string>) {
     this.askHandler = handler;
   }
@@ -697,6 +699,12 @@ export class DashboardChannel implements Channel {
       const messages = this.queries.getAllMessagesForSession(req.params.id, limit, beforeId, hideThoughts, hideTools, afterId);
       const total = this.queries.countMessagesForSession(req.params.id, hideThoughts, hideTools);
       res.json({ messages, total });
+    });
+
+    this.app.delete("/api/sessions/:id/messages", (req, res) => {
+      const sessionId = req.params.id;
+      const deleted = this.queries.deleteMessagesForSession(sessionId);
+      res.json({ ok: true, deleted });
     });
 
     this.app.get("/api/sessions/:id/config", (req, res) => {
@@ -1395,7 +1403,7 @@ export class DashboardChannel implements Channel {
         return;
       }
 
-      const { question, session, author, channelPrompt, timeoutMs } = req.body;
+      const { question, session, author, channelPrompt, timeoutMs, relayToSession } = req.body;
       if (!question || typeof question !== "string") {
         res.status(400).json({ error: "Missing or invalid 'question' field" });
         return;
@@ -1411,6 +1419,7 @@ export class DashboardChannel implements Channel {
           author: author || undefined,
           channelPrompt: channelPrompt || undefined,
           timeoutMs: typeof timeoutMs === "number" ? timeoutMs : undefined,
+          relayToSession: relayToSession === true,
         });
         const elapsed = Date.now() - start;
         console.log(`[Dashboard] /api/ask response (${elapsed}ms): "${answer.slice(0, 100)}"`);

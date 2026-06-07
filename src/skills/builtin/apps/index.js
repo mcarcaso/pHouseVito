@@ -118,7 +118,7 @@ function startAppServer(appName, port, appDir) {
 
   if (hasPackageJson) {
     try {
-      execSync('npm install', { cwd: appDir, stdio: 'pipe', timeout: 120000 });
+      execSync('npm install', { cwd: appDir, stdio: 'pipe', timeout: 120000, env: cleanPm2Env() });
     } catch (e) {
       throw new Error(`npm install failed: ${e.stderr?.toString() || e.message}`);
     }
@@ -126,7 +126,7 @@ function startAppServer(appName, port, appDir) {
 
   if (hasRequirementsTxt) {
     try {
-      execSync('pip3 install -r requirements.txt', { cwd: appDir, stdio: 'pipe', timeout: 120000 });
+      execSync('pip3 install -r requirements.txt', { cwd: appDir, stdio: 'pipe', timeout: 120000, env: cleanPm2Env() });
     } catch (e) {
       throw new Error(`pip install failed: ${e.stderr?.toString() || e.message}`);
     }

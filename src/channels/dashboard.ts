@@ -379,14 +379,15 @@ export class DashboardChannel implements Channel {
       // /api/ask has its own Bearer token auth via VITO_ASK_API_KEY
       if (req.path === "/ask") return next();
 
-      // Localhost bypass — internal calls (skills, cron, etc.) are trusted
-      const remoteAddr = req.ip || req.socket.remoteAddress || "";
-      const isLocalhost = remoteAddr === "127.0.0.1" || remoteAddr === "::1" || remoteAddr === "::ffff:127.0.0.1";
-      if (isLocalhost) return next();
+      // Do NOT bypass auth for localhost. Behind a reverse proxy (Caddy/Nginx),
+      // external public requests arrive at Express from 127.0.0.1/::1.
 
-      // If no password set, allow all (first-time setup)
+      // If no password is set, only auth/setup is public. Do not expose APIs during first-time setup.
       const secrets = readSecrets();
-      if (!secrets.DASHBOARD_PASSWORD_HASH) return next();
+      if (!secrets.DASHBOARD_PASSWORD_HASH) {
+        res.status(403).json({ error: "Dashboard password not set. Complete /api/auth/setup first." });
+        return;
+      }
 
       // Check session cookie
       const sessionId = parseCookie(req.headers.cookie, "session");
@@ -400,11 +401,12 @@ export class DashboardChannel implements Channel {
 
     // Serve uploaded attachments (auth-gated)
     this.app.use("/attachments", (req, res, next) => {
-      const remoteAddr = req.ip || req.socket.remoteAddress || "";
-      const isLocalhost = remoteAddr === "127.0.0.1" || remoteAddr === "::1" || remoteAddr === "::ffff:127.0.0.1";
-      if (isLocalhost) return next();
+      // No localhost bypass: reverse-proxied public requests appear local.
       const secrets = readSecrets();
-      if (!secrets.DASHBOARD_PASSWORD_HASH) return next();
+      if (!secrets.DASHBOARD_PASSWORD_HASH) {
+        res.status(403).json({ error: "Dashboard password not set. Complete /api/auth/setup first." });
+        return;
+      }
       const sessionId = parseCookie(req.headers.cookie, "session");
       const session = sessions.get(sessionId);
       if (!session || session.expires < Date.now()) {

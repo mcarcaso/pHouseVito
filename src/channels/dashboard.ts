@@ -302,6 +302,10 @@ export class DashboardChannel implements Channel {
       if (!existsSync(resolved)) { res.status(404).send("Not found"); return; }
       if (!isDrivePathPublic(resolved)) { res.status(404).send("Not found"); return; }
 
+      // Public drive files are commonly consumed by apps on subdomains.
+      res.setHeader("Access-Control-Allow-Origin", "*");
+      res.setHeader("Access-Control-Allow-Methods", "GET, OPTIONS");
+      res.setHeader("Access-Control-Allow-Headers", "Content-Type");
       res.sendFile(resolved);
     });
 

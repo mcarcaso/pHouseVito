@@ -95,6 +95,20 @@ function getAppUrl(appName, port) {
   return `http://localhost:${port}`;
 }
 
+function cleanPm2Env(extra = {}) {
+  return {
+    PATH: process.env.PATH || '/usr/local/bin:/usr/bin:/bin',
+    HOME: process.env.HOME || '',
+    USER: process.env.USER || '',
+    NODE_ENV: process.env.NODE_ENV || 'production',
+    ...extra,
+  };
+}
+
+function runPm2(command, options = {}) {
+  return execSync(command, { stdio: 'pipe', env: cleanPm2Env(), ...options });
+}
+
 function startAppServer(appName, port, appDir) {
   const pm2Name = `app-${appName}`;
   const hasNodeServer = existsSync(join(appDir, 'server.js'));
@@ -119,21 +133,21 @@ function startAppServer(appName, port, appDir) {
   }
 
   if (hasNodeServer) {
-    execSync(`pm2 start server.js --name "${pm2Name}" --cwd "${appDir}" -- --port ${port}`, { stdio: 'pipe' });
+    runPm2(`pm2 start server.js --name "${pm2Name}" --cwd "${appDir}" -- --port ${port}`);
   } else if (hasPythonServer) {
-    execSync(`pm2 start server.py --name "${pm2Name}" --interpreter python3 --cwd "${appDir}" -- --port ${port}`, { stdio: 'pipe' });
+    runPm2(`pm2 start server.py --name "${pm2Name}" --interpreter python3 --cwd "${appDir}" -- --port ${port}`);
   } else {
-    execSync(`pm2 start npx --name "${pm2Name}" -- serve "${appDir}" -l ${port} --no-clipboard`, { stdio: 'pipe' });
+    runPm2(`pm2 start npx --name "${pm2Name}" -- serve "${appDir}" -l ${port} --no-clipboard`);
   }
 
-  execSync('pm2 save', { stdio: 'pipe' });
+  runPm2('pm2 save');
 }
 
 function stopAppServer(appName) {
   const pm2Name = `app-${appName}`;
   try {
-    execSync(`pm2 delete "${pm2Name}"`, { stdio: 'pipe' });
-    execSync('pm2 save', { stdio: 'pipe' });
+    runPm2(`pm2 delete "${pm2Name}"`);
+    runPm2('pm2 save');
   } catch {
     // App might not be running
   }

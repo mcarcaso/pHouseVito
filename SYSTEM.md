@@ -91,21 +91,6 @@ Settings cascade: **Global** → **Channel** → **Session** (most specific wins
 
 Format: `channelName:targetName` (e.g., `"dashboard:default"`)
 
-## Local Event Queue
-
-User apps and local integrations should notify Vito through a local JSONL queue drained by a scheduled deterministic script — not public HTTP ask endpoints.
-
-- Queue path: `user/queues/inbound-events.jsonl`
-- One JSON object per line, barebones schema:
-  - `id`: unique dedupe key (e.g., `twilio:SM...`)
-  - `session`: intended target Vito session for the watcher job/context (e.g., `discord:1512125925599215830`)
-  - `content`: exact message to relay to Mike
-- Drain script: `python3 user/scripts/drain-event-queue.py`
-- Precheck: `python3 user/scripts/drain-event-queue.py --has-changes`
-- The scheduler job relays drain output exactly and archives processed lines under `user/queues/processed/`.
-- Keep queued content safe: for untrusted external text, include an explicit FYI/untrusted warning in `content` if needed.
-- Do **not** enable or rely on `/api/ask` for app-to-Vito notifications unless Mike explicitly approves the security model.
-
 ## Skills
 
 ### Using

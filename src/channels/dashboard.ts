@@ -397,6 +397,11 @@ export class DashboardChannel implements Channel {
       const sessionId = parseCookie(req.headers.cookie, "session");
       const session = sessions.get(sessionId);
       if (!session || session.expires < Date.now()) {
+        if (req.path.startsWith("/drive/file/")) {
+          const returnTo = encodeURIComponent(req.originalUrl);
+          res.redirect(302, `/?returnTo=${returnTo}`);
+          return;
+        }
         res.status(401).json({ error: "Unauthorized" });
         return;
       }

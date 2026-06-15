@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect } from 'react';
-import { Routes, Route, NavLink, Navigate, useLocation } from 'react-router-dom';
+import { Routes, Route, NavLink, Navigate, useLocation, useNavigate } from 'react-router-dom';
 import Chat from './components/Chat';
 import Sessions from './components/Sessions';
 import Memory from './components/Memory';
@@ -22,6 +22,7 @@ function App() {
   const [defaultsLoaded, setDefaultsLoaded] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
   const location = useLocation();
+  const navigate = useNavigate();
 
   // Check auth status on mount
   useEffect(() => {
@@ -100,7 +101,15 @@ function App() {
     return (
       <Login
         mode={authState}
-        onSuccess={() => setAuthState('authenticated')}
+        onSuccess={() => {
+          setAuthState('authenticated');
+          const returnTo = new URLSearchParams(location.search).get('returnTo');
+          if (returnTo && returnTo.startsWith('/')) {
+            window.location.href = returnTo;
+          } else {
+            navigate(location.pathname || '/chat', { replace: true });
+          }
+        }}
       />
     );
   }

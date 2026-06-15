@@ -37,7 +37,11 @@ node src/skills/builtin/scheduler/index.js schedule \
 
 ## How to Use
 
-Run the CLI script at `src/skills/builtin/scheduler/index.js`:
+Primary/default method: edit `user/vito.config.json` directly under `cron.jobs`.
+
+The older CLI script at `src/skills/builtin/scheduler/index.js` talks to the dashboard cron API on `localhost:3030`, but this deployment keeps that API locked down and it should be expected to return `401 Unauthorized`. Do **not** use the API CLI as the normal path. Treat direct JSON edits as the supported path. The config is hot-reloaded, so no restart is usually needed.
+
+Legacy API CLI, only if explicitly needed in an unlocked/dev environment:
 
 ### Schedule a job
 ```bash
@@ -88,7 +92,37 @@ Scheduled recurring job "morning-standup" (timezone: America/Toronto)
   → next run: 3/25/2026, 9:00:00 AM
 ```
 
+## Direct Config Edit — Standard Path
+
+Add/update jobs directly in `user/vito.config.json`:
+
+```json
+{
+  "cron": {
+    "jobs": [
+      {
+        "name": "example-job",
+        "schedule": "0 7 * * *",
+        "prompt": "Your prompt here",
+        "session": "discord:CURRENT_SESSION_ID",
+        "oneTime": false,
+        "timezone": "America/Toronto"
+      }
+    ]
+  }
+}
+```
+
+Rules for direct edits:
+- Preserve existing jobs.
+- Replace/remove any existing job with the same `name` before adding a new version.
+- Use the current session if Mike doesn't specify another one.
+- Config hot-reloads; only restart if the watcher is broken or logs show reload failure.
+
 ## Troubleshooting
+
+**CLI returns 401 Unauthorized?**
+Expected in locked-down production. Do not keep retrying the API CLI; edit `user/vito.config.json` directly under `cron.jobs`.
 
 **Jobs firing at wrong time?**
 1. Check `settings.timezone` in `vito.config.json`

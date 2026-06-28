@@ -14,7 +14,7 @@
  *   - dispose(): tears down the AgentSession (called from /new, shutdown).
  */
 
-import { getModel } from "@earendil-works/pi-ai";
+import { getModel } from "@earendil-works/pi-ai/compat";
 import {
   createAgentSession,
   DefaultResourceLoader,

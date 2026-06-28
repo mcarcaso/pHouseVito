@@ -16,6 +16,7 @@ export interface Settings {
   timezone?: string;
   'pi-coding-agent'?: {
     model?: { provider: string; name: string };
+    openRouterProvider?: string;
     thinkingLevel?: 'off' | 'low' | 'medium' | 'high';
   };
   memory?: {
@@ -40,6 +41,7 @@ export interface VitoConfig {
   harnesses: {
     'pi-coding-agent'?: {
       model: { provider: string; name: string };
+      openRouterProvider?: string;
       thinkingLevel?: string;
     };
     'claude-code'?: {

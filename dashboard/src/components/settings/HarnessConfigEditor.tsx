@@ -33,6 +33,18 @@ const THINKING_LEVELS = [
   { id: 'high', label: 'High' },
 ];
 
+const OPENROUTER_PROVIDER_ROUTES = [
+  { id: '', label: 'Auto' },
+  { id: 'deepinfra', label: 'DeepInfra' },
+  { id: 'groq', label: 'Groq' },
+  { id: 'fireworks', label: 'Fireworks' },
+  { id: 'together', label: 'Together' },
+  { id: 'novita', label: 'Novita' },
+  { id: 'siliconflow', label: 'SiliconFlow' },
+  { id: 'hyperbolic', label: 'Hyperbolic' },
+  { id: 'lambda', label: 'Lambda' },
+];
+
 // Claude Code --model values, grouped by category. Aliases auto-track the
 // latest version; pinned IDs lock to a specific version for reproducibility.
 // Update this list when Anthropic ships new Claude models.
@@ -79,6 +91,7 @@ export default function HarnessConfigEditor({ config, onSave }: HarnessConfigEdi
   const [loadingModels, setLoadingModels] = useState(false);
   const [selectedProvider, setSelectedProvider] = useState('');
   const [selectedModel, setSelectedModel] = useState('');
+  const [selectedOpenRouterProvider, setSelectedOpenRouterProvider] = useState('');
   const [selectedThinking, setSelectedThinking] = useState('off');
   const [savingPi, setSavingPi] = useState(false);
 
@@ -126,6 +139,7 @@ export default function HarnessConfigEditor({ config, onSave }: HarnessConfigEdi
     if (piConfig?.model) {
       setSelectedProvider(piConfig.model.provider || '');
       setSelectedModel(piConfig.model.name || '');
+      setSelectedOpenRouterProvider(piConfig.openRouterProvider || '');
       if (piConfig.model.provider) loadModelsForProvider(piConfig.model.provider);
     }
     if (piConfig?.thinkingLevel) {
@@ -152,6 +166,7 @@ export default function HarnessConfigEditor({ config, onSave }: HarnessConfigEdi
   const handleProviderChange = (provider: string) => {
     setSelectedProvider(provider);
     setSelectedModel('');
+    if (provider !== 'openrouter') setSelectedOpenRouterProvider('');
     loadModelsForProvider(provider);
   };
 
@@ -256,6 +271,11 @@ export default function HarnessConfigEditor({ config, onSave }: HarnessConfigEdi
       model: { provider: selectedProvider, name: selectedModel },
       thinkingLevel: selectedThinking,
     };
+    if (selectedProvider === 'openrouter' && selectedOpenRouterProvider) {
+      piConfig.openRouterProvider = selectedOpenRouterProvider;
+    } else {
+      delete piConfig.openRouterProvider;
+    }
     await onSave({ harnesses: { ...config.harnesses, 'pi-coding-agent': piConfig } });
     setEditingPi(false);
     setSavingPi(false);
@@ -343,6 +363,12 @@ export default function HarnessConfigEditor({ config, onSave }: HarnessConfigEdi
               <div className="flex gap-2">
                 <span className="text-neutral-500">Model:</span>
                 <span className="text-purple-400">{piConfig.model.provider}/{piConfig.model.name}</span>
+              </div>
+            )}
+            {piConfig.openRouterProvider && (
+              <div className="flex gap-2">
+                <span className="text-neutral-500">OR route:</span>
+                <span className="text-purple-400">{piConfig.openRouterProvider}</span>
               </div>
             )}
             {piConfig.thinkingLevel && (
@@ -454,6 +480,14 @@ export default function HarnessConfigEditor({ config, onSave }: HarnessConfigEdi
                 </select>
               )}
             </div>
+            {selectedProvider === 'openrouter' && (
+              <div className="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-4">
+                <label className="text-sm text-neutral-400 sm:w-24 shrink-0">OR Route</label>
+                <select className={selectClass} value={selectedOpenRouterProvider} onChange={(e) => setSelectedOpenRouterProvider(e.target.value)}>
+                  {OPENROUTER_PROVIDER_ROUTES.map((p) => <option key={p.id || 'auto'} value={p.id}>{p.label}</option>)}
+                </select>
+              </div>
+            )}
             <div className="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-4">
               <label className="text-sm text-neutral-400 sm:w-24 shrink-0">Thinking</label>
               <select className={selectClass} value={selectedThinking} onChange={(e) => setSelectedThinking(e.target.value)}>

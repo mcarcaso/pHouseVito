@@ -18,6 +18,8 @@ export interface HarnessFactoryConfig {
   sessionDir: string;
   /** Provider-qualified model selection. */
   model: { provider: string; name: string };
+  /** Pi-only: OpenRouter provider route override, e.g. "deepinfra". */
+  openRouterProvider?: string;
   /** Pi-only: thinking level. Other harnesses ignore. */
   thinkingLevel?: "off" | "low" | "medium" | "high";
   /** Skill discovery root. */
@@ -33,6 +35,7 @@ export function createHarness(name: HarnessName, cfg: HarnessFactoryConfig): Har
     case "pi-coding-agent":
       return new PiSessionHarness({
         model: cfg.model,
+        openRouterProvider: cfg.openRouterProvider,
         thinkingLevel: cfg.thinkingLevel,
         skillsDir: cfg.skillsDir,
         sessionDir: cfg.sessionDir,

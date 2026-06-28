@@ -132,7 +132,7 @@ export interface Harness {
    * Hot-swap the model. May be a no-op if the underlying system can't change
    * model mid-session (in which case the new model takes effect on the next run).
    */
-  setModel?(model: { provider: string; name: string }): Promise<void>;
+  setModel?(model: { provider: string; name: string; openRouterProvider?: string }): Promise<void>;
 
   /**
    * Reset session state. Equivalent to /new — the next run() call starts a

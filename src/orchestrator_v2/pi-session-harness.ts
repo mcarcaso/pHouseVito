@@ -41,6 +41,7 @@ function writeFreshMarker(sessionDir: string): void {
 
 export interface PiSessionHarnessConfig {
   model?: { provider: string; name: string };
+  openRouterProvider?: string;
   thinkingLevel?: "off" | "low" | "medium" | "high";
   skillsDir?: string;
   /**
@@ -55,6 +56,22 @@ const DEFAULT_CONFIG: PiSessionHarnessConfig = {
   model: { provider: "anthropic", name: "claude-sonnet-4-20250514" },
   thinkingLevel: "off",
 };
+
+function resolvePiModel(modelConfig: { provider: string; name: string }, openRouterProvider?: string) {
+  const model = getModel(modelConfig.provider as any, modelConfig.name as any);
+  if (modelConfig.provider !== "openrouter" || !openRouterProvider) return model;
+
+  return {
+    ...model,
+    compat: {
+      ...(model as any).compat,
+      openRouterRouting: {
+        ...((model as any).compat?.openRouterRouting || {}),
+        only: [openRouterProvider],
+      },
+    },
+  } as typeof model;
+}
 
 function toUsage(value: unknown): HarnessUsage | undefined {
   if (!value || typeof value !== "object") return undefined;
@@ -169,7 +186,10 @@ export class PiSessionHarness implements Harness {
 
   getModel(): string {
     const modelConfig = this.config.model || DEFAULT_CONFIG.model!;
-    return `${modelConfig.provider}/${modelConfig.name}`;
+    const route = modelConfig.provider === "openrouter" && this.config.openRouterProvider
+      ? `@${this.config.openRouterProvider}`
+      : "";
+    return `${modelConfig.provider}/${modelConfig.name}${route}`;
   }
 
   /**
@@ -177,11 +197,12 @@ export class PiSessionHarness implements Harness {
    * If the underlying AgentSession hasn't been created yet, this only updates
    * the harness config so first run starts on the requested model.
    */
-  async setModel(modelConfig: { provider: string; name: string }): Promise<void> {
-    this.config.model = modelConfig;
+  async setModel(modelConfig: { provider: string; name: string; openRouterProvider?: string }): Promise<void> {
+    this.config.model = { provider: modelConfig.provider, name: modelConfig.name };
+    this.config.openRouterProvider = modelConfig.openRouterProvider || undefined;
     if (!this.piSession) return;
 
-    const model = getModel(modelConfig.provider as any, modelConfig.name as any);
+    const model = resolvePiModel(this.config.model, this.config.openRouterProvider);
     await this.piSession.setModel(model);
   }
 
@@ -284,7 +305,7 @@ export class PiSessionHarness implements Harness {
       await resourceLoader.reload();
 
       const modelConfig = this.config.model || DEFAULT_CONFIG.model!;
-      const model = getModel(modelConfig.provider as any, modelConfig.name as any);
+      const model = resolvePiModel(modelConfig, this.config.openRouterProvider);
 
       // Persist to disk when sessionDir is configured. Pi writes one JSONL file
       // per session under sessionDir.

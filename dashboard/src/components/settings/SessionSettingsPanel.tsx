@@ -45,6 +45,18 @@ const THINKING_LEVELS = [
   { value: 'high', label: 'High' },
 ];
 
+const OPENROUTER_PROVIDER_ROUTES = [
+  { value: '', label: 'Auto' },
+  { value: 'deepinfra', label: 'DeepInfra' },
+  { value: 'groq', label: 'Groq' },
+  { value: 'fireworks', label: 'Fireworks' },
+  { value: 'together', label: 'Together' },
+  { value: 'novita', label: 'Novita' },
+  { value: 'siliconflow', label: 'SiliconFlow' },
+  { value: 'hyperbolic', label: 'Hyperbolic' },
+  { value: 'lambda', label: 'Lambda' },
+];
+
 function setNestedValue(target: Record<string, any>, path: string, value: any) {
   const parts = path.split('.');
   let cursor: Record<string, any> = target;
@@ -289,6 +301,21 @@ export default function SessionSettingsPanel({ config, onSave, initialSessionId 
             )
           )}
         />
+
+        {currentProvider === 'openrouter' && (
+          <SettingRow
+            label="OR Route"
+            inheritedValue={piInherited.openRouterProvider || 'Auto'}
+            inheritedFrom={inheritFrom}
+            overrideValue={piOverrides.openRouterProvider}
+            onOverride={(val) => {
+              if (val) updateSessionSetting(sessionId, 'pi-coding-agent.openRouterProvider', val);
+              else resetSessionSetting(sessionId, 'pi-coding-agent.openRouterProvider');
+            }}
+            onReset={() => resetSessionSetting(sessionId, 'pi-coding-agent.openRouterProvider')}
+            renderInput={(val, onChange) => renderSelect(val || '', onChange, OPENROUTER_PROVIDER_ROUTES)}
+          />
+        )}
 
         <SettingRow
           label="Thinking Level"

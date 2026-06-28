@@ -606,15 +606,18 @@ export class OrchestratorV2 {
       ? ccOverrides.model || globalCcConfig?.model
       : piOverrides.model || globalPiConfig?.model)
       || { provider: "anthropic", name: "claude-sonnet-4-20250514" };
+    const openRouterProvider = harnessName === "pi-coding-agent"
+      ? (piOverrides.openRouterProvider || globalPiConfig?.openRouterProvider)
+      : undefined;
 
     const existing = this.harnesses.get(vitoSessionId);
     if (existing) {
       const existingName = this.harnessNames.get(vitoSessionId);
       if (existingName === harnessName) {
-        const desiredString = `${model.provider}/${model.name}`;
+        const desiredString = `${model.provider}/${model.name}${openRouterProvider ? `@${openRouterProvider}` : ""}`;
         if (existing.getModel?.() !== desiredString && existing.setModel) {
           try {
-            await existing.setModel(model);
+            await existing.setModel({ ...model, openRouterProvider });
             console.log(`[v2] Hot-swapped model for ${vitoSessionId} → ${desiredString}`);
           } catch (err) {
             console.error(`[v2] Failed to hot-swap model for ${vitoSessionId}:`, err);
@@ -644,6 +647,7 @@ export class OrchestratorV2 {
     const harness = createHarness(harnessName, {
       sessionDir,
       model,
+      openRouterProvider,
       thinkingLevel,
       skillsDir: this.skillsDir,
       permissionMode,
@@ -651,7 +655,7 @@ export class OrchestratorV2 {
     });
     this.harnesses.set(vitoSessionId, harness);
     this.harnessNames.set(vitoSessionId, harnessName);
-    console.log(`[v2] 🎭 Created long-lived ${harnessName} session for ${vitoSessionId} (${model.provider}/${model.name}) → ${sessionDir}`);
+    console.log(`[v2] 🎭 Created long-lived ${harnessName} session for ${vitoSessionId} (${model.provider}/${model.name}${openRouterProvider ? `@${openRouterProvider}` : ""}) → ${sessionDir}`);
     return harness;
   }
 

@@ -115,6 +115,8 @@ export interface PiHarnessConfig {
     provider: string;
     name: string;
   };
+  /** OpenRouter provider route override, e.g. "deepinfra". Omit/empty = auto. */
+  openRouterProvider?: string;
   thinkingLevel?: "off" | "low" | "medium" | "high";
 }
 

@@ -68,15 +68,11 @@ export class CronScheduler {
         console.log(`[Cron] Precheck passed job: ${jobConfig.name}${out ? ` (${out})` : ""}`);
         return true;
       }
-      console.log(`[Cron] Precheck output for ${jobConfig.name}: ${out.slice(0, 200)} — proceeding`);
-      return true;
+      console.log(`[Cron] Precheck output for ${jobConfig.name}: ${out.slice(0, 200)} — not an explicit pass, skipping`);
+      return false;
     } catch (err: any) {
-      if (err?.code === 2) {
-        console.log(`[Cron] Precheck skipped job: ${jobConfig.name}`);
-        return false;
-      }
-      console.error(`[Cron] Precheck failed for ${jobConfig.name}; running job so the issue can be reported:`, err);
-      return true;
+      console.error(`[Cron] Precheck failed for ${jobConfig.name}; skipping job to avoid burning AI tokens:`, err);
+      return false;
     }
   }
 

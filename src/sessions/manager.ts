@@ -1,8 +1,9 @@
-import type { Queries } from "../db/queries.js";
+import type { Context } from "../context/Context.js";
+import { xSessionStore } from "../lib/x.js";
 import type { SessionRow } from "../types.js";
 
 export class SessionManager {
-  constructor(private queries: Queries) {}
+  constructor(private x: Context) {}
 
   /** 
    * Resolve or create a session by key.
@@ -10,9 +11,10 @@ export class SessionManager {
    * Channel and target are extracted from the key for DB metadata (split on first colon).
    */
   resolveSession(sessionKey: string): SessionRow {
-    const existing = this.queries.getSession(sessionKey);
+    const store = xSessionStore(this.x);
+    const existing = store.get(this.x, sessionKey);
     if (existing) {
-      this.queries.touchSession(sessionKey, Date.now());
+      store.touch(this.x, { id: sessionKey, timestamp: Date.now() });
       return { ...existing, last_active_at: Date.now() };
     }
 
@@ -32,17 +34,17 @@ export class SessionManager {
       config: "{}",
       alias: null,
     };
-    this.queries.upsertSession(session);
+    store.upsert(this.x, { session });
     return session;
   }
 
   /** Get a session by ID */
   getSession(id: string): SessionRow | undefined {
-    return this.queries.getSession(id);
+    return xSessionStore(this.x).get(this.x, id);
   }
 
   /** List all sessions */
   listSessions(): SessionRow[] {
-    return this.queries.getAllSessions();
+    return xSessionStore(this.x).list(this.x);
   }
 }

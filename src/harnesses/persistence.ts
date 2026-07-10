@@ -9,13 +9,14 @@
  * - Stores "*(interrupted)*" on abort
  */
 
-import type { Queries } from "../db/queries.js";
+import type { Context } from "../context/Context.js";
+import { xMessageStore } from "../lib/x.js";
 import type { MsgType } from "../types.js";
 import { ProxyHarness } from "./proxy.js";
 import type { Harness, HarnessCallbacks } from "./types.js";
 
 export interface PersistenceOptions {
-  queries: Queries;
+  x: Context;
   sessionId: string;
   channel: string;
   target: string;
@@ -27,7 +28,7 @@ export interface PersistenceOptions {
 }
 
 export class PersistenceHarness extends ProxyHarness {
-  private readonly queries: Queries;
+  private readonly x: Context;
   private readonly sessionId: string;
   private readonly channel: string;
   private readonly target: string;
@@ -38,7 +39,7 @@ export class PersistenceHarness extends ProxyHarness {
 
   constructor(delegate: Harness, opts: PersistenceOptions) {
     super(delegate);
-    this.queries = opts.queries;
+    this.x = opts.x;
     this.sessionId = opts.sessionId;
     this.channel = opts.channel;
     this.target = opts.target;
@@ -48,7 +49,7 @@ export class PersistenceHarness extends ProxyHarness {
   }
 
   private insertMsg(type: MsgType, content: unknown, timestamp = Date.now(), author: string | null = null): number {
-    return this.queries.insertMessage({
+    return xMessageStore(this.x).create(this.x, {
       session_id: this.sessionId,
       channel: this.channel,
       channel_target: this.target,
@@ -113,7 +114,7 @@ export class PersistenceHarness extends ProxyHarness {
     // Promote the last assistant message from "thought" → "assistant"
     if (this.assistantMessageIds.length > 0) {
       const lastId = this.assistantMessageIds[this.assistantMessageIds.length - 1];
-      this.queries.updateMessageType(lastId, "assistant");
+      xMessageStore(this.x).updateType(this.x, { id: lastId, type: "assistant" });
     }
   }
 }

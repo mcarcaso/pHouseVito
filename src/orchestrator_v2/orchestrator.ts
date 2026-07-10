@@ -21,7 +21,7 @@
 
 import { CronScheduler } from "../cron/scheduler.js";
 import { loadConfig } from "../config.js";
-import type { Queries } from "../db/queries.js";
+import type { Context } from "../context/Context.js";
 import {
   createHarness,
   HarnessUnsupportedError,
@@ -39,6 +39,7 @@ import { getDirectChannel, type DirectChannel } from "../channels/direct.js";
 import { maybeEmbedNewChunks } from "../memory/embeddings.js";
 import { SessionManager } from "../sessions/manager.js";
 import { getEffectiveSettings } from "../settings.js";
+import { xMessageStore } from "../lib/x.js";
 import { discoverSkills } from "../skills/discovery.js";
 
 import { randomBytes } from "crypto";
@@ -116,12 +117,12 @@ export class OrchestratorV2 {
   private configMtimeMs = 0;
 
   constructor(
-    private queries: Queries,
+    private x: Context,
     private config: VitoConfig,
     soul: string,
     skillsDir: string
   ) {
-    this.sessionManager = new SessionManager(queries);
+    this.sessionManager = new SessionManager(x);
     this.soul = soul;
     this.skillsDir = skillsDir;
 
@@ -406,7 +407,7 @@ export class OrchestratorV2 {
     const requireMention = effectiveSettings.requireMention !== false;
     const hasMention = event.hasMention !== false;
     if (requireMention && !hasMention) {
-      this.queries.insertMessage({
+      xMessageStore(this.x).create(this.x, {
         session_id: vitoSession.id,
         channel: event.channel,
         channel_target: event.target,
@@ -457,7 +458,7 @@ export class OrchestratorV2 {
       });
 
       const persistedHarness = withPersistence(tracedHarness, {
-        queries: this.queries,
+        x: this.x,
         sessionId: vitoSession.id,
         channel: event.channel,
         target: event.target,
@@ -687,13 +688,13 @@ export class OrchestratorV2 {
    * turns are useful as context.
    */
   private buildHistoryBlock(vitoSessionId: string, limit: number): string | null {
-    const recent = this.queries.getRecentMessages(
-      vitoSessionId,
+    const recent = xMessageStore(this.x).listRecent(this.x, {
+      sessionId: vitoSessionId,
       limit,
-      false, // includeTools
-      false, // includeThoughts
-      true,  // includeArchived — /new archives the messages we want to seed from
-    );
+      includeTools: false,
+      includeThoughts: false,
+      includeArchived: true, // /new archives the messages we want to seed from
+    });
     if (recent.length === 0) return null;
 
     const lines: string[] = [];
@@ -811,7 +812,10 @@ export class OrchestratorV2 {
     const handler = channel.createHandler(event);
 
     const existing = this.harnesses.get(vitoSession.id);
-    const recentMessages = this.queries.getRecentMessages(vitoSession.id, 1);
+    const recentMessages = xMessageStore(this.x).listRecent(this.x, {
+      sessionId: vitoSession.id,
+      limit: 1,
+    });
     if (!existing && recentMessages.length === 0) {
       await handler.relay("✅ Already starting fresh! Nothing to reset.");
       await handler.stopTyping?.();
@@ -826,7 +830,7 @@ export class OrchestratorV2 {
       // instead of blocking the user. New harness session creation doesn't
       // depend on embeddings finishing — it just starts fresh.
       if (recentMessages.length > 0) {
-        this.queries.markSessionArchived(vitoSession.id);
+        xMessageStore(this.x).archiveSession(this.x, { sessionId: vitoSession.id });
       }
 
       // Reset must happen unconditionally so the next message starts fresh,

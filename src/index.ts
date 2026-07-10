@@ -1,7 +1,8 @@
 import { resolve } from "path";
 import { existsSync, writeFileSync, readFileSync, watch } from "fs";
 import { createDatabase } from "./db/schema.js";
-import { Queries } from "./db/queries.js";
+import { RootContext } from "./context/RootContext.js";
+import { xQueries } from "./lib/x.js";
 import { ensureUserDir, loadConfig, loadSoul, USER_DIR } from "./config.js";
 import { OrchestratorV2 as Orchestrator } from "./orchestrator_v2/index.js";
 import { DashboardChannel } from "./channels/dashboard.js";
@@ -47,12 +48,13 @@ async function main() {
   // Initialize database
   const dbPath = resolve(USER_DIR, "vito.db");
   const db = createDatabase(dbPath);
-  const queries = new Queries(db);
+  const skillsDir = resolve(USER_DIR, "skills");
+  const x = RootContext({ db, config, soul, skillsDir });
+  const queries = xQueries(x);
   console.log(`Database: ${dbPath}`);
 
   // Create orchestrator
-  const skillsDir = resolve(USER_DIR, "skills");
-  const orchestrator = new Orchestrator(queries, config, soul, skillsDir);
+  const orchestrator = new Orchestrator(x, config, soul, skillsDir);
 
   // Register Dashboard channel (starts web server)
   const dashboard = new DashboardChannel(db, queries, config);

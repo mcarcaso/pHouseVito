@@ -1,80 +1,70 @@
 import type Database from "better-sqlite3";
+import { ObjectContext } from "../context/ObjectContext.js";
+import { xMessageStore, xSessionStore, xTraceStore } from "../lib/x.js";
+import { SqliteMessageStore } from "../stores/messages/SqliteMessageStore.js";
+import { SqliteSessionStore } from "../stores/sessions/SqliteSessionStore.js";
+import { SqliteTraceStore } from "../stores/traces/SqliteTraceStore.js";
 import type { MessageRow, SessionRow, TraceRow, MsgType } from "../types.js";
 
+/**
+ * Compatibility façade for legacy callers.
+ *
+ * New code should prefer the domain stores in src/stores/* with x-first method
+ * signatures. This class keeps the existing dashboard/orchestrator surface
+ * stable while the codebase moves one boundary at a time.
+ */
 export class Queries {
-  constructor(private db: Database.Database) {}
+  private readonly x;
+
+  constructor(db: Database.Database) {
+    this.x = new ObjectContext({
+      db: () => db,
+      sessionStore: () => new SqliteSessionStore(),
+      messageStore: () => new SqliteMessageStore(),
+      traceStore: () => new SqliteTraceStore(),
+    });
+  }
 
   // ── Sessions ──
 
   getSession(id: string): SessionRow | undefined {
-    return this.db
-      .prepare("SELECT * FROM sessions WHERE id = ?")
-      .get(id) as SessionRow | undefined;
+    return xSessionStore(this.x).get(this.x, id);
   }
 
   upsertSession(session: SessionRow): void {
-    this.db
-      .prepare(
-        `INSERT INTO sessions (id, channel, channel_target, created_at, last_active_at, config)
-         VALUES (@id, @channel, @channel_target, @created_at, @last_active_at, @config)
-         ON CONFLICT(id) DO UPDATE SET last_active_at = @last_active_at`
-      )
-      .run(session);
+    xSessionStore(this.x).upsert(this.x, { session });
   }
 
   getAllSessions(): SessionRow[] {
-    return this.db
-      .prepare("SELECT * FROM sessions ORDER BY last_active_at DESC")
-      .all() as SessionRow[];
+    return xSessionStore(this.x).list(this.x);
   }
 
   touchSession(id: string, timestamp: number): void {
-    this.db
-      .prepare("UPDATE sessions SET last_active_at = ? WHERE id = ?")
-      .run(timestamp, id);
+    xSessionStore(this.x).touch(this.x, { id, timestamp });
   }
 
   updateSessionConfig(id: string, config: string): void {
-    this.db
-      .prepare("UPDATE sessions SET config = ? WHERE id = ?")
-      .run(config, id);
+    xSessionStore(this.x).updateConfig(this.x, { id, config });
   }
 
   updateSessionAlias(id: string, alias: string | null): void {
-    this.db
-      .prepare("UPDATE sessions SET alias = ? WHERE id = ?")
-      .run(alias, id);
+    xSessionStore(this.x).updateAlias(this.x, { id, alias });
   }
 
   /** Get a map of session ID → alias for all sessions that have aliases */
   getSessionAliases(): Record<string, string> {
-    const rows = this.db
-      .prepare("SELECT id, alias FROM sessions WHERE alias IS NOT NULL AND alias != ''")
-      .all() as Array<{ id: string; alias: string }>;
-    const map: Record<string, string> = {};
-    for (const row of rows) {
-      map[row.id] = row.alias;
-    }
-    return map;
+    return xSessionStore(this.x).getAliases(this.x);
   }
 
   // ── Messages ──
 
   insertMessage(msg: Omit<MessageRow, "id">): number {
-    const result = this.db
-      .prepare(
-        `INSERT INTO messages (session_id, channel, channel_target, timestamp, type, content, archived, author)
-         VALUES (@session_id, @channel, @channel_target, @timestamp, @type, @content, @archived, @author)`
-      )
-      .run(msg);
-    return result.lastInsertRowid as number;
+    return xMessageStore(this.x).create(this.x, msg);
   }
-  
+
   /** Update message type (for marking assistant vs thought) */
   updateMessageType(id: number, type: MsgType): void {
-    this.db
-      .prepare("UPDATE messages SET type = ? WHERE id = ?")
-      .run(type, id);
+    xMessageStore(this.x).updateType(this.x, { id, type });
   }
 
   /**
@@ -88,37 +78,18 @@ export class Queries {
     includeThoughts = true,
     includeArchived = false
   ): MessageRow[] {
-    const filters: string[] = ["session_id = ?"];
-    
-    if (!includeTools) {
-      filters.push("type NOT IN ('tool_start', 'tool_end')");
-    }
-    if (!includeThoughts) {
-      filters.push("type != 'thought'");
-    }
-    if (!includeArchived) {
-      filters.push("archived = 0");
-    }
-    
-    const whereClause = filters.join(" AND ");
-    
-    return this.db
-      .prepare(
-        `SELECT * FROM (
-           SELECT * FROM messages
-           WHERE ${whereClause}
-           ORDER BY timestamp DESC
-           LIMIT ?
-         ) ORDER BY timestamp ASC`
-      )
-      .all(sessionId, limit) as MessageRow[];
+    return xMessageStore(this.x).listRecent(this.x, {
+      sessionId,
+      limit,
+      includeTools,
+      includeThoughts,
+      includeArchived,
+    });
   }
 
   /**
    * Get the last N "turns" (user/assistant messages) plus any thoughts and
-   * tools that happened in between, optionally filtered. This is what the
-   * auto classifier reasons about when picking currentContextLimit — its
-   * "5 messages" means 5 user/assistant exchanges, not 5 raw rows.
+   * tools that happened in between, optionally filtered.
    *
    * Returns rows in chronological order (oldest first).
    */
@@ -129,40 +100,19 @@ export class Queries {
     includeTools = true,
     includeArchived = false
   ): MessageRow[] {
-    if (turnLimit <= 0) return [];
-
-    const archivedClause = includeArchived ? "" : " AND archived = 0";
-
-    const typeFilters: string[] = [];
-    if (!includeThoughts) typeFilters.push("type != 'thought'");
-    if (!includeTools) typeFilters.push("type NOT IN ('tool_start', 'tool_end')");
-    const typeFilterClause = typeFilters.length > 0 ? ` AND ${typeFilters.join(" AND ")}` : "";
-
-    return this.db
-      .prepare(
-        `SELECT * FROM messages
-         WHERE session_id = ?
-           AND timestamp >= COALESCE(
-             (SELECT MIN(timestamp) FROM (
-                SELECT timestamp FROM messages
-                WHERE session_id = ?
-                  AND type IN ('user', 'assistant')${archivedClause}
-                ORDER BY timestamp DESC
-                LIMIT ?
-              )),
-             9.2233720368548e+18
-           )
-           ${archivedClause}
-           ${typeFilterClause}
-         ORDER BY timestamp ASC`
-      )
-      .all(sessionId, sessionId, turnLimit) as MessageRow[];
+    return xMessageStore(this.x).listRecentTurns(this.x, {
+      sessionId,
+      limit: turnLimit,
+      turnLimit,
+      includeThoughts,
+      includeTools,
+      includeArchived,
+    });
   }
 
   /**
    * Get recent turns after an embedded cutoff, optionally keeping a small tail
-   * of recent embedded user/assistant turns. Used to prevent duplicating raw
-   * current-session messages that are already represented in embeddings.db.
+   * of recent embedded user/assistant turns.
    */
   getRecentTurnsAfterId(
     sessionId: string,
@@ -173,62 +123,16 @@ export class Queries {
     afterId = 0,
     keepRecentEmbeddedMessages = 0
   ): MessageRow[] {
-    if (turnLimit <= 0) return [];
-
-    const archivedClause = includeArchived ? "" : " AND archived = 0";
-
-    const typeFilters: string[] = [];
-    if (!includeThoughts) typeFilters.push("type != 'thought'");
-    if (!includeTools) typeFilters.push("type NOT IN ('tool_start', 'tool_end')");
-    const typeFilterClause = typeFilters.length > 0 ? ` AND ${typeFilters.join(" AND ")}` : "";
-
-    const keepTail = Math.max(0, Math.floor(keepRecentEmbeddedMessages));
-    const scopeClause = keepTail > 0
-      ? `AND (id > ? OR id >= COALESCE(
-           (SELECT MIN(id) FROM (
-              SELECT id FROM messages
-              WHERE session_id = ?
-                AND type IN ('user', 'assistant')${archivedClause}
-              ORDER BY id DESC
-              LIMIT ?
-            )),
-           9223372036854775807
-         ))`
-      : `AND id > ?`;
-
-    const sql = `SELECT * FROM messages
-      WHERE session_id = ?
-        AND id >= COALESCE(
-          (SELECT MIN(id) FROM (
-             SELECT id FROM messages
-             WHERE session_id = ?
-               AND type IN ('user', 'assistant')${archivedClause}
-               ${scopeClause}
-             ORDER BY id DESC
-             LIMIT ?
-           )),
-          9223372036854775807
-        )
-        ${scopeClause}
-        ${archivedClause}
-        ${typeFilterClause}
-      ORDER BY id ASC`;
-
-    const params = keepTail > 0
-      ? [
-          sessionId,
-          sessionId,
-          afterId,
-          sessionId,
-          keepTail,
-          turnLimit,
-          afterId,
-          sessionId,
-          keepTail,
-        ]
-      : [sessionId, sessionId, afterId, turnLimit, afterId];
-
-    return this.db.prepare(sql).all(...params) as MessageRow[];
+    return xMessageStore(this.x).listRecentTurnsAfterId(this.x, {
+      sessionId,
+      limit: turnLimit,
+      turnLimit,
+      includeThoughts,
+      includeTools,
+      includeArchived,
+      afterId,
+      keepRecentEmbeddedMessages,
+    });
   }
 
   countMessagesThroughId(
@@ -238,95 +142,43 @@ export class Queries {
     includeTools = true,
     includeArchived = false
   ): number {
-    if (throughId <= 0) return 0;
-    const filters: string[] = ["session_id = ?", "id <= ?"];
-    if (!includeTools) filters.push("type NOT IN ('tool_start', 'tool_end')");
-    if (!includeThoughts) filters.push("type != 'thought'");
-    if (!includeArchived) filters.push("archived = 0");
-    const row = this.db
-      .prepare(`SELECT COUNT(*) as count FROM messages WHERE ${filters.join(" AND ")}`)
-      .get(sessionId, throughId) as { count: number };
-    return row.count;
+    return xMessageStore(this.x).countThroughId(this.x, {
+      sessionId,
+      limit: 0,
+      throughId,
+      includeThoughts,
+      includeTools,
+      includeArchived,
+    });
   }
 
   /** Get all messages for a session (including archived) for dashboard */
-  getAllMessagesForSession(sessionId: string, limit?: number, beforeId?: number, hideThoughts?: boolean, hideTools?: boolean, afterId?: number): MessageRow[] {
-    // Build filter clause based on filter options
-    let filterClause = "";
-    if (hideThoughts) {
-      filterClause += " AND type != 'thought'";
-    }
-    if (hideTools) {
-      filterClause += " AND type NOT IN ('tool_start', 'tool_end')";
-    }
-    
-    if (afterId) {
-      // Polling: get messages AFTER a specific ID (newest messages only)
-      return this.db
-        .prepare(
-          `SELECT * FROM messages
-           WHERE session_id = ? AND id > ?${filterClause}
-           ORDER BY id ASC`
-        )
-        .all(sessionId, afterId) as MessageRow[];
-    } else if (limit && beforeId) {
-      // Paginated: get N messages before a specific ID
-      return this.db
-        .prepare(
-          `SELECT * FROM (
-             SELECT * FROM messages
-             WHERE session_id = ? AND id < ?${filterClause}
-             ORDER BY id DESC
-             LIMIT ?
-           ) ORDER BY id ASC`
-        )
-        .all(sessionId, beforeId, limit) as MessageRow[];
-    } else if (limit) {
-      // Just limit: get most recent N messages
-      return this.db
-        .prepare(
-          `SELECT * FROM (
-             SELECT * FROM messages
-             WHERE session_id = ?${filterClause}
-             ORDER BY id DESC
-             LIMIT ?
-           ) ORDER BY id ASC`
-        )
-        .all(sessionId, limit) as MessageRow[];
-    } else {
-      return this.db
-        .prepare(
-          `SELECT * FROM messages
-           WHERE session_id = ?${filterClause}
-           ORDER BY id ASC`
-        )
-        .all(sessionId) as MessageRow[];
-    }
+  getAllMessagesForSession(
+    sessionId: string,
+    limit?: number,
+    beforeId?: number,
+    hideThoughts?: boolean,
+    hideTools?: boolean,
+    afterId?: number
+  ): MessageRow[] {
+    return xMessageStore(this.x).listForSession(this.x, {
+      sessionId,
+      limit,
+      beforeId,
+      hideThoughts,
+      hideTools,
+      afterId,
+    });
   }
 
   /** Delete all messages for a session (dashboard clear chat) */
   deleteMessagesForSession(sessionId: string): number {
-    const result = this.db
-      .prepare("DELETE FROM messages WHERE session_id = ?")
-      .run(sessionId);
-    return result.changes;
+    return xMessageStore(this.x).deleteForSession(this.x, { sessionId });
   }
 
   /** Count total messages for a session */
   countMessagesForSession(sessionId: string, hideThoughts?: boolean, hideTools?: boolean): number {
-    let sql = "SELECT COUNT(*) as count FROM messages WHERE session_id = ?";
-    
-    if (hideThoughts) {
-      sql += " AND type != 'thought'";
-    }
-    if (hideTools) {
-      sql += " AND type NOT IN ('tool_start', 'tool_end')";
-    }
-    
-    const row = this.db
-      .prepare(sql)
-      .get(sessionId) as { count: number };
-    return row.count;
+    return xMessageStore(this.x).countForSession(this.x, { sessionId, hideThoughts, hideTools });
   }
 
   /**
@@ -339,18 +191,12 @@ export class Queries {
     includeTools = false,
     showArchived = false
   ): MessageRow[] {
-    const toolFilter = includeTools ? "" : " AND type NOT IN ('tool_start', 'tool_end')";
-    const archiveFilter = showArchived ? "" : " AND archived = 0";
-    return this.db
-      .prepare(
-        `SELECT * FROM (
-           SELECT * FROM messages
-           WHERE session_id != ?${archiveFilter}${toolFilter}
-           ORDER BY timestamp DESC
-           LIMIT ?
-         ) ORDER BY timestamp ASC`
-      )
-      .all(excludeSessionId, limit) as MessageRow[];
+    return xMessageStore(this.x).listCrossSession(this.x, {
+      excludeSessionId,
+      limit,
+      includeTools,
+      showArchived,
+    });
   }
 
   /**
@@ -366,127 +212,46 @@ export class Queries {
     includeArchived = false,
     maxSessions = 0
   ): MessageRow[] {
-    const buildFilters = (prefix: string = "") => {
-      const filters: string[] = [];
-      if (!includeTools) filters.push(`${prefix}type NOT IN ('tool_start', 'tool_end')`);
-      if (!includeThoughts) filters.push(`${prefix}type != 'thought'`);
-      if (!includeArchived) filters.push(`${prefix}archived = 0`);
-      return filters.length > 0 ? " AND " + filters.join(" AND ") : "";
-    };
-    
-    const filterClause = buildFilters();
-    
-    // Get distinct other sessions that have qualifying messages, ordered by most recent activity
-    // Apply maxSessions limit if specified
-    const sessionLimitClause = maxSessions > 0 ? ` LIMIT ${maxSessions}` : "";
-    const sessions = this.db
-      .prepare(
-        `SELECT DISTINCT session_id FROM messages
-         WHERE session_id != ?${filterClause}
-         ORDER BY (SELECT MAX(timestamp) FROM messages m2 WHERE m2.session_id = messages.session_id) DESC${sessionLimitClause}`
-      )
-      .all(excludeSessionId) as Array<{ session_id: string }>;
-
-    const allMessages: MessageRow[] = [];
-    for (const session of sessions) {
-      const msgs = this.db
-        .prepare(
-          `SELECT * FROM (
-             SELECT * FROM messages
-             WHERE session_id = ?${filterClause}
-             ORDER BY timestamp DESC
-             LIMIT ?
-           ) ORDER BY timestamp ASC`
-        )
-        .all(session.session_id, perSessionLimit) as MessageRow[];
-      allMessages.push(...msgs);
-    }
-    return allMessages;
+    return xMessageStore(this.x).listCrossSessionPerSession(this.x, {
+      excludeSessionId,
+      perSessionLimit,
+      includeTools,
+      includeThoughts,
+      includeArchived,
+      maxSessions,
+    });
   }
 
   /** Mark all messages in a session as archived */
   markSessionArchived(sessionId: string): void {
-    this.db
-      .prepare(
-        "UPDATE messages SET archived = 1 WHERE session_id = ?"
-      )
-      .run(sessionId);
+    xMessageStore(this.x).archiveSession(this.x, { sessionId });
   }
 
   /** Get the last assistant message for a session (for profile update context) */
   getLastAssistantMessage(sessionId: string): string | null {
-    const row = this.db
-      .prepare(
-        `SELECT content FROM messages 
-         WHERE session_id = ? AND type = 'assistant' AND archived = 0
-         ORDER BY timestamp DESC 
-         LIMIT 1`
-      )
-      .get(sessionId) as { content: string } | undefined;
-    
-    if (!row) return null;
-    
-    // Content is stored as JSON string
-    try {
-      return JSON.parse(row.content);
-    } catch {
-      return row.content;
-    }
+    return xMessageStore(this.x).getLastAssistantMessage(this.x, { sessionId });
   }
 
-  /** 
+  /**
    * Get the last N user/assistant messages for a session (for profile update context).
    * Returns messages in chronological order (oldest first).
    * Only includes user and assistant types — excludes thoughts/tools.
    */
   getLastNMessages(sessionId: string, limit: number): Array<{ type: string; content: string }> {
-    const rows = this.db
-      .prepare(
-        `SELECT type, content FROM (
-           SELECT type, content, timestamp FROM messages 
-           WHERE session_id = ? AND type IN ('user', 'assistant') AND archived = 0
-           ORDER BY timestamp DESC 
-           LIMIT ?
-         ) ORDER BY timestamp ASC`
-      )
-      .all(sessionId, limit) as Array<{ type: string; content: string }>;
-    
-    // Parse JSON content
-    return rows.map(row => {
-      let content: string;
-      try {
-        content = JSON.parse(row.content);
-      } catch {
-        content = row.content;
-      }
-      // Handle content that may be an object (e.g., with attachments)
-      if (typeof content === "object" && content !== null) {
-        content = (content as any).text || JSON.stringify(content);
-      }
-      return { type: row.type, content };
-    });
+    return xMessageStore(this.x).getLastNMessages(this.x, { sessionId, limit });
   }
 
   // ── Traces ──
 
   insertTrace(trace: Omit<TraceRow, "id">): void {
-    this.db
-      .prepare(
-        `INSERT INTO traces (session_id, channel, timestamp, user_message, system_prompt, model)
-         VALUES (@session_id, @channel, @timestamp, @user_message, @system_prompt, @model)`
-      )
-      .run(trace);
+    xTraceStore(this.x).create(this.x, trace);
   }
 
   getRecentTraces(limit: number = 50): Omit<TraceRow, "system_prompt">[] {
-    return this.db
-      .prepare("SELECT id, session_id, channel, timestamp, user_message, model FROM traces ORDER BY timestamp DESC LIMIT ?")
-      .all(limit) as Omit<TraceRow, "system_prompt">[];
+    return xTraceStore(this.x).listRecent(this.x, { limit });
   }
 
   getTrace(id: number): TraceRow | undefined {
-    return this.db
-      .prepare("SELECT * FROM traces WHERE id = ?")
-      .get(id) as TraceRow | undefined;
+    return xTraceStore(this.x).get(this.x, id);
   }
 }

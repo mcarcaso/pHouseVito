@@ -1,6 +1,6 @@
 /**
  * Shared OpenAI-compatible client & embedding function for the memory pipeline.
- * Tries OpenRouter first, falls back to native OpenAI if no OpenRouter key.
+ * Prefers native OpenAI for embeddings when available, falling back to OpenRouter.
  * Used by embeddings.ts, search.ts, profile.ts, and dashboard search.
  */
 
@@ -26,16 +26,16 @@ function getProviderConfig(): ProviderConfig {
 
   const secrets = JSON.parse(readFileSync(join(ROOT, "user", "secrets.json"), "utf-8"));
 
-  if (secrets.OPENROUTER_API_KEY) {
+  if (secrets.OPENAI_API_KEY) {
+    providerConfig = {
+      apiKey: secrets.OPENAI_API_KEY,
+      isOpenRouter: false,
+    };
+  } else if (secrets.OPENROUTER_API_KEY) {
     providerConfig = {
       apiKey: secrets.OPENROUTER_API_KEY,
       baseURL: "https://openrouter.ai/api/v1",
       isOpenRouter: true,
-    };
-  } else if (secrets.OPENAI_API_KEY) {
-    providerConfig = {
-      apiKey: secrets.OPENAI_API_KEY,
-      isOpenRouter: false,
     };
   } else {
     throw new Error("No API key found: set OPENROUTER_API_KEY or OPENAI_API_KEY in user/secrets.json");

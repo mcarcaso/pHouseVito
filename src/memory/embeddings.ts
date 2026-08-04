@@ -18,7 +18,9 @@
 
 import Database from "better-sqlite3";
 import { join, resolve } from "path";
-import { getClient, resolveModel, createEmbedding } from "./client.js";
+import { completeSimple, getModel } from "@earendil-works/pi-ai/compat";
+import { AuthStorage } from "@earendil-works/pi-coding-agent";
+import { createEmbedding } from "./client.js";
 
 // ── Config ─────────────────────────────────────────────────
 
@@ -28,9 +30,8 @@ const EMBEDDINGS_DB_PATH = join(ROOT, "user", "embeddings.db");
 const MIN_CHUNK_CHARS = 2000;  // Start chunking when buffer hits this
 const MAX_CHUNK_CHARS = 4000;  // Hard cap per chunk
 const ASSISTANT_LABEL = "assistant";
-/** Default model used to write the per-chunk context sentence. Override via
- *  settings.memory.chunkContextualizerModel.name in vito.config.json. */
-const DEFAULT_CONTEXTUAL_MODEL = "openai/gpt-5.4-nano";
+/** Default model used to write the per-chunk context sentence. */
+const DEFAULT_CONTEXTUAL_MODEL = { provider: "openrouter", name: "openai/gpt-5.4-nano" };
 
 
 // ── Global Lock ────────────────────────────────────────────
@@ -235,8 +236,16 @@ function produceCompleteChunks(
 
 // ── OpenAI Calls ───────────────────────────────────────────
 
-async function generateContext(currentText: string, previousText: string | null, model: string): Promise<string> {
-  const openai = getClient();
+interface ContextualizerModel {
+  provider: string;
+  name: string;
+}
+
+async function generateContext(
+  currentText: string,
+  previousText: string | null,
+  modelConfig: ContextualizerModel,
+): Promise<string> {
 
   const prevSection = previousText
     ? `<previous_chunk>\n${previousText}\n</previous_chunk>\n\n`
@@ -251,13 +260,25 @@ Write a short, succinct context (1-2 sentences max) to situate this conversation
 
 Do NOT summarize the full conversation. Just provide enough context so that if someone searches for related topics, this chunk can be found. Respond with ONLY the context sentence(s), nothing else.`;
 
-  const response = await openai.chat.completions.create({
-    model: resolveModel(model),
-    max_tokens: 200,
-    messages: [{ role: "user", content: prompt }],
-  });
+  const authStorage = AuthStorage.create();
+  const apiKey = await authStorage.getApiKey(modelConfig.provider);
+  if (!apiKey) throw new Error(`No credentials found for contextualizer provider: ${modelConfig.provider}`);
 
-  return response.choices[0].message.content?.trim() || "";
+  const model = getModel(modelConfig.provider as any, modelConfig.name as any);
+  const response = await completeSimple(
+    model,
+    { messages: [{ role: "user", content: prompt, timestamp: Date.now() }] },
+    { apiKey, maxTokens: 200, reasoning: "minimal" },
+  );
+  if (response.stopReason === "error") {
+    throw new Error(response.errorMessage || `Contextualizer request failed for ${modelConfig.provider}/${modelConfig.name}`);
+  }
+
+  return response.content
+    .filter((part): part is Extract<(typeof response.content)[number], { type: "text" }> => part.type === "text")
+    .map((part) => part.text)
+    .join("")
+    .trim();
 }
 
 
@@ -289,11 +310,8 @@ export interface EmbeddingResult {
 export interface EmbedOptions {
   /** Force emitting a final chunk even if below MIN_CHUNK_CHARS */
   force?: boolean;
-  /**
-   * OpenRouter-format model identifier used to write the per-chunk context
-   * sentence (e.g. "openai/gpt-5.5-nano"). Defaults to DEFAULT_CONTEXTUAL_MODEL.
-   */
-  contextualizerModel?: string;
+  /** Provider/model used to write the per-chunk context sentence. */
+  contextualizerModel?: ContextualizerModel;
 }
 
 /**

@@ -157,8 +157,8 @@ export interface Settings {
   memory?: {
     /**
      * Model used to write the 1-2 sentence context prepended to each chunk
-     * before embedding. Format mirrors queryContextualizerModel — `name` is
-     * the OpenRouter-format identifier (e.g. "openai/gpt-5.5-nano").
+     * before embedding. Provider and model are both honored, including
+     * OAuth-backed providers such as openai-codex.
      */
     chunkContextualizerModel?: { provider: string; name: string };
   };

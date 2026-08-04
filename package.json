@@ -15,14 +15,15 @@
     "dev:dashboard": "cd dashboard && npm run dev"
   },
   "dependencies": {
-    "@earendil-works/pi-ai": "^0.80.2",
-    "@earendil-works/pi-coding-agent": "^0.80.2",
+    "@earendil-works/pi-ai": "^0.80.6",
+    "@earendil-works/pi-coding-agent": "^0.80.6",
     "@modelcontextprotocol/sdk": "^1.29.0",
     "@playwright/mcp": "^0.0.75",
     "@viz-js/viz": "^3.25.0",
     "ajv": "^8.18.0",
     "axios": "1.13.6",
     "better-sqlite3": "^11.0.0",
+    "chess.js": "^1.4.0",
     "cors": "^2.8.6",
     "croner": "^10.0.1",
     "discord.js": "^14.25.1",

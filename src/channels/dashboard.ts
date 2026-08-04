@@ -393,6 +393,21 @@ export class DashboardChannel implements Channel {
         return;
       }
 
+      // Public Drive files must bypass auth before the protected file route runs.
+      // The route itself still resolves/sends the file safely under DRIVE_DIR.
+      if (req.path.startsWith("/drive/file/")) {
+        const relPath = req.path.slice("/drive/file/".length);
+        const resolved = path.resolve(DRIVE_DIR, relPath);
+        if (
+          resolved.startsWith(DRIVE_DIR + path.sep) &&
+          existsSync(resolved) &&
+          !statSync(resolved).isDirectory() &&
+          isDrivePathPublic(resolved)
+        ) {
+          return next();
+        }
+      }
+
       // Check session cookie
       const sessionId = parseCookie(req.headers.cookie, "session");
       const session = sessions.get(sessionId);

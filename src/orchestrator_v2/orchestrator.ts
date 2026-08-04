@@ -555,7 +555,7 @@ export class OrchestratorV2 {
       }
 
       // Background: chunk + embed; periodic profile update.
-      const contextualizerModel = effectiveSettings.memory?.chunkContextualizerModel?.name;
+      const contextualizerModel = effectiveSettings.memory?.chunkContextualizerModel;
       maybeEmbedNewChunks(vitoSession.id, { contextualizerModel }).then((embResult) => {
         if (embResult) {
           tracedHarness.writePostRunLine({
@@ -860,7 +860,7 @@ export class OrchestratorV2 {
 
       // Background force-embed. Errors logged, not surfaced to the user.
       const newSettings = getEffectiveSettings(this.config, event.channel, event.sessionKey);
-      const contextualizerModel = newSettings.memory?.chunkContextualizerModel?.name;
+      const contextualizerModel = newSettings.memory?.chunkContextualizerModel;
       maybeEmbedNewChunks(vitoSession.id, { force: true, contextualizerModel })
         .then((embResult) => {
           if (embResult?.skipped) {

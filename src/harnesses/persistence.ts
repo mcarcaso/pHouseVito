@@ -58,7 +58,7 @@ export class PersistenceHarness extends ProxyHarness {
       content: JSON.stringify(content),
       archived: 0,
       author,
-    });
+    }).id;
   }
 
   async run(
@@ -114,7 +114,10 @@ export class PersistenceHarness extends ProxyHarness {
     // Promote the last assistant message from "thought" → "assistant"
     if (this.assistantMessageIds.length > 0) {
       const lastId = this.assistantMessageIds[this.assistantMessageIds.length - 1];
-      xMessageStore(this.x).updateType(this.x, { id: lastId, type: "assistant" });
+      xMessageStore(this.x).update(this.x, {
+        id: lastId,
+        changes: { type: "assistant" },
+      });
     }
   }
 }

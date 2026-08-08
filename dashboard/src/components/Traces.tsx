@@ -168,7 +168,7 @@ interface LogFile {
   timestamp: number;
   size: number;
   preview: string;
-  format?: "jsonl" | "text";
+  format: "jsonl";
   sessionId?: string;
   alias?: string | null;
   hasEmbedding?: boolean;
@@ -183,13 +183,7 @@ interface LogDetailJsonl {
   lines: TraceLine[];
 }
 
-interface LogDetailText {
-  filename: string;
-  format: "text";
-  content: string;
-}
-
-type LogDetail = LogDetailJsonl | LogDetailText;
+type LogDetail = LogDetailJsonl;
 
 const TRACE_TYPE_FILTER_STORAGE_KEY = 'traces.traceTypeFilter';
 const SESSION_FILTER_STORAGE_KEY = 'traces.sessionFilter';
@@ -814,7 +808,7 @@ function Traces() {
       const key = `event-${i}`;
       const isExpanded = expandedSections.has(key);
       
-      const isRaw = e.type === "raw_event" || e.type === ("raw" as any) || e.type === ("harness_event" as any);
+      const isRaw = e.type === "raw_event";
       
       // Try to get an event label - don't assume anything about the structure
       let eventLabel = '—';
@@ -908,15 +902,7 @@ function Traces() {
           </button>
         </div>
 
-        {logDetail.format === 'jsonl' ? (
-          renderJsonlDetail(logDetail)
-        ) : (
-          <div className="p-4 overflow-x-auto">
-            <pre className="bg-neutral-950 border border-neutral-800 rounded-lg p-4 font-mono text-sm text-neutral-300 leading-relaxed whitespace-pre-wrap break-words">
-              {logDetail.content}
-            </pre>
-          </div>
-        )}
+        {renderJsonlDetail(logDetail)}
       </div>
     );
   }
@@ -1023,7 +1009,6 @@ function Traces() {
       <div className="p-4 space-y-2">
         {filteredLogs.map((log) => {
           const info = parsePreview(log.preview);
-          const isJsonl = log.format === 'jsonl';
           const traceType = log.traceType || "main";
 
           // Extract clean user message for classifier traces (strip <recent-history> wrapper)
@@ -1059,11 +1044,9 @@ function Traces() {
                 <span className="text-violet-400 bg-violet-500/10 px-2 py-0.5 rounded text-xs font-mono">
                   {info.model || '—'}
                 </span>
-                {isJsonl && (
-                  <span className="text-blue-400 bg-blue-500/10 px-2 py-0.5 rounded text-xs">
-                    JSONL
-                  </span>
-                )}
+                <span className="text-blue-400 bg-blue-500/10 px-2 py-0.5 rounded text-xs">
+                  JSONL
+                </span>
                 {log.hasEmbedding && (
                   <span className="text-emerald-400 bg-emerald-500/10 px-2 py-0.5 rounded text-xs">
                     Embedding

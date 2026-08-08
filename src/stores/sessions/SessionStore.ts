@@ -1,26 +1,37 @@
 import type { Context } from "../../context/Context.js";
 import type { SessionRow } from "../../types.js";
 
-export interface SessionUpsertArgs {
-  session: SessionRow;
+export interface SessionFilter {
+  ids?: string[];
+  channels?: string[];
+  channelTargets?: string[];
+  hasAlias?: boolean;
 }
 
-export interface SessionUpdateConfigArgs {
-  id: string;
-  config: string;
+export interface SessionListArgs extends SessionFilter {
+  order?: "recent" | "oldest";
+  limit?: number;
 }
 
-export interface SessionUpdateAliasArgs {
+export type CreateSessionArgs = SessionRow;
+
+export interface UpdateSessionArgs {
   id: string;
-  alias: string | null;
+  changes: {
+    last_active_at?: number;
+    config?: string;
+    alias?: string | null;
+  };
+}
+
+export interface DeleteSessionArgs {
+  ids: string[];
 }
 
 export interface SessionStore {
-  get(x: Context, id: string): SessionRow | undefined;
-  upsert(x: Context, args: SessionUpsertArgs): void;
-  list(x: Context): SessionRow[];
-  touch(x: Context, args: { id: string; timestamp: number }): void;
-  updateConfig(x: Context, args: SessionUpdateConfigArgs): void;
-  updateAlias(x: Context, args: SessionUpdateAliasArgs): void;
-  getAliases(x: Context): Record<string, string>;
+  list(x: Context, args: SessionListArgs): SessionRow[];
+  count(x: Context, args: SessionFilter): number;
+  create(x: Context, args: CreateSessionArgs): SessionRow;
+  update(x: Context, args: UpdateSessionArgs): SessionRow;
+  delete(x: Context, args: DeleteSessionArgs): number;
 }

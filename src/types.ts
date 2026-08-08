@@ -107,114 +107,17 @@ export type OutboundMessage = string;
 export type StreamMode = "stream" | "bundled" | "final";
 
 // ── Config types ──
+// Runtime schemas and their inferred types live together at the config boundary.
+export type {
+  ChannelConfig,
+  ClaudeCodeHarnessConfig,
+  CronJobConfig,
+  PiHarnessConfig,
+  ResolvedSettings,
+  Settings,
+  VitoConfig,
+} from "./contracts/vito-config.js";
 
-// ── Harness config types ──
-
-export interface PiHarnessConfig {
-  model: {
-    provider: string;
-    name: string;
-  };
-  /** OpenRouter provider route override, e.g. "deepinfra". Omit/empty = auto. */
-  openRouterProvider?: string;
-  thinkingLevel?: "off" | "low" | "medium" | "high";
-}
-
-export interface ClaudeCodeHarnessConfig {
-  /** Model name passed via `--model`. Provider is informational; CC routes via its own auth. */
-  model?: {
-    provider: string;
-    name: string;
-  };
-  /** CC --permission-mode flag. Defaults to "acceptEdits" for non-interactive Vito use. */
-  permissionMode?: "default" | "acceptEdits" | "bypassPermissions" | "plan";
-  /** Override the `claude` binary path (e.g., for nvm-managed installs). */
-  binaryPath?: string;
-}
-
-// ── Unified Settings Type ──
-// This is the cascading settings type: Global → Channel → Session
-// Each level can override any setting. More specific wins.
-
-export interface Settings {
-  /** Which harness to use */
-  harness?: string;
-  /** How to deliver responses: stream (real-time), bundled (chunks), final (single message) */
-  streamMode?: StreamMode;
-  /** Custom instructions injected into the system prompt — cascades Global → Channel → Session (most specific wins) */
-  customInstructions?: string;
-  /** Require @mention to respond (Discord/Telegram) — still logs all messages */
-  requireMention?: boolean;
-  /** Log message_update raw events to trace files (noisy). Default false */
-  traceMessageUpdates?: boolean;
-  /** Timezone for cron jobs and datetime display (e.g., "America/Toronto"). Defaults to America/Toronto */
-  timezone?: string;
-  /** Pi Coding Agent harness overrides */
-  "pi-coding-agent"?: Partial<PiHarnessConfig>;
-  /** Claude Code harness overrides */
-  "claude-code"?: Partial<ClaudeCodeHarnessConfig>;
-  /** Memory pipeline settings */
-  memory?: {
-    /**
-     * Model used to write the 1-2 sentence context prepended to each chunk
-     * before embedding. Provider and model are both honored, including
-     * OAuth-backed providers such as openai-codex.
-     */
-    chunkContextualizerModel?: { provider: string; name: string };
-  };
-}
-
-/** Deep merge helper type for settings resolution */
-export type ResolvedSettings = Required<Pick<Settings, "harness" | "streamMode">> & {
-  customInstructions?: string;
-  requireMention?: boolean;
-  traceMessageUpdates?: boolean;
-  "pi-coding-agent"?: Partial<PiHarnessConfig>;
-  "claude-code"?: Partial<ClaudeCodeHarnessConfig>;
-  memory?: Settings["memory"];
-};
-
-export interface VitoConfig {
-  /** Bot identity — used for @mention normalization across channels */
-  bot?: {
-    name: string;  // @mentions get normalized to @{name}
-  };
-  /** Global default settings — baseline for all channels and sessions */
-  settings: Settings;
-  /** Global harness configurations (full configs, not overrides) */
-  harnesses: {
-    "pi-coding-agent"?: PiHarnessConfig;
-    "claude-code"?: ClaudeCodeHarnessConfig;
-  };
-  /** Per-channel configuration */
-  channels: Record<string, ChannelConfig>;
-  /** Per-session overrides (keyed by session ID, e.g., "telegram:123456789") */
-  sessions?: Record<string, Settings>;
-  /** Cron job configuration */
-  cron: {
-    jobs: CronJobConfig[];
-  };
-}
-
-export interface ChannelConfig {
-  enabled: boolean;
-  /** Channel-specific settings overrides */
-  settings?: Settings;
-  /** Allow any additional channel-specific config (e.g., allowedChatIds for Telegram) */
-  [key: string]: any;
-}
-
-export interface CronJobConfig {
-  name: string;
-  schedule: string;
-  timezone?: string;
-  session: string;
-  prompt: string;
-  oneTime?: boolean; // If true, job will be removed from config after firing
-  sendCondition?: string; // If set, response is only sent if condition is met (must NOT contain "NO_REPLY")
-  /** Optional deterministic shell command run before invoking the AI. If it outputs true/1/yes or exits 0 with no false-y output, the job proceeds; false/0/no or exit code 2 skips. */
-  precheckCommand?: string;
-}
 
 // ── DB row types ──
 
@@ -248,25 +151,4 @@ export interface SessionRow {
   last_active_at: number;
   config: string; // JSON string of Settings
   alias: string | null;
-}
-
-// ── Trace types ──
-
-export interface TraceRow {
-  id: number;
-  session_id: string;
-  channel: string | null;
-  timestamp: number;
-  user_message: string;
-  system_prompt: string;
-  model: string | null;
-}
-
-// ── Skill types ──
-
-export interface SkillMeta {
-  name: string;
-  description: string;
-  path: string; // path to SKILL.md
-  isBuiltin?: boolean; // true if skill is in src/skills/builtin/
 }

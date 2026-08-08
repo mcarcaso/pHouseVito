@@ -51,8 +51,7 @@ function Sessions() {
   const autoRefreshRef = useRef(autoRefresh);
   autoRefreshRef.current = autoRefresh;
   
-  // Track if user has scrolled away from bottom - if so, don't append new messages (avoid scroll jump)
-  const [userScrolledUp, setUserScrolledUp] = useState(false);
+  // Queue new messages while the user is scrolled away from the bottom.
   const [pendingCount, setPendingCount] = useState(0);
   const pendingMessagesRef = useRef<Message[]>([]);
 
@@ -87,7 +86,6 @@ function Sessions() {
       const docHeight = document.documentElement.scrollHeight;
       // Consider "at bottom" if within 150px of the bottom
       const isAtBottom = scrollTop + windowHeight >= docHeight - 150;
-      setUserScrolledUp(!isAtBottom);
       
       // If user scrolled back to bottom and we have pending messages, apply them
       if (isAtBottom && pendingMessagesRef.current.length > 0) {
@@ -294,7 +292,6 @@ function Sessions() {
   useEffect(() => {
     hasScrolledRef.current = false;
     pendingMessagesRef.current = [];
-    setUserScrolledUp(false);
     setPendingCount(0);
   }, [selectedSession]);
 
@@ -416,7 +413,6 @@ function Sessions() {
               messages={parsedMessages}
               autoScroll={false}
               showFilters={true}
-              reversed={true}
               hasMoreOnServer={hasMoreMessages}
               loadingMore={loadingMore}
               onLoadMore={loadEarlierMessages}

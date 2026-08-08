@@ -11,32 +11,37 @@ import type { ResolvedSettings, Settings, VitoConfig } from "./types.js";
 const DEFAULTS: ResolvedSettings = {
   harness: "pi-coding-agent",
   streamMode: "stream",
+  traceMessageUpdates: false,
 };
+
+export function getDefaultSettings(): ResolvedSettings {
+  return structuredClone(DEFAULTS);
+}
 
 /**
  * Deep merge two Settings objects. Later values win.
  * Merges nested settings objects deeply where needed; other fields are replaced.
  */
 function mergeSettings(base: Settings, override: Settings): Settings {
-  const result: Settings = { ...base };
+  const result: Settings = { ...base, ...override };
 
-  if (override.harness !== undefined) {
-    result.harness = override.harness;
-  }
-  if (override.streamMode !== undefined) {
-    result.streamMode = override.streamMode;
-  }
-  if (override.customInstructions !== undefined) {
-    result.customInstructions = override.customInstructions;
-  }
   if (override["pi-coding-agent"] !== undefined) {
-    result["pi-coding-agent"] = { ...base["pi-coding-agent"], ...override["pi-coding-agent"] };
+    result["pi-coding-agent"] = {
+      ...base["pi-coding-agent"],
+      ...override["pi-coding-agent"],
+    };
   }
-  if (override.requireMention !== undefined) {
-    result.requireMention = override.requireMention;
+  if (override["claude-code"] !== undefined) {
+    result["claude-code"] = {
+      ...base["claude-code"],
+      ...override["claude-code"],
+    };
   }
-  if (override.traceMessageUpdates !== undefined) {
-    result.traceMessageUpdates = override.traceMessageUpdates;
+  if (override.memory !== undefined) {
+    result.memory = {
+      ...base.memory,
+      ...override.memory,
+    };
   }
 
   return result;
@@ -83,7 +88,10 @@ export function getEffectiveSettings(
     customInstructions: settings.customInstructions,
     requireMention: settings.requireMention,
     traceMessageUpdates: settings.traceMessageUpdates ?? false,
+    timezone: settings.timezone,
     "pi-coding-agent": settings["pi-coding-agent"],
+    "claude-code": settings["claude-code"],
+    memory: settings.memory,
   };
 }
 

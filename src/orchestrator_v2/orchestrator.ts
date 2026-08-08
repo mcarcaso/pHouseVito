@@ -20,7 +20,6 @@
  */
 
 import { CronScheduler } from "../cron/scheduler.js";
-import { loadConfig } from "../config.js";
 import type { Context } from "../context/Context.js";
 import {
   createHarness,
@@ -36,11 +35,9 @@ import {
 import { withNoReplyCheck } from "../harness/decorators/index.js";
 import { getDirectChannel, type DirectChannel } from "../channels/direct.js";
 
-import { maybeEmbedNewChunks } from "../memory/embeddings.js";
 import { SessionManager } from "../sessions/manager.js";
 import { getEffectiveSettings } from "../settings.js";
-import { xMessageStore } from "../lib/x.js";
-import { discoverSkills } from "../skills/discovery.js";
+import { xMemoryService, xMessageStore, xSkillStore, xUserDir, xVitoService } from "../lib/x.js";
 
 import { randomBytes } from "crypto";
 import { mkdirSync, statSync, writeFileSync } from "fs";
@@ -53,7 +50,6 @@ import type {
   CronJobConfig,
   InboundEvent,
   ResolvedSettings,
-  SkillMeta,
   VitoConfig,
 } from "../types.js";
 
@@ -77,8 +73,7 @@ export class OrchestratorV2 {
   private sessionManager: SessionManager;
   private channels = new Map<string, Channel>();
   private cronScheduler: CronScheduler;
-  private soul: string;
-  private skillsDir: string;
+  private config: VitoConfig;
 
   /** Per-session message queues and processing locks. */
   private sessionQueues = new Map<string, Array<{ event: InboundEvent; channel: Channel | null }>>();
@@ -116,15 +111,9 @@ export class OrchestratorV2 {
    * in case the fs watcher debounce hasn't fired before the next message. */
   private configMtimeMs = 0;
 
-  constructor(
-    private x: Context,
-    private config: VitoConfig,
-    soul: string,
-    skillsDir: string
-  ) {
+  constructor(private x: Context) {
     this.sessionManager = new SessionManager(x);
-    this.soul = soul;
-    this.skillsDir = skillsDir;
+    this.config = xVitoService(x).getConfig(x);
 
     this.cronScheduler = new CronScheduler(
       async (event, channelName) => {
@@ -150,8 +139,8 @@ export class OrchestratorV2 {
     this.channels.set(channel.name, channel);
   }
 
-  getSkills(): SkillMeta[] {
-    return discoverSkills(this.skillsDir);
+  getSkills() {
+    return xSkillStore(this.x).list(this.x, {});
   }
 
   getCronScheduler() {
@@ -253,7 +242,7 @@ export class OrchestratorV2 {
 
   private getConfigMtimeMs(): number {
     try {
-      return statSync(resolve(process.cwd(), "user/vito.config.json")).mtimeMs;
+      return statSync(resolve(xUserDir(this.x), "vito.config.json")).mtimeMs;
     } catch {
       return 0;
     }
@@ -264,7 +253,7 @@ export class OrchestratorV2 {
     if (!latestMtime || latestMtime <= this.configMtimeMs) return;
 
     try {
-      const newConfig = loadConfig();
+      const newConfig = xVitoService(this.x).getConfig(this.x);
       this.config = newConfig;
       this.configMtimeMs = latestMtime;
       console.log(`[OrchestratorV2] Lazily reloaded config before message`);
@@ -450,6 +439,7 @@ export class OrchestratorV2 {
 
       // Per-turn decorator chain wraps the long-lived inner harness.
       const tracedHarness = withTracing(innerHarness, {
+        x: this.x,
         session_id: vitoSession.id,
         channel: event.channel,
         target: event.target,
@@ -504,7 +494,7 @@ export class OrchestratorV2 {
       // System prompt is captured by the harness ON FIRST RUN ONLY. We pass
       // it on every call (cheap), but the harness ignores it on subsequent runs.
       const systemPrompt = buildSystemPromptV2({
-        soul: this.soul,
+        soul: xVitoService(this.x).getSoul(this.x),
         channelPrompt: event.raw?.channelPrompt || channel?.getCustomPrompt?.() || "",
         customInstructions: effectiveSettings.customInstructions || "",
         harnessInstructions: innerHarness.getCustomInstructions?.() || "",
@@ -556,7 +546,7 @@ export class OrchestratorV2 {
 
       // Background: chunk + embed; periodic profile update.
       const contextualizerModel = effectiveSettings.memory?.chunkContextualizerModel;
-      maybeEmbedNewChunks(vitoSession.id, { contextualizerModel }).then((embResult) => {
+      xMemoryService(this.x).maybeEmbedNewChunks(this.x, vitoSession.id, { contextualizerModel }).then((embResult) => {
         if (embResult) {
           tracedHarness.writePostRunLine({
             type: "embedding_result",
@@ -650,7 +640,7 @@ export class OrchestratorV2 {
       model,
       openRouterProvider,
       thinkingLevel,
-      skillsDir: this.skillsDir,
+      skills: xSkillStore(this.x).list(this.x, {}),
       permissionMode,
       binaryPath,
     });
@@ -688,13 +678,15 @@ export class OrchestratorV2 {
    * turns are useful as context.
    */
   private buildHistoryBlock(vitoSessionId: string, limit: number): string | null {
-    const recent = xMessageStore(this.x).listRecent(this.x, {
-      sessionId: vitoSessionId,
+    const recent = xMessageStore(this.x).list(this.x, {
+      sessionIds: [vitoSessionId],
       limit,
-      includeTools: false,
-      includeThoughts: false,
-      includeArchived: true, // /new archives the messages we want to seed from
-    });
+      excludeTypes: ["thought", "tool_start", "tool_end"],
+      order: "newest",
+      orderBy: "timestamp",
+      // Include both archived and active messages: /new archives the history
+      // before the next fresh session is created.
+    }).reverse();
     if (recent.length === 0) return null;
 
     const lines: string[] = [];
@@ -812,9 +804,11 @@ export class OrchestratorV2 {
     const handler = channel.createHandler(event);
 
     const existing = this.harnesses.get(vitoSession.id);
-    const recentMessages = xMessageStore(this.x).listRecent(this.x, {
-      sessionId: vitoSession.id,
+    const recentMessages = xMessageStore(this.x).list(this.x, {
+      sessionIds: [vitoSession.id],
+      archived: false,
       limit: 1,
+      order: "newest",
     });
     if (!existing && recentMessages.length === 0) {
       await handler.relay("✅ Already starting fresh! Nothing to reset.");
@@ -830,7 +824,10 @@ export class OrchestratorV2 {
       // instead of blocking the user. New harness session creation doesn't
       // depend on embeddings finishing — it just starts fresh.
       if (recentMessages.length > 0) {
-        xMessageStore(this.x).archiveSession(this.x, { sessionId: vitoSession.id });
+        xMessageStore(this.x).cmd(this.x, {
+          type: "archive-sessions",
+          sessionIds: [vitoSession.id],
+        });
       }
 
       // Reset must happen unconditionally so the next message starts fresh,
@@ -861,7 +858,7 @@ export class OrchestratorV2 {
       // Background force-embed. Errors logged, not surfaced to the user.
       const newSettings = getEffectiveSettings(this.config, event.channel, event.sessionKey);
       const contextualizerModel = newSettings.memory?.chunkContextualizerModel;
-      maybeEmbedNewChunks(vitoSession.id, { force: true, contextualizerModel })
+      xMemoryService(this.x).maybeEmbedNewChunks(this.x, vitoSession.id, { force: true, contextualizerModel })
         .then((embResult) => {
           if (embResult?.skipped) {
             console.log(`[v2 /new] background embed skipped: ${embResult.skipped}`);
@@ -996,14 +993,12 @@ export class OrchestratorV2 {
 
   private async removeJobFromConfig(jobName: string): Promise<void> {
     try {
-      const configPath = resolve(process.cwd(), "user/vito.config.json");
-      const fs = await import("fs/promises");
-      const configText = await fs.readFile(configPath, "utf-8");
-      const config = JSON.parse(configText);
+      const vitoService = xVitoService(this.x);
+      const config = vitoService.getConfig(this.x);
       const originalLength = config.cron.jobs.length;
       config.cron.jobs = config.cron.jobs.filter((job: CronJobConfig) => job.name !== jobName);
       if (config.cron.jobs.length < originalLength) {
-        await fs.writeFile(configPath, JSON.stringify(config, null, 2) + "\n", "utf-8");
+        vitoService.saveConfig(this.x, config);
       }
     } catch (err) {
       console.error(`[v2 Config] Failed to remove job ${jobName}:`, err);

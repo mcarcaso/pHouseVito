@@ -13,6 +13,9 @@ npm run dev              # tsx watch src/index.ts
 npm run dev:dashboard    # Vite dev server (separate terminal)
 npm run build            # tsc → dist/
 npm run build:dashboard  # Vite build → dashboard/dist/
+npm run check            # backend/dashboard types + tests + example config validation
+npm test                 # Node test runner via tsx
+npm run validate:config  # Zod-validate user/vito.config.json
 npm start                # build dashboard + pm2 start user/ecosystem.config.cjs
 npm run logs             # pm2 logs vito-server
 npm run status / stop / restart   # pm2 wrappers (service name: vito-server)
@@ -24,7 +27,7 @@ Production deploy: `./aws_deploy/deploy.sh mike5` (git pull → npm ci → build
 
 ### Entry point
 
-`src/index.ts` boots in this order: ensure `user/` exists (copied from `user.example/` on first run), load secrets into `process.env`, load `vito.config.json` and `SOUL.md`, set `process.env.TZ` from `config.settings.timezone`, open SQLite, construct `OrchestratorV2`, register the three real channels (Dashboard, Telegram, Discord — Direct is registered lazily by `Orchestrator.ask()`), `orchestrator.start()`, then watch the config file with a 3s debounce for hot-reload.
+`src/index.ts` boots in this order: ensure `user/` exists (copied from `user.example/` on first run), load secrets into `process.env`, open SQLite and construct `RootContext`, resolve validated `vito.config.json` and `SOUL.md` through `VitoService`, set `process.env.TZ` from `config.settings.timezone`, construct `OrchestratorV2`, register the three real channels (Dashboard, Telegram, Discord — Direct is registered lazily by `Orchestrator.ask()`), `orchestrator.start()`, then watch the user directory with a 3s debounce for atomic config hot-reloads.
 
 ### Orchestrator V2 (`src/orchestrator_v2/`)
 
@@ -48,7 +51,7 @@ Channel emits `InboundEvent` → `Orchestrator.handleInbound()` → per-session 
 
 ### Memory: agent-initiated, not pre-loaded
 
-v2 does **not** auto-search embeddings on every turn and does **not** stuff prior messages into the system prompt. The agent calls memory skills explicitly when it needs them — `semantic-history-search` (hybrid: cosine + FTS5 BM25 + RRF, in `src/memory/search.ts`) and `keyword-history-search` (raw SQL). Within a single Vito session the conversation history lives in pi's `AgentSession`; cross-session lookup is only via those skills. `user/profile.md` is **not** inlined into the prompt — the capabilities map tells the agent to `Read` it on first response and `Edit` it when it learns something profile-worthy (see the `profile-maintenance` built-in skill for the rules).
+v2 does **not** auto-search embeddings on every turn and does **not** stuff prior messages into the system prompt. The agent calls memory skills explicitly when it needs them — `semantic-history-search` (hybrid: cosine + FTS5 BM25 + RRF) and `keyword-history-search` (raw SQL). Embedding persistence is isolated behind `EmbeddingStore`/`SqliteEmbeddingStore`; `MemoryService` coordinates incremental embedding, search, and statistics through context, while `src/memory/search.ts` and `src/memory/embeddings.ts` retain compatibility façades for standalone skills. Dashboard memory APIs live in `src/routers/memory/`. Within a single Vito session the conversation history lives in pi's `AgentSession`; cross-session lookup is only via those skills. `user/profile.md` is **not** inlined into the prompt — the capabilities map tells the agent to `Read` it on first response and `Edit` it when it learns something profile-worthy (see the `profile-maintenance` built-in skill for the rules).
 
 ### Pi sessions on disk
 
@@ -56,7 +59,15 @@ Each Vito session id (`channel:target`, e.g., `dashboard:default`, `telegram:123
 
 ### Channels (`src/channels/`)
 
-Four channels: `dashboard.ts` (Express + WS on port 3030, REST API, file serving, optional cookie auth, password rate-limited 5/15min), `telegram.ts` (grammy long polling + photo/document attachments + `allowedChatIds`), `discord.ts` (discord.js, guild messages + DMs + slash commands), `direct.ts` (programmatic — `Orchestrator.ask()` routes through the full pipeline with `streamMode: "final"` and a 2-min timeout). Each implements `Channel` from `src/types.ts` and builds its own opaque `sessionKey`. `requireMention` is a per-channel/session toggle.
+Four channels: `dashboard.ts` (Express + WS on port 3030, REST API, file serving, optional cookie auth, password rate-limited 5/15min), `telegram.ts` (grammy long polling + photo/document attachments + `allowedChatIds`), `discord.ts` (discord.js, guild messages + DMs + slash commands), `direct.ts` (programmatic — `Orchestrator.ask()` routes through the full pipeline with `streamMode: "final"` and a 2-min timeout). Each implements `Channel` from `src/types.ts` and builds its own opaque `sessionKey`. `requireMention` is a per-channel/session toggle. Dashboard APIs are being extracted incrementally into context-driven routers under `src/routers/`; `src/routers/route.ts` centralizes Zod request validation and structured 400 responses.
+
+### Context model
+
+`Context` is intentionally opaque: `get(key: string): unknown`. Different root, trusted overlay, user, or agent contexts may expose different dependency subsets without consumers knowing their concrete scope. All intentional casts belong in `src/lib/x.ts` convenience accessors such as `xMessageStore(x)`. `ObjectContext` supports lazy factories and optional parent fallback; parent fallback is only for trusted overlays. Future restricted user/agent contexts must explicitly expose authorized/decorated dependencies and must not inherit unrestricted `RootContext` access.
+
+### Vito service and config validation
+
+`src/services/vito/` owns access to mutable Vito state. `FileVitoService` reads `vito.config.json` and `SOUL.md`, validates config through the Zod schema in `src/contracts/vito-config.ts`, writes application-originated updates atomically, and keeps the last known valid config when a runtime file edit is invalid. Agents may continue editing the files directly and should run `npm run validate:config` afterward; the built-in `vito-config` skill documents that workflow.
 
 ### Settings cascade
 
@@ -72,15 +83,15 @@ Four channels: `dashboard.ts` (Express + WS on port 3030, REST API, file serving
 
 ### Cron
 
-`src/cron/scheduler.ts` (croner, timezone-aware). Jobs are defined in `vito.config.json` under `cron.jobs` and re-applied on hot-reload. `oneTime: true` removes the job from the config after firing. `sendCondition` forces `streamMode: "final"` and wraps the handler with `withNoReplyCheck` — if the response contains `NO_REPLY`, nothing gets relayed.
+`src/cron/scheduler.ts` (croner, timezone-aware). Jobs are defined in `vito.config.json` under `cron.jobs` and re-applied on hot-reload. `oneTime: true` removes the job from the config after firing. `sendCondition` forces `streamMode: "final"` and wraps the handler with `withNoReplyCheck` — if the response contains `NO_REPLY`, nothing gets relayed. Dashboard cron APIs live in `src/routers/cron/cron-router.ts`, use the context-scoped `CronService`, validate schedules before mutation, and persist configured jobs through `VitoService`.
 
 ### Harness layer (`src/harnesses/`)
 
-Currently single-harness. Decorators wrap a `Harness` (`PiSessionHarness` is the only implementation): `ProxyHarness` is the base for `TracingHarness`, `PersistenceHarness`, `RelayHarness`, `TypingHarness`. The decorator chain order matters: tracing (writes `.jsonl` into `user/logs/`, capped at 50MB) → persistence (writes user/assistant/tool rows into SQLite; never deletes — `/new` only archives) → relay (delivers to the channel's `OutputHandler` per `streamMode`) → typing.
+Currently single-harness. Decorators wrap a `Harness` (`PiSessionHarness` is the only implementation): `ProxyHarness` is the base for `TracingHarness`, `PersistenceHarness`, `RelayHarness`, `TypingHarness`. The decorator chain order matters: tracing (uses the context-scoped `TraceStore` and `TraceEventStore` to write append-only `.jsonl` traces into `logs/`, capped at 50MB) → persistence (writes user/assistant/tool rows into SQLite; never deletes — `/new` only archives) → relay (delivers to the channel's `OutputHandler` per `streamMode`) → typing. The current trace stores are file-backed; the harness and dashboard do not access trace files directly.
 
 ### Skills (`src/skills/`)
 
-`discovery.ts` scans `user/skills/` and `src/skills/builtin/` for `SKILL.md` (gray-matter frontmatter: `name`, `description`). User skills override built-ins with the same name. Built-ins: `apps`, `keyword-history-search`, `profile-maintenance`, `scheduler`, `semantic-history-search`. The agent calls them via the Skill tool exposed by pi-coding-agent — they're not pre-listed in the system prompt.
+`SkillStore` is the skill persistence/discovery boundary. Its current `FileSkillStore` scans `user/skills/` and `src/skills/builtin/` for Zod-validated `SKILL.md` frontmatter (`name`, `description`), optionally includes skill files, and applies user-overrides-built-in resolution. Built-in skills are read-only through the store. The agent calls skills via the Skill tool exposed by pi-coding-agent — they're not pre-listed in the system prompt.
 
 ### Database
 
@@ -92,7 +103,7 @@ messages  (id PK, session_id FK, channel, channel_target, timestamp,
            type CHECK('user','thought','assistant','tool_start','tool_end'),
            content JSON, compacted, archived, author)
 memories  (legacy table, no live readers/writers)
-traces    (id PK, session_id, channel, timestamp, user_message, system_prompt, model)
+traces    (legacy table retained for existing data; live tracing uses file-backed stores)
 ```
 
 Separate `user/embeddings.db` holds chunk vectors + FTS5 index used by `semantic-history-search`. Schema migrations live in `src/db/schema.ts` and run on startup.

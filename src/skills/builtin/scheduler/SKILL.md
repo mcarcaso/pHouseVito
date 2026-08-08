@@ -117,6 +117,7 @@ Rules for direct edits:
 - Preserve existing jobs.
 - Replace/remove any existing job with the same `name` before adding a new version.
 - Use the current session if Mike doesn't specify another one.
+- Run `npm run validate:config` after editing and fix every reported issue.
 - Config hot-reloads; only restart if the watcher is broken or logs show reload failure.
 
 ## Troubleshooting

@@ -16,17 +16,20 @@
  * - Uses the same chunking/embedding logic as the backfill scripts
  */
 
-import Database from "better-sqlite3";
-import { join, resolve } from "path";
+import { join, resolve } from "node:path";
 import { completeSimple, getModel } from "@earendil-works/pi-ai/compat";
 import { AuthStorage } from "@earendil-works/pi-coding-agent";
+import type { Context } from "../context/Context.js";
+import { ObjectContext } from "../context/ObjectContext.js";
+import { createDatabase } from "../db/schema.js";
+import { xDb, xEmbeddingDb, xEmbeddingStore, xMessageStore } from "../lib/x.js";
+import { createEmbeddingDatabase } from "../stores/embeddings/embedding-database.js";
+import { SqliteEmbeddingStore } from "../stores/embeddings/SqliteEmbeddingStore.js";
+import { SqliteMessageStore } from "../stores/messages/SqliteMessageStore.js";
 import { createEmbedding } from "./client.js";
 
 // ── Config ─────────────────────────────────────────────────
 
-const ROOT = resolve(process.cwd());
-const VITO_DB_PATH = join(ROOT, "user", "vito.db");
-const EMBEDDINGS_DB_PATH = join(ROOT, "user", "embeddings.db");
 const MIN_CHUNK_CHARS = 2000;  // Start chunking when buffer hits this
 const MAX_CHUNK_CHARS = 4000;  // Hard cap per chunk
 const ASSISTANT_LABEL = "assistant";
@@ -37,62 +40,6 @@ const DEFAULT_CONTEXTUAL_MODEL = { provider: "openrouter", name: "openai/gpt-5.4
 // ── Global Lock ────────────────────────────────────────────
 
 let isRunning = false;
-
-// ── DB Initialization ──────────────────────────────────────
-
-let embDB: ReturnType<typeof Database> | null = null;
-
-function getEmbeddingsDB(): ReturnType<typeof Database> {
-  if (!embDB) {
-    embDB = new Database(EMBEDDINGS_DB_PATH);
-    embDB.pragma("journal_mode = WAL");
-    
-    // Create schema if needed (same as the standalone scripts)
-    embDB.exec(`
-      CREATE TABLE IF NOT EXISTS chunks (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        session_id TEXT NOT NULL,
-        day TEXT NOT NULL,
-        chunk_index INTEGER NOT NULL,
-        text TEXT NOT NULL,
-        context TEXT,
-        embedded_text TEXT,
-        msg_id_start INTEGER,
-        msg_id_end INTEGER,
-        msg_count INTEGER,
-        created_at INTEGER NOT NULL DEFAULT (unixepoch()),
-        UNIQUE(session_id, day, chunk_index)
-      );
-
-      CREATE TABLE IF NOT EXISTS embeddings (
-        chunk_id INTEGER PRIMARY KEY,
-        vector BLOB NOT NULL,
-        FOREIGN KEY (chunk_id) REFERENCES chunks(id)
-      );
-
-      CREATE INDEX IF NOT EXISTS idx_chunks_session_day ON chunks(session_id, day);
-      CREATE INDEX IF NOT EXISTS idx_chunks_day ON chunks(day);
-
-      CREATE VIRTUAL TABLE IF NOT EXISTS chunks_fts USING fts5(
-        text,
-        content='chunks',
-        content_rowid='id'
-      );
-
-      CREATE TRIGGER IF NOT EXISTS chunks_ai AFTER INSERT ON chunks BEGIN
-        INSERT INTO chunks_fts(rowid, text) VALUES (new.id, new.text);
-      END;
-      CREATE TRIGGER IF NOT EXISTS chunks_ad AFTER DELETE ON chunks BEGIN
-        INSERT INTO chunks_fts(chunks_fts, rowid, text) VALUES('delete', old.id, old.text);
-      END;
-      CREATE TRIGGER IF NOT EXISTS chunks_au AFTER UPDATE ON chunks BEGIN
-        INSERT INTO chunks_fts(chunks_fts, rowid, text) VALUES('delete', old.id, old.text);
-        INSERT INTO chunks_fts(rowid, text) VALUES (new.id, new.text);
-      END;
-    `);
-  }
-  return embDB;
-}
 
 // ── Message Formatting (mirrors chunker.mjs) ───────────────
 
@@ -320,145 +267,98 @@ export interface EmbedOptions {
  * 
  * Returns a result object for trace reporting.
  */
-export async function maybeEmbedNewChunks(
+export async function maybeEmbedNewChunksInContext(
+  x: Context,
   sessionId: string,
   options: EmbedOptions = {}
 ): Promise<EmbeddingResult> {
   const start = Date.now();
-
-  // Global lock — if another embedding is running, skip
-  if (isRunning) {
-    return { skipped: "lock_held", chunks_created: 0, chunks: [], unembedded_messages: 0, unembedded_chars: 0, duration_ms: Date.now() - start };
-  }
-  isRunning = true;
-
   try {
-    return await _doEmbedding(sessionId, start, options);
-  } catch (err) {
-    console.error(`[Embeddings] Error during incremental embedding for ${sessionId}:`, err);
-    return { skipped: `error: ${err instanceof Error ? err.message : String(err)}`, chunks_created: 0, chunks: [], unembedded_messages: 0, unembedded_chars: 0, duration_ms: Date.now() - start };
-  } finally {
-    isRunning = false;
+    return await doEmbedding(x, sessionId, start, options);
+  } catch (error) {
+    console.error(`[Embeddings] Error during incremental embedding for ${sessionId}:`, error);
+    return {
+      skipped: `error: ${error instanceof Error ? error.message : String(error)}`,
+      chunks_created: 0,
+      chunks: [],
+      unembedded_messages: 0,
+      unembedded_chars: 0,
+      duration_ms: Date.now() - start,
+    };
   }
 }
 
-async function _doEmbedding(
+async function doEmbedding(
+  x: Context,
   sessionId: string,
   start: number,
   options: EmbedOptions
 ): Promise<EmbeddingResult> {
-  const db = getEmbeddingsDB();
-
-  // Find the highest message ID we've already embedded for this session
-  const lastEmbedded = db.prepare(
-    "SELECT MAX(msg_id_end) as last_id FROM chunks WHERE session_id = ?"
-  ).get(sessionId) as { last_id: number | null };
-
-  const afterId = lastEmbedded?.last_id ?? 0;
-
-  // Query vito.db for unembedded messages in this session
-  const vitoDB = new Database(VITO_DB_PATH, { readonly: true });
-  
-  const unembeddedMessages = vitoDB.prepare(`
-    SELECT id, session_id, timestamp, type, content, author
-    FROM messages
-    WHERE session_id = ?
-      AND type IN ('user', 'assistant')
-      AND id > ?
-    ORDER BY timestamp ASC
-  `).all(sessionId, afterId) as RawMessage[];
-
-  vitoDB.close();
+  const embeddingStore = xEmbeddingStore(x);
+  const afterId = embeddingStore.getLastEmbeddedMessageId(x, sessionId);
+  const unembeddedMessages: RawMessage[] = xMessageStore(x)
+    .list(x, {
+      sessionIds: [sessionId],
+      afterId,
+      excludeTypes: ["thought", "tool_start", "tool_end"],
+      order: "oldest",
+    })
+    .filter((message) => message.type === "user" || message.type === "assistant")
+    .map((message) => ({
+      id: message.id,
+      session_id: message.session_id,
+      timestamp: message.timestamp,
+      type: message.type,
+      content: message.content,
+      author: message.author,
+    }));
 
   if (unembeddedMessages.length === 0) {
     return { skipped: "no_unembedded_messages", chunks_created: 0, chunks: [], unembedded_messages: 0, unembedded_chars: 0, duration_ms: Date.now() - start };
   }
 
-  // Check total formatted size — quick bail if under threshold
-  let totalChars = 0;
-  for (const msg of unembeddedMessages) {
-    totalChars += formatMessageLine(msg).length + 1; // +1 for newline
+  let totalChars = 30;
+  for (const message of unembeddedMessages) {
+    totalChars += formatMessageLine(message).length + 1;
   }
-  // Add approximate header size per day
-  totalChars += 30; // "Tue Feb 25 2026\n" etc.
-
   if (!options.force && totalChars < MIN_CHUNK_CHARS) {
-    // Not enough to form a full chunk yet — bail
     return { skipped: "below_threshold", chunks_created: 0, chunks: [], unembedded_messages: unembeddedMessages.length, unembedded_chars: totalChars, duration_ms: Date.now() - start };
   }
 
-  // Get existing chunk counts per day for this session (to set chunk_index correctly)
-  const existingCounts = new Map<string, number>();
-  const countRows = db.prepare(
-    "SELECT day, MAX(chunk_index) + 1 as next_idx FROM chunks WHERE session_id = ? GROUP BY day"
-  ).all(sessionId) as Array<{ day: string; next_idx: number }>;
-  for (const row of countRows) {
-    existingCounts.set(row.day, row.next_idx);
-  }
-
-  // Produce complete chunks (only those that fill the threshold)
-  const chunks = produceCompleteChunks(unembeddedMessages, existingCounts, options.force === true);
-
+  const existingCounts = embeddingStore.getNextChunkIndices(x, sessionId);
+  const chunks = produceCompleteChunks(
+    unembeddedMessages,
+    existingCounts,
+    options.force === true
+  );
   if (chunks.length === 0) {
     return { skipped: "no_complete_chunks", chunks_created: 0, chunks: [], unembedded_messages: unembeddedMessages.length, unembedded_chars: totalChars, duration_ms: Date.now() - start };
   }
 
   console.log(`[Embeddings] Processing ${chunks.length} new chunk(s) for session ${sessionId}`);
   const createdChunks: EmbeddingResult["chunks"] = [];
-
-  // Prepared statements
-  const insertChunk = db.prepare(`
-    INSERT OR REPLACE INTO chunks (session_id, day, chunk_index, text, context, embedded_text, msg_id_start, msg_id_end, msg_count)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-  `);
-  const insertEmbedding = db.prepare(`
-    INSERT OR REPLACE INTO embeddings (chunk_id, vector) VALUES (?, ?)
-  `);
-
-  // Get previous chunk for contextual embedding
-  const getPrevChunk = db.prepare(`
-    SELECT text FROM chunks 
-    WHERE session_id = ? 
-    ORDER BY id DESC 
-    LIMIT 1
-  `);
-
   for (const chunk of chunks) {
     try {
-      // Get previous chunk text for context
-      const prevRow = getPrevChunk.get(sessionId) as { text: string } | undefined;
-      const prevText = prevRow?.text ?? null;
-
-      // Generate contextual sentence
-      const context = await generateContext(chunk.text, prevText, options.contextualizerModel ?? DEFAULT_CONTEXTUAL_MODEL);
-
-      // Combine for embedding
-      const embeddedText = `${context}\n\n${chunk.text}`;
-
-      // Embed
-      const vector = await createEmbedding(embeddedText);
-
-      // Store chunk
-      const msgIdStart = chunk.messages[0].id;
-      const msgIdEnd = chunk.messages[chunk.messages.length - 1].id;
-
-      const result = insertChunk.run(
-        sessionId,
-        chunk.day,
-        chunk.chunkIndex,
+      const previousText = embeddingStore.getPreviousChunkText(x, sessionId);
+      const context = await generateContext(
         chunk.text,
+        previousText,
+        options.contextualizerModel ?? DEFAULT_CONTEXTUAL_MODEL
+      );
+      const embeddedText = `${context}\n\n${chunk.text}`;
+      const vector = await createEmbedding(embeddedText);
+      embeddingStore.createChunk(x, {
+        sessionId,
+        day: chunk.day,
+        chunkIndex: chunk.chunkIndex,
+        text: chunk.text,
         context,
         embeddedText,
-        msgIdStart,
-        msgIdEnd,
-        chunk.messages.length
-      );
-      const chunkId = result.lastInsertRowid;
-
-      // Store embedding vector
-      const buffer = Buffer.from(vector.buffer);
-      insertEmbedding.run(chunkId, buffer);
-
+        messageIdStart: chunk.messages[0].id,
+        messageIdEnd: chunk.messages[chunk.messages.length - 1].id,
+        messageCount: chunk.messages.length,
+        vector,
+      });
       createdChunks.push({
         day: chunk.day,
         chunk_index: chunk.chunkIndex,
@@ -466,11 +366,9 @@ async function _doEmbedding(
         char_count: chunk.text.length,
         context,
       });
-
       console.log(`[Embeddings] ✅ Chunk #${chunk.chunkIndex} for ${chunk.day} — ${chunk.messages.length} msgs, ${chunk.text.length} chars`);
-    } catch (err) {
-      console.error(`[Embeddings] ❌ Failed to embed chunk for ${chunk.day}#${chunk.chunkIndex}:`, err);
-      // Continue with next chunk — don't let one failure block the rest
+    } catch (error) {
+      console.error(`[Embeddings] ❌ Failed to embed chunk for ${chunk.day}#${chunk.chunkIndex}:`, error);
     }
   }
 
@@ -481,4 +379,34 @@ async function _doEmbedding(
     unembedded_chars: totalChars,
     duration_ms: Date.now() - start,
   };
+}
+
+function createStandaloneContext(): Context {
+  const userDir = join(resolve(process.cwd()), "user");
+  return new ObjectContext({
+    db: () => createDatabase(join(userDir, "vito.db")),
+    messageStore: () => new SqliteMessageStore(),
+    embeddingDb: () => createEmbeddingDatabase(join(userDir, "embeddings.db")),
+    embeddingStore: () => new SqliteEmbeddingStore(),
+  });
+}
+
+/** Compatibility façade for standalone callers. */
+export async function maybeEmbedNewChunks(
+  sessionId: string,
+  options: EmbedOptions = {}
+): Promise<EmbeddingResult> {
+  const start = Date.now();
+  if (isRunning) {
+    return { skipped: "lock_held", chunks_created: 0, chunks: [], unembedded_messages: 0, unembedded_chars: 0, duration_ms: Date.now() - start };
+  }
+  isRunning = true;
+  const x = createStandaloneContext();
+  try {
+    return await maybeEmbedNewChunksInContext(x, sessionId, options);
+  } finally {
+    xEmbeddingDb(x).close();
+    xDb(x).close();
+    isRunning = false;
+  }
 }

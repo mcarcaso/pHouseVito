@@ -58,6 +58,7 @@ cp -r user.example user
 
 # Configure your settings
 # Edit user/vito.config.json to set model, channels, etc.
+npm run validate:config
 
 # Configure PM2 paths
 # Edit user/ecosystem.config.cjs and set your node path

@@ -24,8 +24,8 @@ import {
 } from "@earendil-works/pi-coding-agent";
 import { existsSync, mkdirSync, readdirSync, unlinkSync, writeFileSync } from "fs";
 import { join } from "path";
-import { discoverSkills } from "../skills/discovery.js";
 import type { Harness, HarnessCallbacks, HarnessUsage, NormalizedEvent } from "../harnesses/types.js";
+import type { Skill } from "../stores/skills/SkillStore.js";
 
 /** Filename written into a sessionDir to request "fresh on next create". */
 const FRESH_MARKER_FILE = ".fresh";
@@ -43,7 +43,7 @@ export interface PiSessionHarnessConfig {
   model?: { provider: string; name: string };
   openRouterProvider?: string;
   thinkingLevel?: "off" | "low" | "medium" | "high";
-  skillsDir?: string;
+  skills?: Skill[];
   /**
    * Directory pi will write its session JSONL file to. When set, the
    * conversation persists across restarts and shows up under the dashboard's
@@ -289,9 +289,7 @@ export class PiSessionHarness implements Harness {
     // later calls reuse the same session and ignore the systemPrompt argument so the
     // cached prefix stays stable.
     if (!this.piSession) {
-      const additionalSkillPaths = this.config.skillsDir
-        ? discoverSkills(this.config.skillsDir).map((skill) => skill.path)
-        : [];
+      const additionalSkillPaths = (this.config.skills ?? []).map((skill) => skill.path);
 
       const resourceLoader = new DefaultResourceLoader({
         cwd: process.cwd(),

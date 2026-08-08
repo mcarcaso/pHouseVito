@@ -7,6 +7,7 @@ interface Skill {
   name: string;
   description: string;
   path: string;
+  source: 'builtin' | 'user';
 }
 
 interface SkillFile {
@@ -152,8 +153,8 @@ function Skills() {
   }
 
   // Separate builtin vs user skills
-  const builtinSkills = skills.filter(s => s.path.includes('/skills/builtin/'));
-  const userSkills = skills.filter(s => !s.path.includes('/skills/builtin/'));
+  const builtinSkills = skills.filter(s => s.source === 'builtin');
+  const userSkills = skills.filter(s => s.source === 'user');
 
   const renderSkillItem = (skill: Skill) => (
     <div

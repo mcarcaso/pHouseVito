@@ -164,36 +164,12 @@ export default function SessionSettingsPanel({ config, onSave, initialSessionId 
     await saveSessionSettings(sessionId, newSettings);
   };
 
-  const updateSessionSettingsBatch = async (sessionId: string, entries: Array<{ field: string; value: any }>) => {
-    const current = sessionOverrides[sessionId] || {};
-    const newSettings: Settings = structuredClone(current);
-    for (const entry of entries) {
-      setNestedValue(newSettings as any, entry.field, entry.value);
-    }
-    await saveSessionSettings(sessionId, newSettings);
-  };
-
   const resetSessionSetting = async (sessionId: string, field: string) => {
     const current = sessionOverrides[sessionId] || {};
     const newSettings: Settings = structuredClone(current);
     deleteNestedValue(newSettings as any, field);
 
     // If empty, remove session entry entirely
-    if (Object.keys(newSettings).length === 0) {
-      const newSessions = { ...sessionOverrides };
-      delete newSessions[sessionId];
-      await onSave({ sessions: newSessions });
-    } else {
-      await onSave({ sessions: { ...sessionOverrides, [sessionId]: newSettings } });
-    }
-  };
-
-  const resetSessionSettingsBatch = async (sessionId: string, fields: string[]) => {
-    const current = sessionOverrides[sessionId] || {};
-    const newSettings: Settings = structuredClone(current);
-    for (const field of fields) {
-      deleteNestedValue(newSettings as any, field);
-    }
     if (Object.keys(newSettings).length === 0) {
       const newSessions = { ...sessionOverrides };
       delete newSessions[sessionId];

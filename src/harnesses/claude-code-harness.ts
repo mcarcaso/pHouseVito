@@ -19,7 +19,7 @@
 import { spawn } from "child_process";
 import { existsSync, mkdirSync, readFileSync, unlinkSync, writeFileSync } from "fs";
 import { join } from "path";
-import { discoverSkills } from "../skills/discovery.js";
+import type { Skill } from "../stores/skills/SkillStore.js";
 import {
   HarnessSessionLostError,
   HarnessUnsupportedError,
@@ -44,12 +44,8 @@ export interface ClaudeCodeHarnessConfig {
   permissionMode?: "default" | "acceptEdits" | "bypassPermissions" | "plan";
   /** Path to the claude binary. Defaults to "claude" on PATH. */
   binaryPath?: string;
-  /**
-   * User-skills directory (e.g., user/skills/). Used to render a Vito skills
-   * index into the harness instructions, since CC's built-in Skill tool does
-   * not auto-discover them.
-   */
-  skillsDir?: string;
+  /** Skills rendered into the harness instructions. */
+  skills?: Skill[];
 }
 
 const DEFAULT_CONFIG: Required<Pick<ClaudeCodeHarnessConfig, "permissionMode" | "binaryPath">> = {
@@ -163,20 +159,16 @@ export class ClaudeCodeHarness implements Harness {
     lines.push("");
     lines.push("Vito skills (CC's built-in Skill tool does NOT auto-discover these — Read the SKILL.md path directly to invoke one):");
 
-    if (this.config.skillsDir) {
-      const skills = discoverSkills(this.config.skillsDir);
-      if (skills.length === 0) {
-        lines.push("(none discovered)");
-      } else {
-        for (const skill of skills) {
-          const tag = skill.isBuiltin ? "[builtin]" : "[user]";
-          const desc = skill.description?.trim() || "(no description)";
-          lines.push(`- ${skill.name} ${tag} — ${desc}`);
-          lines.push(`    path: ${skill.path}`);
-        }
-      }
+    const skills = this.config.skills ?? [];
+    if (skills.length === 0) {
+      lines.push("(none discovered)");
     } else {
-      lines.push("(skills directory not configured)");
+      for (const skill of skills) {
+        const tag = skill.source === "builtin" ? "[builtin]" : "[user]";
+        const desc = skill.description.trim() || "(no description)";
+        lines.push(`- ${skill.name} ${tag} — ${desc}`);
+        lines.push(`    path: ${skill.path}`);
+      }
     }
 
     lines.push("");

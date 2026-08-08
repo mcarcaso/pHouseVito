@@ -1,65 +1,27 @@
-/**
- * MEMORY SEARCH — Hybrid Retrieval (Embeddings + FTS5 BM25)
- * 
- * Entry point:
- * 
- * `searchMemory(query, options)` — full search for the CLI tool / deep digs.
- *    Returns structured results with scores and metadata.
- * 
- * Uses the same embeddings.db as the incremental embeddings pipeline.
- * Search is: embed the query → cosine similarity → FTS5 BM25 → RRF merge.
- */
+/** Hybrid memory retrieval: embeddings + FTS5 BM25 + RRF merge. */
 
-import Database from "better-sqlite3";
-import { join, resolve } from "path";
+import { join, resolve } from "node:path";
+import type { Context } from "../context/Context.js";
+import { ObjectContext } from "../context/ObjectContext.js";
+import { xEmbeddingDb, xEmbeddingStore } from "../lib/x.js";
+import { createEmbeddingDatabase } from "../stores/embeddings/embedding-database.js";
+import { SqliteEmbeddingStore } from "../stores/embeddings/SqliteEmbeddingStore.js";
 import { createEmbedding } from "./client.js";
 
-// ── Config ─────────────────────────────────────────────────
-
-const ROOT = resolve(process.cwd());
-const EMBEDDINGS_DB_PATH = join(ROOT, "user", "embeddings.db");
-
-const RRF_K = 60;                              // RRF constant
-
-
-// ── Shared DB ──────────────────────────────────────────────
-
-let embDB: ReturnType<typeof Database> | null = null;
-
-function getEmbeddingsDB(): ReturnType<typeof Database> {
-  if (!embDB) {
-    try {
-      embDB = new Database(EMBEDDINGS_DB_PATH, { readonly: true });
-      embDB.pragma("journal_mode = WAL");
-    } catch {
-      return null as any;
-    }
-  }
-  return embDB;
-}
-
-// ── Vector Math ────────────────────────────────────────────
+const RRF_K = 60;
 
 function cosineSimilarity(a: Float32Array, b: Float32Array): number {
-  let dot = 0, normA = 0, normB = 0;
-  for (let i = 0; i < a.length; i++) {
-    dot += a[i] * b[i];
-    normA += a[i] * a[i];
-    normB += b[i] * b[i];
+  let dot = 0;
+  let normA = 0;
+  let normB = 0;
+  for (let index = 0; index < a.length; index++) {
+    dot += a[index] * b[index];
+    normA += a[index] * a[index];
+    normB += b[index] * b[index];
   }
   return dot / (Math.sqrt(normA) * Math.sqrt(normB));
 }
 
-/**
- * Apply a light recency bias to embedding scores.
- * Recent chunks get a slight boost, but relevance still dominates.
- * Decay factor of 0.01 means:
- *   - Today: 100% score
- *   - 1 week: ~93%
- *   - 1 month: ~74%
- *   - 6 months: ~45%
- *   - 1 year: ~27%
- */
 interface RecencyBiasResult {
   biasedScore: number;
   recencyFactor: number;
@@ -70,48 +32,23 @@ function applyRecencyBias(score: number, dayString: string): RecencyBiasResult {
   if (!dayString) return { biasedScore: score, recencyFactor: 1, daysAgo: 0 };
   const chunkDate = new Date(dayString);
   const today = new Date();
-  const daysAgo = Math.max(0, Math.floor((today.getTime() - chunkDate.getTime()) / (1000 * 60 * 60 * 24)));
-  const decayFactor = 0.01;
-  const recencyFactor = 1 / (1 + daysAgo * decayFactor);
-  return { 
-    biasedScore: score * recencyFactor, 
-    recencyFactor, 
-    daysAgo 
+  const daysAgo = Math.max(
+    0,
+    Math.floor((today.getTime() - chunkDate.getTime()) / (1000 * 60 * 60 * 24))
+  );
+  const recencyFactor = 1 / (1 + daysAgo * 0.01);
+  return {
+    biasedScore: score * recencyFactor,
+    recencyFactor,
+    daysAgo,
   };
 }
 
-
-// ── Search Interfaces ──────────────────────────────────────
-
-interface ChunkRow {
-  id: number;
-  session_id: string;
-  day: string;
-  chunk_index: number;
-  text: string;
-  context: string | null;
-  msg_count: number;
-  vector: Buffer;
-}
-
-/** Return the highest message id already covered by embedded chunks for a session. */
-export function getLastEmbeddedMessageId(sessionId: string): number {
-  const db = getEmbeddingsDB();
-  if (!db) return 0;
-  try {
-    const row = db
-      .prepare("SELECT MAX(msg_id_end) as last_id FROM chunks WHERE session_id = ?")
-      .get(sessionId) as { last_id: number | null } | undefined;
-    return row?.last_id ?? 0;
-  } catch {
-    return 0;
-  }
-}
-
-interface SearchResult {
+export interface SearchResult {
   id: number;
   sessionId: string;
   day: string;
+  chunkIndex: number;
   text: string;
   context: string | null;
   msgCount: number;
@@ -123,153 +60,159 @@ interface SearchResult {
   rrfScore: number;
 }
 
-interface SearchOptions {
+export interface SearchOptions {
   limit?: number;
   sessionFilter?: string;
   mode?: "hybrid" | "embedding" | "bm25";
 }
 
-// ── Core Search ────────────────────────────────────────────
+export function getLastEmbeddedMessageIdInContext(
+  x: Context,
+  sessionId: string
+): number {
+  return xEmbeddingStore(x).getLastEmbeddedMessageId(x, sessionId);
+}
 
-/**
- * Full hybrid search. Returns structured results.
- */
-export async function searchMemory(
+export async function searchMemoryInContext(
+  x: Context,
   query: string,
   options: SearchOptions = {}
 ): Promise<SearchResult[]> {
   const { limit = 5, sessionFilter, mode = "hybrid" } = options;
-  const db = getEmbeddingsDB();
-  if (!db) return [];
+  const store = xEmbeddingStore(x);
+  const chunks = store.listChunksWithVectors(x, sessionFilter);
+  if (chunks.length === 0) return [];
 
-  // Load all chunks with embeddings
-  let sql = `
-    SELECT c.id, c.session_id, c.day, c.chunk_index, c.text, c.context, c.msg_count,
-           e.vector
-    FROM chunks c
-    JOIN embeddings e ON e.chunk_id = c.id
-  `;
-  const params: any[] = [];
-  if (sessionFilter) {
-    sql += ` WHERE c.session_id = ?`;
-    params.push(sessionFilter);
-  }
-
-  const rows = db.prepare(sql).all(...params) as ChunkRow[];
-  if (rows.length === 0) return [];
-
-  // ── Embedding search (with recency bias) ──
-  let embeddingResults: { id: number; score: number; rawScore: number; recencyFactor: number; daysAgo: number }[] = [];
+  let embeddingResults: Array<{
+    id: number;
+    score: number;
+    rawScore: number;
+    recencyFactor: number;
+    daysAgo: number;
+  }> = [];
   if (mode === "hybrid" || mode === "embedding") {
     const queryVector = await createEmbedding(query);
-    embeddingResults = rows.map((row) => {
-      const vector = new Float32Array(
-        row.vector.buffer,
-        row.vector.byteOffset,
-        row.vector.byteLength / 4
-      );
-      const rawScore = cosineSimilarity(queryVector, vector);
-      // Apply light recency bias — recent stuff gets a boost
-      const { biasedScore, recencyFactor, daysAgo } = applyRecencyBias(rawScore, row.day);
-      return { id: row.id, score: biasedScore, rawScore, recencyFactor, daysAgo };
+    embeddingResults = chunks.map((chunk) => {
+      const rawScore = cosineSimilarity(queryVector, chunk.vector);
+      const biased = applyRecencyBias(rawScore, chunk.day);
+      return {
+        id: chunk.id,
+        score: biased.biasedScore,
+        rawScore,
+        recencyFactor: biased.recencyFactor,
+        daysAgo: biased.daysAgo,
+      };
     });
     embeddingResults.sort((a, b) => b.score - a.score);
     embeddingResults = embeddingResults.slice(0, Math.max(limit * 4, 20));
   }
 
-  // ── FTS5 BM25 search ──
-  let bm25Results: { id: number; score: number }[] = [];
+  let bm25Results: Array<{ id: number; score: number }> = [];
   if (mode === "hybrid" || mode === "bm25") {
     const ftsQuery = query
       .replace(/[^\w\s'-]/g, "")
       .split(/\s+/)
-      .filter((t) => t.length > 1)
-      .map((t) => `"${t}"`)
+      .filter((term) => term.length > 1)
+      .map((term) => `"${term}"`)
       .join(" OR ");
-
     if (ftsQuery) {
       try {
-        let ftsSql = `
-          SELECT rowid as id, rank * -1 as score
-          FROM chunks_fts
-          WHERE chunks_fts MATCH ?
-          ORDER BY rank
-          LIMIT ?
-        `;
-        const ftsRows = db.prepare(ftsSql).all(ftsQuery, Math.max(limit * 4, 20)) as {
-          id: number;
-          score: number;
-        }[];
-        bm25Results = ftsRows;
+        bm25Results = store.searchFts(x, {
+          query: ftsQuery,
+          limit: Math.max(limit * 4, 20),
+          sessionId: sessionFilter,
+        });
       } catch {
-        // FTS5 can throw on weird query syntax — graceful fallback
         bm25Results = [];
       }
     }
   }
 
-  // ── RRF merge ──
-  const merged = new Map<number, { 
-    embeddingScore: number; 
+  const merged = new Map<number, {
+    embeddingScore: number;
     rawEmbeddingScore: number;
     recencyFactor: number;
     daysAgo: number;
-    bm25Score: number; 
+    bm25Score: number;
     rrfScore: number;
   }>();
-
   for (let rank = 0; rank < embeddingResults.length; rank++) {
-    const r = embeddingResults[rank];
-    merged.set(r.id, {
-      embeddingScore: r.score,
-      rawEmbeddingScore: r.rawScore,
-      recencyFactor: r.recencyFactor,
-      daysAgo: r.daysAgo,
+    const result = embeddingResults[rank];
+    merged.set(result.id, {
+      embeddingScore: result.score,
+      rawEmbeddingScore: result.rawScore,
+      recencyFactor: result.recencyFactor,
+      daysAgo: result.daysAgo,
       bm25Score: 0,
       rrfScore: 0.5 / (RRF_K + rank + 1),
     });
   }
-
   for (let rank = 0; rank < bm25Results.length; rank++) {
-    const r = bm25Results[rank];
+    const result = bm25Results[rank];
     const rrfScore = 0.5 / (RRF_K + rank + 1);
-    if (merged.has(r.id)) {
-      const existing = merged.get(r.id)!;
-      existing.bm25Score = r.score;
+    const existing = merged.get(result.id);
+    if (existing) {
+      existing.bm25Score = result.score;
       existing.rrfScore += rrfScore;
     } else {
-      merged.set(r.id, {
+      merged.set(result.id, {
         embeddingScore: 0,
         rawEmbeddingScore: 0,
         recencyFactor: 1,
         daysAgo: 0,
-        bm25Score: r.score,
+        bm25Score: result.score,
         rrfScore,
       });
     }
   }
 
-  // Sort by RRF and take top results
-  const sortedIds = [...merged.entries()]
+  const chunkById = new Map(chunks.map((chunk) => [chunk.id, chunk]));
+  return [...merged.entries()]
     .sort((a, b) => b[1].rrfScore - a[1].rrfScore)
-    .slice(0, limit);
+    .slice(0, limit)
+    .map(([id, scores]) => {
+      const chunk = chunkById.get(id);
+      if (!chunk) throw new Error(`Missing memory chunk: ${id}`);
+      return {
+        id,
+        sessionId: chunk.sessionId,
+        day: chunk.day,
+        chunkIndex: chunk.chunkIndex,
+        text: chunk.text,
+        context: chunk.context,
+        msgCount: chunk.messageCount,
+        ...scores,
+      };
+    });
+}
 
-  // Build lookup for chunk data
-  const chunkMap = new Map<number, ChunkRow>();
-  for (const row of rows) {
-    chunkMap.set(row.id, row);
-  }
-
-  return sortedIds.map(([id, scores]) => {
-    const chunk = chunkMap.get(id)!;
-    return {
-      id,
-      sessionId: chunk.session_id,
-      day: chunk.day,
-      text: chunk.text,
-      context: chunk.context,
-      msgCount: chunk.msg_count,
-      ...scores,
-    };
+function createStandaloneContext(): Context {
+  const dbPath = join(resolve(process.cwd()), "user", "embeddings.db");
+  return new ObjectContext({
+    embeddingDb: () => createEmbeddingDatabase(dbPath),
+    embeddingStore: () => new SqliteEmbeddingStore(),
   });
+}
+
+/** Compatibility façade for standalone scripts and skills. */
+export async function searchMemory(
+  query: string,
+  options: SearchOptions = {}
+): Promise<SearchResult[]> {
+  const x = createStandaloneContext();
+  try {
+    return await searchMemoryInContext(x, query, options);
+  } finally {
+    xEmbeddingDb(x).close();
+  }
+}
+
+/** Compatibility façade for standalone scripts. */
+export function getLastEmbeddedMessageId(sessionId: string): number {
+  const x = createStandaloneContext();
+  try {
+    return getLastEmbeddedMessageIdInContext(x, sessionId);
+  } finally {
+    xEmbeddingDb(x).close();
+  }
 }

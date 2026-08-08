@@ -100,7 +100,6 @@ interface ChatViewProps {
   isTyping?: boolean;
   autoScroll?: boolean;
   showFilters?: boolean;
-  reversed?: boolean;
   hasMoreOnServer?: boolean;
   loadingMore?: boolean;
   onLoadMore?: () => void;
@@ -119,7 +118,6 @@ function ChatView({
   isTyping = false, 
   autoScroll = true, 
   showFilters = true, 
-  reversed = false,
   hasMoreOnServer = false,
   loadingMore = false,
   onLoadMore,
@@ -200,11 +198,6 @@ function ChatView({
     }
     
     return null; // Can't extract plain text
-  };
-
-  // Check if content is plain text (not JSON/structured data)
-  const isPlainText = (value: any): boolean => {
-    return extractPlainText(value) !== null;
   };
 
   // Use external state if provided, otherwise use internal state

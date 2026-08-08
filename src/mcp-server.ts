@@ -26,14 +26,16 @@ import path from "path";
 import * as z from "zod/v4";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
+import type { Context } from "./context/Context.js";
+import { xSkillStore } from "./lib/x.js";
 import { buildSystemBlock } from "./system-instructions.js";
 import { CAPABILITIES_MAP } from "./orchestrator_v2/capabilities.js";
-import { discoverSkills } from "./skills/discovery.js";
 
 const ROOT = process.cwd();
 const USER_DIR = path.join(ROOT, "user");
 
 export interface MountMcpOptions {
+  x: Context;
   /** Pre-registered OAuth client (Claude advanced/static flow). Required. */
   staticClientId: string;
   staticClientSecret: string;
@@ -95,8 +97,8 @@ function verifyPkce(codeVerifier: string | undefined, challenge: string | undefi
   return crypto.createHash("sha256").update(codeVerifier).digest("base64url") === challenge;
 }
 
-function formatSkillsForMcpPrompt(): string {
-  const skills = discoverSkills(path.join(USER_DIR, "skills")).sort((a, b) => a.name.localeCompare(b.name));
+function formatSkillsForMcpPrompt(x: Context): string {
+  const skills = xSkillStore(x).list(x, {});
   const lines = skills.map((skill) => {
     const description = skill.description || "";
     return `  <skill>\n    <name>${htmlEscape(skill.name)}</name>\n    <description>${htmlEscape(description)}</description>\n    <location>${htmlEscape(skill.path)}</location>\n  </skill>`;
@@ -209,7 +211,7 @@ export function mountMcp(app: any, options: MountMcpOptions): void {
     if (!existsSync(SYSTEM_PROMPT_PATH)) throw new Error(`system prompt file not found: ${SYSTEM_PROMPT_PATH}`);
     parts.push(buildSystemBlock(true, BOT_NAME));
     parts.push(`<capabilities>\n${CAPABILITIES_MAP}\n</capabilities>`);
-    parts.push(formatSkillsForMcpPrompt());
+    parts.push(formatSkillsForMcpPrompt(options.x));
     return parts.join("\n\n");
   }
 

@@ -8,7 +8,7 @@ interface TelegramConfigProps {
   renderIdList: (field: string, label: string, emptyText: string, placeholder: string) => React.ReactNode;
 }
 
-export default function TelegramConfig({ channelConfig, config, onSave, renderIdList }: TelegramConfigProps) {
+export default function TelegramConfig({ renderIdList }: TelegramConfigProps) {
   const [registeringCommands, setRegisteringCommands] = useState(false);
   const [commandsResult, setCommandsResult] = useState<{ success: boolean; message: string } | null>(null);
   const [autoAliasing, setAutoAliasing] = useState(false);

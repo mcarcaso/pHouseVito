@@ -9,6 +9,7 @@
 
 import { PiSessionHarness, type PiSessionHarnessConfig } from "../orchestrator_v2/pi-session-harness.js";
 import { ClaudeCodeHarness, type ClaudeCodeHarnessConfig } from "./claude-code-harness.js";
+import type { Skill } from "../stores/skills/SkillStore.js";
 import type { Harness } from "./types.js";
 
 export type HarnessName = "pi-coding-agent" | "claude-code";
@@ -22,8 +23,8 @@ export interface HarnessFactoryConfig {
   openRouterProvider?: string;
   /** Pi-only: thinking level. Other harnesses ignore. */
   thinkingLevel?: "off" | "low" | "medium" | "high";
-  /** Skill discovery root. */
-  skillsDir?: string;
+  /** Skills available to this harness instance. */
+  skills: Skill[];
   /** Claude-code-only: permission mode. Other harnesses ignore. */
   permissionMode?: ClaudeCodeHarnessConfig["permissionMode"];
   /** Claude-code-only: override the binary path. */
@@ -37,7 +38,7 @@ export function createHarness(name: HarnessName, cfg: HarnessFactoryConfig): Har
         model: cfg.model,
         openRouterProvider: cfg.openRouterProvider,
         thinkingLevel: cfg.thinkingLevel,
-        skillsDir: cfg.skillsDir,
+        skills: cfg.skills,
         sessionDir: cfg.sessionDir,
       } satisfies PiSessionHarnessConfig);
     case "claude-code":
@@ -46,7 +47,7 @@ export function createHarness(name: HarnessName, cfg: HarnessFactoryConfig): Har
         sessionDir: cfg.sessionDir,
         permissionMode: cfg.permissionMode,
         binaryPath: cfg.binaryPath,
-        skillsDir: cfg.skillsDir,
+        skills: cfg.skills,
       } satisfies ClaudeCodeHarnessConfig);
     default: {
       const _exhaustive: never = name;

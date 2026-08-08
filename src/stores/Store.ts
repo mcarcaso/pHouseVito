@@ -1,5 +1,19 @@
 import type { Context } from "../context/Context.js";
 
+export class UnsupportedStoreOperationError extends Error {
+  constructor(message = "Store operation is not supported") {
+    super(message);
+    this.name = "UnsupportedStoreOperationError";
+  }
+}
+
+export class StorePermissionDeniedError extends Error {
+  constructor(message = "Store operation is not permitted") {
+    super(message);
+    this.name = "StorePermissionDeniedError";
+  }
+}
+
 export class StoreRecordNotFoundError extends Error {
   constructor(message = "Record not found") {
     super(message);

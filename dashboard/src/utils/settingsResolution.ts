@@ -19,6 +19,11 @@ export interface Settings {
     openRouterProvider?: string;
     thinkingLevel?: 'off' | 'low' | 'medium' | 'high';
   };
+  'claude-code'?: {
+    model?: { provider: string; name: string };
+    permissionMode?: 'default' | 'acceptEdits' | 'bypassPermissions' | 'plan';
+    binaryPath?: string;
+  };
   memory?: {
     chunkContextualizerModel?: { provider: string; name: string };
   };
@@ -30,7 +35,10 @@ export interface ResolvedSettings {
   customInstructions?: string;
   requireMention?: boolean;
   traceMessageUpdates?: boolean;
+  timezone?: string;
   'pi-coding-agent'?: Settings['pi-coding-agent'];
+  'claude-code'?: Settings['claude-code'];
+  memory?: Settings['memory'];
 }
 
 export interface VitoConfig {
@@ -66,19 +74,16 @@ export interface ChannelConfig {
 
 /** Deep merge two Settings objects. Later values win. */
 function mergeSettings(base: Settings, override: Settings): Settings {
-  const result: Settings = { ...base };
+  const result: Settings = { ...base, ...override };
 
-  if (override.harness !== undefined) result.harness = override.harness;
-  if (override.streamMode !== undefined) result.streamMode = override.streamMode;
-  if (override.customInstructions !== undefined) result.customInstructions = override.customInstructions;
   if (override['pi-coding-agent'] !== undefined) {
     result['pi-coding-agent'] = { ...base['pi-coding-agent'], ...override['pi-coding-agent'] };
   }
-  if (override.requireMention !== undefined) {
-    result.requireMention = override.requireMention;
+  if (override['claude-code'] !== undefined) {
+    result['claude-code'] = { ...base['claude-code'], ...override['claude-code'] };
   }
-  if (override.traceMessageUpdates !== undefined) {
-    result.traceMessageUpdates = override.traceMessageUpdates;
+  if (override.memory !== undefined) {
+    result.memory = { ...base.memory, ...override.memory };
   }
   return result;
 }
@@ -122,7 +127,10 @@ export function getEffectiveSettings(
     customInstructions: settings.customInstructions,
     requireMention: settings.requireMention,
     traceMessageUpdates: settings.traceMessageUpdates ?? false,
+    timezone: settings.timezone,
     'pi-coding-agent': settings['pi-coding-agent'],
+    'claude-code': settings['claude-code'],
+    memory: settings.memory,
   };
 }
 

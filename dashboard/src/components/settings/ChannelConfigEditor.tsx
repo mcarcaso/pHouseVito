@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState } from 'react';
 import type { ChannelConfig, VitoConfig, Settings } from '../../utils/settingsResolution';
 import { countActiveSettingOverrides, getEffectiveSettings } from '../../utils/settingsResolution';
 import SettingRow, { renderSegmented, renderToggle, renderTextarea } from './SettingRow';
@@ -86,32 +86,10 @@ export default function ChannelConfigEditor({ name, channelConfig, config, onSav
     await saveChannelSettings(newSettings);
   };
 
-  const updateChannelSettingsBatch = async (entries: Array<{ field: string; value: any }>) => {
-    const newSettings: Settings = structuredClone(channelSettings);
-    for (const entry of entries) {
-      setNestedValue(newSettings as any, entry.field, entry.value);
-    }
-    await saveChannelSettings(newSettings);
-  };
-
   const resetChannelSetting = async (field: string) => {
     const newSettings: Settings = structuredClone(channelSettings);
     deleteNestedValue(newSettings as any, field);
     // Clean up: if settings is now empty, remove the key
-    const updatedChannel = { ...channelConfig };
-    if (Object.keys(newSettings).length === 0) {
-      delete updatedChannel.settings;
-    } else {
-      updatedChannel.settings = newSettings;
-    }
-    await onSave({ channels: { ...config.channels, [name]: updatedChannel } });
-  };
-
-  const resetChannelSettingsBatch = async (fields: string[]) => {
-    const newSettings: Settings = structuredClone(channelSettings);
-    for (const field of fields) {
-      deleteNestedValue(newSettings as any, field);
-    }
     const updatedChannel = { ...channelConfig };
     if (Object.keys(newSettings).length === 0) {
       delete updatedChannel.settings;

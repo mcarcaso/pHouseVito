@@ -2,29 +2,32 @@ import type {
   Channel,
   InboundEvent,
   OutputHandler,
-  VitoConfig,
 } from "../types.js";
-import { getEffectiveSettings } from "../settings.js";
+import type { Context } from "../context/Context.js";
+import { xSessionStore, xVitoService } from "../lib/x.js";
+import { createConfigRouter } from "../routers/config/config-router.js";
+import { createCronRouter } from "../routers/cron/cron-router.js";
+import { createMemoryRouter } from "../routers/memory/memory-router.js";
+import { createSessionRouter } from "../routers/sessions/session-router.js";
+import { createSkillRouter } from "../routers/skills/skill-router.js";
+import { createTraceRouter } from "../routers/traces/trace-router.js";
 import express from "express";
 import http from "http";
 const createServer = http.createServer.bind(http);
 import path from "path";
-import { readFileSync, writeFileSync, existsSync, mkdirSync, readdirSync, statSync, openSync, readSync, closeSync, unlinkSync } from "fs";
+import { readFileSync, writeFileSync, existsSync, mkdirSync, readdirSync, statSync, unlinkSync } from "fs";
 import { execSync } from "child_process";
 import { fileURLToPath } from "url";
 import crypto from "crypto";
 import { readSecrets, writeSecrets, loadSecrets, getSecretsForDashboard, SYSTEM_KEYS, PROVIDER_API_KEYS, getProviderKeyStatus, getProviderAuthStatus, readPiAuth } from "../secrets.js";
-import Database from "better-sqlite3";
 import { getProviders, getModels } from "@earendil-works/pi-ai/compat";
 import { getOAuthProviders } from "@earendil-works/pi-ai/oauth";
 import { AuthStorage } from "@earendil-works/pi-coding-agent";
-import { searchMemory } from "../memory/search.js";
 import { mountMcp } from "../mcp-server.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const ATTACHMENTS_DIR = path.join(process.cwd(), "data", "attachments");
 const DRIVE_DIR = path.join(process.cwd(), "user", "drive");
-const CONFIG_PATH = path.join(process.cwd(), "user", "vito.config.json");
 
 /** Check if a path inside DRIVE_DIR is public by walking up the directory tree.
  *  Nearest .meta.json wins. Per-file overrides in "files" map take priority.
@@ -120,14 +123,6 @@ export class DashboardChannel implements Channel {
   private port = parseInt(process.env.PORT || "3030", 10);
   private eventHandler?: (event: InboundEvent) => void;
 
-  private skillsGetter?: () => any[];
-  private cronManager?: {
-    scheduleJob: (job: any) => void;
-    removeJob: (name: string) => boolean;
-    getActiveJobs: () => string[];
-    triggerJob: (name: string) => Promise<boolean>;
-    checkHealth: () => { name: string; isActive: boolean; nextRun: Date | null }[];
-  };
   private discordChannel?: {
     registerSlashCommands: () => Promise<{ success: boolean; count: number; error?: string }>;
     getChannelInfo: (channelId: string) => Promise<{ name: string; guildName?: string } | null>;
@@ -145,32 +140,8 @@ export class DashboardChannel implements Channel {
     relayToSession?: boolean;
   }) => Promise<string>;
 
-  constructor(private db: any, private queries: any, private config: any) {
+  constructor(private readonly x: Context) {
     this.setupExpress();
-  }
-
-  /** Save current config to disk */
-  private saveConfig(): void {
-    try {
-      writeFileSync(CONFIG_PATH, JSON.stringify(this.config, null, 2) + "\n", "utf-8");
-      console.log("[Dashboard] Config saved to disk");
-    } catch (err) {
-      console.error("[Dashboard] Failed to save config:", err);
-    }
-  }
-
-  setSkillsGetter(getter: () => any[]) {
-    this.skillsGetter = getter;
-  }
-
-  setCronManager(manager: {
-    scheduleJob: (job: any) => void;
-    removeJob: (name: string) => boolean;
-    getActiveJobs: () => string[];
-    triggerJob: (name: string) => Promise<boolean>;
-    checkHealth: () => { name: string; isActive: boolean; nextRun: Date | null }[];
-  }) {
-    this.cronManager = manager;
   }
 
   setDiscordChannel(discord: {
@@ -198,11 +169,6 @@ export class DashboardChannel implements Channel {
     this.askHandler = handler;
   }
 
-  reloadConfig(config: any) {
-    this.config = config;
-    console.log("[Dashboard] Config reloaded");
-  }
-
   private setupExpress() {
     // Subdomain app proxy — routes appname.basedomain requests to the app's PM2 port
     // Must be before express.json() so request body can be piped to the upstream app
@@ -211,7 +177,7 @@ export class DashboardChannel implements Channel {
       // Read baseDomain from config
       let baseDomain: string | undefined;
       try {
-        const config = JSON.parse(readFileSync(CONFIG_PATH, "utf-8"));
+        const config = xVitoService(this.x).getConfig(this.x);
         baseDomain = config.apps?.baseDomain;
       } catch {}
       if (!baseDomain || !host.endsWith(baseDomain)) return next();
@@ -264,9 +230,10 @@ export class DashboardChannel implements Channel {
     const mcpClientSecret = process.env.MCP_CLIENT_SECRET;
     if (mcpClientId && mcpClientSecret) {
       mountMcp(this.app, {
+        x: this.x,
         staticClientId: mcpClientId,
         staticClientSecret: mcpClientSecret,
-        botName: this.config?.bot?.name || "Vito",
+        botName: xVitoService(this.x).getConfig(this.x).bot?.name || "Vito",
       });
     } else {
       console.log("[MCP] not mounted (set MCP_CLIENT_ID + MCP_CLIENT_SECRET in user/secrets.json to enable).");
@@ -445,91 +412,7 @@ export class DashboardChannel implements Channel {
       res.json({ status: "ok", timestamp: new Date().toISOString() });
     });
 
-    this.app.get("/api/config", (req, res) => {
-      res.json(this.config);
-    });
-
-    this.app.put("/api/config", (req, res) => {
-      const updates = req.body;
-      // Deep merge updates into config
-      if (updates.bot) {
-        if (!this.config.bot) {
-          this.config.bot = {};
-        }
-        Object.assign(this.config.bot, updates.bot);
-      }
-      if (updates.settings) {
-        if (!this.config.settings) {
-          this.config.settings = {};
-        }
-        Object.assign(this.config.settings, updates.settings);
-      }
-      if (updates.compaction) Object.assign(this.config.compaction, updates.compaction);
-      if (updates.channels) {
-        for (const [name, channelUpdate] of Object.entries(updates.channels)) {
-          // Replace channel config entirely (allows removal of nested keys like settings)
-          this.config.channels[name] = channelUpdate as any;
-        }
-      }
-      if (updates.harnesses) {
-        if (!this.config.harnesses) {
-          this.config.harnesses = {};
-        }
-        // Merge each harness config
-        for (const [name, harnessUpdate] of Object.entries(updates.harnesses)) {
-          (this.config.harnesses as any)[name] = harnessUpdate;
-        }
-      }
-      if (updates.sessions !== undefined) {
-        // Replace sessions entirely (allows deletion)
-        this.config.sessions = updates.sessions || {};
-      }
-      this.saveConfig();
-      res.json(this.config);
-    });
-
-    // Harnesses endpoint
-    this.app.get("/api/harnesses", (req, res) => {
-      // Get config and list registered harnesses
-      const harnesses = this.config.harnesses || {};
-      const defaultHarness = this.config.settings?.harness || "pi-coding-agent";
-
-      // Build harness info
-      const available: Record<string, any> = {
-        "pi-coding-agent": {
-          name: "pi-coding-agent",
-          description: "Pi Coding Agent — Anthropic Claude with full tool use",
-          config: harnesses["pi-coding-agent"] || null,
-          isDefault: defaultHarness === "pi-coding-agent"
-        }
-      };
-
-      // Get session overrides from config file
-      const sessionOverrides = this.config.sessions
-        ? Object.entries(this.config.sessions).map(([id, settings]: [string, any]) => ({
-            id,
-            harness: settings.harness || defaultHarness,
-            overrides: settings["pi-coding-agent"] || null
-          }))
-        : [];
-      
-      res.json({
-        default: defaultHarness,
-        available,
-        sessionOverrides
-      });
-    });
-
-    // Resolved settings defaults — single source of truth for the dashboard,
-    // so it doesn't have to mirror the constants in src/settings.ts.
-    this.app.get("/api/settings/defaults", (_req, res) => {
-      try {
-        const defaults = getEffectiveSettings({} as VitoConfig, "", "");
-        res.json(defaults);
-      } catch (err: any) {
-        res.status(500).json({ error: err.message });
-      }
-    });
+    this.app.use("/api", createConfigRouter(this.x));
 
     // Model discovery endpoints
     this.app.get("/api/models/providers", (req, res) => {
@@ -711,266 +594,11 @@ export class DashboardChannel implements Channel {
       }
     });
 
-    this.app.get("/api/sessions", (req, res) => {
-      const sessions = this.queries.getAllSessions();
-      res.json(sessions);
-    });
+    this.app.use("/api/sessions", createSessionRouter(this.x));
 
-    this.app.get("/api/sessions/:id/messages", (req, res) => {
-      const limit = req.query.limit ? parseInt(req.query.limit as string) : undefined;
-      const beforeId = req.query.before ? parseInt(req.query.before as string) : undefined;
-      const afterId = req.query.after ? parseInt(req.query.after as string) : undefined;
-      const hideThoughts = req.query.hideThoughts === 'true';
-      const hideTools = req.query.hideTools === 'true';
-      const messages = this.queries.getAllMessagesForSession(req.params.id, limit, beforeId, hideThoughts, hideTools, afterId);
-      const total = this.queries.countMessagesForSession(req.params.id, hideThoughts, hideTools);
-      res.json({ messages, total });
-    });
+    this.app.use("/api/skills", createSkillRouter(this.x));
 
-    this.app.delete("/api/sessions/:id/messages", (req, res) => {
-      const sessionId = req.params.id;
-      const deleted = this.queries.deleteMessagesForSession(sessionId);
-      res.json({ ok: true, deleted });
-    });
-
-    this.app.get("/api/sessions/:id/config", (req, res) => {
-      const sessionId = req.params.id;
-      const session = this.queries.getSession(sessionId);
-      if (!session) {
-        res.status(404).json({ error: "Session not found" });
-        return;
-      }
-      // Session settings now live in config file, not DB
-      const sessionSettings = this.config.sessions?.[sessionId] || {};
-      res.json(sessionSettings);
-    });
-
-    this.app.put("/api/sessions/:id/config", (req, res) => {
-      const sessionId = req.params.id;
-      const session = this.queries.getSession(sessionId);
-      if (!session) {
-        res.status(404).json({ error: "Session not found" });
-        return;
-      }
-      
-      // Session settings now live in config file, not DB
-      if (!this.config.sessions) {
-        this.config.sessions = {};
-      }
-      
-      const current = this.config.sessions[sessionId] || {};
-      const updated = { ...current, ...req.body };
-      
-      // Remove keys that are explicitly set to null
-      for (const key of Object.keys(updated)) {
-        if ((updated as any)[key] === null) {
-          delete (updated as any)[key];
-        }
-      }
-      
-      // If session settings are now empty, remove the entry
-      if (Object.keys(updated).length === 0) {
-        delete this.config.sessions[sessionId];
-      } else {
-        this.config.sessions[sessionId] = updated;
-      }
-      
-      this.saveConfig();
-      res.json(updated);
-    });
-
-    this.app.put("/api/sessions/:id/alias", (req, res) => {
-      const sessionId = req.params.id;
-      const session = this.queries.getSession(sessionId);
-      if (!session) {
-        res.status(404).json({ error: "Session not found" });
-        return;
-      }
-      const { alias } = req.body;
-      // Empty string or null means remove alias
-      const cleanAlias = alias && alias.trim() ? alias.trim() : null;
-      this.queries.updateSessionAlias(sessionId, cleanAlias);
-      res.json({ id: sessionId, alias: cleanAlias });
-    });
-
-    this.app.get("/api/skills", async (req, res) => {
-      const skills = this.skillsGetter ? this.skillsGetter() : [];
-      res.json(skills);
-    });
-
-    this.app.get("/api/skills/:name/files", async (req, res) => {
-      const skills = this.skillsGetter ? this.skillsGetter() : [];
-      const skill = skills.find((s) => s.name === req.params.name);
-      if (!skill) {
-        res.status(404).json({ error: "Skill not found" });
-        return;
-      }
-      
-      // skill.path is the path to SKILL.md, we need the directory
-      const skillDir = path.dirname(skill.path);
-      
-      // List files in the skill directory
-      const fs = await import("fs/promises");
-      try {
-        const entries = await fs.readdir(skillDir, { withFileTypes: true });
-        const files = entries
-          .filter((e) => e.isFile())
-          .map((e) => ({
-            name: e.name,
-            path: path.join(skillDir, e.name),
-          }));
-        res.json(files);
-      } catch (err) {
-        res.status(500).json({ error: "Failed to read skill directory" });
-      }
-    });
-
-    // Cron job management
-    this.app.get("/api/cron/jobs", (req, res) => {
-      const jobs = this.config.cron.jobs || [];
-      // Enrich with nextRun info from scheduler
-      if (this.cronManager) {
-        const health = this.cronManager.checkHealth();
-        const healthMap = new Map(health.map(h => [h.name, h]));
-        const enriched = jobs.map((job: any) => ({
-          ...job,
-          nextRun: healthMap.get(job.name)?.nextRun?.toISOString() || null,
-          isActive: healthMap.get(job.name)?.isActive ?? false,
-        }));
-        res.json(enriched);
-      } else {
-        res.json(jobs);
-      }
-    });
-
-    this.app.post("/api/cron/jobs", (req, res) => {
-      const job = req.body;
-      if (!job.name || !job.schedule || !job.session || !job.prompt) {
-        res.status(400).json({ error: "Missing required fields: name, schedule, session, prompt" });
-        return;
-      }
-      
-      // Validate that the session exists
-      const session = this.queries.getSession(job.session);
-      if (!session) {
-        res.status(400).json({ error: `Session '${job.session}' does not exist` });
-        return;
-      }
-      
-      // Check if job name already exists
-      if (this.config.cron.jobs.some((j: any) => j.name === job.name)) {
-        res.status(400).json({ error: "Job with this name already exists" });
-        return;
-      }
-      
-      // Add to config
-      this.config.cron.jobs.push(job);
-      
-      // Save to disk
-      this.saveConfig();
-      
-      // Schedule it and get next run
-      let nextRun: string | null = null;
-      if (this.cronManager) {
-        this.cronManager.scheduleJob(job);
-        const health = this.cronManager.checkHealth();
-        const jobHealth = health.find(h => h.name === job.name);
-        nextRun = jobHealth?.nextRun?.toISOString() || null;
-      }
-      
-      res.json({ ...job, nextRun });
-    });
-
-    this.app.put("/api/cron/jobs/:name", (req, res) => {
-      const name = req.params.name;
-      const index = this.config.cron.jobs.findIndex((j: any) => j.name === name);
-      
-      if (index === -1) {
-        res.status(404).json({ error: "Job not found" });
-        return;
-      }
-      
-      const updates = req.body;
-      const existingJob = this.config.cron.jobs[index];
-      
-      // Update job fields (preserve name, allow updating other fields)
-      const updatedJob = {
-        ...existingJob,
-        ...updates,
-        name, // Ensure name can't be changed
-      };
-      
-      // Clean up undefined sendCondition (remove if empty string)
-      if (updatedJob.sendCondition === '' || updatedJob.sendCondition === null) {
-        delete updatedJob.sendCondition;
-      }
-      
-      this.config.cron.jobs[index] = updatedJob;
-      
-      // Save to disk
-      this.saveConfig();
-      
-      // Reload in scheduler (remove and re-add)
-      if (this.cronManager) {
-        this.cronManager.removeJob(name);
-        this.cronManager.scheduleJob(updatedJob);
-      }
-      
-      res.json(updatedJob);
-    });
-
-    this.app.delete("/api/cron/jobs/:name", (req, res) => {
-      const name = req.params.name;
-      const index = this.config.cron.jobs.findIndex((j: any) => j.name === name);
-      
-      if (index === -1) {
-        res.status(404).json({ error: "Job not found" });
-        return;
-      }
-      
-      // Remove from config
-      this.config.cron.jobs.splice(index, 1);
-      
-      // Save to disk
-      this.saveConfig();
-      
-      // Remove from scheduler
-      if (this.cronManager) {
-        this.cronManager.removeJob(name);
-      }
-      
-      res.json({ success: true });
-    });
-
-    this.app.post("/api/cron/jobs/:name/trigger", async (req, res) => {
-      const name = req.params.name;
-      
-      if (!this.cronManager) {
-        res.status(500).json({ error: "Scheduler not available" });
-        return;
-      }
-
-      const success = await this.cronManager.triggerJob(name);
-      if (!success) {
-        res.status(404).json({ error: "Job not found" });
-        return;
-      }
-
-      res.json({ success: true, message: `Job '${name}' triggered` });
-    });
-
-    this.app.get("/api/cron/health", (req, res) => {
-      if (!this.cronManager) {
-        res.status(500).json({ error: "Scheduler not available" });
-        return;
-      }
-      const health = this.cronManager.checkHealth();
-      const summary = {
-        total: health.length,
-        active: health.filter(h => h.isActive).length,
-      };
-      res.json({ summary, jobs: health });
-    });
+    this.app.use("/api/cron", createCronRouter(this.x));
 
     // Discord slash command registration
     this.app.post("/api/discord/register-commands", async (req, res) => {
@@ -994,15 +622,20 @@ export class DashboardChannel implements Channel {
       }
       try {
         // Get all Discord sessions without aliases
-        const sessions = this.queries.getAllSessions().filter(
-          (s: any) => s.channel === "discord" && !s.alias
-        );
+        const sessions = xSessionStore(this.x).list(this.x, {
+          channels: ["discord"],
+          hasAlias: false,
+        });
         
         const updated: string[] = [];
         const failed: string[] = [];
         
         for (const session of sessions) {
           const channelId = session.channel_target;
+          if (!channelId) {
+            failed.push(session.id);
+            continue;
+          }
           const info = await this.discordChannel.getChannelInfo(channelId);
           
           if (info) {
@@ -1011,7 +644,10 @@ export class DashboardChannel implements Channel {
               ? `${info.guildName} / ${info.name}`
               : info.name;
             
-            this.queries.updateSessionAlias(session.id, alias);
+            xSessionStore(this.x).update(this.x, {
+              id: session.id,
+              changes: { alias },
+            });
             updated.push(session.id);
           } else {
             failed.push(session.id);
@@ -1051,9 +687,10 @@ export class DashboardChannel implements Channel {
       }
       try {
         // Get all Telegram sessions without aliases
-        const sessions = this.queries.getAllSessions().filter(
-          (s: any) => s.channel === "telegram" && !s.alias
-        );
+        const sessions = xSessionStore(this.x).list(this.x, {
+          channels: ["telegram"],
+          hasAlias: false,
+        });
         
         const updated: string[] = [];
         const failed: string[] = [];
@@ -1082,7 +719,10 @@ export class DashboardChannel implements Channel {
               alias = `telegram: ${info.name}`;
             }
             
-            this.queries.updateSessionAlias(session.id, alias);
+            xSessionStore(this.x).update(this.x, {
+              id: session.id,
+              changes: { alias },
+            });
             updated.push(session.id);
           } else {
             failed.push(session.id);
@@ -1130,25 +770,18 @@ export class DashboardChannel implements Channel {
       res.status(204).end();
     });
 
-    this.app.get("/api/jobs", (req, res) => {
-      // Placeholder for cron jobs
-      res.json([]);
+    this.app.get("/api/jobs", (_req, res) => {
+      res.json(xVitoService(this.x).getConfiguredJobs(this.x));
     });
 
     // Soul and System prompt endpoints
-    this.app.get("/api/soul", (req, res) => {
-      const soulPath = path.join(process.cwd(), "user", "SOUL.md");
-      if (!existsSync(soulPath)) {
-        res.json({ content: "" });
-        return;
-      }
-      res.json({ content: readFileSync(soulPath, "utf-8") });
+    this.app.get("/api/soul", (_req, res) => {
+      res.json({ content: xVitoService(this.x).getSoul(this.x) });
     });
 
     this.app.put("/api/soul", (req, res) => {
-      const soulPath = path.join(process.cwd(), "user", "SOUL.md");
       const { content } = req.body;
-      writeFileSync(soulPath, content, "utf-8");
+      xVitoService(this.x).saveSoul(this.x, content);
       res.json({ content });
     });
 
@@ -1168,124 +801,7 @@ export class DashboardChannel implements Channel {
       res.json({ content });
     });
 
-    // ── Memory API ──
-
-    // User profile JSON
-    this.app.get("/api/memory/profile", (req, res) => {
-      const profilePath = path.join(process.cwd(), "user", "profile.md");
-      if (!existsSync(profilePath)) {
-        res.json({ content: null });
-        return;
-      }
-      try {
-        const content = readFileSync(profilePath, "utf-8");
-        res.json({ content });
-      } catch (err: any) {
-        res.status(500).json({ error: err.message });
-      }
-    });
-
-    // Embeddings stats
-    this.app.get("/api/memory/embeddings/stats", (req, res) => {
-      const dbPath = path.join(process.cwd(), "user", "embeddings.db");
-      if (!existsSync(dbPath)) {
-        res.json({ totalChunks: 0, totalSessions: 0, totalDays: 0, oldestDay: null, newestDay: null, sessions: [] });
-        return;
-      }
-      try {
-        const db = new Database(dbPath, { readonly: true });
-        
-        const totals = db.prepare(`
-          SELECT COUNT(*) as totalChunks,
-                 COUNT(DISTINCT session_id) as totalSessions,
-                 COUNT(DISTINCT day) as totalDays,
-                 MIN(day) as oldestDay,
-                 MAX(day) as newestDay
-          FROM chunks
-        `).get() as any;
-
-        // Get session aliases from vito.db
-        const aliasMap = new Map<string, string>();
-        const sessions = this.queries.getAllSessions();
-        for (const s of sessions) {
-          if (s.alias) aliasMap.set(s.id, s.alias);
-        }
-
-        const sessionRows = db.prepare(`
-          SELECT session_id, COUNT(*) as count, MIN(day) as first_day, MAX(day) as last_day
-          FROM chunks
-          GROUP BY session_id
-          ORDER BY count DESC
-        `).all();
-
-        db.close();
-
-        res.json({
-          ...totals,
-          sessions: sessionRows.map((s: any) => ({
-            ...s,
-            alias: aliasMap.get(s.session_id) || null,
-          })),
-        });
-      } catch (err: any) {
-        res.status(500).json({ error: err.message });
-      }
-    });
-
-    // Embeddings search (hybrid) — uses shared searchMemory() with recency bias
-    this.app.get("/api/memory/embeddings/search", async (req, res) => {
-      const query = req.query.q as string;
-      const mode = (req.query.mode as string) || "hybrid";
-      const limit = parseInt(req.query.limit as string) || 10;
-
-      if (!query) {
-        res.status(400).json({ error: "Missing query parameter 'q'" });
-        return;
-      }
-
-      const dbPath = path.join(process.cwd(), "user", "embeddings.db");
-      if (!existsSync(dbPath)) {
-        res.json({ query, mode, duration_ms: 0, results: [] });
-        return;
-      }
-
-      const start = Date.now();
-
-      try {
-        // Use shared search function (includes recency bias)
-        const results = await searchMemory(query, { 
-          limit, 
-          mode: mode as "hybrid" | "embedding" | "bm25" 
-        });
-
-        const duration_ms = Date.now() - start;
-        
-        // Map to dashboard expected format
-        res.json({ 
-          query, 
-          mode, 
-          duration_ms, 
-          results: results.map(r => ({
-            id: r.id,
-            session_id: r.sessionId,
-            day: r.day,
-            chunk_index: 0, // Not tracked in shared function, but rarely used in UI
-            text: r.text,
-            context: r.context,
-            msg_count: r.msgCount,
-            rrfScore: r.rrfScore,
-            embeddingScore: r.embeddingScore,
-            rawEmbeddingScore: r.rawEmbeddingScore,
-            recencyFactor: r.recencyFactor,
-            daysAgo: r.daysAgo,
-            bm25Score: r.bm25Score,
-          }))
-        });
-      } catch (err: any) {
-        console.error("[Dashboard] Embeddings search error:", err);
-        res.status(500).json({ error: err.message });
-      }
-    });
+    this.app.use("/api/memory", createMemoryRouter(this.x));
 
     // Serve files from any filesystem path with proper MIME types
     this.app.get("/api/file", (req, res) => {
@@ -1350,25 +866,6 @@ export class DashboardChannel implements Channel {
       }
       
       res.sendFile(resolvedPath);
-    });
-
-    this.app.get("/api/channels/:name/stream-mode", (req, res) => {
-      const ch = this.config.channels[req.params.name];
-      res.json({ streamMode: ch?.streamMode || "final" });
-    });
-
-    this.app.put("/api/channels/:name/stream-mode", (req, res) => {
-      const { streamMode } = req.body;
-      if (!["stream", "bundled", "final"].includes(streamMode)) {
-        res.status(400).json({ error: "Invalid stream mode" });
-        return;
-      }
-      const name = req.params.name;
-      if (!this.config.channels[name]) {
-        this.config.channels[name] = { enabled: true };
-      }
-      this.config.channels[name].streamMode = streamMode;
-      res.json({ streamMode });
     });
 
     // Upload attachments — saves to data/attachments/, returns path
@@ -2004,289 +1501,7 @@ export class DashboardChannel implements Channel {
       }
     });
 
-    // ── Logs ──
-
-    this.app.get("/api/logs", (req, res) => {
-      try {
-        const logsDir = path.join(process.cwd(), "logs");
-        if (!existsSync(logsDir)) {
-          res.json([]);
-          return;
-        }
-        
-        // Build a map of session_id → alias for quick lookup
-        const sessions = this.queries.getAllSessions();
-        const aliasMap = new Map<string, string>();
-        for (const s of sessions) {
-          if (s.alias) {
-            aliasMap.set(s.id, s.alias);
-          }
-        }
-        
-        // Phase 1: Enumerate + stat only (cheap — no file reads)
-        const limit = parseInt(req.query.limit as string) || 50;
-        const offset = parseInt(req.query.offset as string) || 0;
-
-        const allFiles = readdirSync(logsDir)
-          .filter(f => (f.startsWith("request-") && f.endsWith(".log")) ||
-                       (f.startsWith("trace-") && f.endsWith(".jsonl")))
-          .map(filename => {
-            const stats = statSync(path.join(logsDir, filename));
-            return { filename, timestamp: stats.mtime.getTime(), size: stats.size };
-          })
-          .sort((a, b) => b.timestamp - a.timestamp);
-
-        const totalCount = allFiles.length;
-        const page = allFiles.slice(offset, offset + limit);
-
-        // Phase 2: Only read the files we're actually returning
-        const files = page.map(({ filename, timestamp, size }) => {
-            const filePath = path.join(logsDir, filename);
-            const isJsonl = filename.endsWith(".jsonl");
-
-            // Read first 4KB for header, then scan forward for user_message
-            let preview = "";
-            let sessionId = "";
-            let hasEmbedding = false;
-            let userMessage = "";
-            let cost: number | null = null;
-
-            if (isJsonl) {
-              // Parse header from first 4KB (line 1 — always small)
-              const headSize = Math.min(size, 4096);
-              const headBuf = Buffer.alloc(headSize);
-              const headFd = openSync(filePath, "r");
-              readSync(headFd, headBuf, 0, headSize, 0);
-              closeSync(headFd);
-              const head = headBuf.toString("utf-8");
-
-              try {
-                const firstLine = head.split("\n")[0];
-                if (firstLine) {
-                  const obj = JSON.parse(firstLine);
-                  if (obj.type === "header") {
-                    sessionId = obj.session_id || "";
-                    preview = `Session: ${obj.session_id}\nChannel: ${obj.channel}\nModel: ${obj.model}`;
-                  }
-                }
-              } catch {
-                preview = head.split("\n").slice(0, 3).join("\n");
-              }
-
-              // Scan for user_message (line 3) — may be past 4KB due to large prompt on line 2
-              // Read in 64KB chunks, find the 3rd line
-              try {
-                const fd = openSync(filePath, "r");
-                let offset = 0;
-                let newlineCount = 0;
-                const chunkSize = 65536;
-                const scanLimit = Math.min(size, 262144); // cap at 256KB
-                outer:
-                while (offset < scanLimit) {
-                  const readLen = Math.min(chunkSize, scanLimit - offset);
-                  const chunk = Buffer.alloc(readLen);
-                  readSync(fd, chunk, 0, readLen, offset);
-                  for (let i = 0; i < readLen; i++) {
-                    if (chunk[i] === 0x0a) { // newline
-                      newlineCount++;
-                      if (newlineCount === 2) {
-                        // Line 3 starts at offset + i + 1 — read chunk for user_message (larger for classifier traces)
-                        const msgStart = offset + i + 1;
-                        const msgLen = Math.min(16384, size - msgStart);
-                        if (msgLen > 0) {
-                          const msgBuf = Buffer.alloc(msgLen);
-                          readSync(fd, msgBuf, 0, msgLen, msgStart);
-                          const msgLine = msgBuf.toString("utf-8").split("\n")[0];
-                          try {
-                            const msgObj = JSON.parse(msgLine);
-                            if (msgObj.type === "user_message") {
-                              userMessage = msgObj.content || "";
-                            }
-                          } catch { /* not user_message or malformed */ }
-                        }
-                        break outer;
-                      }
-                    }
-                  }
-                  offset += readLen;
-                }
-                closeSync(fd);
-              } catch { /* ignore scan errors */ }
-
-              // Detect embedding_result and footer usage — read only the TAIL of the file (both are near the end)
-              try {
-                const tailSize = Math.min(size, 65536);
-                const tailBuf = Buffer.alloc(tailSize);
-                const tailFd = openSync(filePath, "r");
-                readSync(tailFd, tailBuf, 0, tailSize, Math.max(0, size - tailSize));
-                closeSync(tailFd);
-                const tail = tailBuf.toString("utf-8");
-                const tailLines = tail.split("\n");
-
-                if (tail.includes('"type":"embedding_result"')) {
-                  for (const line of tailLines) {
-                    if (!line.includes('"type":"embedding_result"')) continue;
-                    try {
-                      const obj = JSON.parse(line);
-                      if (obj.type === "embedding_result" && typeof obj.chunks_created === "number" && obj.chunks_created > 0) {
-                        hasEmbedding = true;
-                        break;
-                      }
-                    } catch {
-                      // ignore partial/malformed lines from tail read
-                    }
-                  }
-                }
-
-                if (tail.includes('"type":"footer"')) {
-                  for (const line of tailLines) {
-                    if (!line.includes('"type":"footer"')) continue;
-                    try {
-                      const obj = JSON.parse(line);
-                      const total = obj?.usage?.cost?.total;
-                      if (obj.type === "footer" && typeof total === "number") {
-                        cost = total;
-                      }
-                    } catch {
-                      // ignore partial/malformed lines from tail read
-                    }
-                  }
-                }
-              } catch {
-                hasEmbedding = false;
-              }
-            } else {
-              // Non-JSONL: read first 4KB for preview
-              const headSize = Math.min(size, 4096);
-              const headBuf = Buffer.alloc(headSize);
-              const headFd = openSync(filePath, "r");
-              readSync(headFd, headBuf, 0, headSize, 0);
-              closeSync(headFd);
-              preview = headBuf.toString("utf-8").split("\n").slice(0, 8).join("\n");
-            }
-
-            // Detect trace type from filename prefix
-            let traceType: "main" | "classifier" | "profile" = "main";
-            if (filename.startsWith("trace-classifier-")) {
-              traceType = "classifier";
-            } else if (filename.startsWith("trace-profile-")) {
-              traceType = "profile";
-            }
-
-            return {
-              filename,
-              timestamp,
-              size,
-              preview,
-              format: isJsonl ? "jsonl" : "text",
-              sessionId,
-              alias: sessionId ? aliasMap.get(sessionId) || null : null,
-              hasEmbedding,
-              userMessage,
-              traceType,
-              cost,
-            };
-          });
-
-        res.json({ files, totalCount, offset, limit });
-      } catch (e: any) {
-        res.status(500).json({ error: e.message });
-      }
-    });
-
-    this.app.get("/api/logs/:filename", (req, res) => {
-      try {
-        const filename = req.params.filename;
-        // Security: only allow request-*.log or trace-*.jsonl files
-        const isOldFormat = filename.startsWith("request-") && filename.endsWith(".log");
-        const isNewFormat = filename.startsWith("trace-") && filename.endsWith(".jsonl");
-        
-        if ((!isOldFormat && !isNewFormat) || filename.includes("..")) {
-          res.status(400).json({ error: "Invalid filename" });
-          return;
-        }
-        
-        const filePath = path.join(process.cwd(), "logs", filename);
-        if (!existsSync(filePath)) {
-          res.status(404).json({ error: "Log not found" });
-          return;
-        }
-        
-        const content = readFileSync(filePath, "utf-8");
-        
-        if (isNewFormat) {
-          // Parse JSONL and return structured data
-          const lines = content.trim().split("\n").filter(Boolean);
-          const parsed = lines.map(line => {
-            try {
-              return JSON.parse(line);
-            } catch {
-              return { type: "parse_error", raw: line };
-            }
-          });
-          res.json({ filename, format: "jsonl", lines: parsed });
-        } else {
-          res.json({ filename, format: "text", content });
-        }
-      } catch (e: any) {
-        res.status(500).json({ error: e.message });
-      }
-    });
-
-    // Delete a single trace file
-    this.app.delete("/api/logs/:filename", (req, res) => {
-      try {
-        const filename = req.params.filename;
-        // Security: only allow request-*.log or trace-*.jsonl files
-        const isOldFormat = filename.startsWith("request-") && filename.endsWith(".log");
-        const isNewFormat = filename.startsWith("trace-") && filename.endsWith(".jsonl");
-        
-        if ((!isOldFormat && !isNewFormat) || filename.includes("..")) {
-          res.status(400).json({ error: "Invalid filename" });
-          return;
-        }
-        
-        const filePath = path.join(process.cwd(), "logs", filename);
-        if (!existsSync(filePath)) {
-          res.status(404).json({ error: "Log not found" });
-          return;
-        }
-        
-        unlinkSync(filePath);
-        res.json({ success: true, deleted: filename });
-      } catch (e: any) {
-        res.status(500).json({ error: e.message });
-      }
-    });
-
-    // Delete all trace files
-    this.app.delete("/api/logs", (req, res) => {
-      try {
-        const logsDir = path.join(process.cwd(), "logs");
-        if (!existsSync(logsDir)) {
-          res.json({ success: true, deleted: 0 });
-          return;
-        }
-        
-        const files = readdirSync(logsDir)
-          .filter(f => (f.startsWith("request-") && f.endsWith(".log")) ||
-                       (f.startsWith("trace-") && f.endsWith(".jsonl")));
-        
-        let deleted = 0;
-        for (const filename of files) {
-          try {
-            unlinkSync(path.join(logsDir, filename));
-            deleted++;
-          } catch {
-            // Skip files that can't be deleted
-          }
-        }
-        
-        res.json({ success: true, deleted });
-      } catch (e: any) {
-        res.status(500).json({ error: e.message });
-      }
-    });
+    this.app.use("/api/logs", createTraceRouter(this.x));
 
     // ── Pi Sessions (orchestrator v2) ──
     //
@@ -2331,7 +1546,7 @@ export class DashboardChannel implements Channel {
         const files = listPiSessionFiles();
 
         // Build session alias lookup so dashboard can show friendly names.
-        const sessions = this.queries.getAllSessions();
+        const sessions = xSessionStore(this.x).list(this.x, { hasAlias: true });
         const aliasMap = new Map<string, string>();
         for (const s of sessions) {
           if (s.alias) aliasMap.set(s.id, s.alias);

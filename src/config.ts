@@ -1,5 +1,6 @@
 import { readFileSync, existsSync, cpSync } from "fs";
 import { resolve } from "path";
+import { validateVitoConfig } from "./contracts/vito-config.js";
 import type { VitoConfig } from "./types.js";
 
 const ROOT = process.cwd();
@@ -23,7 +24,16 @@ export function loadConfig(): VitoConfig {
     throw new Error(`Config file not found: ${configPath}`);
   }
   const raw = readFileSync(configPath, "utf-8");
-  return JSON.parse(raw) as VitoConfig;
+  const value: unknown = JSON.parse(raw);
+  const result = validateVitoConfig(value);
+  if (!result.valid) {
+    throw new Error(
+      `Invalid Vito config at ${configPath}:\n${result.issues
+        .map((issue) => `- ${issue.path}: ${issue.message}`)
+        .join("\n")}`
+    );
+  }
+  return result.config;
 }
 
 export function loadSoul(): string {

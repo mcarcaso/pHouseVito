@@ -8,7 +8,7 @@ interface DiscordConfigProps {
   renderIdList: (field: string, label: string, emptyText: string, placeholder: string) => React.ReactNode;
 }
 
-export default function DiscordConfig({ channelConfig, config, onSave, renderIdList }: DiscordConfigProps) {
+export default function DiscordConfig({ renderIdList }: DiscordConfigProps) {
   const [registeringCommands, setRegisteringCommands] = useState(false);
   const [commandsResult, setCommandsResult] = useState<{ success: boolean; message: string } | null>(null);
   const [autoAliasing, setAutoAliasing] = useState(false);

@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useCallback, useLayoutEffect, useMemo } from 'react';
+import { useState, useEffect, useRef, useCallback, useLayoutEffect } from 'react';
 import ChatView, { parseDbMessage, type ParsedMessage, type Attachment, type FilterState } from './ChatView';
 import FilterButton from './FilterButton';
 import React from 'react';

@@ -1,17 +1,17 @@
 import { resolve } from "path";
-import { existsSync, writeFileSync, readFileSync, watch } from "fs";
+import { watch } from "fs";
 import { createDatabase } from "./db/schema.js";
+import { ObjectContext } from "./context/ObjectContext.js";
 import { RootContext } from "./context/RootContext.js";
-import { xQueries } from "./lib/x.js";
-import { ensureUserDir, loadConfig, loadSoul, USER_DIR } from "./config.js";
+import { ensureUserDir, USER_DIR } from "./config.js";
+import { xEmbeddingDb, xVitoService } from "./lib/x.js";
 import { OrchestratorV2 as Orchestrator } from "./orchestrator_v2/index.js";
 import { DashboardChannel } from "./channels/dashboard.js";
 import { TelegramChannel } from "./channels/telegram.js";
 import { DiscordChannel } from "./channels/discord.js";
 import { loadSecrets } from "./secrets.js";
+import { CronSchedulerService } from "./services/cron/CronSchedulerService.js";
 import { DEFAULT_TIMEZONE } from "./system-instructions.js";
-
-const ROOT = process.cwd();
 
 async function main() {
   // Ensure user/ directory exists (copy from user.example/ on first run)
@@ -22,9 +22,15 @@ async function main() {
 
   console.log("Starting server...\n");
 
-  // Load config and soul
-  const config = loadConfig();
-  const soul = loadSoul();
+  // Initialize stable dependencies, then resolve mutable Vito state through its service.
+  const dbPath = resolve(USER_DIR, "vito.db");
+  const db = createDatabase(dbPath);
+  const skillsDir = resolve(USER_DIR, "skills");
+  const x = RootContext({ db, userDir: USER_DIR, skillsDir });
+  const vitoService = xVitoService(x);
+  const config = vitoService.getConfig(x);
+  const soul = vitoService.getSoul(x);
+  console.log(`Database: ${dbPath}`);
 
   // Set the process timezone from config (default: America/Toronto).
   // This propagates to every child process we spawn — shell tools, Pi's bash,
@@ -45,28 +51,15 @@ async function main() {
     console.log("SOUL.md loaded");
   }
 
-  // Initialize database
-  const dbPath = resolve(USER_DIR, "vito.db");
-  const db = createDatabase(dbPath);
-  const skillsDir = resolve(USER_DIR, "skills");
-  const x = RootContext({ db, config, soul, skillsDir });
-  const queries = xQueries(x);
-  console.log(`Database: ${dbPath}`);
-
   // Create orchestrator
-  const orchestrator = new Orchestrator(x, config, soul, skillsDir);
+  const orchestrator = new Orchestrator(x);
 
-  // Register Dashboard channel (starts web server)
-  const dashboard = new DashboardChannel(db, queries, config);
-  dashboard.setSkillsGetter(() => orchestrator.getSkills());
+  // Register Dashboard channel (starts web server) with scheduler-scoped services.
+  const dashboardX = new ObjectContext({
+    cronService: () => new CronSchedulerService(orchestrator.getCronScheduler()),
+  }, x);
+  const dashboard = new DashboardChannel(dashboardX);
   dashboard.setAskHandler((opts) => orchestrator.ask(opts));
-  dashboard.setCronManager({
-    scheduleJob: (job) => orchestrator.getCronScheduler().scheduleJob(job),
-    removeJob: (name) => orchestrator.getCronScheduler().removeJob(name),
-    getActiveJobs: () => orchestrator.getCronScheduler().getActiveJobs(),
-    triggerJob: (name) => orchestrator.getCronScheduler().triggerJob(name),
-    checkHealth: () => orchestrator.getCronScheduler().checkHealth(),
-  });
   orchestrator.registerChannel(dashboard);
 
   // Register Telegram channel
@@ -98,18 +91,17 @@ async function main() {
   }, 30 * 60 * 1000); // 30 minutes
 
   // Watch config file for changes (hot-reload cron jobs)
-  const configPath = resolve(USER_DIR, "vito.config.json");
   let reloadTimeout: NodeJS.Timeout | null = null;
   
-  watch(configPath, (eventType) => {
-    if (eventType === "change") {
+  watch(USER_DIR, (eventType, filename) => {
+    if (filename === "vito.config.json" && (eventType === "change" || eventType === "rename")) {
       // Debounce rapid changes
       if (reloadTimeout) clearTimeout(reloadTimeout);
       
       reloadTimeout = setTimeout(() => {
         try {
           console.log("\n[Config] Detected changes, reloading...");
-          const newConfig = loadConfig();
+          const newConfig = vitoService.getConfig(x);
           
           // Reload each component separately so one failure doesn't block others
           try {
@@ -122,12 +114,6 @@ async function main() {
             orchestrator.reloadCronJobs(newConfig.cron.jobs);
           } catch (err) {
             console.error("[Config] Failed to reload cron jobs:", err);
-          }
-          
-          try {
-            dashboard.reloadConfig(newConfig);
-          } catch (err) {
-            console.error("[Config] Failed to reload dashboard config:", err);
           }
           
           console.log("[Config] Reload complete\n");
@@ -144,6 +130,7 @@ async function main() {
   process.on("SIGINT", async () => {
     console.log("\nShutting down...");
     await orchestrator.stop();
+    xEmbeddingDb(x).close();
     db.close();
     process.exit(0);
   });

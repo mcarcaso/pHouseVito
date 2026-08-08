@@ -10,6 +10,11 @@
     "logs": "pm2 logs vito-server",
     "status": "pm2 status",
     "build": "tsc",
+    "typecheck": "tsc --noEmit",
+    "typecheck:dashboard": "npm --prefix dashboard run typecheck",
+    "test": "tsx --test test/**/*.test.ts",
+    "validate:config": "tsx src/cli/validate-config.ts",
+    "check": "npm run typecheck && npm run typecheck:dashboard && npm test && npm run validate:config -- user.example/vito.config.json",
     "dev": "tsx watch src/index.ts",
     "build:dashboard": "cd dashboard && npm run build",
     "dev:dashboard": "cd dashboard && npm run dev"
@@ -36,7 +41,8 @@
     "openai": "^4.104.0",
     "playwright": "^1.58.2",
     "tsx": "^4.21.0",
-    "ws": "^8.19.0"
+    "ws": "^8.19.0",
+    "zod": "^3.25.76"
   },
   "devDependencies": {
     "@types/better-sqlite3": "^7.6.13",

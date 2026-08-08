@@ -1,12 +1,20 @@
 import type { Context } from "./Context.js";
 
-type Factory = (x: Context) => unknown;
+type ContextFactory = (x: Context) => unknown;
+type ContextFactoryMap = Readonly<Record<string, ContextFactory>>;
 
+/**
+ * Lazily constructs and caches dependencies registered for this scope.
+ *
+ * Parent fallback is appropriate for trusted overlays such as the dashboard's
+ * scheduler scope. Restricted user/agent contexts must explicitly expose only
+ * authorized dependencies and should not inherit directly from RootContext.
+ */
 export class ObjectContext implements Context {
-  private cache = new Map<string, unknown>();
+  private readonly cache = new Map<string, unknown>();
 
   constructor(
-    private readonly factories: Record<string, Factory>,
+    private readonly factories: ContextFactoryMap,
     private readonly parent?: Context
   ) {}
 

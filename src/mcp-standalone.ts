@@ -17,9 +17,12 @@
  */
 
 import express from "express";
+import { resolve } from "node:path";
+import { ObjectContext } from "./context/ObjectContext.js";
 import { loadSecrets } from "./secrets.js";
 import { loadConfig } from "./config.js";
 import { mountMcp } from "./mcp-server.js";
+import { FileSkillStore } from "./stores/skills/FileSkillStore.js";
 
 loadSecrets();
 
@@ -42,8 +45,14 @@ if (!clientId || !clientSecret) {
 }
 
 const app = express();
+const x = new ObjectContext({
+  skillsDir: () => resolve(process.cwd(), "user", "skills"),
+  builtinSkillsDir: () => resolve(process.cwd(), "src", "skills", "builtin"),
+  skillStore: () => new FileSkillStore(),
+});
 app.use(express.json({ limit: "2mb" }));
 mountMcp(app, {
+  x,
   staticClientId: clientId,
   staticClientSecret: clientSecret,
 });

@@ -4,15 +4,16 @@
  * Decorator that logs all harness events to a .jsonl trace file.
  */
 
-import { appendFileSync, mkdirSync, statSync } from "fs";
-import { dirname, join } from "path";
+import { join } from "node:path";
+import type { Context } from "../context/Context.js";
+import type { WritableTraceEventData } from "../contracts/trace-event.js";
+import { xLogsDir, xTraceEventStore, xTraceStore } from "../lib/x.js";
+import { TraceSizeLimitError } from "../stores/traces/FileTraceEventStore.js";
 import { ProxyHarness } from "./proxy.js";
-import type { Harness, HarnessCallbacks, HarnessUsage, NormalizedEvent } from "./types.js";
-
-// Max trace file size: 50MB (prevents runaway traces from filling disk)
-const MAX_TRACE_SIZE_BYTES = 50 * 1024 * 1024;
+import type { Harness, HarnessCallbacks, HarnessUsage } from "./types.js";
 
 export interface TracingOptions {
+  x: Context;
   session_id: string;
   channel: string;
   target: string;
@@ -22,22 +23,10 @@ export interface TracingOptions {
   tracePrefix?: string;
 }
 
-type TraceLine =
-  | { type: "header"; timestamp: string; session_id: string; channel: string; target: string; model: string; harness: string }
-  | { type: "invocation"; command: string }
-  | { type: "prompt"; content: string; length: number }
-  | { type: "user_message"; content: string }
-  | { type: "raw_event"; ts: number; event: unknown }
-  | { type: "normalized_event"; ts: number; event: NormalizedEvent }
-  | { type: "memory_search"; query: string; original_query?: string; contextual_query?: string; contextualizer_duration_ms?: number; contextualizer_skipped?: string; duration_ms: number; results_found: number; results_injected: number; results: unknown[]; skipped?: string }
-  | { type: "current_context_filter"; excludeEmbedded: boolean; lastEmbeddedMsgId: number; keepRecentEmbeddedMessages: number; rawMessagesIncluded: number; embeddedMessagesExcluded: number }
-  | { type: "auto_classifier"; ran: boolean; duration_ms: number; skipped?: string; traceFile?: string; explanation?: string; currentContextLimit?: number; currentContextIncludeWorkingContext?: boolean; crossContextLimit?: number; crossContextMaxSessions?: number; crossContextIncludeWorkingContext?: boolean; recalledMemoryLimit?: number; selectedModel?: string }
-  | { type: "embedding_result"; skipped?: string; chunks_created: number; chunks: unknown[]; unembedded_messages: number; unembedded_chars: number; duration_ms: number }
-  | { type: "profile_update"; skipped?: string; updated: boolean; duration_ms: number; traceFile?: string }
-  | { type: "footer"; duration_ms: number; message_count: number; tool_calls: number; success: boolean; error?: string; usage?: HarnessUsage };
+type TraceLine = WritableTraceEventData;
 
 export class TracingHarness extends ProxyHarness {
-  private traceFile: string = "";
+  private traceId: string = "";
   private readonly options: TracingOptions;
   private readonly traceMessageUpdates: boolean;
   private truncated: boolean = false;
@@ -51,7 +40,7 @@ export class TracingHarness extends ProxyHarness {
   private pendingLines: TraceLine[] = [];
 
   get tracePath(): string {
-    return this.traceFile;
+    return this.traceId ? join(xLogsDir(this.options.x), this.traceId) : "";
   }
 
   /**
@@ -69,28 +58,22 @@ export class TracingHarness extends ProxyHarness {
    * that fire after the main LLM response.
    */
   writePostRunLine(line: TraceLine): void {
-    if (!this.traceFile) return; // No trace file created yet (shouldn't happen)
+    if (!this.traceId) return; // No trace created yet (shouldn't happen)
     this.writeLine(line);
   }
 
   private writeLine(line: TraceLine): void {
-    // Skip writes if we've already truncated
     if (this.truncated) return;
-    
-    // Check file size before writing
     try {
-      const stats = statSync(this.traceFile);
-      if (stats.size > MAX_TRACE_SIZE_BYTES) {
-        appendFileSync(this.traceFile, JSON.stringify({ type: "truncated", reason: `Trace exceeded ${MAX_TRACE_SIZE_BYTES / 1024 / 1024}MB limit` }) + "\n");
-        this.truncated = true;
-        console.warn(`⚠️ Trace file truncated at ${(stats.size / 1024 / 1024).toFixed(1)}MB`);
-        return;
-      }
-    } catch (e) {
-      // File might not exist yet on first write
+      xTraceEventStore(this.options.x).create(this.options.x, {
+        traceId: this.traceId,
+        data: line,
+      });
+    } catch (error) {
+      if (!(error instanceof TraceSizeLimitError)) throw error;
+      this.truncated = true;
+      console.warn("⚠️ Trace truncated at 50MB");
     }
-    
-    appendFileSync(this.traceFile, JSON.stringify(line) + "\n");
   }
 
   private isMessageUpdateEvent(event: unknown): boolean {
@@ -105,28 +88,27 @@ export class TracingHarness extends ProxyHarness {
     callbacks: HarnessCallbacks,
     signal?: AbortSignal
   ): Promise<void> {
-    // Create a fresh trace file for each run
-    const timestamp = new Date().toISOString().replace(/:/g, "-");
-    const suffix = Math.random().toString(36).slice(2, 8); // 6 random chars for uniqueness
-    const prefix = this.options.tracePrefix ? `trace-${this.options.tracePrefix}` : "trace";
-    this.traceFile = join("logs", `${prefix}-${timestamp}-${suffix}.jsonl`);
-    mkdirSync(dirname(this.traceFile), { recursive: true });
+    const timestamp = new Date().toISOString();
+    const traceType = this.options.tracePrefix === "classifier" || this.options.tracePrefix === "profile"
+      ? this.options.tracePrefix
+      : "main";
+    const trace = xTraceStore(this.options.x).create(this.options.x, {
+      traceType,
+      timestamp,
+      sessionId: this.options.session_id,
+      channel: this.options.channel,
+      target: this.options.target,
+      model: this.options.model,
+      harness: this.delegate.getName(),
+    });
+    this.traceId = trace.id;
+    this.truncated = false;
 
     const startTime = Date.now();
     let messageCount = 0;
     let toolCalls = 0;
     let error: string | undefined;
     let usage: HarnessUsage | undefined;
-
-    this.writeLine({
-      type: "header",
-      timestamp: new Date().toISOString(),
-      session_id: this.options.session_id,
-      channel: this.options.channel,
-      target: this.options.target,
-      model: this.options.model,
-      harness: this.delegate.getName(),
-    });
 
     this.writeLine({ type: "prompt", content: systemPrompt, length: systemPrompt.length });
     this.writeLine({ type: "user_message", content: userMessage });

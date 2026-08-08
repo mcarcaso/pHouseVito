@@ -12,10 +12,12 @@ export class SessionManager {
    */
   resolveSession(sessionKey: string): SessionRow {
     const store = xSessionStore(this.x);
-    const existing = store.get(this.x, sessionKey);
+    const existing = store.list(this.x, { ids: [sessionKey], limit: 1 })[0];
     if (existing) {
-      store.touch(this.x, { id: sessionKey, timestamp: Date.now() });
-      return { ...existing, last_active_at: Date.now() };
+      return store.update(this.x, {
+        id: sessionKey,
+        changes: { last_active_at: Date.now() },
+      });
     }
 
     // Extract channel and target from key for DB metadata
@@ -34,17 +36,16 @@ export class SessionManager {
       config: "{}",
       alias: null,
     };
-    store.upsert(this.x, { session });
-    return session;
+    return store.create(this.x, session);
   }
 
   /** Get a session by ID */
   getSession(id: string): SessionRow | undefined {
-    return xSessionStore(this.x).get(this.x, id);
+    return xSessionStore(this.x).list(this.x, { ids: [id], limit: 1 })[0];
   }
 
   /** List all sessions */
   listSessions(): SessionRow[] {
-    return xSessionStore(this.x).list(this.x);
+    return xSessionStore(this.x).list(this.x, {});
   }
 }

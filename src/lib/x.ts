@@ -2,6 +2,7 @@ import type Database from "better-sqlite3";
 import type { Context } from "../context/Context.js";
 import type { AppProcessService } from "../services/apps/AppProcessService.js";
 import type { DashboardAuthService } from "../services/auth/DashboardAuthService.js";
+import type { ProviderService } from "../services/providers/ProviderService.js";
 import type { AppStore } from "../stores/apps/AppStore.js";
 import type { DriveStore } from "../stores/drive/DriveStore.js";
 import type { EmbeddingStore } from "../stores/embeddings/EmbeddingStore.js";
@@ -39,6 +40,8 @@ export const xAppProcessService = (x: Context): AppProcessService =>
   x.get("appProcessService") as AppProcessService;
 export const xDashboardAuthService = (x: Context): DashboardAuthService =>
   x.get("dashboardAuthService") as DashboardAuthService;
+export const xProviderService = (x: Context): ProviderService =>
+  x.get("providerService") as ProviderService;
 export const xCronService = (x: Context): CronService => x.get("cronService") as CronService;
 export const xMemoryService = (x: Context): MemoryService =>
   x.get("memoryService") as MemoryService;

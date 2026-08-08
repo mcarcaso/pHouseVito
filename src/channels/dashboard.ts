@@ -21,6 +21,10 @@ import {
 } from "../routers/drive/drive-router.js";
 import { createMemoryRouter } from "../routers/memory/memory-router.js";
 import { createPiSessionRouter } from "../routers/pi-sessions/pi-session-router.js";
+import {
+  createModelRouter,
+  createProviderAuthRouter,
+} from "../routers/providers/provider-router.js";
 import { createSecretRouter } from "../routers/secrets/secret-router.js";
 import { createSessionRouter } from "../routers/sessions/session-router.js";
 import { createSkillRouter } from "../routers/skills/skill-router.js";
@@ -33,9 +37,6 @@ import { readFileSync, writeFileSync, existsSync, mkdirSync, readdirSync, statSy
 import { execSync } from "child_process";
 import { fileURLToPath } from "url";
 import crypto from "crypto";
-import { getProviders, getModels } from "@earendil-works/pi-ai/compat";
-import { getOAuthProviders } from "@earendil-works/pi-ai/oauth";
-import { AuthStorage } from "@earendil-works/pi-coding-agent";
 import { mountMcp } from "../mcp-server.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -147,185 +148,8 @@ export class DashboardChannel implements Channel {
 
     this.app.use("/api", createConfigRouter(this.x));
 
-    // Model discovery endpoints
-    this.app.get("/api/models/providers", (req, res) => {
-      try {
-        const providers = getProviders();
-        const keyStatus = secretService.getProviderKeyStatus(this.x);
-        const authStatus = secretService.getProviderAuthStatus(this.x);
-        // Include OAuth provider metadata so the frontend knows which providers support subscription login
-        const oauthProviders = getOAuthProviders().map(p => ({ id: p.id, name: p.name }));
-        res.json({
-          providers,
-          keyStatus,
-          authStatus,
-          keyInfo: secretService.getProviderApiKeyInfo(this.x),
-          oauthProviders,
-        });
-      } catch (err: any) {
-        res.status(500).json({ error: err.message });
-      }
-    });
-
-    this.app.get("/api/models/:provider", (req, res) => {
-      try {
-        const models = getModels(req.params.provider as any);
-        res.json(models.map((m: any) => ({ id: m.id })));
-      } catch (err: any) {
-        res.status(400).json({ error: `Unknown provider: ${req.params.provider}` });
-      }
-    });
-
-    // OAuth login/logout endpoints for subscription-based providers
-    // Tracks in-progress login flows so the frontend can poll for completion
-    const pendingLogins = new Map<string, {
-      status: "pending" | "prompt" | "success" | "error";
-      error?: string;
-      promptMessage?: string;
-      resolvePrompt?: (value: string) => void;
-    }>();
-
-    this.app.post("/api/auth/provider/:id/login", (req, res) => {
-      const providerId = req.params.id;
-
-      // Check if already logged in
-      const piAuth = secretService.getPiAuth(this.x);
-      if (piAuth[providerId]?.type === "oauth" && piAuth[providerId]?.access) {
-        res.json({ status: "already_authenticated" });
-        return;
-      }
-
-      // Check if a login is already in progress
-      const existingLogin = pendingLogins.get(providerId);
-      if (existingLogin?.status === "pending" || existingLogin?.status === "prompt") {
-        res.status(409).json({ error: "Login already in progress" });
-        return;
-      }
-
-      pendingLogins.set(providerId, { status: "pending" });
-
-      const authStorage = AuthStorage.create();
-      let responseSent = false;
-
-      // Start login flow - returns immediately with the URL/device code.
-      // Keep this as a variable instead of an inline object so newer pi-ai
-      // callback fields can exist without breaking older installed types.
-      const loginCallbacks = {
-        onAuth: (info: { url: string; instructions?: string }) => {
-          if (responseSent) return;
-          responseSent = true;
-          // Send URL back to frontend immediately
-          res.json({ status: "login_started", url: info.url, instructions: info.instructions });
-        },
-        onDeviceCode: (info: {
-          userCode: string;
-          verificationUri: string;
-          intervalSeconds?: number;
-          expiresInSeconds?: number;
-        }) => {
-          if (responseSent) return;
-          responseSent = true;
-          res.json({
-            status: "device_code_started",
-            userCode: info.userCode,
-            verificationUri: info.verificationUri,
-            intervalSeconds: info.intervalSeconds,
-            expiresInSeconds: info.expiresInSeconds,
-          });
-        },
-        onSelect: async (info: { options: Array<{ id: string; label: string }> }) => {
-          // The dashboard runs on a remote server, so browser OAuth redirecting
-          // to localhost would target the user's laptop, not the EC2 instance.
-          // Prefer device-code auth when providers offer it.
-          const deviceOption = info.options.find((option) => /device|code/i.test(`${option.id} ${option.label}`));
-          return deviceOption?.id ?? info.options[0]?.id;
-        },
-        onPrompt: async (info: { message: string }) => {
-          return new Promise<string>((resolve) => {
-            pendingLogins.set(providerId, {
-              status: "prompt",
-              promptMessage: info.message,
-              resolvePrompt: resolve,
-            });
-          });
-        },
-        onManualCodeInput: async () => {
-          return new Promise<string>((resolve) => {
-            pendingLogins.set(providerId, {
-              status: "prompt",
-              promptMessage: "After the browser redirects to localhost, copy the full redirected URL and paste it here:",
-              resolvePrompt: resolve,
-            });
-          });
-        },
-        onProgress: (message: string) => {
-          console.log(`[oauth/${providerId}] ${message}`);
-        },
-      };
-
-      authStorage.login(providerId, loginCallbacks).then(() => {
-        pendingLogins.set(providerId, { status: "success" });
-        console.log(`[oauth/${providerId}] Login successful`);
-      }).catch((err) => {
-        const message = err instanceof Error ? err.message : String(err);
-        pendingLogins.set(providerId, { status: "error", error: message });
-        console.error(`[oauth/${providerId}] Login failed:`, message);
-        // If we haven't sent a response yet, send error
-        if (!responseSent) {
-          responseSent = true;
-          res.status(500).json({ error: message });
-        }
-      });
-    });
-
-    this.app.get("/api/auth/provider/:id/login/status", (_req, res) => {
-      const providerId = _req.params.id;
-      const pending = pendingLogins.get(providerId);
-      if (!pending) {
-        // Check if already authenticated
-        const piAuth = secretService.getPiAuth(this.x);
-        if (piAuth[providerId]?.type === "oauth" && piAuth[providerId]?.access) {
-          res.json({ status: "success" });
-        } else {
-          res.json({ status: "none" });
-        }
-        return;
-      }
-      const { resolvePrompt, ...safePending } = pending;
-      res.json(safePending);
-      // Clean up completed statuses after they've been read
-      if (pending.status !== "pending" && pending.status !== "prompt") {
-        pendingLogins.delete(providerId);
-      }
-    });
-
-    this.app.post("/api/auth/provider/:id/login/prompt", express.json(), (req, res) => {
-      const providerId = req.params.id;
-      const pending = pendingLogins.get(providerId);
-      if (!pending || pending.status !== "prompt" || !pending.resolvePrompt) {
-        res.status(409).json({ error: "No login prompt is waiting for this provider" });
-        return;
-      }
-      const value = typeof req.body?.value === "string" ? req.body.value.trim() : "";
-      if (!value) {
-        res.status(400).json({ error: "Missing prompt value" });
-        return;
-      }
-      pending.resolvePrompt(value);
-      pendingLogins.set(providerId, { status: "pending" });
-      res.json({ status: "submitted" });
-    });
-
-    this.app.post("/api/auth/provider/:id/logout", (_req, res) => {
-      const providerId = _req.params.id;
-      try {
-        const authStorage = AuthStorage.create();
-        authStorage.logout(providerId);
-        res.json({ status: "logged_out" });
-      } catch (err: any) {
-        res.status(500).json({ error: err.message });
-      }
-    });
+    this.app.use("/api/models", createModelRouter(this.x));
+    this.app.use("/api/auth/provider", createProviderAuthRouter(this.x));
 
     this.app.use("/api/sessions", createSessionRouter(this.x));
 

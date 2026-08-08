@@ -4,6 +4,7 @@ import { join, resolve } from "node:path";
 import { Pm2AppProcessService } from "../services/apps/Pm2AppProcessService.js";
 import { InMemoryDashboardAuthService } from "../services/auth/InMemoryDashboardAuthService.js";
 import { DefaultMemoryService } from "../services/memory/DefaultMemoryService.js";
+import { DefaultProviderService } from "../services/providers/DefaultProviderService.js";
 import { FileSecretService } from "../services/secrets/FileSecretService.js";
 import { FileVitoService } from "../services/vito/FileVitoService.js";
 import { FileAppStore } from "../stores/apps/FileAppStore.js";
@@ -47,6 +48,7 @@ export function RootContext(args: RootContextArgs): Context {
     vitoService: () => new FileVitoService(),
     appProcessService: () => new Pm2AppProcessService(),
     dashboardAuthService: () => new InMemoryDashboardAuthService(),
+    providerService: () => new DefaultProviderService(),
     appStore: () => new FileAppStore(),
     driveStore: () => new FileDriveStore(),
     embeddingDb: () => createEmbeddingDatabase(join(args.userDir, "embeddings.db")),

@@ -4,6 +4,7 @@ import { join, resolve } from "node:path";
 import { DefaultMemoryService } from "../services/memory/DefaultMemoryService.js";
 import { FileSecretService } from "../services/secrets/FileSecretService.js";
 import { FileVitoService } from "../services/vito/FileVitoService.js";
+import { FileDriveStore } from "../stores/drive/FileDriveStore.js";
 import { createEmbeddingDatabase } from "../stores/embeddings/embedding-database.js";
 import { SqliteEmbeddingStore } from "../stores/embeddings/SqliteEmbeddingStore.js";
 import { SqliteMessageStore } from "../stores/messages/SqliteMessageStore.js";
@@ -24,6 +25,7 @@ export interface RootContextArgs {
   secretsPath?: string;
   piAuthPath?: string;
   piSessionsDir?: string;
+  driveDir?: string;
 }
 
 export function RootContext(args: RootContextArgs): Context {
@@ -36,7 +38,9 @@ export function RootContext(args: RootContextArgs): Context {
     secretsPath: () => args.secretsPath ?? join(args.userDir, "secrets.json"),
     piAuthPath: () => args.piAuthPath ?? resolve(homedir(), ".pi", "agent", "auth.json"),
     piSessionsDir: () => args.piSessionsDir ?? join(args.userDir, "pi-sessions"),
+    driveDir: () => args.driveDir ?? join(args.userDir, "drive"),
     vitoService: () => new FileVitoService(),
+    driveStore: () => new FileDriveStore(),
     embeddingDb: () => createEmbeddingDatabase(join(args.userDir, "embeddings.db")),
     embeddingStore: () => new SqliteEmbeddingStore(),
     memoryService: () => new DefaultMemoryService(),

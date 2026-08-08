@@ -1,5 +1,6 @@
 import type Database from "better-sqlite3";
 import type { Context } from "../context/Context.js";
+import type { DriveStore } from "../stores/drive/DriveStore.js";
 import type { EmbeddingStore } from "../stores/embeddings/EmbeddingStore.js";
 import type { CronService } from "../services/cron/CronService.js";
 import type { MemoryService } from "../services/memory/MemoryService.js";
@@ -18,6 +19,7 @@ export const xEmbeddingDb = (x: Context): Database.Database =>
   x.get("embeddingDb") as Database.Database;
 export const xEmbeddingStore = (x: Context): EmbeddingStore =>
   x.get("embeddingStore") as EmbeddingStore;
+export const xDriveStore = (x: Context): DriveStore => x.get("driveStore") as DriveStore;
 export const xUserDir = (x: Context): string => x.get("userDir") as string;
 export const xSkillsDir = (x: Context): string => x.get("skillsDir") as string;
 export const xBuiltinSkillsDir = (x: Context): string =>
@@ -26,6 +28,7 @@ export const xLogsDir = (x: Context): string => x.get("logsDir") as string;
 export const xSecretsPath = (x: Context): string => x.get("secretsPath") as string;
 export const xPiAuthPath = (x: Context): string => x.get("piAuthPath") as string;
 export const xPiSessionsDir = (x: Context): string => x.get("piSessionsDir") as string;
+export const xDriveDir = (x: Context): string => x.get("driveDir") as string;
 export const xVitoService = (x: Context): VitoService => x.get("vitoService") as VitoService;
 export const xCronService = (x: Context): CronService => x.get("cronService") as CronService;
 export const xMemoryService = (x: Context): MemoryService =>

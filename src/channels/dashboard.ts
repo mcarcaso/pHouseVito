@@ -7,6 +7,11 @@ import type { Context } from "../context/Context.js";
 import { xSecretService, xSessionStore, xVitoService } from "../lib/x.js";
 import { createConfigRouter } from "../routers/config/config-router.js";
 import { createCronRouter } from "../routers/cron/cron-router.js";
+import {
+  createDriveRouter,
+  createPublicDriveRouter,
+  isPublicDriveFile,
+} from "../routers/drive/drive-router.js";
 import { createMemoryRouter } from "../routers/memory/memory-router.js";
 import { createPiSessionRouter } from "../routers/pi-sessions/pi-session-router.js";
 import { createSecretRouter } from "../routers/secrets/secret-router.js";
@@ -28,35 +33,6 @@ import { mountMcp } from "../mcp-server.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const ATTACHMENTS_DIR = path.join(process.cwd(), "data", "attachments");
-const DRIVE_DIR = path.join(process.cwd(), "user", "drive");
-
-/** Check if a path inside DRIVE_DIR is public by walking up the directory tree.
- *  Nearest .meta.json wins. Per-file overrides in "files" map take priority.
- *  No .meta.json anywhere = private. */
-function isDrivePathPublic(absPath: string): boolean {
-  const isFile = existsSync(absPath) && !statSync(absPath).isDirectory();
-  const fileName = isFile ? path.basename(absPath) : null;
-  let dir = isFile ? path.dirname(absPath) : absPath;
-  let checkedFileOverride = false;
-
-  while (dir.startsWith(DRIVE_DIR)) {
-    const metaPath = path.join(dir, ".meta.json");
-    if (existsSync(metaPath)) {
-      try {
-        const meta = JSON.parse(readFileSync(metaPath, "utf-8"));
-        // Check per-file override (only in the file's own directory)
-        if (fileName && !checkedFileOverride && meta.files?.[fileName]) {
-          return Boolean(meta.files[fileName].isPublic);
-        }
-        return Boolean(meta.isPublic);
-      } catch { return false; }
-    }
-    checkedFileOverride = true; // only check file overrides in immediate dir
-    if (dir === DRIVE_DIR) break;
-    dir = path.dirname(dir);
-  }
-  return false;
-}
 
 // ── Auth helpers ──
 
@@ -244,39 +220,8 @@ export class DashboardChannel implements Channel {
     // Ensure attachments dir exists (served behind auth below)
     if (!existsSync(ATTACHMENTS_DIR)) mkdirSync(ATTACHMENTS_DIR, { recursive: true });
 
-    // ── Public Drive route (before auth) ──
-    // Serves any file under user/drive/ if its nearest .meta.json has isPublic:true
-    this.app.get("/d/*filepath", (req, res) => {
-      let reqPath = req.params.filepath.join("/");
-
-      const resolved = path.resolve(DRIVE_DIR, reqPath);
-      // Path traversal protection
-      if (!resolved.startsWith(DRIVE_DIR + path.sep) && resolved !== DRIVE_DIR) {
-        res.status(404).send("Not found");
-        return;
-      }
-
-      // If directory, try index.html
-      if (existsSync(resolved) && statSync(resolved).isDirectory()) {
-        const indexPath = path.join(resolved, "index.html");
-        if (existsSync(indexPath)) {
-          if (!isDrivePathPublic(indexPath)) { res.status(404).send("Not found"); return; }
-          res.sendFile(indexPath);
-          return;
-        }
-        res.status(404).send("Not found");
-        return;
-      }
-
-      if (!existsSync(resolved)) { res.status(404).send("Not found"); return; }
-      if (!isDrivePathPublic(resolved)) { res.status(404).send("Not found"); return; }
-
-      // Public drive files are commonly consumed by apps on subdomains.
-      res.setHeader("Access-Control-Allow-Origin", "*");
-      res.setHeader("Access-Control-Allow-Methods", "GET, OPTIONS");
-      res.setHeader("Access-Control-Allow-Headers", "Content-Type");
-      res.sendFile(resolved);
-    });
+    // Public drive files and hosted sites are resolved through DriveStore.
+    this.app.use("/d", createPublicDriveRouter(this.x));
 
     // ── Auth routes (before middleware) ──
 
@@ -360,18 +305,13 @@ export class DashboardChannel implements Channel {
         return;
       }
 
-      // Public Drive files must bypass auth before the protected file route runs.
-      // The route itself still resolves/sends the file safely under DRIVE_DIR.
+      // Public Drive files may bypass dashboard authentication.
       if (req.path.startsWith("/drive/file/")) {
-        const relPath = req.path.slice("/drive/file/".length);
-        const resolved = path.resolve(DRIVE_DIR, relPath);
-        if (
-          resolved.startsWith(DRIVE_DIR + path.sep) &&
-          existsSync(resolved) &&
-          !statSync(resolved).isDirectory() &&
-          isDrivePathPublic(resolved)
-        ) {
-          return next();
+        const encodedPath = req.path.slice("/drive/file/".length);
+        try {
+          if (isPublicDriveFile(this.x, decodeURIComponent(encodedPath))) return next();
+        } catch {
+          // Invalid URL encoding is handled as an unauthenticated request.
         }
       }
 
@@ -1215,261 +1155,7 @@ export class DashboardChannel implements Channel {
       }
     });
 
-    // ── Drive (file & site hosting) ──
-    // Directory-based file browser. .meta.json at any dir level controls visibility (cascades down).
-
-    // List contents of a directory
-    this.app.get("/api/drive/ls", (req, res) => {
-      try {
-        const reqPath = (req.query.path as string) || "";
-        const dir = path.resolve(DRIVE_DIR, reqPath);
-        if (!dir.startsWith(DRIVE_DIR)) { res.status(403).json({ error: "Access denied" }); return; }
-        if (!existsSync(dir) || !statSync(dir).isDirectory()) {
-          // Auto-create the root
-          if (dir === DRIVE_DIR) { mkdirSync(dir, { recursive: true }); }
-          else { res.status(404).json({ error: "Directory not found" }); return; }
-        }
-
-        // Read .meta.json for this dir if it exists
-        const metaPath = path.join(dir, ".meta.json");
-        let meta: any = null;
-        if (existsSync(metaPath)) {
-          try { meta = JSON.parse(readFileSync(metaPath, "utf-8")); } catch {}
-        }
-
-        const entries = readdirSync(dir, { withFileTypes: true });
-        const dirs: { name: string; hasMeta: boolean; meta: any }[] = [];
-        const files: { name: string; size: number; isPublic: boolean; createdAt: string }[] = [];
-
-        for (const entry of entries) {
-          if (entry.name === ".meta.json") continue;
-          if (entry.isDirectory()) {
-            const childMetaPath = path.join(dir, entry.name, ".meta.json");
-            let childMeta: any = null;
-            if (existsSync(childMetaPath)) {
-              try { childMeta = JSON.parse(readFileSync(childMetaPath, "utf-8")); } catch {}
-            }
-            dirs.push({ name: entry.name, hasMeta: Boolean(childMeta), meta: childMeta });
-          } else {
-            const filePath = path.join(dir, entry.name);
-            const fileStat = statSync(filePath);
-            const filePublic = isDrivePathPublic(filePath);
-            files.push({ name: entry.name, size: fileStat.size, isPublic: filePublic, createdAt: fileStat.birthtime.toISOString() });
-          }
-        }
-
-        dirs.sort((a, b) => a.name.localeCompare(b.name));
-        files.sort((a, b) => a.name.localeCompare(b.name));
-
-        const isPublic = isDrivePathPublic(dir);
-
-        res.json({ path: reqPath, meta, isPublic, dirs, files });
-      } catch (e: any) {
-        res.status(500).json({ error: e.message });
-      }
-    });
-
-    // Upload a file into a directory
-    this.app.post("/api/drive/upload", (req, res) => {
-      try {
-        const { data, filename, folder } = req.body;
-        if (!data || !filename) {
-          res.status(400).json({ error: "data and filename are required" });
-          return;
-        }
-
-        const match = data.match(/^data:([^;]+);base64,(.+)$/);
-        if (!match) { res.status(400).json({ error: "Invalid data URL format" }); return; }
-        const buffer = Buffer.from(match[2], "base64");
-
-        const targetDir = folder ? path.resolve(DRIVE_DIR, folder) : DRIVE_DIR;
-        if (!targetDir.startsWith(DRIVE_DIR)) { res.status(403).json({ error: "Access denied" }); return; }
-        mkdirSync(targetDir, { recursive: true });
-
-        const filePath = path.join(targetDir, filename);
-        writeFileSync(filePath, buffer);
-        res.json({ success: true, path: folder ? `${folder}/${filename}` : filename });
-      } catch (e: any) {
-        res.status(500).json({ error: e.message });
-      }
-    });
-
-    // Upload a zip site into a directory
-    this.app.post("/api/drive/upload-site", (req, res) => {
-      try {
-        const { data, folder } = req.body;
-        if (!data || !folder) {
-          res.status(400).json({ error: "data and folder are required" });
-          return;
-        }
-
-        const match = data.match(/^data:([^;]+);base64,(.+)$/);
-        if (!match) { res.status(400).json({ error: "Invalid data URL format" }); return; }
-        const buffer = Buffer.from(match[2], "base64");
-
-        const targetDir = path.resolve(DRIVE_DIR, folder);
-        if (!targetDir.startsWith(DRIVE_DIR)) { res.status(403).json({ error: "Access denied" }); return; }
-        mkdirSync(targetDir, { recursive: true });
-
-        const zipPath = path.join(targetDir, "__upload.zip");
-        writeFileSync(zipPath, buffer);
-
-        try {
-          execSync(`unzip -o "${zipPath}" -d "${targetDir}"`, { timeout: 30000 });
-        } catch {
-          execSync(`rm -rf "${targetDir}"`);
-          res.status(400).json({ error: "Failed to extract zip file" });
-          return;
-        }
-        unlinkSync(zipPath);
-
-        // Handle single-root-dir zips
-        const extracted = readdirSync(targetDir).filter(f => f !== ".meta.json");
-        if (extracted.length === 1) {
-          const singleEntry = path.join(targetDir, extracted[0]);
-          if (statSync(singleEntry).isDirectory()) {
-            for (const f of readdirSync(singleEntry)) {
-              execSync(`mv "${path.join(singleEntry, f)}" "${targetDir}/"`);
-            }
-            execSync(`rmdir "${singleEntry}"`);
-          }
-        }
-
-        if (!existsSync(path.join(targetDir, "index.html"))) {
-          execSync(`rm -rf "${targetDir}"`);
-          res.status(400).json({ error: "Site zip must contain an index.html" });
-          return;
-        }
-
-        res.json({ success: true, path: folder });
-      } catch (e: any) {
-        res.status(500).json({ error: e.message });
-      }
-    });
-
-    // Create or update .meta.json for a directory
-    this.app.put("/api/drive/meta", (req, res) => {
-      try {
-        const reqPath = (req.query.path as string) || "";
-        const dir = path.resolve(DRIVE_DIR, reqPath);
-        if (!dir.startsWith(DRIVE_DIR)) { res.status(403).json({ error: "Access denied" }); return; }
-        if (!existsSync(dir)) {
-          mkdirSync(dir, { recursive: true });
-        }
-
-        const metaPath = path.join(dir, ".meta.json");
-        let meta: any = {};
-        if (existsSync(metaPath)) {
-          try { meta = JSON.parse(readFileSync(metaPath, "utf-8")); } catch {}
-        }
-
-        const { isPublic, name, description } = req.body;
-        if (isPublic !== undefined) meta.isPublic = Boolean(isPublic);
-        if (name !== undefined) meta.name = name;
-        if (description !== undefined) meta.description = description;
-
-        writeFileSync(metaPath, JSON.stringify(meta, null, 2));
-        res.json(meta);
-      } catch (e: any) {
-        res.status(500).json({ error: e.message });
-      }
-    });
-
-    // Toggle per-file public override
-    this.app.put("/api/drive/file-meta", (req, res) => {
-      try {
-        const reqPath = (req.query.path as string) || "";
-        const filePath = path.resolve(DRIVE_DIR, reqPath);
-        if (!filePath.startsWith(DRIVE_DIR + path.sep)) { res.status(403).json({ error: "Access denied" }); return; }
-        if (!existsSync(filePath) || statSync(filePath).isDirectory()) {
-          res.status(404).json({ error: "File not found" });
-          return;
-        }
-
-        const dir = path.dirname(filePath);
-        const fileName = path.basename(filePath);
-        const metaPath = path.join(dir, ".meta.json");
-
-        let meta: any = {};
-        if (existsSync(metaPath)) {
-          try { meta = JSON.parse(readFileSync(metaPath, "utf-8")); } catch {}
-        }
-
-        if (!meta.files) meta.files = {};
-        const { isPublic } = req.body;
-
-        if (isPublic === undefined || isPublic === null) {
-          // Remove override — fall back to dir-level
-          delete meta.files[fileName];
-          if (Object.keys(meta.files).length === 0) delete meta.files;
-        } else {
-          meta.files[fileName] = { isPublic: Boolean(isPublic) };
-        }
-
-        writeFileSync(metaPath, JSON.stringify(meta, null, 2));
-        res.json({ file: fileName, isPublic: isDrivePathPublic(filePath) });
-      } catch (e: any) {
-        res.status(500).json({ error: e.message });
-      }
-    });
-
-    // Delete a file or directory
-    this.app.delete("/api/drive", (req, res) => {
-      try {
-        const reqPath = req.query.path as string;
-        if (!reqPath) { res.status(400).json({ error: "path is required" }); return; }
-        const target = path.resolve(DRIVE_DIR, reqPath);
-        if (!target.startsWith(DRIVE_DIR + path.sep)) { res.status(403).json({ error: "Access denied" }); return; }
-        if (!existsSync(target)) { res.status(404).json({ error: "Not found" }); return; }
-
-        if (statSync(target).isDirectory()) {
-          execSync(`rm -rf "${target}"`);
-        } else {
-          unlinkSync(target);
-        }
-        res.json({ success: true });
-      } catch (e: any) {
-        res.status(500).json({ error: e.message });
-      }
-    });
-
-    // Serve a file from drive — public files get CORS headers for cross-origin access
-    this.app.get("/api/drive/file/*filepath", (req, res) => {
-      try {
-        const filePath = req.params.filepath.join("/");
-        const resolved = path.resolve(DRIVE_DIR, filePath);
-        if (!resolved.startsWith(DRIVE_DIR + path.sep)) { res.status(403).json({ error: "Access denied" }); return; }
-        if (!existsSync(resolved) || statSync(resolved).isDirectory()) {
-          // Don't let Cloudflare cache 404s — file might exist soon
-          res.setHeader("Cache-Control", "no-store");
-          res.status(404).json({ error: "File not found" });
-          return;
-        }
-        // Add CORS headers for public files so apps on subdomains can fetch them
-        if (isDrivePathPublic(resolved)) {
-          res.setHeader("Access-Control-Allow-Origin", "*");
-          res.setHeader("Access-Control-Allow-Methods", "GET, OPTIONS");
-          res.setHeader("Access-Control-Allow-Headers", "Content-Type");
-        }
-        res.sendFile(resolved);
-      } catch (e: any) {
-        res.status(500).json({ error: e.message });
-      }
-    });
-
-    // CORS preflight for drive files
-    (this.app as any).options("/api/drive/file/*filepath", (req: any, res: any) => {
-      const filePath = req.params.filepath.join("/");
-      const resolved = path.resolve(DRIVE_DIR, filePath);
-      if (resolved.startsWith(DRIVE_DIR + path.sep) && existsSync(resolved) && isDrivePathPublic(resolved)) {
-        res.setHeader("Access-Control-Allow-Origin", "*");
-        res.setHeader("Access-Control-Allow-Methods", "GET, OPTIONS");
-        res.setHeader("Access-Control-Allow-Headers", "Content-Type");
-        res.status(204).end();
-      } else {
-        res.status(403).end();
-      }
-    });
+    this.app.use("/api/drive", createDriveRouter(this.x));
 
     this.app.use("/api/logs", createTraceRouter(this.x));
 

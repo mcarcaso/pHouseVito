@@ -1,9 +1,11 @@
 import type Database from "better-sqlite3";
 import { homedir } from "node:os";
 import { join, resolve } from "node:path";
+import { Pm2AppProcessService } from "../services/apps/Pm2AppProcessService.js";
 import { DefaultMemoryService } from "../services/memory/DefaultMemoryService.js";
 import { FileSecretService } from "../services/secrets/FileSecretService.js";
 import { FileVitoService } from "../services/vito/FileVitoService.js";
+import { FileAppStore } from "../stores/apps/FileAppStore.js";
 import { FileDriveStore } from "../stores/drive/FileDriveStore.js";
 import { createEmbeddingDatabase } from "../stores/embeddings/embedding-database.js";
 import { SqliteEmbeddingStore } from "../stores/embeddings/SqliteEmbeddingStore.js";
@@ -26,6 +28,7 @@ export interface RootContextArgs {
   piAuthPath?: string;
   piSessionsDir?: string;
   driveDir?: string;
+  appsDir?: string;
 }
 
 export function RootContext(args: RootContextArgs): Context {
@@ -39,7 +42,10 @@ export function RootContext(args: RootContextArgs): Context {
     piAuthPath: () => args.piAuthPath ?? resolve(homedir(), ".pi", "agent", "auth.json"),
     piSessionsDir: () => args.piSessionsDir ?? join(args.userDir, "pi-sessions"),
     driveDir: () => args.driveDir ?? join(args.userDir, "drive"),
+    appsDir: () => args.appsDir ?? join(args.userDir, "apps"),
     vitoService: () => new FileVitoService(),
+    appProcessService: () => new Pm2AppProcessService(),
+    appStore: () => new FileAppStore(),
     driveStore: () => new FileDriveStore(),
     embeddingDb: () => createEmbeddingDatabase(join(args.userDir, "embeddings.db")),
     embeddingStore: () => new SqliteEmbeddingStore(),

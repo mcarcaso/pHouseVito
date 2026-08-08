@@ -7,6 +7,11 @@ import type { Context } from "../context/Context.js";
 import { xSecretService, xSessionStore, xVitoService } from "../lib/x.js";
 import { createAppProxyMiddleware } from "../routers/apps/app-proxy.js";
 import { createAppRouter } from "../routers/apps/app-router.js";
+import {
+  createAttachmentAuthMiddleware,
+  createDashboardApiAuthMiddleware,
+} from "../routers/auth/dashboard-auth-middleware.js";
+import { createDashboardAuthRouter } from "../routers/auth/dashboard-auth-router.js";
 import { createConfigRouter } from "../routers/config/config-router.js";
 import { createCronRouter } from "../routers/cron/cron-router.js";
 import {
@@ -35,58 +40,6 @@ import { mountMcp } from "../mcp-server.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const ATTACHMENTS_DIR = path.join(process.cwd(), "data", "attachments");
-
-// ── Auth helpers ──
-
-const SESSION_TTL = 7 * 24 * 60 * 60 * 1000; // 7 days
-const sessions = new Map<string, { expires: number }>();
-
-// Simple login rate limiter: max 5 failed attempts per IP per 15 minutes
-const LOGIN_WINDOW_MS = 15 * 60 * 1000;
-const LOGIN_MAX_ATTEMPTS = 5;
-const loginAttempts = new Map<string, { count: number; resetAt: number }>();
-
-function checkLoginRateLimit(ip: string): boolean {
-  const now = Date.now();
-  const entry = loginAttempts.get(ip);
-  if (!entry || now > entry.resetAt) {
-    loginAttempts.set(ip, { count: 1, resetAt: now + LOGIN_WINDOW_MS });
-    return true;
-  }
-  if (entry.count >= LOGIN_MAX_ATTEMPTS) return false;
-  entry.count++;
-  return true;
-}
-
-function resetLoginAttempts(ip: string): void {
-  loginAttempts.delete(ip);
-}
-
-function buildSessionCookie(sessionId: string, maxAge: number, req: any): string {
-  const host = (req.headers?.host || "").split(":")[0];
-  const isLocal = host === "localhost" || host === "127.0.0.1";
-  const secure = isLocal ? "" : " Secure;";
-  return `session=${sessionId}; HttpOnly; Path=/; SameSite=Lax;${secure} Max-Age=${maxAge}`;
-}
-
-function hashPassword(password: string): string {
-  const salt = crypto.randomBytes(16).toString("hex");
-  const hash = crypto.scryptSync(password, salt, 64).toString("hex");
-  return `${salt}:${hash}`;
-}
-
-function verifyPassword(password: string, stored: string): boolean {
-  const [salt, hash] = stored.split(":");
-  if (!salt || !hash) return false;
-  const derived = crypto.scryptSync(password, salt, 64).toString("hex");
-  return crypto.timingSafeEqual(Buffer.from(hash, "hex"), Buffer.from(derived, "hex"));
-}
-
-function parseCookie(cookieHeader: string | undefined, name: string): string {
-  if (!cookieHeader) return "";
-  const match = cookieHeader.match(new RegExp(`(?:^|;\\s*)${name}=([^;]*)`));
-  return match ? decodeURIComponent(match[1]) : "";
-}
 
 export class DashboardChannel implements Channel {
   name = "dashboard";
@@ -179,128 +132,13 @@ export class DashboardChannel implements Channel {
     // Public drive files and hosted sites are resolved through DriveStore.
     this.app.use("/d", createPublicDriveRouter(this.x));
 
-    // ── Auth routes (before middleware) ──
-
-    this.app.get("/api/auth/check", (req, res) => {
-      const passwordSet = Boolean(secretService.get(this.x, "DASHBOARD_PASSWORD_HASH"));
-      if (!passwordSet) {
-        res.json({ authenticated: false, passwordSet: false });
-        return;
-      }
-      const sessionId = parseCookie(req.headers.cookie, "session");
-      const session = sessions.get(sessionId);
-      const authenticated = Boolean(session && session.expires > Date.now());
-      res.json({ authenticated, passwordSet: true });
-    });
-
-    this.app.post("/api/auth/setup", (req, res) => {
-      if (secretService.get(this.x, "DASHBOARD_PASSWORD_HASH")) {
-        res.status(400).json({ error: "Password already set. Use login instead." });
-        return;
-      }
-      // Auto-generate a UUID password
-      const password = crypto.randomUUID();
-      secretService.set(this.x, {
-        key: "DASHBOARD_PASSWORD_HASH",
-        value: hashPassword(password),
-      });
-      // Auto-login after setup
-      const sessionId = crypto.randomUUID();
-      sessions.set(sessionId, { expires: Date.now() + SESSION_TTL });
-      res.setHeader("Set-Cookie", buildSessionCookie(sessionId, SESSION_TTL / 1000, req));
-      res.json({ ok: true, password });
-    });
-
-    this.app.post("/api/auth/login", (req, res) => {
-      const clientIp = req.ip || req.socket.remoteAddress || "unknown";
-      if (!checkLoginRateLimit(clientIp)) {
-        res.status(429).json({ error: "Too many login attempts. Try again in 15 minutes." });
-        return;
-      }
-
-      const hash = secretService.get(this.x, "DASHBOARD_PASSWORD_HASH");
-      if (!hash) {
-        res.status(400).json({ error: "No password set. Use setup first." });
-        return;
-      }
-      const { password } = req.body;
-      if (!password || !verifyPassword(password, hash)) {
-        res.status(401).json({ error: "Invalid password" });
-        return;
-      }
-      resetLoginAttempts(clientIp);
-      const sessionId = crypto.randomUUID();
-      sessions.set(sessionId, { expires: Date.now() + SESSION_TTL });
-      res.setHeader("Set-Cookie", buildSessionCookie(sessionId, SESSION_TTL / 1000, req));
-      res.json({ ok: true });
-    });
-
-    this.app.post("/api/auth/logout", (req, res) => {
-      const sessionId = parseCookie(req.headers.cookie, "session");
-      if (sessionId) sessions.delete(sessionId);
-      res.setHeader("Set-Cookie", buildSessionCookie("", 0, req));
-      res.json({ ok: true });
-    });
-
-    // ── Auth middleware (protects all /api/* routes below) ──
-
-    this.app.use("/api", (req, res, next) => {
-      // Auth endpoints handled above
-      if (req.path.startsWith("/auth")) return next();
-      // Health check is public
-      if (req.path === "/health") return next();
-      // /api/ask has its own Bearer token auth via VITO_ASK_API_KEY
-      if (req.path === "/ask") return next();
-
-      // Do NOT bypass auth for localhost. Behind a reverse proxy (Caddy/Nginx),
-      // external public requests arrive at Express from 127.0.0.1/::1.
-
-      // If no password is set, only auth/setup is public. Do not expose APIs during first-time setup.
-      if (!secretService.get(this.x, "DASHBOARD_PASSWORD_HASH")) {
-        res.status(403).json({ error: "Dashboard password not set. Complete /api/auth/setup first." });
-        return;
-      }
-
-      // Public Drive files may bypass dashboard authentication.
-      if (req.path.startsWith("/drive/file/")) {
-        const encodedPath = req.path.slice("/drive/file/".length);
-        try {
-          if (isPublicDriveFile(this.x, decodeURIComponent(encodedPath))) return next();
-        } catch {
-          // Invalid URL encoding is handled as an unauthenticated request.
-        }
-      }
-
-      // Check session cookie
-      const sessionId = parseCookie(req.headers.cookie, "session");
-      const session = sessions.get(sessionId);
-      if (!session || session.expires < Date.now()) {
-        if (req.path.startsWith("/drive/file/")) {
-          const returnTo = encodeURIComponent(req.originalUrl);
-          res.redirect(302, `/?returnTo=${returnTo}`);
-          return;
-        }
-        res.status(401).json({ error: "Unauthorized" });
-        return;
-      }
-      next();
-    });
-
-    // Serve uploaded attachments (auth-gated)
-    this.app.use("/attachments", (req, res, next) => {
-      // No localhost bypass: reverse-proxied public requests appear local.
-      if (!secretService.get(this.x, "DASHBOARD_PASSWORD_HASH")) {
-        res.status(403).json({ error: "Dashboard password not set. Complete /api/auth/setup first." });
-        return;
-      }
-      const sessionId = parseCookie(req.headers.cookie, "session");
-      const session = sessions.get(sessionId);
-      if (!session || session.expires < Date.now()) {
-        res.status(401).json({ error: "Unauthorized" });
-        return;
-      }
-      next();
-    }, express.static(ATTACHMENTS_DIR));
+    this.app.use("/api/auth", createDashboardAuthRouter(this.x));
+    this.app.use("/api", createDashboardApiAuthMiddleware(this.x));
+    this.app.use(
+      "/attachments",
+      createAttachmentAuthMiddleware(this.x),
+      express.static(ATTACHMENTS_DIR)
+    );
 
     // API endpoints
     this.app.get("/api/health", (req, res) => {

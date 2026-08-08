@@ -2,6 +2,7 @@ import type Database from "better-sqlite3";
 import { homedir } from "node:os";
 import { join, resolve } from "node:path";
 import { Pm2AppProcessService } from "../services/apps/Pm2AppProcessService.js";
+import { InMemoryDashboardAuthService } from "../services/auth/InMemoryDashboardAuthService.js";
 import { DefaultMemoryService } from "../services/memory/DefaultMemoryService.js";
 import { FileSecretService } from "../services/secrets/FileSecretService.js";
 import { FileVitoService } from "../services/vito/FileVitoService.js";
@@ -45,6 +46,7 @@ export function RootContext(args: RootContextArgs): Context {
     appsDir: () => args.appsDir ?? join(args.userDir, "apps"),
     vitoService: () => new FileVitoService(),
     appProcessService: () => new Pm2AppProcessService(),
+    dashboardAuthService: () => new InMemoryDashboardAuthService(),
     appStore: () => new FileAppStore(),
     driveStore: () => new FileDriveStore(),
     embeddingDb: () => createEmbeddingDatabase(join(args.userDir, "embeddings.db")),

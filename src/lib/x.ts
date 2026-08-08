@@ -3,6 +3,7 @@ import type { Context } from "../context/Context.js";
 import type { EmbeddingStore } from "../stores/embeddings/EmbeddingStore.js";
 import type { CronService } from "../services/cron/CronService.js";
 import type { MemoryService } from "../services/memory/MemoryService.js";
+import type { SecretService } from "../services/secrets/SecretService.js";
 import type { VitoService } from "../services/vito/VitoService.js";
 import type { MessageStore } from "../stores/messages/MessageStore.js";
 import type { SessionStore } from "../stores/sessions/SessionStore.js";
@@ -21,10 +22,14 @@ export const xSkillsDir = (x: Context): string => x.get("skillsDir") as string;
 export const xBuiltinSkillsDir = (x: Context): string =>
   x.get("builtinSkillsDir") as string;
 export const xLogsDir = (x: Context): string => x.get("logsDir") as string;
+export const xSecretsPath = (x: Context): string => x.get("secretsPath") as string;
+export const xPiAuthPath = (x: Context): string => x.get("piAuthPath") as string;
 export const xVitoService = (x: Context): VitoService => x.get("vitoService") as VitoService;
 export const xCronService = (x: Context): CronService => x.get("cronService") as CronService;
 export const xMemoryService = (x: Context): MemoryService =>
   x.get("memoryService") as MemoryService;
+export const xSecretService = (x: Context): SecretService =>
+  x.get("secretService") as SecretService;
 export const xSessionStore = (x: Context): SessionStore => x.get("sessionStore") as SessionStore;
 export const xSkillStore = (x: Context): SkillStore => x.get("skillStore") as SkillStore;
 export const xMessageStore = (x: Context): MessageStore => x.get("messageStore") as MessageStore;

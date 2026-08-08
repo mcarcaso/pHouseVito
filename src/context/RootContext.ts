@@ -1,6 +1,8 @@
 import type Database from "better-sqlite3";
+import { homedir } from "node:os";
 import { join, resolve } from "node:path";
 import { DefaultMemoryService } from "../services/memory/DefaultMemoryService.js";
+import { FileSecretService } from "../services/secrets/FileSecretService.js";
 import { FileVitoService } from "../services/vito/FileVitoService.js";
 import { createEmbeddingDatabase } from "../stores/embeddings/embedding-database.js";
 import { SqliteEmbeddingStore } from "../stores/embeddings/SqliteEmbeddingStore.js";
@@ -18,6 +20,8 @@ export interface RootContextArgs {
   skillsDir: string;
   logsDir?: string;
   builtinSkillsDir?: string;
+  secretsPath?: string;
+  piAuthPath?: string;
 }
 
 export function RootContext(args: RootContextArgs): Context {
@@ -27,10 +31,13 @@ export function RootContext(args: RootContextArgs): Context {
     skillsDir: () => args.skillsDir,
     builtinSkillsDir: () => args.builtinSkillsDir ?? resolve(process.cwd(), "src", "skills", "builtin"),
     logsDir: () => args.logsDir ?? resolve(process.cwd(), "logs"),
+    secretsPath: () => args.secretsPath ?? join(args.userDir, "secrets.json"),
+    piAuthPath: () => args.piAuthPath ?? resolve(homedir(), ".pi", "agent", "auth.json"),
     vitoService: () => new FileVitoService(),
     embeddingDb: () => createEmbeddingDatabase(join(args.userDir, "embeddings.db")),
     embeddingStore: () => new SqliteEmbeddingStore(),
     memoryService: () => new DefaultMemoryService(),
+    secretService: () => new FileSecretService(),
     sessionStore: () => new SqliteSessionStore(),
     skillStore: () => new FileSkillStore(),
     messageStore: () => new SqliteMessageStore(),

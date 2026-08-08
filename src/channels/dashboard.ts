@@ -4,10 +4,11 @@ import type {
   OutputHandler,
 } from "../types.js";
 import type { Context } from "../context/Context.js";
-import { xSessionStore, xVitoService } from "../lib/x.js";
+import { xSecretService, xSessionStore, xVitoService } from "../lib/x.js";
 import { createConfigRouter } from "../routers/config/config-router.js";
 import { createCronRouter } from "../routers/cron/cron-router.js";
 import { createMemoryRouter } from "../routers/memory/memory-router.js";
+import { createSecretRouter } from "../routers/secrets/secret-router.js";
 import { createSessionRouter } from "../routers/sessions/session-router.js";
 import { createSkillRouter } from "../routers/skills/skill-router.js";
 import { createTraceRouter } from "../routers/traces/trace-router.js";
@@ -19,7 +20,6 @@ import { readFileSync, writeFileSync, existsSync, mkdirSync, readdirSync, statSy
 import { execSync } from "child_process";
 import { fileURLToPath } from "url";
 import crypto from "crypto";
-import { readSecrets, writeSecrets, loadSecrets, getSecretsForDashboard, SYSTEM_KEYS, PROVIDER_API_KEYS, getProviderKeyStatus, getProviderAuthStatus, readPiAuth } from "../secrets.js";
 import { getProviders, getModels } from "@earendil-works/pi-ai/compat";
 import { getOAuthProviders } from "@earendil-works/pi-ai/oauth";
 import { AuthStorage } from "@earendil-works/pi-coding-agent";
@@ -170,6 +170,7 @@ export class DashboardChannel implements Channel {
   }
 
   private setupExpress() {
+    const secretService = xSecretService(this.x);
     // Subdomain app proxy — routes appname.basedomain requests to the app's PM2 port
     // Must be before express.json() so request body can be piped to the upstream app
     this.app.use((req, res, next) => {
@@ -279,8 +280,7 @@ export class DashboardChannel implements Channel {
     // ── Auth routes (before middleware) ──
 
     this.app.get("/api/auth/check", (req, res) => {
-      const secrets = readSecrets();
-      const passwordSet = Boolean(secrets.DASHBOARD_PASSWORD_HASH);
+      const passwordSet = Boolean(secretService.get(this.x, "DASHBOARD_PASSWORD_HASH"));
       if (!passwordSet) {
         res.json({ authenticated: false, passwordSet: false });
         return;
@@ -292,15 +292,16 @@ export class DashboardChannel implements Channel {
     });
 
     this.app.post("/api/auth/setup", (req, res) => {
-      const secrets = readSecrets();
-      if (secrets.DASHBOARD_PASSWORD_HASH) {
+      if (secretService.get(this.x, "DASHBOARD_PASSWORD_HASH")) {
         res.status(400).json({ error: "Password already set. Use login instead." });
         return;
       }
       // Auto-generate a UUID password
       const password = crypto.randomUUID();
-      secrets.DASHBOARD_PASSWORD_HASH = hashPassword(password);
-      writeSecrets(secrets);
+      secretService.set(this.x, {
+        key: "DASHBOARD_PASSWORD_HASH",
+        value: hashPassword(password),
+      });
       // Auto-login after setup
       const sessionId = crypto.randomUUID();
       sessions.set(sessionId, { expires: Date.now() + SESSION_TTL });
@@ -315,8 +316,7 @@ export class DashboardChannel implements Channel {
         return;
       }
 
-      const secrets = readSecrets();
-      const hash = secrets.DASHBOARD_PASSWORD_HASH;
+      const hash = secretService.get(this.x, "DASHBOARD_PASSWORD_HASH");
       if (!hash) {
         res.status(400).json({ error: "No password set. Use setup first." });
         return;
@@ -354,8 +354,7 @@ export class DashboardChannel implements Channel {
       // external public requests arrive at Express from 127.0.0.1/::1.
 
       // If no password is set, only auth/setup is public. Do not expose APIs during first-time setup.
-      const secrets = readSecrets();
-      if (!secrets.DASHBOARD_PASSWORD_HASH) {
+      if (!secretService.get(this.x, "DASHBOARD_PASSWORD_HASH")) {
         res.status(403).json({ error: "Dashboard password not set. Complete /api/auth/setup first." });
         return;
       }
@@ -393,8 +392,7 @@ export class DashboardChannel implements Channel {
     // Serve uploaded attachments (auth-gated)
     this.app.use("/attachments", (req, res, next) => {
       // No localhost bypass: reverse-proxied public requests appear local.
-      const secrets = readSecrets();
-      if (!secrets.DASHBOARD_PASSWORD_HASH) {
+      if (!secretService.get(this.x, "DASHBOARD_PASSWORD_HASH")) {
         res.status(403).json({ error: "Dashboard password not set. Complete /api/auth/setup first." });
         return;
       }
@@ -418,15 +416,15 @@ export class DashboardChannel implements Channel {
     this.app.get("/api/models/providers", (req, res) => {
       try {
         const providers = getProviders();
-        const keyStatus = getProviderKeyStatus();
-        const authStatus = getProviderAuthStatus();
+        const keyStatus = secretService.getProviderKeyStatus(this.x);
+        const authStatus = secretService.getProviderAuthStatus(this.x);
         // Include OAuth provider metadata so the frontend knows which providers support subscription login
         const oauthProviders = getOAuthProviders().map(p => ({ id: p.id, name: p.name }));
         res.json({
           providers,
           keyStatus,
           authStatus,
-          keyInfo: PROVIDER_API_KEYS,
+          keyInfo: secretService.getProviderApiKeyInfo(this.x),
           oauthProviders,
         });
       } catch (err: any) {
@@ -456,7 +454,7 @@ export class DashboardChannel implements Channel {
       const providerId = req.params.id;
 
       // Check if already logged in
-      const piAuth = readPiAuth();
+      const piAuth = secretService.getPiAuth(this.x);
       if (piAuth[providerId]?.type === "oauth" && piAuth[providerId]?.access) {
         res.json({ status: "already_authenticated" });
         return;
@@ -550,7 +548,7 @@ export class DashboardChannel implements Channel {
       const pending = pendingLogins.get(providerId);
       if (!pending) {
         // Check if already authenticated
-        const piAuth = readPiAuth();
+        const piAuth = secretService.getPiAuth(this.x);
         if (piAuth[providerId]?.type === "oauth" && piAuth[providerId]?.access) {
           res.json({ status: "success" });
         } else {
@@ -740,35 +738,7 @@ export class DashboardChannel implements Channel {
       }
     });
 
-    this.app.get("/api/secrets", (req, res) => {
-      res.json(getSecretsForDashboard());
-    });
-
-    this.app.put("/api/secrets/:key", (req, res) => {
-      const { value } = req.body;
-      if (typeof value !== "string") {
-        res.status(400).json({ error: "value must be a string" });
-        return;
-      }
-      const secrets = readSecrets();
-      secrets[req.params.key] = value;
-      writeSecrets(secrets);
-      loadSecrets();
-      res.json({ key: req.params.key, value });
-    });
-
-    this.app.delete("/api/secrets/:key", (req, res) => {
-      if (req.params.key in SYSTEM_KEYS) {
-        res.status(400).json({ error: "Cannot delete a system key — clear its value instead" });
-        return;
-      }
-      const secrets = readSecrets();
-      delete secrets[req.params.key];
-      writeSecrets(secrets);
-      delete process.env[req.params.key];
-      loadSecrets();
-      res.status(204).end();
-    });
+    this.app.use("/api/secrets", createSecretRouter(this.x));
 
     this.app.get("/api/jobs", (_req, res) => {
       res.json(xVitoService(this.x).getConfiguredJobs(this.x));
@@ -908,8 +878,7 @@ export class DashboardChannel implements Channel {
     // Routes through the full orchestrator pipeline: system prompt, memories, skills, tools.
     this.app.post("/api/ask", async (req, res) => {
       // Authenticate with Bearer token from secrets
-      const secrets = readSecrets();
-      const apiKey = secrets["VITO_ASK_API_KEY"];
+      const apiKey = secretService.get(this.x, "VITO_ASK_API_KEY");
       if (!apiKey) {
         res.status(503).json({ error: "Ask API is disabled — no VITO_ASK_API_KEY configured" });
         return;

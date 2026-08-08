@@ -111,7 +111,7 @@ Separate `user/embeddings.db` holds chunk vectors + FTS5 index used by `semantic
 ### Configuration files
 
 - `user/vito.config.json` — `bot`, `settings` (global), `harnesses["pi-coding-agent"]`, `channels[]`, `sessions{}` (per-key overrides), `cron.jobs[]`. Hot-reloaded with 3s debounce; live pi sessions get their model re-synced on reload.
-- `user/secrets.json` — flat key-value, injected into `process.env` at boot. Provider keys: `ANTHROPIC_API_KEY`, `OPENAI_API_KEY`, `GOOGLE_GENERATIVE_AI_API_KEY`, `GROQ_API_KEY`, `XAI_API_KEY`, `OPENROUTER_API_KEY`. Channel tokens: `TELEGRAM_BOT_TOKEN`, `DISCORD_BOT_TOKEN`. Other: `DASHBOARD_PASSWORD_HASH` (managed by the dashboard, don't hand-edit), `BLAND_WEBHOOK_SECRET`.
+- `user/secrets.json` — flat key-value managed through the context-scoped `SecretService` and injected into `process.env` at boot. Writes are atomic and empty values clear the corresponding environment variable. Provider keys: `ANTHROPIC_API_KEY`, `OPENAI_API_KEY`, `GOOGLE_GENERATIVE_AI_API_KEY`, `GROQ_API_KEY`, `XAI_API_KEY`, `OPENROUTER_API_KEY`. Channel tokens: `TELEGRAM_BOT_TOKEN`, `DISCORD_BOT_TOKEN`. Other: `DASHBOARD_PASSWORD_HASH` (managed by the dashboard, don't hand-edit), `BLAND_WEBHOOK_SECRET`.
 - `SYSTEM.md` (project root, **not** under `user/`) — hot-loaded into every system prompt.
 - `user/SOUL.md` — agent personality, hot-loaded.
 - `user/profile.md` — agent-managed user profile. Read by the agent on first response in a session.

@@ -4,12 +4,11 @@ import { createDatabase } from "./db/schema.js";
 import { ObjectContext } from "./context/ObjectContext.js";
 import { RootContext } from "./context/RootContext.js";
 import { ensureUserDir, USER_DIR } from "./config.js";
-import { xEmbeddingDb, xVitoService } from "./lib/x.js";
+import { xEmbeddingDb, xSecretService, xVitoService } from "./lib/x.js";
 import { OrchestratorV2 as Orchestrator } from "./orchestrator_v2/index.js";
 import { DashboardChannel } from "./channels/dashboard.js";
 import { TelegramChannel } from "./channels/telegram.js";
 import { DiscordChannel } from "./channels/discord.js";
-import { loadSecrets } from "./secrets.js";
 import { CronSchedulerService } from "./services/cron/CronSchedulerService.js";
 import { DEFAULT_TIMEZONE } from "./system-instructions.js";
 
@@ -17,16 +16,14 @@ async function main() {
   // Ensure user/ directory exists (copy from user.example/ on first run)
   ensureUserDir();
 
-  // Load secrets.json as source of truth (inject into process.env)
-  loadSecrets();
-
   console.log("Starting server...\n");
 
-  // Initialize stable dependencies, then resolve mutable Vito state through its service.
+  // Initialize stable dependencies, then load secrets into the process environment.
   const dbPath = resolve(USER_DIR, "vito.db");
   const db = createDatabase(dbPath);
   const skillsDir = resolve(USER_DIR, "skills");
   const x = RootContext({ db, userDir: USER_DIR, skillsDir });
+  xSecretService(x).load(x);
   const vitoService = xVitoService(x);
   const config = vitoService.getConfig(x);
   const soul = vitoService.getSoul(x);

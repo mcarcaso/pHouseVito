@@ -10,21 +10,31 @@
  *   2. user/apps/vito-mcp/.vito-app.json registers vito-mcp.<domain> → MCP_PORT
  *   3. Dashboard's subdomain proxy forwards matching traffic here
  *
- * Required env (auto-loaded by loadSecrets from user/secrets.json):
+ * Required env (loaded by SecretService from user/secrets.json):
  *   MCP_CLIENT_ID, MCP_CLIENT_SECRET
  * Optional env:
  *   MCP_PORT (default 3121)
  */
 
 import express from "express";
+import { homedir } from "node:os";
 import { resolve } from "node:path";
 import { ObjectContext } from "./context/ObjectContext.js";
-import { loadSecrets } from "./secrets.js";
+import { xSecretService } from "./lib/x.js";
 import { loadConfig } from "./config.js";
 import { mountMcp } from "./mcp-server.js";
+import { FileSecretService } from "./services/secrets/FileSecretService.js";
 import { FileSkillStore } from "./stores/skills/FileSkillStore.js";
 
-loadSecrets();
+const x = new ObjectContext({
+  secretsPath: () => resolve(process.cwd(), "user", "secrets.json"),
+  piAuthPath: () => resolve(homedir(), ".pi", "agent", "auth.json"),
+  secretService: () => new FileSecretService(),
+  skillsDir: () => resolve(process.cwd(), "user", "skills"),
+  builtinSkillsDir: () => resolve(process.cwd(), "src", "skills", "builtin"),
+  skillStore: () => new FileSkillStore(),
+});
+xSecretService(x).load(x);
 
 // Match vito-server's timezone handling so log timestamps line up across logs.
 try {
@@ -45,11 +55,6 @@ if (!clientId || !clientSecret) {
 }
 
 const app = express();
-const x = new ObjectContext({
-  skillsDir: () => resolve(process.cwd(), "user", "skills"),
-  builtinSkillsDir: () => resolve(process.cwd(), "src", "skills", "builtin"),
-  skillStore: () => new FileSkillStore(),
-});
 app.use(express.json({ limit: "2mb" }));
 mountMcp(app, {
   x,

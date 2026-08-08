@@ -1,81 +1,56 @@
-/**
- * Shared OpenAI-compatible client & embedding function for the memory pipeline.
- * Prefers native OpenAI for embeddings when available, falling back to OpenRouter.
- * Used by embeddings.ts, search.ts, profile.ts, and dashboard search.
- */
+/** Shared OpenAI-compatible client and embedding function for memory. */
 
 import OpenAI from "openai";
-import { readFileSync } from "fs";
-import { join, resolve } from "path";
 import { EMBEDDING_MODEL } from "./models.js";
-
-const ROOT = resolve(process.cwd());
-
-// ── Provider detection ────────────────────────────────────
 
 interface ProviderConfig {
   apiKey: string;
-  baseURL?: string;        // undefined = native OpenAI default
+  baseURL?: string;
   isOpenRouter: boolean;
 }
 
-let providerConfig: ProviderConfig | null = null;
-
 function getProviderConfig(): ProviderConfig {
-  if (providerConfig) return providerConfig;
-
-  const secrets = JSON.parse(readFileSync(join(ROOT, "user", "secrets.json"), "utf-8"));
-
-  if (secrets.OPENAI_API_KEY) {
-    providerConfig = {
-      apiKey: secrets.OPENAI_API_KEY,
+  if (process.env.OPENAI_API_KEY) {
+    return {
+      apiKey: process.env.OPENAI_API_KEY,
       isOpenRouter: false,
     };
-  } else if (secrets.OPENROUTER_API_KEY) {
-    providerConfig = {
-      apiKey: secrets.OPENROUTER_API_KEY,
+  }
+  if (process.env.OPENROUTER_API_KEY) {
+    return {
+      apiKey: process.env.OPENROUTER_API_KEY,
       baseURL: "https://openrouter.ai/api/v1",
       isOpenRouter: true,
     };
-  } else {
-    throw new Error("No API key found: set OPENROUTER_API_KEY or OPENAI_API_KEY in user/secrets.json");
   }
-
-  return providerConfig;
+  throw new Error(
+    "No API key found: set OPENROUTER_API_KEY or OPENAI_API_KEY in user/secrets.json"
+  );
 }
 
-// ── Shared client ─────────────────────────────────────────
-
 let clientInstance: OpenAI | null = null;
+let clientIdentity = "";
 
 export function getClient(): OpenAI {
-  if (!clientInstance) {
-    const config = getProviderConfig();
+  const config = getProviderConfig();
+  const identity = `${config.baseURL ?? "openai"}:${config.apiKey}`;
+  if (!clientInstance || clientIdentity !== identity) {
     clientInstance = new OpenAI({
       apiKey: config.apiKey,
       ...(config.baseURL ? { baseURL: config.baseURL } : {}),
     });
+    clientIdentity = identity;
   }
   return clientInstance;
 }
 
-/**
- * Resolve model name for the active provider.
- * OpenRouter uses "openai/gpt-4o-mini" format; native OpenAI uses "gpt-4o-mini".
- */
 export function resolveModel(openRouterModel: string): string {
-  const config = getProviderConfig();
-  if (config.isOpenRouter) return openRouterModel;
-  // Strip provider prefix for native OpenAI (e.g. "openai/gpt-4o-mini" → "gpt-4o-mini")
-  return openRouterModel.includes("/") ? openRouterModel.split("/").slice(1).join("/") : openRouterModel;
+  if (getProviderConfig().isOpenRouter) return openRouterModel;
+  return openRouterModel.includes("/")
+    ? openRouterModel.split("/").slice(1).join("/")
+    : openRouterModel;
 }
 
-// ── Embedding helper ──────────────────────────────────────
-
-/**
- * Embed text using the shared embedding model.
- * Works with either OpenRouter or native OpenAI.
- */
 export async function createEmbedding(text: string): Promise<Float32Array> {
   const openai = getClient();
   const response = await openai.embeddings.create({

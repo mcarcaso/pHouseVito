@@ -6,6 +6,7 @@ import type { MemoryService } from "../services/memory/MemoryService.js";
 import type { SecretService } from "../services/secrets/SecretService.js";
 import type { VitoService } from "../services/vito/VitoService.js";
 import type { MessageStore } from "../stores/messages/MessageStore.js";
+import type { PiSessionStore } from "../stores/pi-sessions/PiSessionStore.js";
 import type { SessionStore } from "../stores/sessions/SessionStore.js";
 import type { SkillStore } from "../stores/skills/SkillStore.js";
 import type { TraceEventStore } from "../stores/traces/TraceEventStore.js";
@@ -24,12 +25,15 @@ export const xBuiltinSkillsDir = (x: Context): string =>
 export const xLogsDir = (x: Context): string => x.get("logsDir") as string;
 export const xSecretsPath = (x: Context): string => x.get("secretsPath") as string;
 export const xPiAuthPath = (x: Context): string => x.get("piAuthPath") as string;
+export const xPiSessionsDir = (x: Context): string => x.get("piSessionsDir") as string;
 export const xVitoService = (x: Context): VitoService => x.get("vitoService") as VitoService;
 export const xCronService = (x: Context): CronService => x.get("cronService") as CronService;
 export const xMemoryService = (x: Context): MemoryService =>
   x.get("memoryService") as MemoryService;
 export const xSecretService = (x: Context): SecretService =>
   x.get("secretService") as SecretService;
+export const xPiSessionStore = (x: Context): PiSessionStore =>
+  x.get("piSessionStore") as PiSessionStore;
 export const xSessionStore = (x: Context): SessionStore => x.get("sessionStore") as SessionStore;
 export const xSkillStore = (x: Context): SkillStore => x.get("skillStore") as SkillStore;
 export const xMessageStore = (x: Context): MessageStore => x.get("messageStore") as MessageStore;

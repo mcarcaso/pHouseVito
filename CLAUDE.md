@@ -55,7 +55,7 @@ v2 does **not** auto-search embeddings on every turn and does **not** stuff prio
 
 ### Pi sessions on disk
 
-Each Vito session id (`channel:target`, e.g., `dashboard:default`, `telegram:123:456`) maps to a directory under `user/pi-sessions/<urlencoded-id>/`. Pi writes its own JSONL state there, which is why a process restart can resume the same conversation. `/new` writes a `.fresh` marker (handled even without an in-memory harness, e.g., right after a server restart) so the next create starts clean. `/compact` calls `piSession.compact()` to summarize older turns in place.
+Each Vito session id (`channel:target`, e.g., `dashboard:default`, `telegram:123:456`) maps to a directory under `user/pi-sessions/<urlencoded-id>/`. Pi writes its own JSONL state there, which is why a process restart can resume the same conversation. Dashboard listing, reading, and deletion go through the context-scoped `PiSessionStore`; persisted JSONL lines are runtime-validated before being returned. `/new` writes a `.fresh` marker (handled even without an in-memory harness, e.g., right after a server restart) so the next create starts clean. `/compact` calls `piSession.compact()` to summarize older turns in place.
 
 ### Channels (`src/channels/`)
 

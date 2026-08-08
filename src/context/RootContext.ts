@@ -7,6 +7,7 @@ import { FileVitoService } from "../services/vito/FileVitoService.js";
 import { createEmbeddingDatabase } from "../stores/embeddings/embedding-database.js";
 import { SqliteEmbeddingStore } from "../stores/embeddings/SqliteEmbeddingStore.js";
 import { SqliteMessageStore } from "../stores/messages/SqliteMessageStore.js";
+import { FilePiSessionStore } from "../stores/pi-sessions/FilePiSessionStore.js";
 import { SqliteSessionStore } from "../stores/sessions/SqliteSessionStore.js";
 import { FileSkillStore } from "../stores/skills/FileSkillStore.js";
 import { FileTraceEventStore } from "../stores/traces/FileTraceEventStore.js";
@@ -22,6 +23,7 @@ export interface RootContextArgs {
   builtinSkillsDir?: string;
   secretsPath?: string;
   piAuthPath?: string;
+  piSessionsDir?: string;
 }
 
 export function RootContext(args: RootContextArgs): Context {
@@ -33,11 +35,13 @@ export function RootContext(args: RootContextArgs): Context {
     logsDir: () => args.logsDir ?? resolve(process.cwd(), "logs"),
     secretsPath: () => args.secretsPath ?? join(args.userDir, "secrets.json"),
     piAuthPath: () => args.piAuthPath ?? resolve(homedir(), ".pi", "agent", "auth.json"),
+    piSessionsDir: () => args.piSessionsDir ?? join(args.userDir, "pi-sessions"),
     vitoService: () => new FileVitoService(),
     embeddingDb: () => createEmbeddingDatabase(join(args.userDir, "embeddings.db")),
     embeddingStore: () => new SqliteEmbeddingStore(),
     memoryService: () => new DefaultMemoryService(),
     secretService: () => new FileSecretService(),
+    piSessionStore: () => new FilePiSessionStore(),
     sessionStore: () => new SqliteSessionStore(),
     skillStore: () => new FileSkillStore(),
     messageStore: () => new SqliteMessageStore(),

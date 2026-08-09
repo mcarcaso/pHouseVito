@@ -138,6 +138,9 @@ fi
 BACKUP_ROOT="${BACKUP_ROOTS[0]}"
 [[ -d "$BACKUP_ROOT/runtime" ]] || die "Backup is missing runtime data"
 [[ -f "$BACKUP_ROOT/metadata/manifest.txt" ]] || die "Backup is missing its manifest"
+BACKUP_MODE="$(grep '^backup_mode=' "$BACKUP_ROOT/metadata/manifest.txt" | head -1 | cut -d= -f2- || true)"
+[[ -n "$BACKUP_MODE" ]] || BACKUP_MODE="full"
+[[ "$BACKUP_MODE" == "upgrade" || "$BACKUP_MODE" == "full" ]] || die "Unknown backup mode: $BACKUP_MODE"
 
 printf '\nBackup manifest:\n'
 cat "$BACKUP_ROOT/metadata/manifest.txt"
@@ -171,8 +174,12 @@ fi
 
 TIMESTAMP="$(date -u +'%Y%m%dT%H%M%SZ')"
 PRE_RESTORE_BACKUP_DIR="${VITO_BACKUP_DIR:-$HOME/vito-backups}/pre-restore-$TIMESTAMP"
-log "Creating a complete pre-restore backup"
-"$SCRIPT_DIR/backup-vito.sh" --full --leave-stopped --output "$PRE_RESTORE_BACKUP_DIR"
+PRE_RESTORE_ARGS=(--leave-stopped --output "$PRE_RESTORE_BACKUP_DIR")
+if [[ "$BACKUP_MODE" == "full" ]]; then
+  PRE_RESTORE_ARGS=(--full "${PRE_RESTORE_ARGS[@]}")
+fi
+log "Creating a $BACKUP_MODE pre-restore backup"
+"$SCRIPT_DIR/backup-vito.sh" "${PRE_RESTORE_ARGS[@]}"
 SERVICE_STOPPED=$WAS_RUNNING
 printf 'Pre-restore backup directory:\n  %s\n' "$PRE_RESTORE_BACKUP_DIR"
 
@@ -180,8 +187,6 @@ SAFETY_DIR="$HOME/vito-restore-safety/$TIMESTAMP"
 [[ ! -e "$SAFETY_DIR" ]] || die "Safety directory already exists: $SAFETY_DIR"
 mkdir -p "$SAFETY_DIR/runtime" "$SAFETY_DIR/home/.pi/agent"
 chmod 700 "$HOME/vito-restore-safety" "$SAFETY_DIR"
-BACKUP_MODE="$(grep '^backup_mode=' "$BACKUP_ROOT/metadata/manifest.txt" | head -1 | cut -d= -f2- || true)"
-[[ -n "$BACKUP_MODE" ]] || BACKUP_MODE="full"
 
 if [[ "$BACKUP_MODE" == "upgrade" ]]; then
   log "Moving runtime entries replaced by the upgrade backup to $SAFETY_DIR/runtime"

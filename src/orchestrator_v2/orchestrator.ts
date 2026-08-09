@@ -23,15 +23,10 @@ import { parseInboundEventMetadata } from "../contracts/inbound-event.js";
 import { CronScheduler } from "../cron/scheduler.js";
 import type { Context } from "../context/Context.js";
 import {
-  createHarness,
-  HarnessUnsupportedError,
-  HarnessSessionLostError,
   withPersistence,
   withRelay,
   withTracing,
   withTyping,
-  type Harness,
-  type HarnessName,
 } from "../harnesses/index.js";
 import { withNoReplyCheck } from "../harness/decorators/index.js";
 import { DirectChannelService } from "../services/channels/direct/DirectChannelService.js";
@@ -54,6 +49,10 @@ import type {
   VitoConfig,
 } from "../types.js";
 
+import {
+  PiSessionHarness,
+  type PiSessionHarnessConfig,
+} from "./pi-session-harness.js";
 import { buildSystemPromptV2, buildUserMessageV2 } from "./system-prompt.js";
 
 /**
@@ -87,16 +86,7 @@ export class OrchestratorV2 {
    * reused across turns — that's what enables Anthropic prompt caching to
    * hit on every turn.
    */
-  private harnesses = new Map<string, Harness>();
-
-  /**
-   * Tracks which harness type (e.g., "pi-coding-agent", "claude-code") each
-   * live harness instance is. Used on config reload to detect a harness-type
-   * switch and tear down the old instance so the next turn rebuilds with the
-   * right implementation — without this, `setModel` would blindly stamp a
-   * pi model name onto a still-claude-code harness (or vice versa).
-   */
-  private harnessNames = new Map<string, HarnessName>();
+  private harnesses = new Map<string, PiSessionHarness>();
 
   /**
    * Vito session ids whose harness has produced at least one completed turn.
@@ -288,10 +278,9 @@ export class OrchestratorV2 {
     }
     // Tear down all long-lived harness sessions
     for (const [, harness] of this.harnesses) {
-      try { await harness.dispose?.(); } catch { /* ignore */ }
+      try { await harness.dispose(); } catch { /* ignore */ }
     }
     this.harnesses.clear();
-    this.harnessNames.clear();
     this.firstTurnDone.clear();
   }
 
@@ -439,7 +428,7 @@ export class OrchestratorV2 {
 
       // Get or create the long-lived harness for this Vito session.
       const innerHarness = await this.getOrCreateHarness(vitoSession.id, event, effectiveSettings, channel);
-      const actualModelString = innerHarness.getModel?.() ?? this.getModelString(effectiveSettings);
+      const actualModelString = innerHarness.getModel();
 
       // Per-turn decorator chain wraps the long-lived inner harness.
       const tracedHarness = withTracing(innerHarness, {
@@ -486,7 +475,7 @@ export class OrchestratorV2 {
       // the next run() will start fresh; if it has resumable state we skip
       // seeding to avoid duplicating context the harness already has.
       const willCreateBrandNewSession = !this.firstTurnDone.has(vitoSession.id)
-        && (innerHarness.isFresh?.() ?? false);
+        && innerHarness.isFresh();
       if (willCreateBrandNewSession) {
         const historyBlock = this.buildHistoryBlock(vitoSession.id, 10);
         if (historyBlock) {
@@ -501,7 +490,6 @@ export class OrchestratorV2 {
         soul: xVitoService(this.x).getSoul(this.x),
         channelPrompt: rawMetadata.channelPrompt || channel?.getCustomPrompt?.(this.x) || "",
         customInstructions: effectiveSettings.customInstructions || "",
-        harnessInstructions: innerHarness.getCustomInstructions?.() || "",
         botName: this.config.bot?.name,
         session: {
           id: vitoSession.id,
@@ -524,20 +512,6 @@ export class OrchestratorV2 {
         );
         this.firstTurnDone.add(vitoSession.id);
       } catch (err) {
-        if (err instanceof HarnessSessionLostError) {
-          // Underlying session storage is gone. Drop the harness so the next
-          // /new (or fresh start) recreates cleanly, and tell the user.
-          this.harnesses.delete(vitoSession.id);
-          this.harnessNames.delete(vitoSession.id);
-          this.firstTurnDone.delete(vitoSession.id);
-          if (baseHandler) {
-            await baseHandler.relay(
-              "⚠️ Your harness session is no longer available (the underlying conversation file is gone). Run `/new` to start a fresh one."
-            );
-          }
-          console.warn(`[v2] HarnessSessionLost for ${event.sessionKey}: ${err.message}`);
-          return;
-        }
         console.error(`[v2] Error during LLM call: ${err instanceof Error ? err.message : err}`);
         return;
       } finally {
@@ -576,96 +550,51 @@ export class OrchestratorV2 {
   // ────────────────────────────────────────────────────────────────────────
 
   /**
-   * Lazy reconciliation: every per-message call resolves the desired harness
-   * type + model from current settings, then compares against the live
-   * instance. Type drift → dispose and rebuild. Model drift → hot-swap via
-   * setModel. No drift → return the cached instance untouched (the prompt
-   * cache stays warm).
+   * Reconciles the configured Pi model with the long-lived session. Model
+   * drift is hot-swapped while unchanged sessions keep their prompt cache.
    */
   private async getOrCreateHarness(
     vitoSessionId: string,
     _event: InboundEvent,
     settings: ResolvedSettings,
     _channel: ChannelService | null
-  ): Promise<Harness> {
-    const harnessName = this.resolveHarnessName(settings);
+  ): Promise<PiSessionHarness> {
     const globalPiConfig = this.config.harnesses?.["pi-coding-agent"];
     const piOverrides = settings["pi-coding-agent"] || {};
-    const globalCcConfig = this.config.harnesses?.["claude-code"];
-    const ccOverrides = settings["claude-code"] || {};
-
-    const model = (harnessName === "claude-code"
-      ? ccOverrides.model || globalCcConfig?.model
-      : piOverrides.model || globalPiConfig?.model)
+    const model = piOverrides.model || globalPiConfig?.model
       || { provider: "anthropic", name: "claude-sonnet-4-20250514" };
-    const openRouterProvider = harnessName === "pi-coding-agent"
-      ? (piOverrides.openRouterProvider || globalPiConfig?.openRouterProvider)
-      : undefined;
+    const openRouterProvider = piOverrides.openRouterProvider
+      || globalPiConfig?.openRouterProvider;
 
     const existing = this.harnesses.get(vitoSessionId);
     if (existing) {
-      const existingName = this.harnessNames.get(vitoSessionId);
-      if (existingName === harnessName) {
-        const desiredString = `${model.provider}/${model.name}${openRouterProvider ? `@${openRouterProvider}` : ""}`;
-        if (existing.getModel?.() !== desiredString && existing.setModel) {
-          try {
-            await existing.setModel({ ...model, openRouterProvider });
-            console.log(`[v2] Hot-swapped model for ${vitoSessionId} → ${desiredString}`);
-          } catch (err) {
-            console.error(`[v2] Failed to hot-swap model for ${vitoSessionId}:`, err);
-          }
+      const desiredString = `${model.provider}/${model.name}${openRouterProvider ? `@${openRouterProvider}` : ""}`;
+      if (existing.getModel() !== desiredString) {
+        try {
+          await existing.setModel({ ...model, openRouterProvider });
+          console.log(`[v2] Hot-swapped model for ${vitoSessionId} → ${desiredString}`);
+        } catch (err) {
+          console.error(`[v2] Failed to hot-swap model for ${vitoSessionId}:`, err);
         }
-        return existing;
       }
-
-      // Harness type changed (e.g., pi-coding-agent ⇄ claude-code). Dispose
-      // the old instance — its on-disk JSONL stays for history — then fall
-      // through to build a fresh harness of the desired type.
-      try { await existing.dispose?.(); } catch { /* ignore */ }
-      this.harnesses.delete(vitoSessionId);
-      this.harnessNames.delete(vitoSessionId);
-      this.firstTurnDone.delete(vitoSessionId);
-      console.log(`[v2] Harness type changed for ${vitoSessionId}: ${existingName} → ${harnessName}; rebuilding`);
+      return existing;
     }
 
-    const thinkingLevel = piOverrides.thinkingLevel || globalPiConfig?.thinkingLevel;
-    const permissionMode = ccOverrides.permissionMode || globalCcConfig?.permissionMode;
-    const binaryPath = ccOverrides.binaryPath || globalCcConfig?.binaryPath;
-
-    // Each Vito session gets its own sessionDir so on-disk artifacts are
-    // grouped per-session and easy to browse from the dashboard.
-    const sessionDir = this.getSessionDir(vitoSessionId, harnessName);
-
-    const harness = createHarness(harnessName, {
+    const sessionDir = this.getSessionDir(vitoSessionId);
+    const harness = new PiSessionHarness({
       sessionDir,
       model,
       openRouterProvider,
-      thinkingLevel,
+      thinkingLevel: piOverrides.thinkingLevel || globalPiConfig?.thinkingLevel,
       skills: xSkillStore(this.x).list(this.x, {}),
-      permissionMode,
-      binaryPath,
-    });
+    } satisfies PiSessionHarnessConfig);
     this.harnesses.set(vitoSessionId, harness);
-    this.harnessNames.set(vitoSessionId, harnessName);
-    console.log(`[v2] 🎭 Created long-lived ${harnessName} session for ${vitoSessionId} (${model.provider}/${model.name}${openRouterProvider ? `@${openRouterProvider}` : ""}) → ${sessionDir}`);
+    console.log(`[v2] 🎭 Created long-lived Pi session for ${vitoSessionId} (${model.provider}/${model.name}${openRouterProvider ? `@${openRouterProvider}` : ""}) → ${sessionDir}`);
     return harness;
   }
 
-  private resolveHarnessName(settings: ResolvedSettings): HarnessName {
-    const name = settings.harness ?? "pi-coding-agent";
-    if (name === "pi-coding-agent" || name === "claude-code") return name;
-    console.warn(`[v2] Unknown harness "${name}", falling back to pi-coding-agent`);
-    return "pi-coding-agent";
-  }
-
-  /**
-   * Filesystem path for a Vito session's harness on-disk state. Each harness
-   * implementation owns its subdirectory layout — pi writes pi.jsonl files
-   * directly into this dir, claude-code writes a session.json pointer.
-   */
-  private getSessionDir(vitoSessionId: string, harnessName: HarnessName = "pi-coding-agent"): string {
-    const subdir = harnessName === "claude-code" ? "cc-sessions" : "pi-sessions";
-    return resolve(process.cwd(), "user", subdir, encodeSessionDirName(vitoSessionId));
+  private getSessionDir(vitoSessionId: string): string {
+    return resolve(process.cwd(), "user", "pi-sessions", encodeSessionDirName(vitoSessionId));
   }
 
   /**
@@ -717,10 +646,8 @@ export class OrchestratorV2 {
   }
 
   private getModelString(settings: ResolvedSettings): string {
-    const harnessName = this.resolveHarnessName(settings);
-    const model = harnessName === "claude-code"
-      ? settings["claude-code"]?.model || this.config.harnesses?.["claude-code"]?.model
-      : settings["pi-coding-agent"]?.model || this.config.harnesses?.["pi-coding-agent"]?.model;
+    const model = settings["pi-coding-agent"]?.model
+      || this.config.harnesses?.["pi-coding-agent"]?.model;
     const fallback = { provider: "anthropic", name: "claude-sonnet-4-20250514" };
     const m = model ?? fallback;
     return `${m.provider}/${m.name}`;
@@ -842,9 +769,8 @@ export class OrchestratorV2 {
         getEffectiveSettings(this.config, event.channel, event.sessionKey),
         channel
       );
-      await harnessForReset.reset?.();
+      await harnessForReset.reset();
       this.harnesses.delete(vitoSession.id);
-      this.harnessNames.delete(vitoSession.id);
       this.firstTurnDone.delete(vitoSession.id);
 
       await handler.relay(
@@ -888,7 +814,7 @@ export class OrchestratorV2 {
     const raw = event.content?.trim() || "";
     const spec = raw.replace(/^\/model\b/i, "").trim();
     const effectiveSettings = getEffectiveSettings(this.config, event.channel, event.sessionKey);
-    const currentModel = this.harnesses.get(vitoSession.id)?.getModel?.() || this.getModelString(effectiveSettings);
+    const currentModel = this.harnesses.get(vitoSession.id)?.getModel() || this.getModelString(effectiveSettings);
 
     if (!spec) {
       await handler.relay(
@@ -909,11 +835,6 @@ export class OrchestratorV2 {
     await handler.startTyping?.();
     try {
       const innerHarness = await this.getOrCreateHarness(vitoSession.id, event, effectiveSettings, channel);
-      if (!innerHarness.setModel) {
-        await handler.relay(`❌ This harness does not support hot-swapping the model.`);
-        await handler.stopTyping?.();
-        return;
-      }
       await innerHarness.setModel(model);
       await handler.relay(
         `✅ Switched live model: \`${currentModel}\` → \`${model.provider}/${model.name}\`\n\nNo /new needed. This is a runtime session change; config stays untouched.`
@@ -943,12 +864,6 @@ export class OrchestratorV2 {
       await handler.stopTyping?.();
       return;
     }
-    if (!existing.compact) {
-      await handler.relay("❌ This harness does not support manual compaction.");
-      await handler.stopTyping?.();
-      return;
-    }
-
     await handler.startTyping?.();
     try {
       const result = await existing.compact();
@@ -971,11 +886,6 @@ export class OrchestratorV2 {
       // stopTyping after relay so the buffer flushes (see /new for details).
       await handler.stopTyping?.();
     } catch (err) {
-      if (err instanceof HarnessUnsupportedError) {
-        await handler.relay("❌ This harness does not support manual compaction.");
-        await handler.stopTyping?.();
-        return;
-      }
       console.error("[v2 /compact] failed:", err);
       await handler.relay("❌ Compaction failed — see logs.");
       await handler.stopTyping?.();

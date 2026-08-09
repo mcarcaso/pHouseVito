@@ -28,7 +28,6 @@ describe("getEffectiveSettings", () => {
   it("provides required defaults", () => {
     const settings = getEffectiveSettings(createConfig(), "discord", "discord:session");
 
-    assert.equal(settings.harness, "pi-coding-agent");
     assert.equal(settings.streamMode, "stream");
     assert.equal(settings.traceMessageUpdates, false);
   });
@@ -36,7 +35,6 @@ describe("getEffectiveSettings", () => {
   it("resolves scalar settings from global to channel to session", () => {
     const config = createConfig({
       settings: {
-        harness: "global-harness",
         streamMode: "stream",
         customInstructions: "global",
         requireMention: true,
@@ -50,7 +48,6 @@ describe("getEffectiveSettings", () => {
         timezone: "Europe/London",
       },
       sessionSettings: {
-        harness: "session-harness",
         streamMode: "final",
         customInstructions: "session",
         requireMention: false,
@@ -61,28 +58,22 @@ describe("getEffectiveSettings", () => {
     const settings = getEffectiveSettings(config, "discord", "discord:session");
 
     assert.deepEqual(settings, {
-      harness: "session-harness",
       streamMode: "final",
       customInstructions: "session",
       requireMention: false,
       traceMessageUpdates: true,
       timezone: "Asia/Tokyo",
       "pi-coding-agent": undefined,
-      "claude-code": undefined,
       memory: undefined,
     });
   });
 
-  it("merges Pi and Claude Code overrides without dropping inherited fields", () => {
+  it("merges Pi overrides without dropping inherited fields", () => {
     const config = createConfig({
       settings: {
         "pi-coding-agent": {
           model: { provider: "openrouter", name: "global-model" },
           thinkingLevel: "low",
-        },
-        "claude-code": {
-          model: { provider: "anthropic", name: "global-claude" },
-          permissionMode: "acceptEdits",
         },
       },
       channelSettings: {
@@ -90,16 +81,10 @@ describe("getEffectiveSettings", () => {
           openRouterProvider: "deepinfra",
           thinkingLevel: "medium",
         },
-        "claude-code": {
-          binaryPath: "/usr/local/bin/claude",
-        },
       },
       sessionSettings: {
         "pi-coding-agent": {
           thinkingLevel: "high",
-        },
-        "claude-code": {
-          permissionMode: "bypassPermissions",
         },
       },
     });
@@ -110,11 +95,6 @@ describe("getEffectiveSettings", () => {
       model: { provider: "openrouter", name: "global-model" },
       openRouterProvider: "deepinfra",
       thinkingLevel: "high",
-    });
-    assert.deepEqual(settings["claude-code"], {
-      model: { provider: "anthropic", name: "global-claude" },
-      permissionMode: "bypassPermissions",
-      binaryPath: "/usr/local/bin/claude",
     });
   });
 

@@ -100,44 +100,6 @@ export class ConfigRouterService implements RouterService {
     );
 
     router.get(
-      "/harnesses",
-      createRawRoute(x, {
-        auth: "dashboard",
-        schemas: {
-          params: emptyRouteSchema,
-          query: emptyRouteSchema,
-          body: unknownRouteSchema,
-        },
-        handler: (routeX, _input, _req, res) => {
-          const config = xVitoService(routeX).getConfig(routeX);
-          const defaultHarness = config.settings.harness || "pi-coding-agent";
-          const available = {
-            "pi-coding-agent": {
-              name: "pi-coding-agent",
-              description:
-                "Pi Coding Agent — Anthropic Claude with full tool use",
-              config: config.harnesses["pi-coding-agent"] || null,
-              isDefault: defaultHarness === "pi-coding-agent",
-            },
-          };
-          const sessionOverrides = Object.entries(config.sessions ?? {}).map(
-            ([id, settings]) => ({
-              id,
-              harness: settings.harness || defaultHarness,
-              overrides: settings["pi-coding-agent"] || null,
-            }),
-          );
-
-          res.json({
-            default: defaultHarness,
-            available,
-            sessionOverrides,
-          });
-        },
-      }),
-    );
-
-    router.get(
       "/settings/defaults",
       createRawRoute(x, {
         auth: "dashboard",

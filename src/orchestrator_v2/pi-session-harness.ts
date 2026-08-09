@@ -156,10 +156,6 @@ export class PiSessionHarness implements Harness {
     return "pi-session";
   }
 
-  getCustomInstructions(): string {
-    return "";
-  }
-
   /** Whether the underlying AgentSession has been created and is reusable. */
   isInitialized(): boolean {
     return this.piSession !== null;

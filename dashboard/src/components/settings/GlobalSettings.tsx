@@ -2,7 +2,7 @@ import { useState, useEffect, useRef } from 'react';
 
 import { type VitoConfig } from '../../utils/settingsResolution';
 import { renderSelect, renderSegmented, renderSliderToggle } from './SettingRow';
-import HarnessConfigEditor from './HarnessConfigEditor';
+import PiConfigEditor from './PiConfigEditor';
 
 interface GlobalSettingsProps {
   config: VitoConfig;
@@ -13,11 +13,6 @@ const STREAM_MODES = [
   { value: 'stream', label: 'Stream' },
   { value: 'bundled', label: 'Bundled' },
   { value: 'final', label: 'Final' },
-];
-
-const HARNESSES = [
-  { value: 'pi-coding-agent', label: 'Pi' },
-  { value: 'claude-code', label: 'Claude Code' },
 ];
 
 const TIMEZONE_OPTIONS = [
@@ -68,8 +63,7 @@ function ToggleRow({ title, description, value, onChange, auto, onAutoChange }: 
 
 const CHUNK_CONTEXTUALIZER_DEFAULT = { provider: 'openrouter', name: 'openai/gpt-5.4-nano' };
 
-// Shared style with HarnessConfigEditor's selects so the Memory picker looks
-// identical to the Pi/CC pickers.
+// Shared style with PiConfigEditor's selects so the Memory picker matches.
 const selectClass = "w-full sm:w-64 bg-neutral-950 border border-neutral-700 rounded-md px-3 py-2 text-neutral-200 text-sm focus:outline-none focus:border-blue-600 transition-colors cursor-pointer appearance-none bg-[url('data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20width%3D%2210%22%20height%3D%2210%22%20viewBox%3D%220%200%2012%2012%22%3E%3Cpath%20fill%3D%22%23666%22%20d%3D%22M6%208L1%203h10z%22%2F%3E%3C%2Fsvg%3E')] bg-no-repeat bg-[right_0.75rem_center] pr-8";
 
 export default function GlobalSettings({ config, onSave }: GlobalSettingsProps) {
@@ -79,7 +73,7 @@ export default function GlobalSettings({ config, onSave }: GlobalSettingsProps) 
   const [localCustomInstructions, setLocalCustomInstructions] = useState(settings.customInstructions || '');
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
-  // Memory chunk contextualizer picker state — mirrors HarnessConfigEditor's
+  // Memory chunk contextualizer picker state — mirrors PiConfigEditor's
   // edit/save flow. Read-only view shows the active model; Edit reveals
   // provider + model dropdowns sourced from /api/models.
   const [editingChunkModel, setEditingChunkModel] = useState(false);
@@ -291,11 +285,6 @@ export default function GlobalSettings({ config, onSave }: GlobalSettingsProps) 
         <p className="text-xs text-neutral-600 mb-4">Baseline defaults — channels and sessions inherit from here.</p>
 
         <div className="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-4 py-3 border-b border-neutral-800/50">
-          <label className="text-sm text-neutral-400 sm:w-48 sm:shrink-0">Harness</label>
-          {renderSegmented(settings.harness || 'pi-coding-agent', (val) => updateSetting('harness', val), HARNESSES)}
-        </div>
-
-        <div className="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-4 py-3 border-b border-neutral-800/50">
           <label className="text-sm text-neutral-400 sm:w-48 sm:shrink-0">Stream Mode</label>
           {renderSegmented(settings.streamMode || 'stream', (val) => updateSetting('streamMode', val), STREAM_MODES)}
         </div>
@@ -336,13 +325,13 @@ export default function GlobalSettings({ config, onSave }: GlobalSettingsProps) 
         />
       </section>
 
-      {/* ── Harness Configurations ── */}
+      {/* ── Pi Configuration ── */}
       <section>
         <div className="mb-3">
-          <h3 className="text-base font-semibold text-white mb-1">Harness Configurations</h3>
-          <p className="text-xs text-neutral-600">Base configs for each AI harness engine.</p>
+          <h3 className="text-base font-semibold text-white mb-1">Pi Configuration</h3>
+          <p className="text-xs text-neutral-600">Model, provider routing, and thinking level.</p>
         </div>
-        <HarnessConfigEditor config={config} onSave={onSave} />
+        <PiConfigEditor config={config} onSave={onSave} />
       </section>
 
 

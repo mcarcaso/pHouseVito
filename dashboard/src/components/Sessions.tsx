@@ -15,7 +15,6 @@ interface Session {
 
 interface SessionConfig {
   streamMode?: string;
-  harness?: string;
   model?: {
     provider: string;
     name: string;
@@ -272,7 +271,7 @@ function Sessions() {
   }, [selectedSession]);
 
   // Check if session has any overrides configured
-  const hasOverrides = sessionConfig.streamMode || sessionConfig.harness || sessionConfig.model || sessionConfig['pi-coding-agent'];
+  const hasOverrides = sessionConfig.streamMode || sessionConfig.model || sessionConfig['pi-coding-agent'];
 
   const parsedMessages: ParsedMessage[] = allMessages.map((msg) =>
     parseDbMessage({ type: msg.type, content: msg.content, timestamp: msg.timestamp, author: msg.author })
@@ -458,7 +457,7 @@ function Sessions() {
       <div className="px-4 pt-4 space-y-3">
         {sessions.map((session) => {
           const config: SessionConfig = JSON.parse(session.config || '{}');
-          const hasConfig = config.streamMode || config.harness || config.model || config['pi-coding-agent'];
+          const hasConfig = config.streamMode || config.model || config['pi-coding-agent'];
           const isEditingThis = editingAlias === session.id;
 
           // Truncate long session IDs in the middle

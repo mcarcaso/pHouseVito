@@ -37,9 +37,7 @@ async function main() {
   process.env.TZ = tz;
   console.log(`Timezone: ${tz}`);
 
-  // Log the default harness and settings
-  const defaultHarness = config.settings?.harness || "pi-coding-agent";
-  console.log(`Default harness: ${defaultHarness}`);
+  // Log the configured Pi model.
   const piConfig = config.settings?.["pi-coding-agent"]?.model || config.harnesses?.["pi-coding-agent"]?.model;
   if (piConfig) {
     console.log(`Pi model: ${piConfig.provider}/${piConfig.name}`);

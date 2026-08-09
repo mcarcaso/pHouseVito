@@ -9,7 +9,6 @@ import type { ResolvedSettings, Settings, VitoConfig } from "./types.js";
 
 /** Default settings when nothing is specified */
 const DEFAULTS: ResolvedSettings = {
-  harness: "pi-coding-agent",
   streamMode: "stream",
   traceMessageUpdates: false,
 };
@@ -29,12 +28,6 @@ function mergeSettings(base: Settings, override: Settings): Settings {
     result["pi-coding-agent"] = {
       ...base["pi-coding-agent"],
       ...override["pi-coding-agent"],
-    };
-  }
-  if (override["claude-code"] !== undefined) {
-    result["claude-code"] = {
-      ...base["claude-code"],
-      ...override["claude-code"],
     };
   }
   if (override.memory !== undefined) {
@@ -83,28 +76,14 @@ export function getEffectiveSettings(
 
   // Return with guaranteed required fields
   return {
-    harness: settings.harness || DEFAULTS.harness,
     streamMode: settings.streamMode || DEFAULTS.streamMode,
     customInstructions: settings.customInstructions,
     requireMention: settings.requireMention,
     traceMessageUpdates: settings.traceMessageUpdates ?? false,
     timezone: settings.timezone,
     "pi-coding-agent": settings["pi-coding-agent"],
-    "claude-code": settings["claude-code"],
     memory: settings.memory,
   };
-}
-
-/**
- * Get harness name from effective settings.
- * Convenience wrapper.
- */
-export function getEffectiveHarness(
-  config: VitoConfig,
-  channelName: string,
-  sessionKey: string
-): string {
-  return getEffectiveSettings(config, channelName, sessionKey).harness;
 }
 
 /**

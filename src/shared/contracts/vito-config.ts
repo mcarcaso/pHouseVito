@@ -20,21 +20,13 @@ export const piHarnessConfigSchema = z.object({
   thinkingLevel: z.enum(["off", "low", "medium", "high"]).optional(),
 }).passthrough();
 
-export const claudeCodeHarnessConfigSchema = z.object({
-  model: modelSchema.optional(),
-  permissionMode: z.enum(["default", "acceptEdits", "bypassPermissions", "plan"]).optional(),
-  binaryPath: z.string().min(1).optional(),
-}).passthrough();
-
 export const settingsSchema = z.object({
-  harness: z.string().min(1).optional(),
   streamMode: z.enum(["stream", "bundled", "final"]).optional(),
   customInstructions: z.string().optional(),
   requireMention: z.boolean().optional(),
   traceMessageUpdates: z.boolean().optional(),
   timezone: timezoneSchema.optional(),
   "pi-coding-agent": piHarnessConfigSchema.partial().optional(),
-  "claude-code": claudeCodeHarnessConfigSchema.partial().optional(),
   memory: z.object({
     chunkContextualizerModel: modelSchema.optional(),
   }).passthrough().optional(),
@@ -47,14 +39,12 @@ export const streamModeUpdateSchema = z.object({
 }).strict();
 
 export const settingsPatchSchema = z.object({
-  harness: z.string().min(1).nullable().optional(),
   streamMode: streamModeSchema.nullable().optional(),
   customInstructions: z.string().nullable().optional(),
   requireMention: z.boolean().nullable().optional(),
   traceMessageUpdates: z.boolean().nullable().optional(),
   timezone: timezoneSchema.nullable().optional(),
   "pi-coding-agent": piHarnessConfigSchema.partial().nullable().optional(),
-  "claude-code": claudeCodeHarnessConfigSchema.partial().nullable().optional(),
   memory: z.object({
     chunkContextualizerModel: modelSchema.optional(),
   }).passthrough().nullable().optional(),
@@ -71,7 +61,6 @@ export const appsConfigSchema = z.object({
 
 export const harnessesConfigSchema = z.object({
   "pi-coding-agent": piHarnessConfigSchema.optional(),
-  "claude-code": claudeCodeHarnessConfigSchema.optional(),
 }).passthrough();
 
 const channelIdentifierSchema = z.union([z.string(), z.number().int()])
@@ -143,20 +132,18 @@ export const vitoConfigSchema = z.object({
 });
 
 export type PiHarnessConfig = z.infer<typeof piHarnessConfigSchema>;
-export type ClaudeCodeHarnessConfig = z.infer<typeof claudeCodeHarnessConfigSchema>;
 export type Settings = z.infer<typeof settingsSchema>;
 export type ChannelConfig = z.infer<typeof channelConfigSchema>;
 export type CronJobConfig = z.infer<typeof cronJobConfigSchema>;
 export type VitoConfig = z.infer<typeof vitoConfigSchema>;
 export type VitoConfigPatch = z.infer<typeof vitoConfigPatchSchema>;
 
-export type ResolvedSettings = Required<Pick<Settings, "harness" | "streamMode">> & {
+export type ResolvedSettings = Required<Pick<Settings, "streamMode">> & {
   customInstructions?: string;
   requireMention?: boolean;
   traceMessageUpdates?: boolean;
   timezone?: string;
   "pi-coding-agent"?: Partial<PiHarnessConfig>;
-  "claude-code"?: Partial<ClaudeCodeHarnessConfig>;
   memory?: Settings["memory"];
 };
 

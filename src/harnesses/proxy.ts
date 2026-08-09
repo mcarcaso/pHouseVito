@@ -26,10 +26,6 @@ export class ProxyHarness implements Harness {
     return this.delegate.getName();
   }
 
-  getCustomInstructions(): string {
-    return this.delegate.getCustomInstructions?.() || "";
-  }
-
   async run(
     systemPrompt: string,
     userMessage: string,

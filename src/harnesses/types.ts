@@ -4,12 +4,8 @@
  * A harness wraps an AI model/agent and provides a unified way to
  * send prompts, receive events, and manage long-lived session state.
  *
- * Two implementations are envisioned:
- *   - PiSessionHarness — in-process @earendil-works/pi-coding-agent AgentSession
- *   - ClaudeCodeHarness — subprocess `claude -p ... --resume <id>` CLI
- *
- * Both keep a stable system prompt across turns so Anthropic prompt caching
- * hits on every turn.
+ * PiSessionHarness wraps the in-process @earendil-works/pi-coding-agent
+ * AgentSession and keeps a stable system prompt across turns for caching.
  */
 
 // ════════════════════════════════════════════════════════════════════════════
@@ -59,48 +55,14 @@ export interface HarnessCallbacks {
 }
 
 // ════════════════════════════════════════════════════════════════════════════
-// ERRORS
-// ════════════════════════════════════════════════════════════════════════════
-
-/**
- * Thrown when a caller invokes a lifecycle method the harness doesn't support
- * (e.g., manual /compact on a harness that has no equivalent operation).
- */
-export class HarnessUnsupportedError extends Error {
-  constructor(public readonly operation: string, message?: string) {
-    super(message ?? `Harness does not support: ${operation}`);
-    this.name = "HarnessUnsupportedError";
-  }
-}
-
-/**
- * Thrown when the underlying session storage is gone — e.g., the Claude Code
- * JSONL referenced by a stored session id was deleted from ~/.claude/projects/.
- * The orchestrator surfaces this and instructs the user to run /new.
- */
-export class HarnessSessionLostError extends Error {
-  constructor(message?: string) {
-    super(message ?? "Harness session is no longer available");
-    this.name = "HarnessSessionLostError";
-  }
-}
-
-// ════════════════════════════════════════════════════════════════════════════
 // THE HARNESS
 // ════════════════════════════════════════════════════════════════════════════
 
 export interface Harness {
   /**
-   * Unique harness identifier (e.g., "pi-coding-agent", "claude-code").
+   * Harness identifier used in trace metadata.
    */
   getName(): string;
-
-  /**
-   * Optional harness-specific instructions to inject into system prompt.
-   * Use this when the harness environment has quirks the AI needs to know about
-   * (e.g., "skills don't work via Skill tool, invoke scripts manually").
-   */
-  getCustomInstructions?(): string;
 
   /**
    * Run a prompt to completion.

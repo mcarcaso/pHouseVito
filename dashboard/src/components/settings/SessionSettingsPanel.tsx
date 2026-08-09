@@ -33,11 +33,6 @@ const STREAM_MODES = [
   { value: 'final', label: 'Final' },
 ];
 
-const HARNESSES = [
-  { value: 'pi-coding-agent', label: 'Pi' },
-  { value: 'claude-code', label: 'Claude Code' },
-];
-
 const THINKING_LEVELS = [
   { value: 'off', label: 'Off' },
   { value: 'low', label: 'Low' },
@@ -211,7 +206,7 @@ export default function SessionSettingsPanel({ config, onSave, initialSessionId 
     return `${days}d ago`;
   };
 
-  // Get the global harness config as the "inherited" value for harness-specific settings
+  // Get the global Pi config as the inherited value for session overrides.
   const getGlobalPiConfig = () => config.harnesses?.['pi-coding-agent'] || { model: { provider: '', name: '' } };
 
   const renderPiCodingAgentOverrides = (
@@ -326,16 +321,6 @@ export default function SessionSettingsPanel({ config, onSave, initialSessionId 
 
         <div className="mt-3">
           <SettingRow
-            label="Harness"
-            inheritedValue={inherited.harness}
-            inheritedFrom={inheritFrom}
-            overrideValue={overrides.harness}
-            onOverride={(val) => updateSessionSetting(sessionId, 'harness', val)}
-            onReset={() => resetSessionSetting(sessionId, 'harness')}
-            renderInput={(val, onChange) => renderSegmented(val, onChange, HARNESSES)}
-          />
-
-          <SettingRow
             label="Stream Mode"
             inheritedValue={inherited.streamMode}
             inheritedFrom={inheritFrom}
@@ -388,7 +373,7 @@ export default function SessionSettingsPanel({ config, onSave, initialSessionId 
           <div className="mt-5 mb-2">
             <div className="flex items-center justify-between">
               <span className="text-xs font-semibold text-neutral-500 uppercase tracking-wide">Pi Coding Agent Config</span>
-              <span className="text-xs text-neutral-600">Used when harness = pi-coding-agent</span>
+              <span className="text-xs text-neutral-600">Per-session Pi overrides</span>
             </div>
           </div>
 

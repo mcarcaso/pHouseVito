@@ -26,9 +26,6 @@ function mergeSettings(base: Settings, override: Settings): Settings {
   if (override['pi-coding-agent'] !== undefined) {
     result['pi-coding-agent'] = { ...base['pi-coding-agent'], ...override['pi-coding-agent'] };
   }
-  if (override['claude-code'] !== undefined) {
-    result['claude-code'] = { ...base['claude-code'], ...override['claude-code'] };
-  }
   if (override.memory !== undefined) {
     result.memory = { ...base.memory, ...override.memory };
   }
@@ -69,14 +66,12 @@ export function getEffectiveSettings(
   }
 
   return {
-    harness: settings.harness || defaults.harness,
     streamMode: settings.streamMode || defaults.streamMode,
     customInstructions: settings.customInstructions,
     requireMention: settings.requireMention,
     traceMessageUpdates: settings.traceMessageUpdates ?? false,
     timezone: settings.timezone,
     'pi-coding-agent': settings['pi-coding-agent'],
-    'claude-code': settings['claude-code'],
     memory: settings.memory,
   };
 }
@@ -129,7 +124,6 @@ function getNestedValue(obj: any, path: string): any {
 
 /** Cascading field definitions — what cascades through the hierarchy */
 export const CASCADING_FIELDS = [
-  { key: 'harness', label: 'Harness', type: 'select' as const },
   { key: 'streamMode', label: 'Stream Mode', type: 'select' as const },
   { key: 'requireMention', label: 'Require @Mention', type: 'boolean' as const },
   { key: 'traceMessageUpdates', label: 'Trace Message Updates', type: 'boolean' as const },

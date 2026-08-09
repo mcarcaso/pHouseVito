@@ -38,14 +38,8 @@ const streamModeResponseSchema = z.object({
   streamMode: z.enum(["stream", "bundled", "final"]),
 });
 const defaultsResponseSchema = z.object({
-  harness: z.string(),
   streamMode: z.enum(["stream", "bundled", "final"]),
 }).passthrough();
-const harnessesResponseSchema = z.object({
-  default: z.string(),
-  available: z.record(z.string(), z.unknown()),
-  sessionOverrides: z.array(z.unknown()),
-});
 
 let server: Server;
 let baseUrl: string;
@@ -76,13 +70,7 @@ describe("config router", () => {
     const defaultsResponse = await fetch(`${baseUrl}/api/settings/defaults`);
     assert.equal(defaultsResponse.status, 200);
     const defaults = defaultsResponseSchema.parse(await defaultsResponse.json());
-    assert.equal(defaults.harness, "pi-coding-agent");
     assert.equal(defaults.streamMode, "stream");
-
-    const harnessesResponse = await fetch(`${baseUrl}/api/harnesses`);
-    assert.equal(harnessesResponse.status, 200);
-    const harnesses = harnessesResponseSchema.parse(await harnessesResponse.json());
-    assert.equal("pi-coding-agent" in harnesses.available, true);
   });
 
   it("rejects invalid config patches with structured errors", async () => {
@@ -110,7 +98,6 @@ describe("config router", () => {
     assert.equal(config.bot?.name, "Test Vito");
     assert.equal(config.settings.streamMode, "bundled");
     assert.equal(config.settings.timezone, "Europe/London");
-    assert.equal(config.settings.harness, "pi-coding-agent");
 
     const persisted = xVitoService(x).getConfig(x);
     assert.equal(persisted.bot?.name, "Test Vito");

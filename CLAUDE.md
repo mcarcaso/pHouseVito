@@ -73,7 +73,7 @@ Four context-driven `ChannelService` implementations own their platform SDK life
 
 ### Settings cascade
 
-`getEffectiveSettings(config, channelName, sessionKey)` in `src/settings.ts` deep-merges Global → Channel → Session. The whole live surface is just: `harness`, `streamMode` (`stream`/`bundled`/`final`), `customInstructions`, `requireMention`, `traceMessageUpdates`, `timezone`, and `pi-coding-agent` (with `model.{provider,name}` and `thinkingLevel`). Defaults: `harness=pi-coding-agent`, `streamMode=stream`, `timezone=America/Toronto`, default model `anthropic/claude-sonnet-4-20250514`.
+`getEffectiveSettings(config, channelName, sessionKey)` in `src/settings.ts` deep-merges Global → Channel → Session. The whole live surface is: `streamMode` (`stream`/`bundled`/`final`), `customInstructions`, `requireMention`, `traceMessageUpdates`, `timezone`, and `pi-coding-agent` (with `model.{provider,name}`, `openRouterProvider`, and `thinkingLevel`). Pi is the only runtime. Defaults: `streamMode=stream`, `timezone=America/Toronto`, default model `anthropic/claude-sonnet-4-20250514`.
 
 ### Slash commands (priority, bypass queue)
 
@@ -87,9 +87,9 @@ Four context-driven `ChannelService` implementations own their platform SDK life
 
 `src/cron/scheduler.ts` (croner, timezone-aware). Jobs are defined in `vito.config.json` under `cron.jobs` and re-applied on hot-reload. `oneTime: true` removes the job from the config after firing. `sendCondition` forces `streamMode: "final"` and wraps the handler with `withNoReplyCheck` — if the response contains `NO_REPLY`, nothing gets relayed. Dashboard cron APIs live in `src/routers/CronRouterService.ts`, use the context-scoped `CronService`, validate schedules before mutation, and persist configured jobs through `VitoService`.
 
-### Harness layer (`src/harnesses/`)
+### Pi runtime decorators (`src/harnesses/`)
 
-Currently single-harness. Decorators wrap a `Harness` (`PiSessionHarness` is the only implementation): `ProxyHarness` is the base for `TracingHarness`, `PersistenceHarness`, `RelayHarness`, `TypingHarness`. The decorator chain order matters: tracing (uses the context-scoped `TraceStore` and `TraceEventStore` to write append-only `.jsonl` traces into `logs/`, capped at 50MB) → persistence (writes user/assistant/tool rows into SQLite; never deletes — `/new` only archives) → relay (delivers to the channel's `OutputHandler` per `streamMode`) → typing. The current trace stores are file-backed; the harness and dashboard do not access trace files directly.
+Decorators wrap the long-lived `PiSessionHarness` through its runtime interface: `ProxyHarness` is the base for `TracingHarness`, `PersistenceHarness`, `RelayHarness`, `TypingHarness`. The decorator chain order matters: tracing (uses the context-scoped `TraceStore` and `TraceEventStore` to write append-only `.jsonl` traces into `logs/`, capped at 50MB) → persistence (writes user/assistant/tool rows into SQLite; never deletes — `/new` only archives) → relay (delivers to the channel's `OutputHandler` per `streamMode`) → typing. The current trace stores are file-backed; the harness and dashboard do not access trace files directly.
 
 ### Skills (`src/skills/`)
 

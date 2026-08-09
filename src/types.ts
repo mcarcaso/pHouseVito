@@ -91,7 +91,6 @@ export type StreamMode = "stream" | "bundled" | "final";
 // Runtime schemas and their inferred types live together at the config boundary.
 export type {
   ChannelConfig,
-  ClaudeCodeHarnessConfig,
   CronJobConfig,
   PiHarnessConfig,
   ResolvedSettings,

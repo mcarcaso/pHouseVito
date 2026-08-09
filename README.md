@@ -16,8 +16,8 @@ A personal AI agent framework with persistent memory, extensible skills, and mul
 - **Discord** - Bot integration with guild/channel filtering
 - **Telegram** - Bot integration with chat ID filtering
 
-### 🔌 Harness System
-- **pi-coding-agent** - Pi Coding Agent harness (supports OpenAI, Anthropic, Google, OpenRouter)
+### 🔌 Pi Runtime
+- **pi-coding-agent** - In-process Pi sessions supporting OpenAI, Anthropic, Google, and OpenRouter
 - **Per-session overrides** - Use different models for different conversations
 
 ### 🎯 Skills System
@@ -31,7 +31,7 @@ A personal AI agent framework with persistent memory, extensible skills, and mul
 - 🧠 View and search long-term memories
 - 🛠️ Manage skills
 - ⏰ Scheduled cron jobs
-- ⚙️ Settings management (harness, channels, per-session overrides)
+- ⚙️ Settings management (Pi models, channels, per-session overrides)
 
 ## Quick Start
 
@@ -215,16 +215,14 @@ npm run build:dashboard
 
 ### Core Runtime
 
-- **Orchestrator** — Central brain that routes inbound messages to the harness and outbound responses to channels.
+- **Orchestrator** — Central brain that routes inbound messages to Pi and outbound responses to channels.
 - **Per-session queue** — Messages are queued per session so work completes in order without interruption. Cross-session work runs in parallel.
 - **Streaming pipeline** — Raw events are emitted in real-time while normalized events are stored in the DB.
-- **Thought promotion** — Harness emits thoughts; the last “thought” is promoted to the final assistant message.
+- **Thought promotion** — Pi emits thoughts; the last “thought” is promoted to the final assistant message.
 
-### Harness System
+### Pi Runtime
 
-The harness is the pluggable AI backend that handles LLM interaction.
-
-- **pi-coding-agent** — Uses the Pi Coding Agent SDK. Supports multiple providers (OpenAI, Anthropic, Google, OpenRouter) with thinking levels.
+Vito uses the Pi Coding Agent SDK for all model interaction. Pi supports multiple providers (OpenAI, Anthropic, Google, OpenRouter) with thinking levels.
 
 Configure in `user/vito.config.json`:
 ```json
@@ -240,7 +238,7 @@ Configure in `user/vito.config.json`:
 
 Override per-session via the Dashboard Settings page.
 
-### Harness Decorators
+### Runtime Decorators
 
 Runtime behaviors are layered via decorators:
 - `withTracing()` — JSONL trace logging
@@ -276,7 +274,7 @@ Compaction is implemented as a **skill** and runs via the `system:compaction` se
 
 ### Multimodal Handling
 
-- **Images**: stored as `[Attached image: /path]` tags and converted by the harness to pixel data
+- **Images**: stored as `[Attached image: /path]` tags and converted by Pi to pixel data
 - **Audio**: not wired by default; requires explicit transcription
 
 ### Channel System
@@ -366,8 +364,8 @@ Channels are adapters that convert between platform-specific formats and Vito's 
 - [x] Telegram channel adapter
 - [x] Cron job system for scheduled tasks
 - [x] Secrets management UI
-- [x] Harness system with multiple AI backends
-- [x] Per-session harness/model overrides
+- [x] Long-lived Pi session runtime
+- [x] Per-session Pi model overrides
 - [ ] Memory visualization
 - [ ] Export/backup tools
 - [ ] Multi-user support (optional)

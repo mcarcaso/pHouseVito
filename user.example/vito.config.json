@@ -7,7 +7,6 @@
     "portStart": 3100
   },
   "settings": {
-    "harness": "pi-coding-agent",
     "streamMode": "final",
     "traceMessageUpdates": false,
     "requireMention": false,

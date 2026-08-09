@@ -4,7 +4,12 @@ import type {
   OutputHandler,
 } from "../types.js";
 import type { Context } from "../context/Context.js";
-import { xAskApiService, xChannelManagementService, xVitoService } from "../lib/x.js";
+import {
+  xAskApiService,
+  xChannelManagementService,
+  xDashboardChatService,
+  xVitoService,
+} from "../lib/x.js";
 import { createAppProxyMiddleware } from "../routers/apps/app-proxy.js";
 import { createAppRouter } from "../routers/apps/app-router.js";
 import { createAskApiRouter } from "../routers/ask/ask-api-router.js";
@@ -18,6 +23,7 @@ import {
 } from "../routers/auth/dashboard-auth-middleware.js";
 import { createDashboardAuthRouter } from "../routers/auth/dashboard-auth-router.js";
 import { createChannelManagementRouter } from "../routers/channels/channel-management-router.js";
+import { createDashboardChatRouter } from "../routers/chat/dashboard-chat-router.js";
 import { createConfigRouter } from "../routers/config/config-router.js";
 import { createCronRouter } from "../routers/cron/cron-router.js";
 import {
@@ -64,7 +70,6 @@ export class DashboardChannel implements Channel {
   private app = express();
   private server = createServer(this.app);
   private port = parseInt(process.env.PORT || "3030", 10);
-  private eventHandler?: (event: InboundEvent) => void;
 
   constructor(private readonly x: Context) {
     this.setupExpress();
@@ -159,33 +164,7 @@ export class DashboardChannel implements Channel {
 
     this.app.use("/api/ask", createAskApiRouter(this.x));
 
-    // HTTP fallback for sending chat messages (when WebSocket is dead)
-    this.app.post("/api/chat", (req, res) => {
-      const msg = req.body as any; // Using any to handle extra fields like attachments
-      console.log(`[Dashboard] HTTP chat received: content=${msg.content?.substring(0, 50)}`);
-
-      if (msg.type === "chat" && (msg.content || msg.attachments?.length) && this.eventHandler) {
-        const sessionId = msg.sessionId || "dashboard:default";
-        const parts = sessionId.split(":");
-        const target = parts.length > 1 ? parts.slice(1).join(":") : "default";
-
-        const event: InboundEvent = {
-          sessionKey: sessionId,
-          channel: "dashboard",
-          target: target,
-          author: "user",
-          timestamp: Date.now(),
-          content: msg.content || "",
-          attachments: msg.attachments,
-          raw: msg,
-          hasMention: true,  // Dashboard is always direct conversation
-        };
-        this.eventHandler(event);
-        res.json({ ok: true });
-      } else {
-        res.status(400).json({ error: "Invalid chat message or no handler" });
-      }
-    });
+    this.app.use("/api/chat", createDashboardChatRouter(this.x));
 
     // Server restart endpoint
     this.app.post("/api/server/restart", (req, res) => {
@@ -259,9 +238,9 @@ export class DashboardChannel implements Channel {
   async listen(
     onEvent: (event: InboundEvent) => void
   ): Promise<() => void> {
-    this.eventHandler = onEvent;
+    xDashboardChatService(this.x).configure(this.x, onEvent);
     return () => {
-      this.eventHandler = undefined;
+      xDashboardChatService(this.x).configure(this.x, undefined);
     };
   }
 

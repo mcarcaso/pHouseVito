@@ -1,3 +1,5 @@
+import { existsSync, readFileSync } from "node:fs";
+import { join } from "node:path";
 import type { Context } from "../../context/Context.js";
 import {
   maybeEmbedNewChunksInContext,
@@ -9,12 +11,17 @@ import {
   type SearchOptions,
   type SearchResult,
 } from "../../memory/search.js";
-import { xEmbeddingStore } from "../../lib/x.js";
+import { xEmbeddingStore, xUserDir } from "../../lib/x.js";
 import type { EmbeddingStats } from "../../stores/embeddings/EmbeddingStore.js";
 import type { MemoryService } from "./MemoryService.js";
 
 export class DefaultMemoryService implements MemoryService {
   private embeddingInProgress = false;
+
+  getProfile(x: Context): string | null {
+    const profilePath = join(xUserDir(x), "profile.md");
+    return existsSync(profilePath) ? readFileSync(profilePath, "utf-8") : null;
+  }
 
   search(
     x: Context,

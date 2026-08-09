@@ -8,6 +8,7 @@ import {
   xAskApiService,
   xChannelManagementService,
   xDashboardChatService,
+  xSecretService,
   xVitoService,
 } from "../lib/x.js";
 import { createAppProxyMiddleware } from "../routers/apps/app-proxy.js";
@@ -29,7 +30,6 @@ import { createCronRouter } from "../routers/cron/cron-router.js";
 import {
   createDriveRouter,
   createPublicDriveRouter,
-  isPublicDriveFile,
 } from "../routers/drive/drive-router.js";
 import { createFileRouter } from "../routers/files/file-router.js";
 import { createMemoryRouter } from "../routers/memory/memory-router.js";
@@ -39,6 +39,7 @@ import {
   createProviderAuthRouter,
 } from "../routers/providers/provider-router.js";
 import { createSecretRouter } from "../routers/secrets/secret-router.js";
+import { createServerLifecycleRouter } from "../routers/server/server-lifecycle-router.js";
 import { createSessionRouter } from "../routers/sessions/session-router.js";
 import { createSkillRouter } from "../routers/skills/skill-router.js";
 import { createSystemContentRouter } from "../routers/system-content/system-content-router.js";
@@ -47,7 +48,6 @@ import express from "express";
 import http from "http";
 const createServer = http.createServer.bind(http);
 import path from "path";
-import { execSync } from "child_process";
 import { fileURLToPath } from "url";
 import { mountMcp } from "../mcp-server.js";
 import type { AskApiHandler } from "../services/ask/AskApiService.js";
@@ -75,25 +75,25 @@ export class DashboardChannel implements Channel {
     this.setupExpress();
   }
 
-  setDiscordChannel(discord: DiscordManagementAdapter) {
+  setDiscordChannel(discord: DiscordManagementAdapter): void {
     xChannelManagementService(this.x).configure(this.x, {
       channel: "discord",
       adapter: discord,
     });
   }
 
-  setTelegramChannel(telegram: TelegramManagementAdapter) {
+  setTelegramChannel(telegram: TelegramManagementAdapter): void {
     xChannelManagementService(this.x).configure(this.x, {
       channel: "telegram",
       adapter: telegram,
     });
   }
 
-  setAskHandler(handler: AskApiHandler) {
+  setAskHandler(handler: AskApiHandler): void {
     xAskApiService(this.x).configure(this.x, handler);
   }
 
-  private setupExpress() {
+  private setupExpress(): void {
     // Must precede body parsing so request bodies can stream to app processes.
     this.app.use(createAppProxyMiddleware(this.x));
 
@@ -104,8 +104,9 @@ export class DashboardChannel implements Channel {
     // Mounted only if MCP_CLIENT_ID + MCP_CLIENT_SECRET are set in user/secrets.json.
     // Only the pre-registered static client (Claude) can authorize — no dynamic
     // registration, no password-based browser login, no URL path-token bypass.
-    const mcpClientId = process.env.MCP_CLIENT_ID;
-    const mcpClientSecret = process.env.MCP_CLIENT_SECRET;
+    const secretService = xSecretService(this.x);
+    const mcpClientId = secretService.get(this.x, "MCP_CLIENT_ID");
+    const mcpClientSecret = secretService.get(this.x, "MCP_CLIENT_SECRET");
     if (mcpClientId && mcpClientSecret) {
       mountMcp(this.app, {
         x: this.x,
@@ -129,9 +130,7 @@ export class DashboardChannel implements Channel {
     );
 
     // API endpoints
-    this.app.get("/api/health", (req, res) => {
-      res.json({ status: "ok", timestamp: new Date().toISOString() });
-    });
+    this.app.use("/api", createServerLifecycleRouter(this.x));
 
     this.app.use("/api", createConfigRouter(this.x));
 
@@ -165,45 +164,6 @@ export class DashboardChannel implements Channel {
     this.app.use("/api/ask", createAskApiRouter(this.x));
 
     this.app.use("/api/chat", createDashboardChatRouter(this.x));
-
-    // Server restart endpoint
-    this.app.post("/api/server/restart", (req, res) => {
-      const clientIp = (req.headers["x-forwarded-for"] as string) || req.socket.remoteAddress;
-      const ua = req.headers["user-agent"] || "unknown";
-      console.log(`[Dashboard] Server restart requested from ${clientIp} ua=${ua}`);
-      res.json({ ok: true, message: "Rebuilding dashboard and restarting server..." });
-      // Give the response time to flush, then rebuild dashboard + restart via PM2
-      setTimeout(() => {
-        try {
-          execSync("npm run build:dashboard", {
-            stdio: "ignore",
-            timeout: 120000,
-            env: { ...process.env, PATH: process.env.PATH + ":/usr/local/bin:/opt/homebrew/bin" },
-          });
-        } catch (e) {
-          // If build fails, still attempt restart
-        }
-
-        try {
-          execSync("npx pm2 restart vito-server", {
-            stdio: "ignore",
-            env: { ...process.env, PATH: process.env.PATH + ":/usr/local/bin:/opt/homebrew/bin" },
-          });
-        } catch (e) {
-          // Process is already dying at this point
-        }
-      }, 500);
-    });
-
-    // Server status/info endpoint
-    this.app.get("/api/server/status", (req, res) => {
-      res.json({
-        uptime: process.uptime(),
-        pid: process.pid,
-        nodeVersion: process.version,
-        memoryUsage: process.memoryUsage(),
-      });
-    });
 
     this.app.use("/api/apps", createAppRouter(this.x));
 
@@ -244,21 +204,17 @@ export class DashboardChannel implements Channel {
     };
   }
 
-  createHandler(event: InboundEvent): OutputHandler {
-    return new DashboardOutputHandler(event);
+  createHandler(_event: InboundEvent): OutputHandler {
+    return new DashboardOutputHandler();
   }
 
-  getSessionKey(payload: any): string {
-    return payload.sessionId || "dashboard:default";
+  getSessionKey(event: InboundEvent): string {
+    return event.sessionKey || "dashboard:default";
   }
 }
 
 class DashboardOutputHandler implements OutputHandler {
-  constructor(private event: InboundEvent) {}
-
   async relay(): Promise<void> {
     // no-op — frontend polls from DB
   }
 }
-
-// Secrets helpers now live in ../secrets.ts

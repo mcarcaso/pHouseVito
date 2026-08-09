@@ -14,6 +14,7 @@ import type { EmbeddingStore } from "../stores/embeddings/EmbeddingStore.js";
 import type { CronService } from "../services/cron/CronService.js";
 import type { MemoryService } from "../services/memory/MemoryService.js";
 import type { SecretService } from "../services/secrets/SecretService.js";
+import type { ServerLifecycleService } from "../services/server/ServerLifecycleService.js";
 import type { VitoService } from "../services/vito/VitoService.js";
 import type { MessageStore } from "../stores/messages/MessageStore.js";
 import type { PiSessionStore } from "../stores/pi-sessions/PiSessionStore.js";
@@ -63,6 +64,8 @@ export const xMemoryService = (x: Context): MemoryService =>
   x.get("memoryService") as MemoryService;
 export const xSecretService = (x: Context): SecretService =>
   x.get("secretService") as SecretService;
+export const xServerLifecycleService = (x: Context): ServerLifecycleService =>
+  x.get("serverLifecycleService") as ServerLifecycleService;
 export const xPiSessionStore = (x: Context): PiSessionStore =>
   x.get("piSessionStore") as PiSessionStore;
 export const xSessionStore = (x: Context): SessionStore => x.get("sessionStore") as SessionStore;

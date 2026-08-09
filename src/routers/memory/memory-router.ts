@@ -1,10 +1,8 @@
-import { existsSync, readFileSync } from "node:fs";
-import { join } from "node:path";
 import express from "express";
 import type { Router } from "express";
 import { z } from "zod";
 import type { Context } from "../../context/Context.js";
-import { xMemoryService, xSessionStore, xUserDir } from "../../lib/x.js";
+import { xMemoryService, xSessionStore } from "../../lib/x.js";
 import {
   emptyRouteSchema,
   unknownRouteSchema,
@@ -29,10 +27,7 @@ export function createMemoryRouter(x: Context): Router {
       body: unknownRouteSchema,
     },
     (routeX, _input, _req, res) => {
-      const profilePath = join(xUserDir(routeX), "profile.md");
-      res.json({
-        content: existsSync(profilePath) ? readFileSync(profilePath, "utf-8") : null,
-      });
+      res.json({ content: xMemoryService(routeX).getProfile(routeX) });
     }
   ));
 

@@ -29,6 +29,9 @@ app.use(express.json());
 app.use("/api/auth", createDashboardAuthRouter(x));
 app.use("/api", createDashboardApiAuthMiddleware(x));
 app.get("/api/protected", (_req, res) => res.json({ ok: true }));
+app.get("/api/health", (_req, res) => res.json({ public: true }));
+app.post("/api/ask", (_req, res) => res.json({ public: true }));
+app.get("/api/server/status", (_req, res) => res.json({ protected: true }));
 app.get("/api/auth/provider/test", (_req, res) => res.json({ public: true }));
 app.get("/attachments/test", createAttachmentAuthMiddleware(x), (_req, res) => {
   res.json({ ok: true });
@@ -58,7 +61,10 @@ after(async () => {
 describe("dashboard auth router and middleware", () => {
   it("preserves first-time setup restrictions and public auth routes", async () => {
     assert.equal((await fetch(`${baseUrl}/api/protected`)).status, 403);
+    assert.equal((await fetch(`${baseUrl}/api/server/status`)).status, 403);
     assert.equal((await fetch(`${baseUrl}/attachments/test`)).status, 403);
+    assert.equal((await fetch(`${baseUrl}/api/health`)).status, 200);
+    assert.equal((await fetch(`${baseUrl}/api/ask`, { method: "POST" })).status, 200);
     assert.equal((await fetch(`${baseUrl}/api/auth/provider/test`)).status, 200);
 
     const setup = await fetch(`${baseUrl}/api/auth/setup`, { method: "POST" });
@@ -75,7 +81,11 @@ describe("dashboard auth router and middleware", () => {
     });
     assert.deepEqual(await check.json(), { authenticated: true, passwordSet: true });
     assert.equal((await fetch(`${baseUrl}/api/protected`)).status, 401);
+    assert.equal((await fetch(`${baseUrl}/api/server/status`)).status, 401);
     assert.equal((await fetch(`${baseUrl}/api/protected`, {
+      headers: { cookie },
+    })).status, 200);
+    assert.equal((await fetch(`${baseUrl}/api/server/status`, {
       headers: { cookie },
     })).status, 200);
     assert.equal((await fetch(`${baseUrl}/attachments/test`, {

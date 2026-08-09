@@ -99,7 +99,7 @@ Edit `user/SOUL.md` to define your agent's personality. This is how you make Vit
 ```
 pHouseVito/
 ├── src/                       # Core application code
-│   ├── channels/              # Channel adapters (Dashboard, Telegram, Discord)
+│   ├── services/channels/     # Context-driven channel services and registry
 │   ├── db/                    # SQLite schema and queries
 │   ├── harnesses/             # AI backend harnesses (pi-coding-agent)
 │   ├── memory/                # Memory management and compaction

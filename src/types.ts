@@ -1,25 +1,6 @@
 // Shared types
 
-// ── Channel types ──
-
-export interface Channel {
-  name: string;
-
-  capabilities: {
-    typing: boolean;
-    reactions: boolean;
-    attachments: boolean;
-    streaming: boolean;
-  };
-
-  start(): Promise<void>;
-  stop(): Promise<void>;
-
-  listen(onEvent: (event: InboundEvent) => void): Promise<() => void>;
-  createHandler(event: InboundEvent): OutputHandler;
-  getSessionKey(event: InboundEvent): string;
-  getCustomPrompt?(): string;
-}
+// ── Channel event types ──
 
 export interface InboundEvent {
   sessionKey: string;
@@ -30,7 +11,7 @@ export interface InboundEvent {
   content: string;
   attachments?: Attachment[];
   replyTo?: string;
-  raw: any;
+  raw: unknown;
   /** Whether the bot was @mentioned in this message (channels set this, orchestrator decides what to do) */
   hasMention?: boolean;
 }
@@ -93,8 +74,8 @@ export interface AgentActivityEvent {
   kind: "tool_start" | "tool_end" | "thinking";
   toolName?: string;
   toolCallId?: string;
-  args?: any;
-  result?: any;
+  args?: unknown;
+  result?: unknown;
   isError?: boolean;
   content?: string;
 }

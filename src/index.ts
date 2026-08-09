@@ -4,11 +4,11 @@ import { createDatabase } from "./db/schema.js";
 import { ObjectContext } from "./context/ObjectContext.js";
 import { RootContext } from "./context/RootContext.js";
 import { ensureUserDir, USER_DIR } from "./config.js";
-import { xEmbeddingDb, xSecretService, xVitoService } from "./lib/x.js";
+import { xAskApiService, xEmbeddingDb, xSecretService, xVitoService } from "./lib/x.js";
 import { OrchestratorV2 as Orchestrator } from "./orchestrator_v2/index.js";
-import { DashboardChannel } from "./channels/dashboard.js";
-import { TelegramChannel } from "./channels/telegram.js";
-import { DiscordChannel } from "./channels/discord.js";
+import { DashboardChannelService } from "./services/channels/dashboard/dashboard-channel-service.js";
+import { DiscordChannelService } from "./services/channels/discord/discord-channel-service.js";
+import { TelegramChannelService } from "./services/channels/telegram/telegram-channel-service.js";
 import { CronSchedulerService } from "./services/cron/CronSchedulerService.js";
 import { DEFAULT_TIMEZONE } from "./system-instructions.js";
 
@@ -55,25 +55,14 @@ async function main() {
   const dashboardX = new ObjectContext({
     cronService: () => new CronSchedulerService(orchestrator.getCronScheduler()),
   }, x);
-  const dashboard = new DashboardChannel(dashboardX);
-  dashboard.setAskHandler((opts) => orchestrator.ask(opts));
-  orchestrator.registerChannel(dashboard);
+  const dashboard = new DashboardChannelService();
+  xAskApiService(dashboardX).configure(dashboardX, (opts) => orchestrator.ask(opts));
+  orchestrator.registerChannel(dashboard, dashboardX);
 
-  // Register Telegram channel
-  const telegram = new TelegramChannel(config);
-  orchestrator.registerChannel(telegram);
-  dashboard.setTelegramChannel({
-    setMyCommands: () => telegram.setMyCommands(),
-    getChatInfo: (chatId: string) => telegram.getChatInfo(chatId),
-  });
-
-  // Register Discord channel
-  const discord = new DiscordChannel(config);
-  orchestrator.registerChannel(discord);
-  dashboard.setDiscordChannel({
-    registerSlashCommands: () => discord.registerSlashCommands(),
-    getChannelInfo: (channelId: string) => discord.getChannelInfo(channelId),
-  });
+  // Register externally managed channel services. Their platform-specific
+  // management capabilities are discovered through ChannelRegistryService.
+  orchestrator.registerChannel(new TelegramChannelService());
+  orchestrator.registerChannel(new DiscordChannelService());
 
   // Start channels
   await orchestrator.start();

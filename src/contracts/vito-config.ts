@@ -68,10 +68,13 @@ export const harnessesConfigSchema = z.object({
   "claude-code": claudeCodeHarnessConfigSchema.optional(),
 }).passthrough();
 
+const channelIdentifierSchema = z.union([z.string(), z.number().int()])
+  .transform((value) => String(value));
+
 export const channelConfigSchema = z.object({
   enabled: z.boolean(),
   settings: settingsSchema.optional(),
-  allowedChatIds: z.array(z.string()).optional(),
+  allowedChatIds: z.array(channelIdentifierSchema).optional(),
   allowedGuildIds: z.array(z.string()).optional(),
   allowedChannelIds: z.array(z.string()).optional(),
   streamMode: z.enum(["stream", "bundled", "final"]).optional(),

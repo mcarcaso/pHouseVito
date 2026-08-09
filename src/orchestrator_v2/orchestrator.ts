@@ -19,6 +19,7 @@
  * can drop in by swapping the import in src/index.ts.
  */
 
+import { parseInboundEventMetadata } from "../contracts/inbound-event.js";
 import { CronScheduler } from "../cron/scheduler.js";
 import type { Context } from "../context/Context.js";
 import {
@@ -33,11 +34,12 @@ import {
   type HarnessName,
 } from "../harnesses/index.js";
 import { withNoReplyCheck } from "../harness/decorators/index.js";
-import { getDirectChannel, type DirectChannel } from "../channels/direct.js";
+import { DirectChannelService } from "../services/channels/direct/direct-channel-service.js";
+import type { ChannelService } from "../services/channels/channel-service.js";
 
 import { SessionManager } from "../sessions/manager.js";
 import { getEffectiveSettings } from "../settings.js";
-import { xMemoryService, xMessageStore, xSkillStore, xUserDir, xVitoService } from "../lib/x.js";
+import { xChannelRegistryService, xMemoryService, xMessageStore, xSkillStore, xUserDir, xVitoService } from "../lib/x.js";
 
 import { randomBytes } from "crypto";
 import { mkdirSync, statSync, writeFileSync } from "fs";
@@ -46,7 +48,6 @@ import { join, resolve } from "path";
 import { extractMessageText } from "../memory/context.js";
 
 import type {
-  Channel,
   CronJobConfig,
   InboundEvent,
   ResolvedSettings,
@@ -71,12 +72,11 @@ function normalizeSlashCommand(content?: string): string {
 
 export class OrchestratorV2 {
   private sessionManager: SessionManager;
-  private channels = new Map<string, Channel>();
   private cronScheduler: CronScheduler;
   private config: VitoConfig;
 
   /** Per-session message queues and processing locks. */
-  private sessionQueues = new Map<string, Array<{ event: InboundEvent; channel: Channel | null }>>();
+  private sessionQueues = new Map<string, Array<{ event: InboundEvent; channel: ChannelService | null }>>();
   private sessionProcessing = new Set<string>();
 
   /** Track active requests so they can be aborted on /stop. */
@@ -111,13 +111,15 @@ export class OrchestratorV2 {
    * in case the fs watcher debounce hasn't fired before the next message. */
   private configMtimeMs = 0;
 
-  constructor(private x: Context) {
+  constructor(private readonly x: Context) {
     this.sessionManager = new SessionManager(x);
     this.config = xVitoService(x).getConfig(x);
 
     this.cronScheduler = new CronScheduler(
       async (event, channelName) => {
-        const channel = channelName ? this.channels.get(channelName) || null : null;
+        const channel = channelName
+          ? xChannelRegistryService(this.x).get(this.x, channelName)?.channel ?? null
+          : null;
         await this.handleInbound(event, channel);
       },
       async (jobName: string) => {
@@ -135,8 +137,8 @@ export class OrchestratorV2 {
     }
   }
 
-  registerChannel(channel: Channel): void {
-    this.channels.set(channel.name, channel);
+  registerChannel(channel: ChannelService, channelX: Context = this.x): void {
+    xChannelRegistryService(this.x).register(channelX, channel);
   }
 
   getSkills() {
@@ -195,7 +197,7 @@ export class OrchestratorV2 {
     const sessionParts = session.split(":");
     const channelName = sessionParts[0] || "api";
     const target = sessionParts.slice(1).join(":") || "default";
-    const channel = this.channels.get(channelName);
+    const channel = xChannelRegistryService(this.x).get(this.x, channelName)?.channel;
     if (!channel || channelName === "direct" || channelName === "api") return;
 
     const event: InboundEvent = {
@@ -210,7 +212,7 @@ export class OrchestratorV2 {
     };
 
     try {
-      const handler = channel.createHandler(event);
+      const handler = channel.createOutputHandler(this.x, event);
       await handler.relay(answer);
       await handler.endMessage?.();
     } catch (err) {
@@ -218,16 +220,17 @@ export class OrchestratorV2 {
     }
   }
 
-  private directChannel: DirectChannel | null = null;
+  private directChannel: DirectChannelService | null = null;
   private directChannelReady: Promise<void> | null = null;
 
-  private getDirectChannel(): DirectChannel {
+  private getDirectChannel(): DirectChannelService {
     if (!this.directChannel) {
-      this.directChannel = getDirectChannel();
-      this.registerChannel(this.directChannel);
+      const directChannel = new DirectChannelService();
+      this.directChannel = directChannel;
+      this.registerChannel(directChannel);
       this.directChannelReady = (async () => {
-        await this.directChannel!.start();
-        await this.directChannel!.listen((event) => this.handleInbound(event, this.directChannel!));
+        await directChannel.start(this.x);
+        await directChannel.listen(this.x, (event) => this.handleInbound(event, directChannel));
       })();
     }
     return this.directChannel;
@@ -263,15 +266,15 @@ export class OrchestratorV2 {
   }
 
   async start(): Promise<void> {
-    for (const [name, channel] of this.channels) {
-      const channelConfig = this.config.channels[name];
+    for (const { channel, x } of xChannelRegistryService(this.x).list(this.x)) {
+      const channelConfig = this.config.channels[channel.name];
       if (!channelConfig?.enabled) continue;
       try {
-        await channel.start();
-        await channel.listen((event) => this.handleInbound(event, channel));
-        console.log(`[v2] Channel started: ${name}`);
+        await channel.start(x);
+        await channel.listen(x, (event) => this.handleInbound(event, channel));
+        console.log(`[v2] Channel started: ${channel.name}`);
       } catch (err) {
-        console.error(`[v2] Channel failed to start: ${name}`, err);
+        console.error(`[v2] Channel failed to start: ${channel.name}`, err);
       }
     }
     const timezone = this.config.settings?.timezone;
@@ -280,8 +283,8 @@ export class OrchestratorV2 {
 
   async stop(): Promise<void> {
     this.cronScheduler.stop();
-    for (const [, channel] of this.channels) {
-      await channel.stop();
+    for (const { channel, x } of xChannelRegistryService(this.x).list(this.x)) {
+      await channel.stop(x);
     }
     // Tear down all long-lived harness sessions
     for (const [, harness] of this.harnesses) {
@@ -296,7 +299,7 @@ export class OrchestratorV2 {
   // INBOUND ROUTING (mirrors v1)
   // ────────────────────────────────────────────────────────────────────────
 
-  private async handleInbound(event: InboundEvent, channel: Channel | null): Promise<void> {
+  private async handleInbound(event: InboundEvent, channel: ChannelService | null): Promise<void> {
     const sessionKey = event.sessionKey;
     console.log(`[v2 handleInbound] ⚡ from ${sessionKey}: "${event.content?.slice(0, 50)}"`);
 
@@ -336,7 +339,7 @@ export class OrchestratorV2 {
       } catch (err) {
         console.error(`[v2] Error processing message for ${sessionKey}:`, err);
         if (channel) {
-          const handler = channel.createHandler(event);
+          const handler = channel.createOutputHandler(this.x, event);
           await handler.relay("Sorry, something went wrong processing that message.");
         }
       }
@@ -352,7 +355,7 @@ export class OrchestratorV2 {
   // CORE: processMessage (the v2 simplification)
   // ────────────────────────────────────────────────────────────────────────
 
-  private async processMessage(event: InboundEvent, channel: Channel | null): Promise<void> {
+  private async processMessage(event: InboundEvent, channel: ChannelService | null): Promise<void> {
     this.reloadConfigIfChanged();
 
     const commandText = normalizeSlashCommand(event.content);
@@ -414,15 +417,16 @@ export class OrchestratorV2 {
     );
 
     // Start typing immediately so the user sees activity.
-    const baseHandler = channel ? channel.createHandler(event) : null;
+    const baseHandler = channel ? channel.createOutputHandler(this.x, event) : null;
     if (baseHandler) {
       await baseHandler.startTyping?.();
     }
 
     try {
       // Output handler + stream mode (same logic as v1)
-      const sendCondition = event.raw?.sendCondition as string | null;
-      const isDirectChannel = event.raw?.source === "direct-channel";
+      const rawMetadata = parseInboundEventMetadata(event.raw);
+      const sendCondition = rawMetadata.sendCondition ?? null;
+      const isDirectChannel = rawMetadata.source === "direct-channel";
 
       let handler = baseHandler;
       let streamMode = effectiveSettings.streamMode;
@@ -495,7 +499,7 @@ export class OrchestratorV2 {
       // it on every call (cheap), but the harness ignores it on subsequent runs.
       const systemPrompt = buildSystemPromptV2({
         soul: xVitoService(this.x).getSoul(this.x),
-        channelPrompt: event.raw?.channelPrompt || channel?.getCustomPrompt?.() || "",
+        channelPrompt: rawMetadata.channelPrompt || channel?.getCustomPrompt?.(this.x) || "",
         customInstructions: effectiveSettings.customInstructions || "",
         harnessInstructions: innerHarness.getCustomInstructions?.() || "",
         botName: this.config.bot?.name,
@@ -540,9 +544,6 @@ export class OrchestratorV2 {
         this.activeRequests.delete(event.sessionKey);
       }
 
-      if (channel) {
-        this.notifyResponseComplete(channel);
-      }
 
       // Background: chunk + embed; periodic profile update.
       const contextualizerModel = effectiveSettings.memory?.chunkContextualizerModel;
@@ -585,7 +586,7 @@ export class OrchestratorV2 {
     vitoSessionId: string,
     _event: InboundEvent,
     settings: ResolvedSettings,
-    _channel: Channel | null
+    _channel: ChannelService | null
   ): Promise<Harness> {
     const harnessName = this.resolveHarnessName(settings);
     const globalPiConfig = this.config.harnesses?.["pi-coding-agent"];
@@ -744,9 +745,9 @@ export class OrchestratorV2 {
   // COMMANDS
   // ────────────────────────────────────────────────────────────────────────
 
-  private async handleStopCommand(event: InboundEvent, channel: Channel): Promise<void> {
+  private async handleStopCommand(event: InboundEvent, channel: ChannelService): Promise<void> {
     const sessionKey = `${event.channel}:${event.target}`;
-    const handler = channel.createHandler(event);
+    const handler = channel.createOutputHandler(this.x, event);
 
     const queue = this.sessionQueues.get(sessionKey);
     const queuedCount = queue?.length || 0;
@@ -775,9 +776,9 @@ export class OrchestratorV2 {
     await handler.stopTyping?.();
   }
 
-  private async handleRestartCommand(event: InboundEvent, channel: Channel): Promise<void> {
+  private async handleRestartCommand(event: InboundEvent, channel: ChannelService): Promise<void> {
     const { spawn } = await import("child_process");
-    const handler = channel.createHandler(event);
+    const handler = channel.createOutputHandler(this.x, event);
     await handler.relay("🔄 Rebuilding dashboard and restarting...");
     await handler.stopTyping?.();
     // Mirror the dashboard restart button: rebuild the React bundle, then
@@ -799,9 +800,9 @@ export class OrchestratorV2 {
    * Old pi JSONL files are left in place; they show up as historical
    * sessions in the Pi Sessions dashboard page.
    */
-  private async handleNewCommand(event: InboundEvent, channel: Channel): Promise<void> {
+  private async handleNewCommand(event: InboundEvent, channel: ChannelService): Promise<void> {
     const vitoSession = this.sessionManager.resolveSession(event.sessionKey);
-    const handler = channel.createHandler(event);
+    const handler = channel.createOutputHandler(this.x, event);
 
     const existing = this.harnesses.get(vitoSession.id);
     const recentMessages = xMessageStore(this.x).list(this.x, {
@@ -881,9 +882,9 @@ export class OrchestratorV2 {
    * without starting a new conversation. If there's no active pi session yet,
    * the harness config is updated so the next turn starts on that model.
    */
-  private async handleModelCommand(event: InboundEvent, channel: Channel): Promise<void> {
+  private async handleModelCommand(event: InboundEvent, channel: ChannelService): Promise<void> {
     const vitoSession = this.sessionManager.resolveSession(event.sessionKey);
-    const handler = channel.createHandler(event);
+    const handler = channel.createOutputHandler(this.x, event);
     const raw = event.content?.trim() || "";
     const spec = raw.replace(/^\/model\b/i, "").trim();
     const effectiveSettings = getEffectiveSettings(this.config, event.channel, event.sessionKey);
@@ -932,9 +933,9 @@ export class OrchestratorV2 {
    * where it was — just with a shorter prefix. Auto-compaction handles the
    * routine case; this is the on-demand trigger.
    */
-  private async handleCompactCommand(event: InboundEvent, channel: Channel): Promise<void> {
+  private async handleCompactCommand(event: InboundEvent, channel: ChannelService): Promise<void> {
     const vitoSession = this.sessionManager.resolveSession(event.sessionKey);
-    const handler = channel.createHandler(event);
+    const handler = channel.createOutputHandler(this.x, event);
 
     const existing = this.harnesses.get(vitoSession.id);
     if (!existing || !this.firstTurnDone.has(vitoSession.id)) {
@@ -978,12 +979,6 @@ export class OrchestratorV2 {
       console.error("[v2 /compact] failed:", err);
       await handler.relay("❌ Compaction failed — see logs.");
       await handler.stopTyping?.();
-    }
-  }
-
-  private notifyResponseComplete(channel: Channel): void {
-    if ("reprompt" in channel && typeof (channel as any).reprompt === "function") {
-      (channel as any).reprompt();
     }
   }
 

@@ -1,16 +1,18 @@
 import express from "express";
 import type { NextFunction, Request, Response, Router } from "express";
 import type { Context } from "../../context/Context.js";
-import { xChannelManagementService } from "../../lib/x.js";
+import { xChannelRegistryService } from "../../lib/x.js";
 import {
+  ChannelManagementNotSupportedError,
   ChannelNotConfiguredError,
-  type ManagedChannelName,
-} from "../../services/channels/ChannelManagementService.js";
+} from "../../services/channels/channel-registry-service.js";
 import {
   emptyRouteSchema,
   unknownRouteSchema,
   validatedRoute,
 } from "../route.js";
+
+export type ManagedChannelName = "discord" | "telegram";
 
 function channelErrorMiddleware(
   error: unknown,
@@ -19,7 +21,9 @@ function channelErrorMiddleware(
   _next: NextFunction
 ): void {
   const message = error instanceof Error ? error.message : String(error);
-  res.status(error instanceof ChannelNotConfiguredError ? 400 : 500).json({
+  const isConfigurationError = error instanceof ChannelNotConfiguredError
+    || error instanceof ChannelManagementNotSupportedError;
+  res.status(isConfigurationError ? 400 : 500).json({
     success: false,
     error: message,
   });
@@ -35,7 +39,7 @@ export function createChannelManagementRouter(
     x,
     { params: emptyRouteSchema, query: emptyRouteSchema, body: unknownRouteSchema },
     async (routeX, _input, _req, res) => {
-      res.json(await xChannelManagementService(routeX).registerCommands(routeX, channel));
+      res.json(await xChannelRegistryService(routeX).registerCommands(routeX, channel));
     }
   ));
 
@@ -43,7 +47,7 @@ export function createChannelManagementRouter(
     x,
     { params: emptyRouteSchema, query: emptyRouteSchema, body: unknownRouteSchema },
     async (routeX, _input, _req, res) => {
-      res.json(await xChannelManagementService(routeX).generateAliases(routeX, channel));
+      res.json(await xChannelRegistryService(routeX).generateAliases(routeX, channel));
     }
   ));
 

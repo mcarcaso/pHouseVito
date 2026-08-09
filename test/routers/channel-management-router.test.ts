@@ -2,23 +2,35 @@ import assert from "node:assert/strict";
 import type { Server } from "node:http";
 import { after, before, describe, it } from "node:test";
 import express from "express";
-import { ObjectContext } from "../../src/context/ObjectContext.js";
-import { createChannelManagementRouter } from "../../src/routers/channels/channel-management-router.js";
 import type { Context } from "../../src/context/Context.js";
+import { ObjectContext } from "../../src/context/ObjectContext.js";
+import {
+  createChannelManagementRouter,
+  type ManagedChannelName,
+} from "../../src/routers/channels/channel-management-router.js";
 import type {
   AliasGenerationResult,
-  ChannelManagementAdapter,
-  ChannelManagementService,
-  CommandRegistrationResult,
-  ManagedChannelName,
-} from "../../src/services/channels/ChannelManagementService.js";
-import { ChannelNotConfiguredError } from "../../src/services/channels/ChannelManagementService.js";
+  ChannelRegistration,
+  ChannelRegistryService,
+} from "../../src/services/channels/channel-registry-service.js";
+import { ChannelNotConfiguredError } from "../../src/services/channels/channel-registry-service.js";
+import type { ChannelService, CommandRegistrationResult } from "../../src/services/channels/channel-service.js";
 
-class TestChannelManagementService implements ChannelManagementService {
+class TestChannelRegistryService implements ChannelRegistryService {
   configured = new Set<ManagedChannelName>(["discord"]);
 
-  configure(_x: Context, args: ChannelManagementAdapter): void {
-    this.configured.add(args.channel);
+  register(_x: Context, channel: ChannelService): void {
+    if (channel.name === "discord" || channel.name === "telegram") {
+      this.configured.add(channel.name);
+    }
+  }
+
+  get(_x: Context, _name: string): ChannelRegistration | undefined {
+    return undefined;
+  }
+
+  list(_x: Context): ChannelRegistration[] {
+    return [];
   }
 
   async registerCommands(
@@ -46,8 +58,8 @@ class TestChannelManagementService implements ChannelManagementService {
   }
 }
 
-const service = new TestChannelManagementService();
-const x = new ObjectContext({ channelManagementService: () => service });
+const service = new TestChannelRegistryService();
+const x = new ObjectContext({ channelRegistryService: () => service });
 const app = express();
 app.use("/api/discord", createChannelManagementRouter(x, "discord"));
 app.use("/api/telegram", createChannelManagementRouter(x, "telegram"));
@@ -72,9 +84,7 @@ after(async () => {
 
 describe("channel management router", () => {
   it("preserves unconfigured-channel errors", async () => {
-    const response = await fetch(`${baseUrl}/api/telegram/register-commands`, {
-      method: "POST",
-    });
+    const response = await fetch(`${baseUrl}/api/telegram/register-commands`, { method: "POST" });
     assert.equal(response.status, 400);
     assert.deepEqual(await response.json(), {
       success: false,
@@ -83,17 +93,13 @@ describe("channel management router", () => {
   });
 
   it("delegates command registration", async () => {
-    const response = await fetch(`${baseUrl}/api/discord/register-commands`, {
-      method: "POST",
-    });
+    const response = await fetch(`${baseUrl}/api/discord/register-commands`, { method: "POST" });
     assert.equal(response.status, 200);
     assert.deepEqual(await response.json(), { success: true, count: 5 });
   });
 
   it("preserves alias-generation response shape", async () => {
-    const response = await fetch(`${baseUrl}/api/discord/auto-alias`, {
-      method: "POST",
-    });
+    const response = await fetch(`${baseUrl}/api/discord/auto-alias`, { method: "POST" });
     assert.equal(response.status, 200);
     assert.deepEqual(await response.json(), {
       success: true,

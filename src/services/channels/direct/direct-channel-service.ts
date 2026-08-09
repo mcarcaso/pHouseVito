@@ -1,15 +1,18 @@
 /**
- * DirectChannel — A programmatic channel for API/internal use.
- * 
+ * DirectChannelService — A programmatic channel for API/internal use.
+ *
  * Unlike Discord/Telegram/Dashboard, this channel doesn't relay to a chat platform.
  * Instead, it captures the AI response and returns it directly to the caller.
- * 
+ *
  * This ensures API calls (Bland phone, webhooks, internal triggers) go through
- * the EXACT same pipeline as chat messages: full context, semantic search, 
+ * the EXACT same pipeline as chat messages: full context, semantic search,
  * decorators, persistence — no drift, no missing features.
  */
 
-import type { Channel, InboundEvent, OutputHandler } from "../types.js";
+import { parseInboundEventMetadata } from "../../../contracts/inbound-event.js";
+import type { Context } from "../../../context/Context.js";
+import type { InboundEvent, OutputHandler } from "../../../types.js";
+import type { ChannelService } from "../channel-service.js";
 
 interface PendingRequest {
   resolve: (response: string) => void;
@@ -17,10 +20,10 @@ interface PendingRequest {
   collectedMessages: string[];
 }
 
-export class DirectChannel implements Channel {
-  name = "direct";
-  
-  capabilities = {
+export class DirectChannelService implements ChannelService {
+  readonly name = "direct";
+
+  readonly capabilities = {
     typing: false,
     reactions: false,
     attachments: false,
@@ -30,11 +33,11 @@ export class DirectChannel implements Channel {
   private pendingRequests = new Map<string, PendingRequest>();
   private eventHandler: ((event: InboundEvent) => void) | null = null;
 
-  async start(): Promise<void> {
+  async start(_x: Context): Promise<void> {
     // No external connections to establish
   }
 
-  async stop(): Promise<void> {
+  async stop(_x: Context): Promise<void> {
     // Reject any pending requests
     for (const [key, pending] of this.pendingRequests) {
       pending.reject(new Error("DirectChannel stopped"));
@@ -42,7 +45,7 @@ export class DirectChannel implements Channel {
     }
   }
 
-  async listen(onEvent: (event: InboundEvent) => void): Promise<() => void> {
+  async listen(_x: Context, onEvent: (event: InboundEvent) => void): Promise<() => void> {
     this.eventHandler = onEvent;
     return () => {
       this.eventHandler = null;
@@ -115,22 +118,25 @@ Do NOT use markdown formatting unless specifically requested.`;
       return responsePromise;
     }
 
+    let timeoutHandle: NodeJS.Timeout | undefined;
     const timeoutPromise = new Promise<string>((_, reject) => {
-      setTimeout(() => {
+      timeoutHandle = setTimeout(() => {
         this.pendingRequests.delete(requestId);
         reject(new Error(`DirectChannel request timed out after ${timeout}ms`));
       }, timeout);
     });
 
-    return Promise.race([responsePromise, timeoutPromise]);
+    try {
+      return await Promise.race([responsePromise, timeoutPromise]);
+    } finally {
+      if (timeoutHandle) clearTimeout(timeoutHandle);
+    }
   }
 
-  getSessionKey(event: InboundEvent): string {
-    return event.sessionKey;
-  }
 
-  createHandler(event: InboundEvent): OutputHandler {
-    const requestId = event.raw?.requestId as string;
+  createOutputHandler(_x: Context, event: InboundEvent): OutputHandler {
+    const requestId = parseInboundEventMetadata(event.raw).requestId;
+    if (!requestId) throw new Error("DirectChannel event is missing a request ID");
 
     return {
       relay: async (msg: string) => {
@@ -167,14 +173,4 @@ Do NOT use markdown formatting unless specifically requested.`;
       },
     };
   }
-}
-
-// Singleton instance for the orchestrator to use
-let directChannelInstance: DirectChannel | null = null;
-
-export function getDirectChannel(): DirectChannel {
-  if (!directChannelInstance) {
-    directChannelInstance = new DirectChannel();
-  }
-  return directChannelInstance;
 }

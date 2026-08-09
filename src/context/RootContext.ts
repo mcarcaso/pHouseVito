@@ -3,6 +3,7 @@ import { homedir } from "node:os";
 import { join, resolve } from "node:path";
 import { Pm2AppProcessService } from "../services/apps/Pm2AppProcessService.js";
 import { InMemoryDashboardAuthService } from "../services/auth/InMemoryDashboardAuthService.js";
+import { DefaultChannelManagementService } from "../services/channels/DefaultChannelManagementService.js";
 import { FileSystemFileService } from "../services/files/FileSystemFileService.js";
 import { DefaultMemoryService } from "../services/memory/DefaultMemoryService.js";
 import { DefaultProviderService } from "../services/providers/DefaultProviderService.js";
@@ -53,6 +54,7 @@ export function RootContext(args: RootContextArgs): Context {
     fileService: () => new FileSystemFileService(),
     appProcessService: () => new Pm2AppProcessService(),
     dashboardAuthService: () => new InMemoryDashboardAuthService(),
+    channelManagementService: () => new DefaultChannelManagementService(),
     providerService: () => new DefaultProviderService(),
     appStore: () => new FileAppStore(),
     attachmentStore: () => new FileAttachmentStore(),

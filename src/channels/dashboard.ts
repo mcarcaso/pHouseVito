@@ -4,7 +4,7 @@ import type {
   OutputHandler,
 } from "../types.js";
 import type { Context } from "../context/Context.js";
-import { xSecretService, xSessionStore, xVitoService } from "../lib/x.js";
+import { xChannelManagementService, xSecretService, xVitoService } from "../lib/x.js";
 import { createAppProxyMiddleware } from "../routers/apps/app-proxy.js";
 import { createAppRouter } from "../routers/apps/app-router.js";
 import {
@@ -16,6 +16,7 @@ import {
   createDashboardApiAuthMiddleware,
 } from "../routers/auth/dashboard-auth-middleware.js";
 import { createDashboardAuthRouter } from "../routers/auth/dashboard-auth-router.js";
+import { createChannelManagementRouter } from "../routers/channels/channel-management-router.js";
 import { createConfigRouter } from "../routers/config/config-router.js";
 import { createCronRouter } from "../routers/cron/cron-router.js";
 import {
@@ -42,6 +43,10 @@ import { readFileSync, writeFileSync, existsSync, mkdirSync, readdirSync, statSy
 import { execSync } from "child_process";
 import { fileURLToPath } from "url";
 import { mountMcp } from "../mcp-server.js";
+import type {
+  DiscordManagementAdapter,
+  TelegramManagementAdapter,
+} from "../services/channels/ChannelManagementService.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -59,14 +64,6 @@ export class DashboardChannel implements Channel {
   private port = parseInt(process.env.PORT || "3030", 10);
   private eventHandler?: (event: InboundEvent) => void;
 
-  private discordChannel?: {
-    registerSlashCommands: () => Promise<{ success: boolean; count: number; error?: string }>;
-    getChannelInfo: (channelId: string) => Promise<{ name: string; guildName?: string } | null>;
-  };
-  private telegramChannel?: {
-    setMyCommands: () => Promise<{ success: boolean; count: number; error?: string }>;
-    getChatInfo: (chatId: string) => Promise<{ name: string; type: string } | null>;
-  };
   private askHandler?: (options: {
     question: string;
     session?: string;
@@ -80,18 +77,18 @@ export class DashboardChannel implements Channel {
     this.setupExpress();
   }
 
-  setDiscordChannel(discord: {
-    registerSlashCommands: () => Promise<{ success: boolean; count: number; error?: string }>;
-    getChannelInfo: (channelId: string) => Promise<{ name: string; guildName?: string } | null>;
-  }) {
-    this.discordChannel = discord;
+  setDiscordChannel(discord: DiscordManagementAdapter) {
+    xChannelManagementService(this.x).configure(this.x, {
+      channel: "discord",
+      adapter: discord,
+    });
   }
 
-  setTelegramChannel(telegram: {
-    setMyCommands: () => Promise<{ success: boolean; count: number; error?: string }>;
-    getChatInfo: (chatId: string) => Promise<{ name: string; type: string } | null>;
-  }) {
-    this.telegramChannel = telegram;
+  setTelegramChannel(telegram: TelegramManagementAdapter) {
+    xChannelManagementService(this.x).configure(this.x, {
+      channel: "telegram",
+      adapter: telegram,
+    });
   }
 
   setAskHandler(handler: (options: {
@@ -157,145 +154,14 @@ export class DashboardChannel implements Channel {
 
     this.app.use("/api/cron", createCronRouter(this.x));
 
-    // Discord slash command registration
-    this.app.post("/api/discord/register-commands", async (req, res) => {
-      if (!this.discordChannel) {
-        res.status(400).json({ success: false, error: "Discord channel not configured" });
-        return;
-      }
-      try {
-        const result = await this.discordChannel.registerSlashCommands();
-        res.json(result);
-      } catch (err: any) {
-        res.status(500).json({ success: false, error: err.message });
-      }
-    });
-
-    // Auto-generate aliases for Discord sessions that don't have one
-    this.app.post("/api/discord/auto-alias", async (req, res) => {
-      if (!this.discordChannel) {
-        res.status(400).json({ success: false, error: "Discord channel not configured" });
-        return;
-      }
-      try {
-        // Get all Discord sessions without aliases
-        const sessions = xSessionStore(this.x).list(this.x, {
-          channels: ["discord"],
-          hasAlias: false,
-        });
-        
-        const updated: string[] = [];
-        const failed: string[] = [];
-        
-        for (const session of sessions) {
-          const channelId = session.channel_target;
-          if (!channelId) {
-            failed.push(session.id);
-            continue;
-          }
-          const info = await this.discordChannel.getChannelInfo(channelId);
-          
-          if (info) {
-            // Format alias: "guild-name / channel-name" or just the name for DMs
-            const alias = info.guildName 
-              ? `${info.guildName} / ${info.name}`
-              : info.name;
-            
-            xSessionStore(this.x).update(this.x, {
-              id: session.id,
-              changes: { alias },
-            });
-            updated.push(session.id);
-          } else {
-            failed.push(session.id);
-          }
-        }
-        
-        res.json({ 
-          success: true, 
-          updated: updated.length, 
-          failed: failed.length,
-          sessions: { updated, failed }
-        });
-      } catch (err: any) {
-        res.status(500).json({ success: false, error: err.message });
-      }
-    });
-
-    // Telegram bot command registration
-    this.app.post("/api/telegram/register-commands", async (req, res) => {
-      if (!this.telegramChannel) {
-        res.status(400).json({ success: false, error: "Telegram channel not configured" });
-        return;
-      }
-      try {
-        const result = await this.telegramChannel.setMyCommands();
-        res.json(result);
-      } catch (err: any) {
-        res.status(500).json({ success: false, error: err.message });
-      }
-    });
-
-    // Auto-generate aliases for Telegram sessions that don't have one
-    this.app.post("/api/telegram/auto-alias", async (req, res) => {
-      if (!this.telegramChannel) {
-        res.status(400).json({ success: false, error: "Telegram channel not configured" });
-        return;
-      }
-      try {
-        // Get all Telegram sessions without aliases
-        const sessions = xSessionStore(this.x).list(this.x, {
-          channels: ["telegram"],
-          hasAlias: false,
-        });
-        
-        const updated: string[] = [];
-        const failed: string[] = [];
-        
-        for (const session of sessions) {
-          // Session key formats:
-          // - "telegram:chatId" (DM or regular group)
-          // - "telegram:chatId:threadId" (forum topic)
-          const parts = session.id.split(":");
-          const chatId = parts[1];
-          const threadId = parts[2]; // undefined for non-topic sessions
-          
-          const info = await this.telegramChannel.getChatInfo(chatId);
-          
-          if (info) {
-            // Format alias based on type and whether it's a topic
-            // All Telegram aliases prefixed with "telegram:" for consistency
-            let alias: string;
-            if (info.type === "private") {
-              alias = `telegram: DM: ${info.name}`;
-            } else if (threadId) {
-              // Forum topic - we can't easily get topic names via API,
-              // so we show "telegram: GroupName / Topic"
-              alias = `telegram: ${info.name} / Topic`;
-            } else {
-              alias = `telegram: ${info.name}`;
-            }
-            
-            xSessionStore(this.x).update(this.x, {
-              id: session.id,
-              changes: { alias },
-            });
-            updated.push(session.id);
-          } else {
-            failed.push(session.id);
-          }
-        }
-        
-        res.json({ 
-          success: true, 
-          updated: updated.length, 
-          failed: failed.length,
-          sessions: { updated, failed }
-        });
-      } catch (err: any) {
-        res.status(500).json({ success: false, error: err.message });
-      }
-    });
+    this.app.use(
+      "/api/discord",
+      createChannelManagementRouter(this.x, "discord")
+    );
+    this.app.use(
+      "/api/telegram",
+      createChannelManagementRouter(this.x, "telegram")
+    );
 
     this.app.use("/api/secrets", createSecretRouter(this.x));
 

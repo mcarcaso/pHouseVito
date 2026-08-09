@@ -2,6 +2,7 @@ import type Database from "better-sqlite3";
 import type { Context } from "../context/Context.js";
 import type { AppProcessService } from "../services/apps/AppProcessService.js";
 import type { DashboardAuthService } from "../services/auth/DashboardAuthService.js";
+import type { ChannelManagementService } from "../services/channels/ChannelManagementService.js";
 import type { FileService } from "../services/files/FileService.js";
 import type { ProviderService } from "../services/providers/ProviderService.js";
 import type { AppStore } from "../stores/apps/AppStore.js";
@@ -45,6 +46,8 @@ export const xAppProcessService = (x: Context): AppProcessService =>
   x.get("appProcessService") as AppProcessService;
 export const xDashboardAuthService = (x: Context): DashboardAuthService =>
   x.get("dashboardAuthService") as DashboardAuthService;
+export const xChannelManagementService = (x: Context): ChannelManagementService =>
+  x.get("channelManagementService") as ChannelManagementService;
 export const xProviderService = (x: Context): ProviderService =>
   x.get("providerService") as ProviderService;
 export const xFileService = (x: Context): FileService => x.get("fileService") as FileService;

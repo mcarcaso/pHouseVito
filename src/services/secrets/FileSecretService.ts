@@ -62,8 +62,6 @@ const SYSTEM_KEYS: Record<string, string> = {
   DISCORD_BOT_TOKEN: "Discord Bot token — get from https://discord.com/developers/applications (required for Discord channel)",
   DASHBOARD_PASSWORD_HASH: "Dashboard password hash (managed automatically — do not edit manually)",
   BLAND_WEBHOOK_SECRET: "Bland AI webhook secret — add as ?secret=VALUE to your Bland webhook URL",
-  MCP_CLIENT_ID: "MCP OAuth static client id (paired with MCP_CLIENT_SECRET — both required to mount /mcp)",
-  MCP_CLIENT_SECRET: "MCP OAuth static client secret (paired with MCP_CLIENT_ID — both required to mount /mcp)",
   ...Object.fromEntries(
     Object.values(PROVIDER_API_KEYS).map((provider) => [provider.envVar, provider.description])
   ),

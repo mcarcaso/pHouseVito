@@ -2,11 +2,7 @@ import type { OutputHandler } from "../../../output/OutputHandler.js";
 import type { InboundEvent } from "../../../types.js";
 import type { ChannelService } from "../ChannelService.js";
 import type { Context } from "../../../context/Context.js";
-import {
-  xDashboardChatService,
-  xSecretService,
-  xVitoService,
-} from "../../../lib/x.js";
+import { xDashboardChatService } from "../../../lib/x.js";
 import { createAppProxyMiddleware } from "../../../routers/AppProxyMiddleware.js";
 import { AppRouterService } from "../../../routers/AppRouterService.js";
 import { AskApiRouterService } from "../../../routers/AskApiRouterService.js";
@@ -41,7 +37,6 @@ import http from "node:http";
 const createServer = http.createServer.bind(http);
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { mountMcp } from "../../../mcp-server.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -63,24 +58,6 @@ export class DashboardChannelService implements ChannelService {
 
     app.use(express.json({ limit: "200mb" }));
     app.use(express.static(path.join(__dirname, "../../../../dashboard/dist")));
-
-    // ── MCP routes (before auth — has its own OAuth bearer auth) ──
-    // Mounted only if MCP_CLIENT_ID + MCP_CLIENT_SECRET are set in user/secrets.json.
-    // Only the pre-registered static client (Claude) can authorize — no dynamic
-    // registration, no password-based browser login, no URL path-token bypass.
-    const secretService = xSecretService(x);
-    const mcpClientId = secretService.get(x, "MCP_CLIENT_ID");
-    const mcpClientSecret = secretService.get(x, "MCP_CLIENT_SECRET");
-    if (mcpClientId && mcpClientSecret) {
-      mountMcp(app, {
-        x,
-        staticClientId: mcpClientId,
-        staticClientSecret: mcpClientSecret,
-        botName: xVitoService(x).getConfig(x).bot?.name || "Vito",
-      });
-    } else {
-      console.log("[MCP] not mounted (set MCP_CLIENT_ID + MCP_CLIENT_SECRET in user/secrets.json to enable).");
-    }
 
     // Public drive files and hosted sites are resolved through DriveStore.
     app.use("/d", await new PublicDriveRouterService().createRouter(x));

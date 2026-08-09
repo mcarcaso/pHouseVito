@@ -2,6 +2,7 @@ import express from "express";
 import type { NextFunction, Request, Response, Router } from "express";
 import { z } from "zod";
 import type { Context } from "../../context/Context.js";
+import type { RouterService } from "../RouterService.js";
 import {
   driveDirectoryMetaSchema,
   drivePathSchema,
@@ -82,7 +83,7 @@ export function isPublicDriveFile(x: Context, path: string): boolean {
   return entry?.isPublic === true;
 }
 
-export function createPublicDriveRouter(x: Context): Router {
+function createPublicDriveRouter(x: Context): Router {
   const router = express.Router();
   router.get("/*filepath", validatedRoute(
     x,
@@ -133,7 +134,7 @@ function driveErrorMiddleware(
   next(error);
 }
 
-export function createDriveRouter(x: Context): Router {
+function createDriveRouter(x: Context): Router {
   const router = express.Router();
 
   router.get("/ls", validatedRoute(
@@ -278,4 +279,16 @@ export function createDriveRouter(x: Context): Router {
 
   router.use(driveErrorMiddleware);
   return router;
+}
+
+export class PublicDriveRouterService implements RouterService {
+  async createRouter(x: Context): Promise<Router> {
+    return createPublicDriveRouter(x);
+  }
+}
+
+export class DriveRouterService implements RouterService {
+  async createRouter(x: Context): Promise<Router> {
+    return createDriveRouter(x);
+  }
 }

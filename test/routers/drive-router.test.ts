@@ -8,8 +8,8 @@ import express from "express";
 import { z } from "zod";
 import { ObjectContext } from "../../src/context/ObjectContext.js";
 import {
-  createDriveRouter,
-  createPublicDriveRouter,
+  DriveRouterService,
+  PublicDriveRouterService,
 } from "../../src/routers/drive/drive-router.js";
 import { FileDriveStore } from "../../src/stores/drive/FileDriveStore.js";
 
@@ -20,8 +20,8 @@ const x = new ObjectContext({
 });
 const app = express();
 app.use(express.json({ limit: "5mb" }));
-app.use("/d", createPublicDriveRouter(x));
-app.use("/api/drive", createDriveRouter(x));
+app.use("/d", await new PublicDriveRouterService().createRouter(x));
+app.use("/api/drive", await new DriveRouterService().createRouter(x));
 
 let server: Server;
 let baseUrl: string;

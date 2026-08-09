@@ -8,10 +8,10 @@ import express from "express";
 import { z } from "zod";
 import { ObjectContext } from "../../src/context/ObjectContext.js";
 import {
-  createAttachmentFileRouter,
-  createAttachmentUploadRouter,
+  AttachmentFileRouterService,
+  AttachmentUploadRouterService,
 } from "../../src/routers/attachments/attachment-router.js";
-import { createFileRouter } from "../../src/routers/files/file-router.js";
+import { FileRouterService } from "../../src/routers/files/file-router.js";
 import { FileSystemFileService } from "../../src/services/files/FileSystemFileService.js";
 import { FileAttachmentStore } from "../../src/stores/attachments/FileAttachmentStore.js";
 
@@ -24,9 +24,9 @@ const x = new ObjectContext({
 });
 const app = express();
 app.use(express.json());
-app.use("/api/file", createFileRouter(x));
-app.use("/api/attachments", createAttachmentUploadRouter(x));
-app.use("/attachments", createAttachmentFileRouter(x));
+app.use("/api/file", await new FileRouterService().createRouter(x));
+app.use("/api/attachments", await new AttachmentUploadRouterService().createRouter(x));
+app.use("/attachments", await new AttachmentFileRouterService().createRouter(x));
 
 let server: Server;
 let baseUrl: string;

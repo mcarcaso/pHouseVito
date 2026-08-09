@@ -1,6 +1,7 @@
 import express from "express";
 import type { NextFunction, Request, Response, Router } from "express";
 import type { Context } from "../../context/Context.js";
+import type { RouterService } from "../RouterService.js";
 import { xChannelRegistryService } from "../../lib/x.js";
 import {
   ChannelManagementNotSupportedError,
@@ -29,7 +30,7 @@ function channelErrorMiddleware(
   });
 }
 
-export function createChannelManagementRouter(
+function createChannelManagementRouter(
   x: Context,
   channel: ManagedChannelName
 ): Router {
@@ -53,4 +54,12 @@ export function createChannelManagementRouter(
 
   router.use(channelErrorMiddleware);
   return router;
+}
+
+export class ChannelManagementRouterService implements RouterService {
+  constructor(private readonly channel: ManagedChannelName) {}
+
+  async createRouter(x: Context): Promise<Router> {
+    return createChannelManagementRouter(x, this.channel);
+  }
 }

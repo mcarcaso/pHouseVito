@@ -1,6 +1,7 @@
 import express from "express";
 import type { RequestHandler, Router } from "express";
 import type { Context } from "../../context/Context.js";
+import type { RouterService } from "../RouterService.js";
 import { askApiRequestSchema } from "../../contracts/ask-api.js";
 import { xAskApiService, xSecretService } from "../../lib/x.js";
 import { emptyRouteSchema, validatedRoute } from "../route.js";
@@ -34,7 +35,8 @@ function createAskAuthenticationMiddleware(x: Context): RequestHandler {
   };
 }
 
-export function createAskApiRouter(x: Context): Router {
+export class AskApiRouterService implements RouterService {
+  async createRouter(x: Context): Promise<Router> {
   const router = express.Router();
 
   router.post("/", createAskAuthenticationMiddleware(x), validatedRoute(
@@ -76,4 +78,5 @@ export function createAskApiRouter(x: Context): Router {
   ));
 
   return router;
+  }
 }

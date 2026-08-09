@@ -4,7 +4,7 @@ import { after, before, describe, it } from "node:test";
 import express from "express";
 import { ObjectContext } from "../../src/context/ObjectContext.js";
 import type { Context } from "../../src/context/Context.js";
-import { createServerLifecycleRouter } from "../../src/routers/server/server-lifecycle-router.js";
+import { ServerLifecycleRouterService } from "../../src/routers/server/server-lifecycle-router.js";
 import type {
   ServerHealth,
   ServerLifecycleService,
@@ -39,7 +39,7 @@ class TestServerLifecycleService implements ServerLifecycleService {
 const service = new TestServerLifecycleService();
 const x = new ObjectContext({ serverLifecycleService: () => service });
 const app = express();
-app.use("/api", createServerLifecycleRouter(x));
+app.use("/api", await new ServerLifecycleRouterService().createRouter(x));
 
 let server: Server;
 let baseUrl: string;

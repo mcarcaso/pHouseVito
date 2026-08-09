@@ -2,6 +2,7 @@ import express from "express";
 import type { Router } from "express";
 import { z } from "zod";
 import type { Context } from "../../context/Context.js";
+import type { RouterService } from "../RouterService.js";
 import {
   attachmentIdSchema,
   attachmentReadResultSchema,
@@ -39,7 +40,7 @@ function parseByteRange(value: string | undefined, size: number): {
   return { start, end: Math.min(end, size - 1) };
 }
 
-export function createAttachmentUploadRouter(x: Context): Router {
+function createAttachmentUploadRouter(x: Context): Router {
   const router = express.Router();
   router.post("/", validatedRoute(
     x,
@@ -70,7 +71,7 @@ export function createAttachmentUploadRouter(x: Context): Router {
   return router;
 }
 
-export function createAttachmentFileRouter(x: Context): Router {
+function createAttachmentFileRouter(x: Context): Router {
   const router = express.Router();
   router.get("/:id", validatedRoute(
     x,
@@ -116,4 +117,16 @@ export function createAttachmentFileRouter(x: Context): Router {
     }
   ));
   return router;
+}
+
+export class AttachmentUploadRouterService implements RouterService {
+  async createRouter(x: Context): Promise<Router> {
+    return createAttachmentUploadRouter(x);
+  }
+}
+
+export class AttachmentFileRouterService implements RouterService {
+  async createRouter(x: Context): Promise<Router> {
+    return createAttachmentFileRouter(x);
+  }
 }

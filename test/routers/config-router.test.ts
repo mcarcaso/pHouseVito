@@ -10,7 +10,7 @@ import { vitoConfigSchema } from "../../src/contracts/vito-config.js";
 import { RootContext } from "../../src/context/RootContext.js";
 import { createDatabase } from "../../src/db/schema.js";
 import { xVitoService } from "../../src/lib/x.js";
-import { createConfigRouter } from "../../src/routers/config/config-router.js";
+import { ConfigRouterService } from "../../src/routers/config/config-router.js";
 
 const userDir = mkdtempSync(join(tmpdir(), "vito-config-router-"));
 writeFileSync(
@@ -23,7 +23,7 @@ const db = createDatabase(":memory:");
 const x = RootContext({ db, userDir, skillsDir: join(userDir, "skills") });
 const app = express();
 app.use(express.json());
-app.use("/api", createConfigRouter(x));
+app.use("/api", await new ConfigRouterService().createRouter(x));
 
 const validationResponseSchema = z.object({
   error: z.string(),

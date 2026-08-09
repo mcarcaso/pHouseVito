@@ -7,7 +7,7 @@ import { after, before, describe, it } from "node:test";
 import express from "express";
 import { z } from "zod";
 import { ObjectContext } from "../../src/context/ObjectContext.js";
-import { createSecretRouter } from "../../src/routers/secrets/secret-router.js";
+import { SecretRouterService } from "../../src/routers/secrets/secret-router.js";
 import { FileSecretService } from "../../src/services/secrets/FileSecretService.js";
 
 const root = mkdtempSync(join(tmpdir(), "vito-secret-router-"));
@@ -19,7 +19,7 @@ const x = new ObjectContext({
 });
 const app = express();
 app.use(express.json());
-app.use("/api/secrets", createSecretRouter(x));
+app.use("/api/secrets", await new SecretRouterService().createRouter(x));
 
 const secretSchema = z.object({
   key: z.string(),

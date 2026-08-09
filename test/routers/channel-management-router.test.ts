@@ -5,7 +5,7 @@ import express from "express";
 import type { Context } from "../../src/context/Context.js";
 import { ObjectContext } from "../../src/context/ObjectContext.js";
 import {
-  createChannelManagementRouter,
+  ChannelManagementRouterService,
   type ManagedChannelName,
 } from "../../src/routers/channels/channel-management-router.js";
 import type {
@@ -61,8 +61,8 @@ class TestChannelRegistryService implements ChannelRegistryService {
 const service = new TestChannelRegistryService();
 const x = new ObjectContext({ channelRegistryService: () => service });
 const app = express();
-app.use("/api/discord", createChannelManagementRouter(x, "discord"));
-app.use("/api/telegram", createChannelManagementRouter(x, "telegram"));
+app.use("/api/discord", await new ChannelManagementRouterService("discord").createRouter(x));
+app.use("/api/telegram", await new ChannelManagementRouterService("telegram").createRouter(x));
 
 let server: Server;
 let baseUrl: string;

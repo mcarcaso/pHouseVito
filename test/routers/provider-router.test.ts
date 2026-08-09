@@ -4,8 +4,8 @@ import { after, before, describe, it } from "node:test";
 import express from "express";
 import { ObjectContext } from "../../src/context/ObjectContext.js";
 import {
-  createModelRouter,
-  createProviderAuthRouter,
+  ModelRouterService,
+  ProviderAuthRouterService,
 } from "../../src/routers/providers/provider-router.js";
 import type {
   ProviderLoginStartResult,
@@ -62,8 +62,8 @@ const service = new TestProviderService();
 const x = new ObjectContext({ providerService: () => service });
 const app = express();
 app.use(express.json());
-app.use("/api/models", createModelRouter(x));
-app.use("/api/auth/provider", createProviderAuthRouter(x));
+app.use("/api/models", await new ModelRouterService().createRouter(x));
+app.use("/api/auth/provider", await new ProviderAuthRouterService().createRouter(x));
 
 let server: Server;
 let baseUrl: string;

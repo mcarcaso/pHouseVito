@@ -9,7 +9,7 @@ import type {
   CronJobConfig,
   VitoConfig,
 } from "../../src/contracts/vito-config.js";
-import { createSystemContentRouter } from "../../src/routers/system-content/system-content-router.js";
+import { SystemContentRouterService } from "../../src/routers/system-content/system-content-router.js";
 import type { VitoService } from "../../src/services/vito/VitoService.js";
 
 class TestVitoService implements VitoService {
@@ -50,7 +50,7 @@ const service = new TestVitoService();
 const x = new ObjectContext({ vitoService: () => service });
 const app = express();
 app.use(express.json());
-app.use("/api", createSystemContentRouter(x));
+app.use("/api", await new SystemContentRouterService().createRouter(x));
 
 let server: Server;
 let baseUrl: string;

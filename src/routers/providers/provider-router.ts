@@ -2,6 +2,7 @@ import express from "express";
 import type { NextFunction, Request, Response, Router } from "express";
 import { z } from "zod";
 import type { Context } from "../../context/Context.js";
+import type { RouterService } from "../RouterService.js";
 import { xProviderService } from "../../lib/x.js";
 import { ProviderLoginConflictError } from "../../services/providers/ProviderService.js";
 import {
@@ -28,7 +29,7 @@ function providerErrorMiddleware(
   res.status(500).json({ error: message });
 }
 
-export function createModelRouter(x: Context): Router {
+function createModelRouter(x: Context): Router {
   const router = express.Router();
 
   router.get("/providers", validatedRoute(
@@ -55,7 +56,7 @@ export function createModelRouter(x: Context): Router {
   return router;
 }
 
-export function createProviderAuthRouter(x: Context): Router {
+function createProviderAuthRouter(x: Context): Router {
   const router = express.Router();
 
   router.post("/:id/login", validatedRoute(
@@ -102,4 +103,16 @@ export function createProviderAuthRouter(x: Context): Router {
 
   router.use(providerErrorMiddleware);
   return router;
+}
+
+export class ModelRouterService implements RouterService {
+  async createRouter(x: Context): Promise<Router> {
+    return createModelRouter(x);
+  }
+}
+
+export class ProviderAuthRouterService implements RouterService {
+  async createRouter(x: Context): Promise<Router> {
+    return createProviderAuthRouter(x);
+  }
 }

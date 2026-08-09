@@ -13,7 +13,7 @@ import {
   xTraceEventStore,
   xTraceStore,
 } from "../../src/lib/x.js";
-import { createTraceRouter } from "../../src/routers/traces/trace-router.js";
+import { TraceRouterService } from "../../src/routers/traces/trace-router.js";
 
 const logsDir = mkdtempSync(join(tmpdir(), "vito-trace-router-"));
 const userDir = mkdtempSync(join(tmpdir(), "vito-trace-user-"));
@@ -48,7 +48,7 @@ xTraceEventStore(x).create(x, {
 
 const app = express();
 app.use(express.json());
-app.use("/api/logs", createTraceRouter(x));
+app.use("/api/logs", await new TraceRouterService().createRouter(x));
 
 const listSchema = z.object({
   files: z.array(z.object({

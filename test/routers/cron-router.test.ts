@@ -12,7 +12,7 @@ import { RootContext } from "../../src/context/RootContext.js";
 import type { CronJobConfig } from "../../src/contracts/vito-config.js";
 import { createDatabase } from "../../src/db/schema.js";
 import { xSessionStore, xVitoService } from "../../src/lib/x.js";
-import { createCronRouter } from "../../src/routers/cron/cron-router.js";
+import { CronRouterService } from "../../src/routers/cron/cron-router.js";
 import type { CronHealth, CronService } from "../../src/services/cron/CronService.js";
 
 class FakeCronService implements CronService {
@@ -71,7 +71,7 @@ const x = new ObjectContext({
 }, rootX);
 const app = express();
 app.use(express.json());
-app.use("/api/cron", createCronRouter(x));
+app.use("/api/cron", await new CronRouterService().createRouter(x));
 
 const errorResponseSchema = z.object({ error: z.string() }).passthrough();
 const jobResponseSchema = z.object({

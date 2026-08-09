@@ -7,7 +7,7 @@ import { after, before, describe, it } from "node:test";
 import express from "express";
 import { z } from "zod";
 import { ObjectContext } from "../../src/context/ObjectContext.js";
-import { createAppRouter } from "../../src/routers/apps/app-router.js";
+import { AppRouterService } from "../../src/routers/apps/app-router.js";
 import type {
   AppProcessAction,
   AppProcessService,
@@ -56,7 +56,7 @@ const x = new ObjectContext({
 });
 const app = express();
 app.use(express.json());
-app.use("/api/apps", createAppRouter(x));
+app.use("/api/apps", await new AppRouterService().createRouter(x));
 
 let server: Server;
 let baseUrl: string;

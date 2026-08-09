@@ -7,38 +7,38 @@ import {
   xVitoService,
 } from "../../../lib/x.js";
 import { createAppProxyMiddleware } from "../../../routers/apps/app-proxy.js";
-import { createAppRouter } from "../../../routers/apps/app-router.js";
-import { createAskApiRouter } from "../../../routers/ask/ask-api-router.js";
+import { AppRouterService } from "../../../routers/apps/app-router.js";
+import { AskApiRouterService } from "../../../routers/ask/ask-api-router.js";
 import {
-  createAttachmentFileRouter,
-  createAttachmentUploadRouter,
+  AttachmentFileRouterService,
+  AttachmentUploadRouterService,
 } from "../../../routers/attachments/attachment-router.js";
 import {
   createAttachmentAuthMiddleware,
   createDashboardApiAuthMiddleware,
 } from "../../../routers/auth/dashboard-auth-middleware.js";
-import { createDashboardAuthRouter } from "../../../routers/auth/dashboard-auth-router.js";
-import { createChannelManagementRouter } from "../../../routers/channels/channel-management-router.js";
-import { createDashboardChatRouter } from "../../../routers/chat/dashboard-chat-router.js";
-import { createConfigRouter } from "../../../routers/config/config-router.js";
-import { createCronRouter } from "../../../routers/cron/cron-router.js";
+import { DashboardAuthRouterService } from "../../../routers/auth/dashboard-auth-router.js";
+import { ChannelManagementRouterService } from "../../../routers/channels/channel-management-router.js";
+import { DashboardChatRouterService } from "../../../routers/chat/dashboard-chat-router.js";
+import { ConfigRouterService } from "../../../routers/config/config-router.js";
+import { CronRouterService } from "../../../routers/cron/cron-router.js";
 import {
-  createDriveRouter,
-  createPublicDriveRouter,
+  DriveRouterService,
+  PublicDriveRouterService,
 } from "../../../routers/drive/drive-router.js";
-import { createFileRouter } from "../../../routers/files/file-router.js";
-import { createMemoryRouter } from "../../../routers/memory/memory-router.js";
-import { createPiSessionRouter } from "../../../routers/pi-sessions/pi-session-router.js";
+import { FileRouterService } from "../../../routers/files/file-router.js";
+import { MemoryRouterService } from "../../../routers/memory/memory-router.js";
+import { PiSessionRouterService } from "../../../routers/pi-sessions/pi-session-router.js";
 import {
-  createModelRouter,
-  createProviderAuthRouter,
+  ModelRouterService,
+  ProviderAuthRouterService,
 } from "../../../routers/providers/provider-router.js";
-import { createSecretRouter } from "../../../routers/secrets/secret-router.js";
-import { createServerLifecycleRouter } from "../../../routers/server/server-lifecycle-router.js";
-import { createSessionRouter } from "../../../routers/sessions/session-router.js";
-import { createSkillRouter } from "../../../routers/skills/skill-router.js";
-import { createSystemContentRouter } from "../../../routers/system-content/system-content-router.js";
-import { createTraceRouter } from "../../../routers/traces/trace-router.js";
+import { SecretRouterService } from "../../../routers/secrets/secret-router.js";
+import { ServerLifecycleRouterService } from "../../../routers/server/server-lifecycle-router.js";
+import { SessionRouterService } from "../../../routers/sessions/session-router.js";
+import { SkillRouterService } from "../../../routers/skills/skill-router.js";
+import { SystemContentRouterService } from "../../../routers/system-content/system-content-router.js";
+import { TraceRouterService } from "../../../routers/traces/trace-router.js";
 import express from "express";
 import http from "node:http";
 const createServer = http.createServer.bind(http);
@@ -60,7 +60,7 @@ export class DashboardChannelService implements ChannelService {
   private server?: http.Server;
   private readonly port = parseInt(process.env.PORT || "3030", 10);
 
-  private setupExpress(x: Context, app: express.Express): void {
+  private async setupExpress(x: Context, app: express.Express): Promise<void> {
     // Must precede body parsing so request bodies can stream to app processes.
     app.use(createAppProxyMiddleware(x));
 
@@ -86,59 +86,59 @@ export class DashboardChannelService implements ChannelService {
     }
 
     // Public drive files and hosted sites are resolved through DriveStore.
-    app.use("/d", createPublicDriveRouter(x));
+    app.use("/d", await new PublicDriveRouterService().createRouter(x));
 
-    app.use("/api/auth", createDashboardAuthRouter(x));
+    app.use("/api/auth", await new DashboardAuthRouterService().createRouter(x));
     app.use("/api", createDashboardApiAuthMiddleware(x));
     app.use(
       "/attachments",
       createAttachmentAuthMiddleware(x),
-      createAttachmentFileRouter(x)
+      await new AttachmentFileRouterService().createRouter(x)
     );
 
     // API endpoints
-    app.use("/api", createServerLifecycleRouter(x));
+    app.use("/api", await new ServerLifecycleRouterService().createRouter(x));
 
-    app.use("/api", createConfigRouter(x));
+    app.use("/api", await new ConfigRouterService().createRouter(x));
 
-    app.use("/api/models", createModelRouter(x));
-    app.use("/api/auth/provider", createProviderAuthRouter(x));
+    app.use("/api/models", await new ModelRouterService().createRouter(x));
+    app.use("/api/auth/provider", await new ProviderAuthRouterService().createRouter(x));
 
-    app.use("/api/sessions", createSessionRouter(x));
+    app.use("/api/sessions", await new SessionRouterService().createRouter(x));
 
-    app.use("/api/skills", createSkillRouter(x));
+    app.use("/api/skills", await new SkillRouterService().createRouter(x));
 
-    app.use("/api/cron", createCronRouter(x));
+    app.use("/api/cron", await new CronRouterService().createRouter(x));
 
     app.use(
       "/api/discord",
-      createChannelManagementRouter(x, "discord")
+      await new ChannelManagementRouterService("discord").createRouter(x)
     );
     app.use(
       "/api/telegram",
-      createChannelManagementRouter(x, "telegram")
+      await new ChannelManagementRouterService("telegram").createRouter(x)
     );
 
-    app.use("/api/secrets", createSecretRouter(x));
+    app.use("/api/secrets", await new SecretRouterService().createRouter(x));
 
-    app.use("/api", createSystemContentRouter(x));
+    app.use("/api", await new SystemContentRouterService().createRouter(x));
 
-    app.use("/api/memory", createMemoryRouter(x));
+    app.use("/api/memory", await new MemoryRouterService().createRouter(x));
 
-    app.use("/api/file", createFileRouter(x));
-    app.use("/api/attachments", createAttachmentUploadRouter(x));
+    app.use("/api/file", await new FileRouterService().createRouter(x));
+    app.use("/api/attachments", await new AttachmentUploadRouterService().createRouter(x));
 
-    app.use("/api/ask", createAskApiRouter(x));
+    app.use("/api/ask", await new AskApiRouterService().createRouter(x));
 
-    app.use("/api/chat", createDashboardChatRouter(x));
+    app.use("/api/chat", await new DashboardChatRouterService().createRouter(x));
 
-    app.use("/api/apps", createAppRouter(x));
+    app.use("/api/apps", await new AppRouterService().createRouter(x));
 
-    app.use("/api/drive", createDriveRouter(x));
+    app.use("/api/drive", await new DriveRouterService().createRouter(x));
 
-    app.use("/api/logs", createTraceRouter(x));
+    app.use("/api/logs", await new TraceRouterService().createRouter(x));
 
-    app.use("/api/pi-sessions", createPiSessionRouter(x));
+    app.use("/api/pi-sessions", await new PiSessionRouterService().createRouter(x));
 
     // Serve the React app for all other routes
     app.use((req, res) => {
@@ -149,7 +149,7 @@ export class DashboardChannelService implements ChannelService {
   async start(x: Context): Promise<void> {
     if (this.server) return;
     const app = express();
-    this.setupExpress(x, app);
+    await this.setupExpress(x, app);
     this.server = createServer(app);
     return new Promise((resolve) => {
       this.server?.listen(this.port, () => {

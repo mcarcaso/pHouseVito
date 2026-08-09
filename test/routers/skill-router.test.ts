@@ -7,7 +7,7 @@ import { after, before, describe, it } from "node:test";
 import express from "express";
 import { z } from "zod";
 import { ObjectContext } from "../../src/context/ObjectContext.js";
-import { createSkillRouter } from "../../src/routers/skills/skill-router.js";
+import { SkillRouterService } from "../../src/routers/skills/skill-router.js";
 import { FileSkillStore } from "../../src/stores/skills/FileSkillStore.js";
 
 const root = mkdtempSync(join(tmpdir(), "vito-skill-router-"));
@@ -29,7 +29,7 @@ const x = new ObjectContext({
 });
 const app = express();
 app.use(express.json());
-app.use("/api/skills", createSkillRouter(x));
+app.use("/api/skills", await new SkillRouterService().createRouter(x));
 
 const skillSchema = z.object({
   name: z.string(),

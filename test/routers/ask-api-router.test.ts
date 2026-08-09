@@ -4,7 +4,7 @@ import { after, before, describe, it } from "node:test";
 import express from "express";
 import { ObjectContext } from "../../src/context/ObjectContext.js";
 import type { AskApiOptions } from "../../src/contracts/ask-api.js";
-import { createAskApiRouter } from "../../src/routers/ask/ask-api-router.js";
+import { AskApiRouterService } from "../../src/routers/ask/ask-api-router.js";
 import { DefaultAskApiService } from "../../src/services/ask/DefaultAskApiService.js";
 
 const secrets = new Map<string, string>();
@@ -17,7 +17,7 @@ const x = new ObjectContext({
 });
 const app = express();
 app.use(express.json());
-app.use("/api/ask", createAskApiRouter(x));
+app.use("/api/ask", await new AskApiRouterService().createRouter(x));
 
 let server: Server;
 let baseUrl: string;

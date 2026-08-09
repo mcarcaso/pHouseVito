@@ -9,7 +9,7 @@ import { z } from "zod";
 import { RootContext } from "../../src/context/RootContext.js";
 import { createDatabase } from "../../src/db/schema.js";
 import { xEmbeddingDb, xEmbeddingStore, xSessionStore } from "../../src/lib/x.js";
-import { createMemoryRouter } from "../../src/routers/memory/memory-router.js";
+import { MemoryRouterService } from "../../src/routers/memory/memory-router.js";
 
 const userDir = mkdtempSync(join(tmpdir(), "vito-memory-router-"));
 writeFileSync(join(userDir, "profile.md"), "# Test Profile\n");
@@ -40,7 +40,7 @@ xEmbeddingStore(x).createChunk(x, {
 
 const app = express();
 app.use(express.json());
-app.use("/api/memory", createMemoryRouter(x));
+app.use("/api/memory", await new MemoryRouterService().createRouter(x));
 
 const profileSchema = z.object({ content: z.string().nullable() });
 const statsSchema = z.object({

@@ -11,7 +11,7 @@ import {
   createAttachmentAuthMiddleware,
   createDashboardApiAuthMiddleware,
 } from "../../src/routers/auth/dashboard-auth-middleware.js";
-import { createDashboardAuthRouter } from "../../src/routers/auth/dashboard-auth-router.js";
+import { DashboardAuthRouterService } from "../../src/routers/auth/dashboard-auth-router.js";
 import { InMemoryDashboardAuthService } from "../../src/services/auth/InMemoryDashboardAuthService.js";
 import { FileSecretService } from "../../src/services/secrets/FileSecretService.js";
 import { FileDriveStore } from "../../src/stores/drive/FileDriveStore.js";
@@ -26,7 +26,7 @@ const x = new ObjectContext({
 });
 const app = express();
 app.use(express.json());
-app.use("/api/auth", createDashboardAuthRouter(x));
+app.use("/api/auth", await new DashboardAuthRouterService().createRouter(x));
 app.use("/api", createDashboardApiAuthMiddleware(x));
 app.get("/api/protected", (_req, res) => res.json({ ok: true }));
 app.get("/api/health", (_req, res) => res.json({ public: true }));

@@ -9,7 +9,7 @@ import { z } from "zod";
 import { RootContext } from "../../src/context/RootContext.js";
 import { createDatabase } from "../../src/db/schema.js";
 import { xMessageStore, xSessionStore } from "../../src/lib/x.js";
-import { createSessionRouter } from "../../src/routers/sessions/session-router.js";
+import { SessionRouterService } from "../../src/routers/sessions/session-router.js";
 
 const userDir = mkdtempSync(join(tmpdir(), "vito-session-router-"));
 const exampleConfigPath = join(process.cwd(), "user.example", "vito.config.json");
@@ -56,7 +56,7 @@ const settingsResponseSchema = z.record(z.string(), z.unknown());
 
 const app = express();
 app.use(express.json());
-app.use("/api/sessions", createSessionRouter(x));
+app.use("/api/sessions", await new SessionRouterService().createRouter(x));
 
 let server: Server;
 let baseUrl: string;

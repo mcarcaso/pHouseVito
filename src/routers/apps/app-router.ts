@@ -2,6 +2,7 @@ import express from "express";
 import type { NextFunction, Request, Response, Router } from "express";
 import { z } from "zod";
 import type { Context } from "../../context/Context.js";
+import type { RouterService } from "../RouterService.js";
 import {
   appFilePathSchema,
   appNameSchema,
@@ -38,113 +39,115 @@ function appErrorMiddleware(
   res.status(500).json({ error: message });
 }
 
-export function createAppRouter(x: Context): Router {
-  const router = express.Router();
+export class AppRouterService implements RouterService {
+  async createRouter(x: Context): Promise<Router> {
+    const router = express.Router();
 
-  router.get("/", validatedRoute(
-    x,
-    { params: emptyRouteSchema, query: emptyRouteSchema, body: unknownRouteSchema },
-    async (routeX, _input, _req, res) => {
-      const apps = xAppStore(routeX).list(routeX, {});
-      const statuses = new Map(
-        (await xAppProcessService(routeX).list(routeX, apps.map((app) => app.name)))
-          .map((status) => [status.name, status])
-      );
-      res.json(apps.map((app) => {
-        const process = statuses.get(app.name);
-        return {
-          name: app.name,
-          description: app.description,
-          port: app.port,
-          url: app.url,
-          createdAt: app.createdAt,
-          status: process?.status ?? "unknown",
-          uptime: process?.uptime ?? null,
-          restarts: process?.restarts ?? 0,
-          memory: process?.memory ?? null,
-        };
-      }));
-    }
-  ));
+    router.get("/", validatedRoute(
+      x,
+      { params: emptyRouteSchema, query: emptyRouteSchema, body: unknownRouteSchema },
+      async (routeX, _input, _req, res) => {
+        const apps = xAppStore(routeX).list(routeX, {});
+        const statuses = new Map(
+          (await xAppProcessService(routeX).list(routeX, apps.map((app) => app.name)))
+            .map((status) => [status.name, status])
+        );
+        res.json(apps.map((app) => {
+          const process = statuses.get(app.name);
+          return {
+            name: app.name,
+            description: app.description,
+            port: app.port,
+            url: app.url,
+            createdAt: app.createdAt,
+            status: process?.status ?? "unknown",
+            uptime: process?.uptime ?? null,
+            restarts: process?.restarts ?? 0,
+            memory: process?.memory ?? null,
+          };
+        }));
+      }
+    ));
 
-  router.post("/:name/:action", validatedRoute(
-    x,
-    {
-      params: appParamsSchema.extend({ action: actionSchema }),
-      query: emptyRouteSchema,
-      body: unknownRouteSchema,
-    },
-    async (routeX, { params }, req, res) => {
-      const clientIp = req.headers["x-forwarded-for"] ?? req.socket.remoteAddress;
-      console.log(
-        `[Dashboard] App ${params.action} requested: ${params.name} from ${String(clientIp ?? "unknown")} ua=${req.headers["user-agent"] ?? "unknown"}`
-      );
-      await xAppProcessService(routeX).execute(routeX, {
-        action: params.action,
-        appName: params.name,
-      });
-      const pastTense = params.action === "stop"
-        ? "Stopped"
-        : params.action === "start"
-          ? "Started"
-          : "Restarted";
-      res.json({ success: true, message: `${pastTense} ${params.name}` });
-    }
-  ));
-
-  router.delete("/:name", validatedRoute(
-    x,
-    { params: appParamsSchema, query: emptyRouteSchema, body: unknownRouteSchema },
-    async (routeX, { params }, _req, res) => {
-      try {
+    router.post("/:name/:action", validatedRoute(
+      x,
+      {
+        params: appParamsSchema.extend({ action: actionSchema }),
+        query: emptyRouteSchema,
+        body: unknownRouteSchema,
+      },
+      async (routeX, { params }, req, res) => {
+        const clientIp = req.headers["x-forwarded-for"] ?? req.socket.remoteAddress;
+        console.log(
+          `[Dashboard] App ${params.action} requested: ${params.name} from ${String(clientIp ?? "unknown")} ua=${req.headers["user-agent"] ?? "unknown"}`
+        );
         await xAppProcessService(routeX).execute(routeX, {
-          action: "delete",
+          action: params.action,
           appName: params.name,
         });
-      } catch {
-        // An app may have no active PM2 process; filesystem deletion still applies.
+        const pastTense = params.action === "stop"
+          ? "Stopped"
+          : params.action === "start"
+            ? "Started"
+            : "Restarted";
+        res.json({ success: true, message: `${pastTense} ${params.name}` });
       }
-      xAppStore(routeX).delete(routeX, { names: [params.name] });
-      res.json({ success: true, message: `Deleted ${params.name}` });
-    }
-  ));
+    ));
 
-  router.get("/:name/files", validatedRoute(
-    x,
-    { params: appParamsSchema, query: emptyRouteSchema, body: unknownRouteSchema },
-    (routeX, { params }, _req, res) => {
-      const app = xAppStore(routeX).list(routeX, {
-        names: [params.name],
-        includeFiles: true,
-      })[0];
-      if (!app) {
-        res.status(404).json({ error: "App not found" });
-        return;
+    router.delete("/:name", validatedRoute(
+      x,
+      { params: appParamsSchema, query: emptyRouteSchema, body: unknownRouteSchema },
+      async (routeX, { params }, _req, res) => {
+        try {
+          await xAppProcessService(routeX).execute(routeX, {
+            action: "delete",
+            appName: params.name,
+          });
+        } catch {
+          // An app may have no active PM2 process; filesystem deletion still applies.
+        }
+        xAppStore(routeX).delete(routeX, { names: [params.name] });
+        res.json({ success: true, message: `Deleted ${params.name}` });
       }
-      res.json(app.files ?? []);
-    }
-  ));
+    ));
 
-  router.get("/:name/files/*filepath", validatedRoute(
-    x,
-    { params: appFileParamsSchema, query: emptyRouteSchema, body: unknownRouteSchema },
-    (routeX, { params }, _req, res) => {
-      const result = appReadFileResultSchema.safeParse(
-        xAppStore(routeX).cmd(routeX, {
-          type: "read-file",
-          appName: params.name,
-          path: params.filepath,
-          maxBytes: 1024 * 1024,
-        })
-      );
-      if (!result.success) {
-        res.status(404).json({ error: "File not found" });
-        return;
+    router.get("/:name/files", validatedRoute(
+      x,
+      { params: appParamsSchema, query: emptyRouteSchema, body: unknownRouteSchema },
+      (routeX, { params }, _req, res) => {
+        const app = xAppStore(routeX).list(routeX, {
+          names: [params.name],
+          includeFiles: true,
+        })[0];
+        if (!app) {
+          res.status(404).json({ error: "App not found" });
+          return;
+        }
+        res.json(app.files ?? []);
       }
-      res.json(result.data);
-    }
-  ));
+    ));
 
-  router.use(appErrorMiddleware);
-  return router;
+    router.get("/:name/files/*filepath", validatedRoute(
+      x,
+      { params: appFileParamsSchema, query: emptyRouteSchema, body: unknownRouteSchema },
+      (routeX, { params }, _req, res) => {
+        const result = appReadFileResultSchema.safeParse(
+          xAppStore(routeX).cmd(routeX, {
+            type: "read-file",
+            appName: params.name,
+            path: params.filepath,
+            maxBytes: 1024 * 1024,
+          })
+        );
+        if (!result.success) {
+          res.status(404).json({ error: "File not found" });
+          return;
+        }
+        res.json(result.data);
+      }
+    ));
+
+    router.use(appErrorMiddleware);
+    return router;
+  }
 }

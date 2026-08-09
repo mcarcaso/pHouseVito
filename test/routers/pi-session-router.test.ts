@@ -9,7 +9,7 @@ import { z } from "zod";
 import { RootContext } from "../../src/context/RootContext.js";
 import { createDatabase } from "../../src/db/schema.js";
 import { xSessionStore } from "../../src/lib/x.js";
-import { createPiSessionRouter } from "../../src/routers/pi-sessions/pi-session-router.js";
+import { PiSessionRouterService } from "../../src/routers/pi-sessions/pi-session-router.js";
 
 const userDir = mkdtempSync(join(tmpdir(), "vito-pi-session-router-"));
 const piSessionsDir = join(userDir, "pi-sessions");
@@ -34,7 +34,7 @@ xSessionStore(x).create(x, {
 
 const app = express();
 app.use(express.json());
-app.use("/api/pi-sessions", createPiSessionRouter(x));
+app.use("/api/pi-sessions", await new PiSessionRouterService().createRouter(x));
 
 let server: Server;
 let baseUrl: string;

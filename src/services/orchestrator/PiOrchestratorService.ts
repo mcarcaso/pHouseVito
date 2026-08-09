@@ -12,7 +12,7 @@ import {
   withTracing,
   withTyping,
 } from "./runtime/index.js";
-import { withNoReplyCheck } from "./runtime/no-reply-output-handler.js";
+import { NoReplyOutputHandler } from "../channels/output/NoReplyOutputHandler.js";
 import { DirectChannelService } from "../channels/direct/DirectChannelService.js";
 import type { ChannelService } from "../channels/ChannelService.js";
 import type { AskOptions, OrchestratorService } from "./OrchestratorService.js";
@@ -409,8 +409,8 @@ export class PiOrchestratorService implements OrchestratorService {
 
       let handler = baseHandler;
       let streamMode = effectiveSettings.streamMode;
-      if (sendCondition) {
-        handler = withNoReplyCheck(baseHandler);
+      if (sendCondition && baseHandler) {
+        handler = new NoReplyOutputHandler(baseHandler);
         streamMode = "final";
       } else if (isDirectChannel) {
         streamMode = "final";

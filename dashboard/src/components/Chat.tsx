@@ -2,6 +2,8 @@ import { useState, useEffect, useRef, useCallback, useLayoutEffect } from 'react
 import ChatView, { parseDbMessage, type ParsedMessage, type Attachment, type FilterState } from './ChatView';
 import FilterButton from './FilterButton';
 import React from 'react';
+import { attachmentUploadResponseSchema } from '../../../src/shared/contracts/attachment-api';
+import { dashboardChatRequestSchema } from '../../../src/shared/contracts/dashboard-chat';
 
 // Memoize ChatView to prevent re-renders when typing in the input
 const MemoizedChatView = React.memo(ChatView);
@@ -228,7 +230,7 @@ function Chat() {
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ data: att.data, filename: att.filename }),
           });
-          const result = await res.json();
+          const result = attachmentUploadResponseSchema.parse(await res.json());
           uploaded.push({
             type: att.type,
             path: result.path,
@@ -242,12 +244,12 @@ function Chat() {
       }
     }
 
-    const payload = {
+    const payload = dashboardChatRequestSchema.parse({
       type: 'chat' as const,
       content: text,
       attachments: uploaded.length > 0 ? uploaded : undefined,
       sessionId: selectedSessionId,
-    };
+    });
 
     // Send via HTTP POST
     try {

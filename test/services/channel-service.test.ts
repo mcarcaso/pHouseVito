@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
-import { validateVitoConfig } from "../../src/contracts/vito-config.js";
+import { validateVitoConfig } from "../../src/shared/contracts/vito-config.js";
 import { ObjectContext } from "../../src/context/ObjectContext.js";
 import { formatDiscordSessionAlias } from "../../src/services/channels/discord/DiscordChannelService.js";
 import { DirectChannelService } from "../../src/services/channels/direct/DirectChannelService.js";

@@ -6,8 +6,9 @@ import type { RouterService } from "../RouterService.js";
 import {
   type VitoConfig,
   type VitoConfigPatch,
+  streamModeUpdateSchema,
   vitoConfigPatchSchema,
-} from "../../contracts/vito-config.js";
+} from "../../shared/contracts/vito-config.js";
 import { xVitoService } from "../../lib/x.js";
 import { getDefaultSettings } from "../../settings.js";
 import {
@@ -19,10 +20,6 @@ import {
 const channelParamsSchema = z.object({
   name: z.string().min(1),
 });
-
-const streamModeBodySchema = z.object({
-  streamMode: z.enum(["stream", "bundled", "final"]),
-}).strict();
 
 function applyConfigPatch(config: VitoConfig, patch: VitoConfigPatch): VitoConfig {
   return {
@@ -151,7 +148,7 @@ export class ConfigRouterService implements RouterService {
       {
         params: channelParamsSchema,
         query: emptyRouteSchema,
-        body: streamModeBodySchema,
+        body: streamModeUpdateSchema,
       },
       (routeX, { params, body }, _req, res) => {
         const vitoService = xVitoService(routeX);

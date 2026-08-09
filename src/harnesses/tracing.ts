@@ -6,7 +6,7 @@
 
 import { join } from "node:path";
 import type { Context } from "../context/Context.js";
-import type { WritableTraceEventData } from "../contracts/trace-event.js";
+import type { WritableTraceEventData } from "../shared/contracts/trace-event.js";
 import { xLogsDir, xTraceEventStore, xTraceStore } from "../lib/x.js";
 import { TraceSizeLimitError } from "../stores/traces/FileTraceEventStore.js";
 import { ProxyHarness } from "./proxy.js";

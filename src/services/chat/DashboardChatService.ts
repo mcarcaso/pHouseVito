@@ -1,5 +1,5 @@
 import type { Context } from "../../context/Context.js";
-import type { DashboardChatRequest } from "../../contracts/dashboard-chat.js";
+import type { DashboardChatRequest } from "../../shared/contracts/dashboard-chat.js";
 import type { InboundEvent } from "../../types.js";
 
 export type DashboardInboundHandler = (event: InboundEvent) => void;

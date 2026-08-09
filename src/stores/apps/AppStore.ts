@@ -1,5 +1,5 @@
 import type { Context } from "../../context/Context.js";
-import type { AppMetadata } from "../../contracts/app.js";
+import type { AppMetadata } from "../../shared/contracts/app.js";
 import type { Store } from "../Store.js";
 
 export interface AppFile {

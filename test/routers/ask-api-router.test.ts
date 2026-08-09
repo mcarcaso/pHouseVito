@@ -3,7 +3,7 @@ import type { Server } from "node:http";
 import { after, before, describe, it } from "node:test";
 import express from "express";
 import { ObjectContext } from "../../src/context/ObjectContext.js";
-import type { AskApiOptions } from "../../src/contracts/ask-api.js";
+import type { AskApiOptions } from "../../src/shared/contracts/ask-api.js";
 import { AskApiRouterService } from "../../src/routers/ask/ask-api-router.js";
 import { DefaultAskApiService } from "../../src/services/ask/DefaultAskApiService.js";
 

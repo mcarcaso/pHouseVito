@@ -103,6 +103,7 @@ pHouseVito/
 │   ├── db/                    # SQLite schema and queries
 │   ├── harnesses/             # AI backend harnesses (pi-coding-agent)
 │   ├── memory/                # Memory management and compaction
+│   ├── shared/contracts/      # Browser-safe Zod API contracts shared with dashboard
 │   ├── sessions/              # Session management
 │   ├── skills/                # Builtin skill discovery and loading
 │   └── orchestrator.ts        # Core message flow

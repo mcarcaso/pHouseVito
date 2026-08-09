@@ -1,6 +1,6 @@
 import { readFileSync, existsSync, cpSync } from "fs";
 import { resolve } from "path";
-import { validateVitoConfig } from "./contracts/vito-config.js";
+import { validateVitoConfig } from "./shared/contracts/vito-config.js";
 import type { VitoConfig } from "./types.js";
 
 const ROOT = process.cwd();

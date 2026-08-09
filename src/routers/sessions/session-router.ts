@@ -3,7 +3,12 @@ import type { Router } from "express";
 import { z } from "zod";
 import type { Context } from "../../context/Context.js";
 import type { RouterService } from "../RouterService.js";
-import { settingsPatchSchema, settingsSchema } from "../../contracts/vito-config.js";
+import {
+  sessionAliasUpdateSchema,
+  sessionIdSchema,
+  sessionMessagesQuerySchema,
+} from "../../shared/contracts/session-api.js";
+import { settingsPatchSchema, settingsSchema } from "../../shared/contracts/vito-config.js";
 import { xMessageStore, xSessionStore, xVitoService } from "../../lib/x.js";
 import {
   emptyRouteSchema,
@@ -11,21 +16,7 @@ import {
   validatedRoute,
 } from "../route.js";
 
-const sessionParamsSchema = z.object({
-  id: z.string().min(1),
-});
-
-const messagesQuerySchema = z.object({
-  limit: z.coerce.number().int().positive().optional(),
-  before: z.coerce.number().int().positive().optional(),
-  after: z.coerce.number().int().positive().optional(),
-  hideThoughts: z.enum(["true", "false"]).transform((value) => value === "true").optional(),
-  hideTools: z.enum(["true", "false"]).transform((value) => value === "true").optional(),
-}).strict();
-
-const aliasBodySchema = z.object({
-  alias: z.string().nullable(),
-}).strict();
+const sessionParamsSchema = z.object({ id: sessionIdSchema });
 
 export class SessionRouterService implements RouterService {
   async createRouter(x: Context): Promise<Router> {
@@ -47,7 +38,7 @@ export class SessionRouterService implements RouterService {
       x,
       {
         params: sessionParamsSchema,
-        query: messagesQuerySchema,
+        query: sessionMessagesQuerySchema,
         body: unknownRouteSchema,
       },
       (routeX, { params, query }, _req, res) => {
@@ -151,7 +142,7 @@ export class SessionRouterService implements RouterService {
       {
         params: sessionParamsSchema,
         query: emptyRouteSchema,
-        body: aliasBodySchema,
+        body: sessionAliasUpdateSchema,
       },
       (routeX, { params, body }, _req, res) => {
         if (!xSessionStore(routeX).list(routeX, { ids: [params.id], limit: 1 })[0]) {

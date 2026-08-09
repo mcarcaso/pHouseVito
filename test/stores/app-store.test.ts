@@ -10,7 +10,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, it } from "node:test";
 import { ObjectContext } from "../../src/context/ObjectContext.js";
-import { appReadFileResultSchema } from "../../src/contracts/app.js";
+import { appReadFileResultSchema } from "../../src/shared/contracts/app.js";
 import { AppFileTooLargeError, FileAppStore } from "../../src/stores/apps/FileAppStore.js";
 
 function createHarness() {

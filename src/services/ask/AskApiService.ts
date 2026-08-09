@@ -1,5 +1,5 @@
 import type { Context } from "../../context/Context.js";
-import type { AskApiOptions } from "../../contracts/ask-api.js";
+import type { AskApiOptions } from "../../shared/contracts/ask-api.js";
 
 export type AskApiHandler = (options: AskApiOptions) => Promise<string>;
 

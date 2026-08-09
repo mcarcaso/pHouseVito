@@ -6,8 +6,9 @@ import type { RouterService } from "../RouterService.js";
 import {
   appFilePathSchema,
   appNameSchema,
+  appProcessActionSchema,
   appReadFileResultSchema,
-} from "../../contracts/app.js";
+} from "../../shared/contracts/app.js";
 import { xAppProcessService, xAppStore } from "../../lib/x.js";
 import { AppFileTooLargeError } from "../../stores/apps/FileAppStore.js";
 import {
@@ -23,7 +24,6 @@ const appFileParamsSchema = z.object({
     .transform((value) => Array.isArray(value) ? value.join("/") : value)
     .pipe(appFilePathSchema),
 }).strict();
-const actionSchema = z.enum(["start", "stop", "restart"]);
 
 function appErrorMiddleware(
   error: unknown,
@@ -72,7 +72,7 @@ export class AppRouterService implements RouterService {
     router.post("/:name/:action", validatedRoute(
       x,
       {
-        params: appParamsSchema.extend({ action: actionSchema }),
+        params: appParamsSchema.extend({ action: appProcessActionSchema }),
         query: emptyRouteSchema,
         body: unknownRouteSchema,
       },

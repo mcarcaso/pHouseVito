@@ -40,9 +40,15 @@ export const settingsSchema = z.object({
   }).passthrough().optional(),
 }).passthrough();
 
+export const streamModeSchema = z.enum(["stream", "bundled", "final"]);
+
+export const streamModeUpdateSchema = z.object({
+  streamMode: streamModeSchema,
+}).strict();
+
 export const settingsPatchSchema = z.object({
   harness: z.string().min(1).nullable().optional(),
-  streamMode: z.enum(["stream", "bundled", "final"]).nullable().optional(),
+  streamMode: streamModeSchema.nullable().optional(),
   customInstructions: z.string().nullable().optional(),
   requireMention: z.boolean().nullable().optional(),
   traceMessageUpdates: z.boolean().nullable().optional(),

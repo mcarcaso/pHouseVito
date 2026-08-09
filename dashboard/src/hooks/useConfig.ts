@@ -1,5 +1,9 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
-import type { VitoConfig } from '../utils/settingsResolution';
+import {
+  vitoConfigSchema,
+  type VitoConfig,
+  type VitoConfigPatch,
+} from '../../../src/shared/contracts/vito-config';
 
 interface UseConfigReturn {
   config: VitoConfig | null;
@@ -8,7 +12,7 @@ interface UseConfigReturn {
   saving: boolean;
   saved: boolean;
   /** Update specific fields via deep merge and save */
-  updateConfig: (updates: Partial<VitoConfig>) => Promise<void>;
+  updateConfig: (updates: VitoConfigPatch) => Promise<void>;
   /** Reload config from server */
   reload: () => Promise<void>;
 }
@@ -24,11 +28,11 @@ export function useConfig(): UseConfigReturn {
   const load = useCallback(async () => {
     try {
       const res = await fetch('/api/config');
-      const data = await res.json();
+      const data = vitoConfigSchema.parse(await res.json());
       setConfig(data);
       setError(null);
-    } catch (err: any) {
-      setError(err.message || 'Failed to load config');
+    } catch (error: unknown) {
+      setError(error instanceof Error ? error.message : 'Failed to load config');
     } finally {
       setLoading(false);
     }
@@ -41,7 +45,7 @@ export function useConfig(): UseConfigReturn {
     };
   }, [load]);
 
-  const updateConfig = useCallback(async (updates: Partial<VitoConfig>) => {
+  const updateConfig = useCallback(async (updates: VitoConfigPatch) => {
     setSaving(true);
     try {
       const res = await fetch('/api/config', {
@@ -49,14 +53,14 @@ export function useConfig(): UseConfigReturn {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(updates),
       });
-      const updated = await res.json();
+      const updated = vitoConfigSchema.parse(await res.json());
       setConfig(updated);
       setSaved(true);
       if (savedTimer.current) clearTimeout(savedTimer.current);
       savedTimer.current = window.setTimeout(() => setSaved(false), 2000);
-    } catch (err: any) {
-      console.error('Failed to save config:', err);
-      setError(err.message || 'Failed to save');
+    } catch (error: unknown) {
+      console.error('Failed to save config:', error);
+      setError(error instanceof Error ? error.message : 'Failed to save');
     } finally {
       setSaving(false);
     }

@@ -88,7 +88,7 @@ Directories served through `/d/` fall back to their `index.html`, which is how h
 
 ## Config
 
-All non-secret runtime configuration lives in `user/vito.config.json`; credentials live separately in `user/secrets.json`. Runtime Zod schemas and inferred config types live in `src/contracts/vito-config.ts` and are re-exported from `src/types.ts`.
+All non-secret runtime configuration lives in `user/vito.config.json`; credentials live separately in `user/secrets.json`. Browser-safe Zod schemas and inferred API/config types live in `src/shared/contracts/` and can be consumed by both the backend and dashboard. Server-only contracts remain in `src/contracts/`. Config types are re-exported from `src/types.ts`.
 
 Settings cascade: **Global** → **Channel** → **Session** (most specific wins).
 

@@ -8,7 +8,7 @@ import {
   cronJobConfigSchema,
   cronJobPatchSchema,
   type CronJobConfig,
-} from "../../contracts/vito-config.js";
+} from "../../shared/contracts/vito-config.js";
 import { xCronService, xSessionStore, xVitoService } from "../../lib/x.js";
 import { DEFAULT_TIMEZONE } from "../../system-instructions.js";
 import {

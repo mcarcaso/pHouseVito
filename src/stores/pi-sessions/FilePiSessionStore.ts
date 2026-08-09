@@ -13,7 +13,7 @@ import {
   piSessionRecordIdSchema,
   type JsonValue,
   type PiSessionLine,
-} from "../../contracts/pi-session.js";
+} from "../../shared/contracts/pi-session.js";
 import { xPiSessionsDir } from "../../lib/x.js";
 import { UnsupportedStoreOperationError } from "../Store.js";
 import type {

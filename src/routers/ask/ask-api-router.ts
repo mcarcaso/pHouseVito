@@ -2,7 +2,7 @@ import express from "express";
 import type { RequestHandler, Router } from "express";
 import type { Context } from "../../context/Context.js";
 import type { RouterService } from "../RouterService.js";
-import { askApiRequestSchema } from "../../contracts/ask-api.js";
+import { askApiRequestSchema } from "../../shared/contracts/ask-api.js";
 import { xAskApiService, xSecretService } from "../../lib/x.js";
 import { emptyRouteSchema, validatedRoute } from "../route.js";
 

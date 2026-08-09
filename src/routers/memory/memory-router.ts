@@ -1,7 +1,7 @@
 import express from "express";
 import type { Router } from "express";
-import { z } from "zod";
 import type { Context } from "../../context/Context.js";
+import { memorySearchQuerySchema } from "../../shared/contracts/memory-api.js";
 import type { RouterService } from "../RouterService.js";
 import { xMemoryService, xSessionStore } from "../../lib/x.js";
 import {
@@ -9,13 +9,6 @@ import {
   unknownRouteSchema,
   validatedRoute,
 } from "../route.js";
-
-const searchQuerySchema = z.object({
-  q: z.string().min(1),
-  mode: z.enum(["hybrid", "embedding", "bm25"]).default("hybrid"),
-  limit: z.coerce.number().int().positive().max(100).default(10),
-  session: z.string().min(1).optional(),
-}).strict();
 
 export class MemoryRouterService implements RouterService {
   async createRouter(x: Context): Promise<Router> {
@@ -68,7 +61,7 @@ export class MemoryRouterService implements RouterService {
       x,
       {
         params: emptyRouteSchema,
-        query: searchQuerySchema,
+        query: memorySearchQuerySchema,
         body: unknownRouteSchema,
       },
       async (routeX, { query }, _req, res) => {

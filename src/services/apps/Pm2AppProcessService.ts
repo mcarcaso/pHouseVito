@@ -1,7 +1,7 @@
 import { execa } from "execa";
 import { z } from "zod";
 import type { Context } from "../../context/Context.js";
-import { appNameSchema } from "../../contracts/app.js";
+import { appNameSchema } from "../../shared/contracts/app.js";
 import type {
   AppProcessService,
   AppProcessStatus,

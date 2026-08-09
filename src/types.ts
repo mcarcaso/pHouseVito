@@ -97,7 +97,7 @@ export type {
   ResolvedSettings,
   Settings,
   VitoConfig,
-} from "./contracts/vito-config.js";
+} from "./shared/contracts/vito-config.js";
 
 
 // ── DB row types ──

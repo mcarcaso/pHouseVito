@@ -1,14 +1,5 @@
 import React, { useState, useEffect } from "react";
-
-interface CronJob {
-  name: string;
-  schedule: string;
-  timezone?: string;
-  session: string;
-  prompt: string;
-  oneTime?: boolean;
-  sendCondition?: string;
-}
+import type { CronJobConfig as CronJob } from "../../../src/shared/contracts/vito-config";
 
 interface Session {
   id: string;

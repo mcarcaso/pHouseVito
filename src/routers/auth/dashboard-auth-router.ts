@@ -1,7 +1,7 @@
 import express from "express";
 import type { Router } from "express";
-import { z } from "zod";
 import type { Context } from "../../context/Context.js";
+import { dashboardLoginRequestSchema } from "../../shared/contracts/dashboard-auth.js";
 import type { RouterService } from "../RouterService.js";
 import { xDashboardAuthService } from "../../lib/x.js";
 import {
@@ -9,10 +9,6 @@ import {
   unknownRouteSchema,
   validatedRoute,
 } from "../route.js";
-
-const loginBodySchema = z.object({
-  password: z.unknown().optional(),
-}).passthrough();
 
 export class DashboardAuthRouterService implements RouterService {
   async createRouter(x: Context): Promise<Router> {
@@ -44,7 +40,7 @@ export class DashboardAuthRouterService implements RouterService {
 
     router.post("/login", validatedRoute(
       x,
-      { params: emptyRouteSchema, query: emptyRouteSchema, body: loginBodySchema },
+      { params: emptyRouteSchema, query: emptyRouteSchema, body: dashboardLoginRequestSchema },
       (routeX, { body }, req, res) => {
         const result = xDashboardAuthService(routeX).login(routeX, {
           password: body.password,

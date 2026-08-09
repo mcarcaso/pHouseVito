@@ -1,5 +1,8 @@
 import { z } from "zod";
 
+export const appProcessActionSchema = z.enum(["start", "stop", "restart"]);
+export type AppProcessAction = z.infer<typeof appProcessActionSchema>;
+
 export const appNameSchema = z.string().min(1).max(100).regex(
   /^[A-Za-z0-9][A-Za-z0-9._-]*$/,
   "Invalid app name"

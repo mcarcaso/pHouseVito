@@ -8,7 +8,7 @@ import type {
   ConfigValidationResult,
   CronJobConfig,
   VitoConfig,
-} from "../../src/contracts/vito-config.js";
+} from "../../src/shared/contracts/vito-config.js";
 import { SystemContentRouterService } from "../../src/routers/system-content/system-content-router.js";
 import type { VitoService } from "../../src/services/vito/VitoService.js";
 

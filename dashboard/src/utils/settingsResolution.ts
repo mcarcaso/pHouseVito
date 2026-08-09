@@ -5,72 +5,19 @@
  * getDefaults() — no constants are duplicated.
  */
 
+import type {
+  ResolvedSettings,
+  Settings,
+  VitoConfig,
+} from '../../../src/shared/contracts/vito-config';
 import { getDefaults } from './defaults';
 
-export interface Settings {
-  harness?: string;
-  streamMode?: 'stream' | 'bundled' | 'final';
-  customInstructions?: string;
-  requireMention?: boolean;
-  traceMessageUpdates?: boolean;
-  timezone?: string;
-  'pi-coding-agent'?: {
-    model?: { provider: string; name: string };
-    openRouterProvider?: string;
-    thinkingLevel?: 'off' | 'low' | 'medium' | 'high';
-  };
-  'claude-code'?: {
-    model?: { provider: string; name: string };
-    permissionMode?: 'default' | 'acceptEdits' | 'bypassPermissions' | 'plan';
-    binaryPath?: string;
-  };
-  memory?: {
-    chunkContextualizerModel?: { provider: string; name: string };
-  };
-}
-
-export interface ResolvedSettings {
-  harness: string;
-  streamMode: 'stream' | 'bundled' | 'final';
-  customInstructions?: string;
-  requireMention?: boolean;
-  traceMessageUpdates?: boolean;
-  timezone?: string;
-  'pi-coding-agent'?: Settings['pi-coding-agent'];
-  'claude-code'?: Settings['claude-code'];
-  memory?: Settings['memory'];
-}
-
-export interface VitoConfig {
-  bot?: {
-    name: string;  // @mentions get normalized to @{name}
-  };
-  settings: Settings;
-  harnesses: {
-    'pi-coding-agent'?: {
-      model: { provider: string; name: string };
-      openRouterProvider?: string;
-      thinkingLevel?: string;
-    };
-    'claude-code'?: {
-      model?: { provider: string; name: string };
-      permissionMode?: 'default' | 'acceptEdits' | 'bypassPermissions' | 'plan';
-      binaryPath?: string;
-    };
-  };
-  channels: Record<string, ChannelConfig>;
-  sessions?: Record<string, Settings>;
-  cron: { jobs: any[] };
-}
-
-export interface ChannelConfig {
-  enabled: boolean;
-  settings?: Settings;
-  allowedChatIds?: string[];
-  allowedGuildIds?: string[];
-  allowedChannelIds?: string[];
-  [key: string]: any;
-}
+export type {
+  ChannelConfig,
+  ResolvedSettings,
+  Settings,
+  VitoConfig,
+} from '../../../src/shared/contracts/vito-config';
 
 /** Deep merge two Settings objects. Later values win. */
 function mergeSettings(base: Settings, override: Settings): Settings {

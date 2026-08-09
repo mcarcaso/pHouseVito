@@ -1,6 +1,6 @@
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
-import { validateVitoConfig } from "../contracts/vito-config.js";
+import { validateVitoConfig } from "../shared/contracts/vito-config.js";
 
 const configPath = resolve(process.argv[2] || "user/vito.config.json");
 

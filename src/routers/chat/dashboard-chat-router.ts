@@ -2,7 +2,7 @@ import express from "express";
 import type { Router } from "express";
 import type { Context } from "../../context/Context.js";
 import type { RouterService } from "../RouterService.js";
-import { dashboardChatRequestSchema } from "../../contracts/dashboard-chat.js";
+import { dashboardChatRequestSchema } from "../../shared/contracts/dashboard-chat.js";
 import { xDashboardChatService } from "../../lib/x.js";
 import { emptyRouteSchema, validatedRoute } from "../route.js";
 

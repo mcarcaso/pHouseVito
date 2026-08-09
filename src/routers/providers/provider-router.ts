@@ -2,6 +2,10 @@ import express from "express";
 import type { NextFunction, Request, Response, Router } from "express";
 import { z } from "zod";
 import type { Context } from "../../context/Context.js";
+import {
+  providerIdSchema,
+  providerLoginPromptRequestSchema,
+} from "../../shared/contracts/provider-api.js";
 import type { RouterService } from "../RouterService.js";
 import { xProviderService } from "../../lib/x.js";
 import { ProviderLoginConflictError } from "../../services/providers/ProviderService.js";
@@ -11,9 +15,8 @@ import {
   validatedRoute,
 } from "../route.js";
 
-const providerParamsSchema = z.object({ id: z.string().min(1).max(200) }).strict();
-const modelParamsSchema = z.object({ provider: z.string().min(1).max(200) }).strict();
-const promptBodySchema = z.object({ value: z.unknown().optional() }).passthrough();
+const providerParamsSchema = z.object({ id: providerIdSchema }).strict();
+const modelParamsSchema = z.object({ provider: providerIdSchema }).strict();
 
 function providerErrorMiddleware(
   error: unknown,
@@ -77,7 +80,7 @@ function createProviderAuthRouter(x: Context): Router {
 
   router.post("/:id/login/prompt", validatedRoute(
     x,
-    { params: providerParamsSchema, query: emptyRouteSchema, body: promptBodySchema },
+    { params: providerParamsSchema, query: emptyRouteSchema, body: providerLoginPromptRequestSchema },
     (routeX, { params, body }, _req, res) => {
       const value = typeof body.value === "string" ? body.value.trim() : "";
       if (!value) {

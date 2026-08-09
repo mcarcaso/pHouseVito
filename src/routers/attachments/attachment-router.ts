@@ -2,6 +2,10 @@ import express from "express";
 import type { Router } from "express";
 import { z } from "zod";
 import type { Context } from "../../context/Context.js";
+import {
+  attachmentUploadRequestSchema,
+  attachmentUploadResponseSchema,
+} from "../../shared/contracts/attachment-api.js";
 import type { RouterService } from "../RouterService.js";
 import {
   attachmentIdSchema,
@@ -14,10 +18,6 @@ import {
   validatedRoute,
 } from "../route.js";
 
-const uploadBodySchema = z.object({
-  data: z.unknown().optional(),
-  filename: z.unknown().optional(),
-}).passthrough();
 const attachmentParamsSchema = z.object({ id: attachmentIdSchema }).strict();
 
 function parseByteRange(value: string | undefined, size: number): {
@@ -44,7 +44,7 @@ function createAttachmentUploadRouter(x: Context): Router {
   const router = express.Router();
   router.post("/", validatedRoute(
     x,
-    { params: emptyRouteSchema, query: emptyRouteSchema, body: uploadBodySchema },
+    { params: emptyRouteSchema, query: emptyRouteSchema, body: attachmentUploadRequestSchema },
     (routeX, { body }, _req, res) => {
       if (typeof body.data !== "string" || !body.data) {
         res.status(400).json({ error: "data (base64 data URL) is required" });
@@ -60,12 +60,12 @@ function createAttachmentUploadRouter(x: Context): Router {
         mimeType: match[1],
         ...(body.filename ? { filename: String(body.filename) } : {}),
       });
-      res.json({
+      res.json(attachmentUploadResponseSchema.parse({
         path: attachment.path,
         url: attachment.url,
         filename: attachment.filename,
         mimeType: attachment.mimeType,
-      });
+      }));
     }
   ));
   return router;

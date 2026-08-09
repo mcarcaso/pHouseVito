@@ -2,6 +2,12 @@ import express from "express";
 import type { NextFunction, Request, Response, Router } from "express";
 import { z } from "zod";
 import type { Context } from "../../context/Context.js";
+import {
+  driveDirectoryMetaUpdateSchema,
+  driveFileMetaUpdateSchema,
+  driveSiteUploadRequestSchema,
+  driveUploadRequestSchema,
+} from "../../shared/contracts/drive-api.js";
 import type { RouterService } from "../RouterService.js";
 import {
   driveDirectoryMetaSchema,
@@ -23,23 +29,6 @@ import {
 
 const pathQuerySchema = z.object({ path: drivePathSchema.default("") }).strict();
 const requiredPathQuerySchema = z.object({ path: nonRootDrivePathSchema }).strict();
-const uploadBodySchema = z.object({
-  data: z.string().min(1),
-  filename: z.string().min(1),
-  folder: drivePathSchema.optional(),
-}).strict();
-const siteUploadBodySchema = z.object({
-  data: z.string().min(1),
-  folder: nonRootDrivePathSchema,
-}).strict();
-const directoryMetaBodySchema = z.object({
-  isPublic: z.boolean().optional(),
-  name: z.string().optional(),
-  description: z.string().optional(),
-}).strict();
-const fileMetaBodySchema = z.object({
-  isPublic: z.boolean().nullable().optional(),
-}).strict();
 const wildcardPathSchema = z.object({
   filepath: z.union([z.string(), z.array(z.string())])
     .transform((value) => {
@@ -176,7 +165,7 @@ function createDriveRouter(x: Context): Router {
 
   router.post("/upload", validatedRoute(
     x,
-    { params: emptyRouteSchema, query: emptyRouteSchema, body: uploadBodySchema },
+    { params: emptyRouteSchema, query: emptyRouteSchema, body: driveUploadRequestSchema },
     (routeX, { body }, _req, res) => {
       const content = decodeDataUrl(body.data);
       if (!content) {
@@ -200,7 +189,7 @@ function createDriveRouter(x: Context): Router {
 
   router.post("/upload-site", validatedRoute(
     x,
-    { params: emptyRouteSchema, query: emptyRouteSchema, body: siteUploadBodySchema },
+    { params: emptyRouteSchema, query: emptyRouteSchema, body: driveSiteUploadRequestSchema },
     (routeX, { body }, _req, res) => {
       const archive = decodeDataUrl(body.data);
       if (!archive) {
@@ -218,7 +207,7 @@ function createDriveRouter(x: Context): Router {
 
   router.put("/meta", validatedRoute(
     x,
-    { params: emptyRouteSchema, query: pathQuerySchema, body: directoryMetaBodySchema },
+    { params: emptyRouteSchema, query: pathQuerySchema, body: driveDirectoryMetaUpdateSchema },
     (routeX, { query, body }, _req, res) => {
       const updated = xDriveStore(routeX).update(routeX, {
         path: query.path,
@@ -230,7 +219,7 @@ function createDriveRouter(x: Context): Router {
 
   router.put("/file-meta", validatedRoute(
     x,
-    { params: emptyRouteSchema, query: requiredPathQuerySchema, body: fileMetaBodySchema },
+    { params: emptyRouteSchema, query: requiredPathQuerySchema, body: driveFileMetaUpdateSchema },
     (routeX, { query, body }, _req, res) => {
       const updated = xDriveStore(routeX).update(routeX, {
         path: query.path,

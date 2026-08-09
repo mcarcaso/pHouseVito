@@ -8,6 +8,10 @@ import { xSecretService, xSessionStore, xVitoService } from "../lib/x.js";
 import { createAppProxyMiddleware } from "../routers/apps/app-proxy.js";
 import { createAppRouter } from "../routers/apps/app-router.js";
 import {
+  createAttachmentFileRouter,
+  createAttachmentUploadRouter,
+} from "../routers/attachments/attachment-router.js";
+import {
   createAttachmentAuthMiddleware,
   createDashboardApiAuthMiddleware,
 } from "../routers/auth/dashboard-auth-middleware.js";
@@ -19,6 +23,7 @@ import {
   createPublicDriveRouter,
   isPublicDriveFile,
 } from "../routers/drive/drive-router.js";
+import { createFileRouter } from "../routers/files/file-router.js";
 import { createMemoryRouter } from "../routers/memory/memory-router.js";
 import { createPiSessionRouter } from "../routers/pi-sessions/pi-session-router.js";
 import {
@@ -36,11 +41,9 @@ import path from "path";
 import { readFileSync, writeFileSync, existsSync, mkdirSync, readdirSync, statSync, unlinkSync } from "fs";
 import { execSync } from "child_process";
 import { fileURLToPath } from "url";
-import crypto from "crypto";
 import { mountMcp } from "../mcp-server.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const ATTACHMENTS_DIR = path.join(process.cwd(), "data", "attachments");
 
 export class DashboardChannel implements Channel {
   name = "dashboard";
@@ -127,9 +130,6 @@ export class DashboardChannel implements Channel {
       console.log("[MCP] not mounted (set MCP_CLIENT_ID + MCP_CLIENT_SECRET in user/secrets.json to enable).");
     }
 
-    // Ensure attachments dir exists (served behind auth below)
-    if (!existsSync(ATTACHMENTS_DIR)) mkdirSync(ATTACHMENTS_DIR, { recursive: true });
-
     // Public drive files and hosted sites are resolved through DriveStore.
     this.app.use("/d", createPublicDriveRouter(this.x));
 
@@ -138,7 +138,7 @@ export class DashboardChannel implements Channel {
     this.app.use(
       "/attachments",
       createAttachmentAuthMiddleware(this.x),
-      express.static(ATTACHMENTS_DIR)
+      createAttachmentFileRouter(this.x)
     );
 
     // API endpoints
@@ -332,105 +332,8 @@ export class DashboardChannel implements Channel {
 
     this.app.use("/api/memory", createMemoryRouter(this.x));
 
-    // Serve files from any filesystem path with proper MIME types
-    this.app.get("/api/file", (req, res) => {
-      const filePath = req.query.path as string;
-      if (!filePath) {
-        res.status(400).json({ error: "path query parameter required" });
-        return;
-      }
-      
-      // Security: resolve to absolute path and check if it exists
-      const resolvedPath = path.isAbsolute(filePath) ? filePath : path.resolve(filePath);
-      if (!existsSync(resolvedPath)) {
-        res.status(404).json({ error: "File not found" });
-        return;
-      }
-      
-      // Determine MIME type and disposition based on file extension
-      const extension = path.extname(resolvedPath).toLowerCase();
-      const filename = path.basename(resolvedPath);
-      
-      // MIME type mapping
-      const mimeTypes: Record<string, string> = {
-        // Images
-        '.jpg': 'image/jpeg',
-        '.jpeg': 'image/jpeg',
-        '.png': 'image/png',
-        '.gif': 'image/gif',
-        '.webp': 'image/webp',
-        '.svg': 'image/svg+xml',
-        '.bmp': 'image/bmp',
-        // Text files (render inline in browser)
-        '.txt': 'text/plain',
-        '.md': 'text/markdown',
-        '.json': 'application/json',
-        '.xml': 'application/xml',
-        '.html': 'text/html',
-        '.css': 'text/css',
-        '.js': 'text/javascript',
-        '.csv': 'text/csv',
-        // Documents (render inline in browser)
-        '.pdf': 'application/pdf',
-        // Downloadable files
-        '.zip': 'application/zip',
-        '.tar': 'application/x-tar',
-        '.gz': 'application/gzip',
-        '.exe': 'application/octet-stream',
-        '.dmg': 'application/octet-stream',
-      };
-      
-      // Files that should trigger download instead of inline display
-      const downloadExtensions = ['.zip', '.tar', '.gz', '.exe', '.dmg'];
-      
-      const mimeType = mimeTypes[extension] || 'application/octet-stream';
-      res.setHeader('Content-Type', mimeType);
-      
-      if (downloadExtensions.includes(extension)) {
-        // Force download for certain file types
-        res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
-      } else {
-        // Display inline for everything else (images, text, PDF, etc.)
-        res.setHeader('Content-Disposition', `inline; filename="${filename}"`);
-      }
-      
-      res.sendFile(resolvedPath);
-    });
-
-    // Upload attachments — saves to data/attachments/, returns path
-    this.app.post("/api/attachments", (req, res) => {
-      const { data, filename } = req.body;
-      if (!data || typeof data !== "string") {
-        res.status(400).json({ error: "data (base64 data URL) is required" });
-        return;
-      }
-
-      // Parse data URL: data:image/webp;base64,AAAA...
-      const match = data.match(/^data:([^;]+);base64,(.+)$/);
-      if (!match) {
-        res.status(400).json({ error: "Invalid data URL format" });
-        return;
-      }
-
-      const mimeType = match[1];
-      const buffer = Buffer.from(match[2], "base64");
-      const ext = mimeType.split("/")[1] || "bin";
-      const id = crypto.randomUUID();
-      const savedFilename = filename
-        ? `${id}-${filename}`
-        : `${id}.${ext}`;
-      const filePath = path.join(ATTACHMENTS_DIR, savedFilename);
-
-      if (!existsSync(ATTACHMENTS_DIR)) mkdirSync(ATTACHMENTS_DIR, { recursive: true });
-      writeFileSync(filePath, buffer);
-
-      res.json({
-        path: filePath,
-        url: `/attachments/${savedFilename}`,
-        filename: filename || `${id}.${ext}`,
-        mimeType,
-      });
-    });
+    this.app.use("/api/file", createFileRouter(this.x));
+    this.app.use("/api/attachments", createAttachmentUploadRouter(this.x));
 
     // ── Public Ask API ──
     // External integrations (Bland.ai phone, webhooks, etc.) call this to get a response.

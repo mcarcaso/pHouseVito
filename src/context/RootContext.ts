@@ -3,11 +3,13 @@ import { homedir } from "node:os";
 import { join, resolve } from "node:path";
 import { Pm2AppProcessService } from "../services/apps/Pm2AppProcessService.js";
 import { InMemoryDashboardAuthService } from "../services/auth/InMemoryDashboardAuthService.js";
+import { FileSystemFileService } from "../services/files/FileSystemFileService.js";
 import { DefaultMemoryService } from "../services/memory/DefaultMemoryService.js";
 import { DefaultProviderService } from "../services/providers/DefaultProviderService.js";
 import { FileSecretService } from "../services/secrets/FileSecretService.js";
 import { FileVitoService } from "../services/vito/FileVitoService.js";
 import { FileAppStore } from "../stores/apps/FileAppStore.js";
+import { FileAttachmentStore } from "../stores/attachments/FileAttachmentStore.js";
 import { FileDriveStore } from "../stores/drive/FileDriveStore.js";
 import { createEmbeddingDatabase } from "../stores/embeddings/embedding-database.js";
 import { SqliteEmbeddingStore } from "../stores/embeddings/SqliteEmbeddingStore.js";
@@ -31,6 +33,7 @@ export interface RootContextArgs {
   piSessionsDir?: string;
   driveDir?: string;
   appsDir?: string;
+  attachmentsDir?: string;
 }
 
 export function RootContext(args: RootContextArgs): Context {
@@ -45,11 +48,14 @@ export function RootContext(args: RootContextArgs): Context {
     piSessionsDir: () => args.piSessionsDir ?? join(args.userDir, "pi-sessions"),
     driveDir: () => args.driveDir ?? join(args.userDir, "drive"),
     appsDir: () => args.appsDir ?? join(args.userDir, "apps"),
+    attachmentsDir: () => args.attachmentsDir ?? resolve(process.cwd(), "data", "attachments"),
     vitoService: () => new FileVitoService(),
+    fileService: () => new FileSystemFileService(),
     appProcessService: () => new Pm2AppProcessService(),
     dashboardAuthService: () => new InMemoryDashboardAuthService(),
     providerService: () => new DefaultProviderService(),
     appStore: () => new FileAppStore(),
+    attachmentStore: () => new FileAttachmentStore(),
     driveStore: () => new FileDriveStore(),
     embeddingDb: () => createEmbeddingDatabase(join(args.userDir, "embeddings.db")),
     embeddingStore: () => new SqliteEmbeddingStore(),

@@ -4,12 +4,12 @@ import type { Context } from "../../src/context/Context.js";
 import { ObjectContext } from "../../src/context/ObjectContext.js";
 import { createDatabase } from "../../src/db/schema.js";
 import { xSessionStore } from "../../src/lib/x.js";
-import type { ChannelService } from "../../src/services/channels/channel-service.js";
-import { DefaultChannelRegistryService } from "../../src/services/channels/default-channel-registry-service.js";
+import type { ChannelService } from "../../src/services/channels/ChannelService.js";
+import { DefaultChannelRegistryService } from "../../src/services/channels/DefaultChannelRegistryService.js";
 import {
   ChannelManagementNotSupportedError,
   ChannelNotConfiguredError,
-} from "../../src/services/channels/channel-registry-service.js";
+} from "../../src/services/channels/ChannelRegistryService.js";
 import { SqliteSessionStore } from "../../src/stores/sessions/SqliteSessionStore.js";
 import type { InboundEvent, OutputHandler, SessionRow } from "../../src/types.js";
 

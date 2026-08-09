@@ -2,8 +2,8 @@ import { Client, GatewayIntentBits, Partials, Message as DiscordMessage, REST, R
 import type { Context } from "../../../context/Context.js";
 import { xSecretService, xVitoService } from "../../../lib/x.js";
 import type { InboundEvent, OutputHandler, SessionRow } from "../../../types.js";
-import type { ChannelManagement, ChannelService } from "../channel-service.js";
-import { DiscordOutputHandler } from "./discord-output-handler.js";
+import type { ChannelManagement, ChannelService } from "../ChannelService.js";
+import { DiscordOutputHandler } from "./DiscordOutputHandler.js";
 
 export function formatDiscordSessionAlias(info: {
   name: string;

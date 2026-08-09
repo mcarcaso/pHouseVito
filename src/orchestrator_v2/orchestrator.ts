@@ -34,8 +34,8 @@ import {
   type HarnessName,
 } from "../harnesses/index.js";
 import { withNoReplyCheck } from "../harness/decorators/index.js";
-import { DirectChannelService } from "../services/channels/direct/direct-channel-service.js";
-import type { ChannelService } from "../services/channels/channel-service.js";
+import { DirectChannelService } from "../services/channels/direct/DirectChannelService.js";
+import type { ChannelService } from "../services/channels/ChannelService.js";
 
 import { SessionManager } from "../sessions/manager.js";
 import { getEffectiveSettings } from "../settings.js";

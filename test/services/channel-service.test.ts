@@ -2,9 +2,9 @@ import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import { validateVitoConfig } from "../../src/contracts/vito-config.js";
 import { ObjectContext } from "../../src/context/ObjectContext.js";
-import { formatDiscordSessionAlias } from "../../src/services/channels/discord/discord-channel-service.js";
-import { DirectChannelService } from "../../src/services/channels/direct/direct-channel-service.js";
-import { formatTelegramSessionAlias } from "../../src/services/channels/telegram/telegram-channel-service.js";
+import { formatDiscordSessionAlias } from "../../src/services/channels/discord/DiscordChannelService.js";
+import { DirectChannelService } from "../../src/services/channels/direct/DirectChannelService.js";
+import { formatTelegramSessionAlias } from "../../src/services/channels/telegram/TelegramChannelService.js";
 
 describe("channel services", () => {
   it("routes direct requests through the channel transport contract", async () => {

@@ -4,12 +4,12 @@ import type {
   AliasGenerationResult,
   ChannelRegistration,
   ChannelRegistryService,
-} from "./channel-registry-service.js";
+} from "./ChannelRegistryService.js";
 import {
   ChannelManagementNotSupportedError,
   ChannelNotConfiguredError,
-} from "./channel-registry-service.js";
-import type { ChannelService, CommandRegistrationResult } from "./channel-service.js";
+} from "./ChannelRegistryService.js";
+import type { ChannelService, CommandRegistrationResult } from "./ChannelService.js";
 
 export class DefaultChannelRegistryService implements ChannelRegistryService {
   private readonly channels = new Map<string, ChannelRegistration>();

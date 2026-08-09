@@ -1,5 +1,5 @@
 import type { Context } from "../../context/Context.js";
-import type { ChannelService, CommandRegistrationResult } from "./channel-service.js";
+import type { ChannelService, CommandRegistrationResult } from "./ChannelService.js";
 
 export interface ChannelRegistration {
   channel: ChannelService;

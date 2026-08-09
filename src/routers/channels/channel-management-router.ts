@@ -5,7 +5,7 @@ import { xChannelRegistryService } from "../../lib/x.js";
 import {
   ChannelManagementNotSupportedError,
   ChannelNotConfiguredError,
-} from "../../services/channels/channel-registry-service.js";
+} from "../../services/channels/ChannelRegistryService.js";
 import {
   emptyRouteSchema,
   unknownRouteSchema,

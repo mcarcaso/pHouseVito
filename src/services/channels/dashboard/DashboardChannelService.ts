@@ -1,5 +1,5 @@
 import type { InboundEvent, OutputHandler } from "../../../types.js";
-import type { ChannelService } from "../channel-service.js";
+import type { ChannelService } from "../ChannelService.js";
 import type { Context } from "../../../context/Context.js";
 import {
   xDashboardChatService,

@@ -12,9 +12,9 @@ import type {
   AliasGenerationResult,
   ChannelRegistration,
   ChannelRegistryService,
-} from "../../src/services/channels/channel-registry-service.js";
-import { ChannelNotConfiguredError } from "../../src/services/channels/channel-registry-service.js";
-import type { ChannelService, CommandRegistrationResult } from "../../src/services/channels/channel-service.js";
+} from "../../src/services/channels/ChannelRegistryService.js";
+import { ChannelNotConfiguredError } from "../../src/services/channels/ChannelRegistryService.js";
+import type { ChannelService, CommandRegistrationResult } from "../../src/services/channels/ChannelService.js";
 
 class TestChannelRegistryService implements ChannelRegistryService {
   configured = new Set<ManagedChannelName>(["discord"]);

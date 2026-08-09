@@ -2,8 +2,8 @@ import { Bot } from "grammy";
 import type { Context } from "../../../context/Context.js";
 import { xSecretService, xVitoService } from "../../../lib/x.js";
 import type { InboundEvent, OutputHandler, SessionRow } from "../../../types.js";
-import type { ChannelManagement, ChannelService } from "../channel-service.js";
-import { TelegramOutputHandler } from "./telegram-output-handler.js";
+import type { ChannelManagement, ChannelService } from "../ChannelService.js";
+import { TelegramOutputHandler } from "./TelegramOutputHandler.js";
 
 export function formatTelegramSessionAlias(
   sessionId: string,

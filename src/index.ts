@@ -6,9 +6,9 @@ import { RootContext } from "./context/RootContext.js";
 import { ensureUserDir, USER_DIR } from "./config.js";
 import { xAskApiService, xEmbeddingDb, xSecretService, xVitoService } from "./lib/x.js";
 import { OrchestratorV2 as Orchestrator } from "./orchestrator_v2/index.js";
-import { DashboardChannelService } from "./services/channels/dashboard/dashboard-channel-service.js";
-import { DiscordChannelService } from "./services/channels/discord/discord-channel-service.js";
-import { TelegramChannelService } from "./services/channels/telegram/telegram-channel-service.js";
+import { DashboardChannelService } from "./services/channels/dashboard/DashboardChannelService.js";
+import { DiscordChannelService } from "./services/channels/discord/DiscordChannelService.js";
+import { TelegramChannelService } from "./services/channels/telegram/TelegramChannelService.js";
 import { CronSchedulerService } from "./services/cron/CronSchedulerService.js";
 import { DEFAULT_TIMEZONE } from "./system-instructions.js";
 

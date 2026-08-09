@@ -4,7 +4,7 @@ import { join, resolve } from "node:path";
 import { Pm2AppProcessService } from "../services/apps/Pm2AppProcessService.js";
 import { DefaultAskApiService } from "../services/ask/DefaultAskApiService.js";
 import { InMemoryDashboardAuthService } from "../services/auth/InMemoryDashboardAuthService.js";
-import { DefaultChannelRegistryService } from "../services/channels/default-channel-registry-service.js";
+import { DefaultChannelRegistryService } from "../services/channels/DefaultChannelRegistryService.js";
 import { DefaultDashboardChatService } from "../services/chat/DefaultDashboardChatService.js";
 import { FileSystemFileService } from "../services/files/FileSystemFileService.js";
 import { DefaultMemoryService } from "../services/memory/DefaultMemoryService.js";

@@ -1,14 +1,12 @@
 import { resolve } from "path";
 import { watch } from "fs";
 import { createDatabase } from "./db/schema.js";
-import { ObjectContext } from "./context/ObjectContext.js";
 import { RootContext } from "./context/RootContext.js";
 import { ensureUserDir, USER_DIR } from "./config.js";
-import { xAskApiService, xEmbeddingDb, xOrchestratorService, xSecretService, xVitoService } from "./lib/x.js";
+import { xAskApiService, xCronService, xEmbeddingDb, xOrchestratorService, xSecretService, xVitoService } from "./lib/x.js";
 import { DashboardChannelService } from "./services/channels/dashboard/DashboardChannelService.js";
 import { DiscordChannelService } from "./services/channels/discord/DiscordChannelService.js";
 import { TelegramChannelService } from "./services/channels/telegram/TelegramChannelService.js";
-import { CronSchedulerService } from "./services/cron/CronSchedulerService.js";
 import { DEFAULT_TIMEZONE } from "./system-instructions.js";
 
 async function main() {
@@ -48,13 +46,10 @@ async function main() {
   // Create orchestrator
   const orchestrator = xOrchestratorService(x);
 
-  // Register Dashboard channel (starts web server) with scheduler-scoped services.
-  const dashboardX = new ObjectContext({
-    cronService: () => new CronSchedulerService(orchestrator.getCronScheduler(x)),
-  }, x);
+  // Register Dashboard channel (starts web server).
   const dashboard = new DashboardChannelService();
-  xAskApiService(dashboardX).configure(dashboardX, (opts) => orchestrator.ask(x, opts));
-  orchestrator.registerChannel(x, dashboard, dashboardX);
+  xAskApiService(x).configure(x, (opts) => orchestrator.ask(x, opts));
+  orchestrator.registerChannel(x, dashboard);
 
   // Register externally managed channel services. Their platform-specific
   // management capabilities are discovered through ChannelRegistryService.
@@ -69,7 +64,7 @@ async function main() {
   // Heartbeat log every 30 minutes
   setInterval(() => {
     console.log(`[Heartbeat] Server alive @ ${new Date().toLocaleString()}`);
-    const cronHealth = orchestrator.getCronScheduler(x).checkHealth();
+    const cronHealth = xCronService(x).checkHealth(x);
     console.log(`[Heartbeat] Cron jobs: ${cronHealth.length} active`);
   }, 30 * 60 * 1000); // 30 minutes
 
@@ -94,7 +89,7 @@ async function main() {
           }
           
           try {
-            orchestrator.reloadCronJobs(x, newConfig.cron.jobs);
+            orchestrator.reloadCronJobs(x, newConfig.cron.jobs, newConfig.settings?.timezone);
           } catch (err) {
             console.error("[Config] Failed to reload cron jobs:", err);
           }

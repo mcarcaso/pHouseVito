@@ -85,7 +85,7 @@ Shared output-handler contracts and cross-channel decorators live under `src/out
 
 ### Cron
 
-`src/cron/scheduler.ts` (croner, timezone-aware). Jobs are defined in `vito.config.json` under `cron.jobs` and re-applied on hot-reload. `oneTime: true` removes the job from the config after firing. `sendCondition` forces `streamMode: "final"` and wraps the handler with `withNoReplyCheck` — if the response contains `NO_REPLY`, nothing gets relayed. Dashboard cron APIs live in `src/routers/CronRouterService.ts`, use the context-scoped `CronService`, validate schedules before mutation, and persist configured jobs through `VitoService`.
+`CronerCronService` under `src/services/cron/` owns the timezone-aware process scheduler and is resolved through context. Jobs are defined in `vito.config.json` under `cron.jobs` and re-applied on hot-reload. `oneTime: true` removes the job from the config after firing. `sendCondition` forces `streamMode: "final"` and wraps the channel handler with `NoReplyOutputHandler`; responses containing `NO_REPLY` are not relayed. Dashboard cron APIs live in `src/routers/CronRouterService.ts`, validate schedules before mutation, and persist configured jobs through `VitoService`.
 
 ### Pi runtime decorators (`src/services/orchestrator/runtime/`)
 

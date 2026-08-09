@@ -13,13 +13,25 @@ import type { CronJobConfig } from "../../src/shared/contracts/vito-config.js";
 import { createDatabase } from "../../src/db/schema.js";
 import { xSessionStore, xVitoService } from "../../src/lib/x.js";
 import { CronRouterService } from "../../src/routers/CronRouterService.js";
-import type { CronHealth, CronService } from "../../src/services/cron/CronService.js";
+import type { CronHealth, CronService, StartCronArgs } from "../../src/services/cron/CronService.js";
 
 class FakeCronService implements CronService {
   private jobs = new Map<string, CronJobConfig>();
   readonly scheduled: string[] = [];
   readonly removed: string[] = [];
   readonly triggered: string[] = [];
+
+  start(x: Context, args: StartCronArgs): void {
+    this.reload(x, args.jobs);
+  }
+
+  stop(_x: Context): void {
+    this.jobs.clear();
+  }
+
+  reload(_x: Context, jobs: CronJobConfig[]): void {
+    this.jobs = new Map(jobs.map((job) => [job.name, job]));
+  }
 
   scheduleJob(_x: Context, job: CronJobConfig): void {
     this.jobs.set(job.name, job);

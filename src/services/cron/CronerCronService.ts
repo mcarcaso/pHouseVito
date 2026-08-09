@@ -1,23 +1,22 @@
 import { exec } from "node:child_process";
 import { promisify } from "node:util";
 import { Cron } from "croner";
-import type { CronJobConfig, InboundEvent } from "../types.js";
-import { DEFAULT_TIMEZONE } from "../system-instructions.js";
+import type { Context } from "../../context/Context.js";
+import { DEFAULT_TIMEZONE } from "../../system-instructions.js";
+import type { CronJobConfig, InboundEvent } from "../../types.js";
+import type { CronHealth, CronService, StartCronArgs } from "./CronService.js";
 
 const execAsync = promisify(exec);
 
-export class CronScheduler {
-  private jobs = new Map<string, Cron>(); // job name -> Cron instance
-  private jobConfigs = new Map<string, CronJobConfig>();
-  private globalTimezone: string = DEFAULT_TIMEZONE;
-
-  constructor(
-    private onJob: (event: InboundEvent, channelName: string | null) => Promise<void>,
-    private onJobComplete?: (jobName: string) => Promise<void>
-  ) {}
+export class CronerCronService implements CronService {
+  private readonly jobs = new Map<string, Cron>();
+  private readonly jobConfigs = new Map<string, CronJobConfig>();
+  private globalTimezone = DEFAULT_TIMEZONE;
+  private onJob?: (event: InboundEvent, channelName: string | null) => Promise<void>;
+  private onJobComplete?: (jobName: string) => Promise<void>;
 
   /** Set the global timezone (from config) */
-  setTimezone(tz: string): void {
+  private setTimezone(tz: string): void {
     this.globalTimezone = tz;
     console.log(`[Cron] Global timezone set to: ${tz}`);
   }
@@ -27,26 +26,29 @@ export class CronScheduler {
     return job.timezone || this.globalTimezone || DEFAULT_TIMEZONE;
   }
 
-  /** Start all jobs from config */
-  start(jobs: CronJobConfig[], globalTimezone?: string): void {
-    if (globalTimezone) {
-      this.globalTimezone = globalTimezone;
-      console.log(`[Cron] Using timezone: ${globalTimezone}`);
+  /** Start all jobs from config and connect them to the application event sink. */
+  start(x: Context, args: StartCronArgs): void {
+    this.stop(x);
+    this.onJob = args.onJob;
+    this.onJobComplete = args.onJobComplete;
+    this.globalTimezone = args.timezone ?? DEFAULT_TIMEZONE;
+    console.log(`[Cron] Using timezone: ${this.globalTimezone}`);
+    for (const job of args.jobs) {
+      this.scheduleJob(x, job);
     }
-    for (const job of jobs) {
-      this.scheduleJob(job);
-    }
-    console.log(`[Cron] Scheduler started with ${jobs.length} job(s) — croner (with timezone support)`);
+    console.log(`[Cron] Scheduler started with ${args.jobs.length} job(s) — croner (with timezone support)`);
   }
 
-  /** Stop all running jobs */
-  stop(): void {
+  /** Stop all running jobs. */
+  stop(_x: Context): void {
     for (const [name, job] of this.jobs) {
       job.stop();
       console.log(`Stopped cron job: ${name}`);
     }
     this.jobs.clear();
     this.jobConfigs.clear();
+    this.onJob = undefined;
+    this.onJobComplete = undefined;
   }
 
   /** Run an optional deterministic precheck before spending AI tokens. */
@@ -70,7 +72,7 @@ export class CronScheduler {
       }
       console.log(`[Cron] Precheck output for ${jobConfig.name}: ${out.slice(0, 200)} — not an explicit pass, skipping`);
       return false;
-    } catch (err: any) {
+    } catch (err: unknown) {
       console.error(`[Cron] Precheck failed for ${jobConfig.name}; skipping job to avoid burning AI tokens:`, err);
       return false;
     }
@@ -105,6 +107,7 @@ export class CronScheduler {
     };
 
     try {
+      if (!this.onJob) throw new Error("Cron service has not been started");
       await this.onJob(event, channelName);
     } catch (err) {
       console.error(`[Cron] Job ${jobConfig.name} failed:`, err);
@@ -116,8 +119,8 @@ export class CronScheduler {
     return /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}/.test(str);
   }
 
-  /** Schedule a single job */
-  scheduleJob(jobConfig: CronJobConfig): void {
+  /** Schedule a single job. */
+  scheduleJob(x: Context, jobConfig: CronJobConfig): void {
     if (this.jobs.has(jobConfig.name)) {
       console.warn(`Cron job already exists: ${jobConfig.name}`);
       return;
@@ -177,8 +180,8 @@ export class CronScheduler {
     }
   }
 
-  /** Remove a job by name */
-  removeJob(name: string): boolean {
+  /** Remove a job by name. */
+  removeJob(_x: Context, name: string): boolean {
     const job = this.jobs.get(name);
     if (!job) return false;
 
@@ -194,9 +197,9 @@ export class CronScheduler {
     return [...this.jobs.keys()];
   }
 
-  /** Check health of all scheduled tasks */
-  checkHealth(): { name: string; isActive: boolean; nextRun: Date | null }[] {
-    const results: { name: string; isActive: boolean; nextRun: Date | null }[] = [];
+  /** Check health of all scheduled tasks. */
+  checkHealth(_x: Context): CronHealth[] {
+    const results: CronHealth[] = [];
 
     for (const [name, job] of this.jobs) {
       results.push({
@@ -209,8 +212,8 @@ export class CronScheduler {
     return results;
   }
 
-  /** Manually trigger a job by name */
-  async triggerJob(name: string): Promise<boolean> {
+  /** Manually trigger a job by name. */
+  async triggerJob(_x: Context, name: string): Promise<boolean> {
     const jobConfig = this.jobConfigs.get(name);
     if (!jobConfig) {
       console.log(`[Cron] Cannot trigger job '${name}' — not found`);
@@ -222,15 +225,16 @@ export class CronScheduler {
     return true;
   }
 
-  /** Reload jobs - remove old ones, add new ones, update changed ones */
-  reload(jobs: CronJobConfig[]): void {
+  /** Reload jobs, replacing changed schedules and preserving the event sink. */
+  reload(x: Context, jobs: CronJobConfig[], timezone?: string): void {
+    this.setTimezone(timezone ?? DEFAULT_TIMEZONE);
     const newJobNames = new Set(jobs.map((j) => j.name));
     const currentJobNames = new Set(this.jobs.keys());
 
     // Remove jobs that no longer exist in config
     for (const name of currentJobNames) {
       if (!newJobNames.has(name)) {
-        this.removeJob(name);
+        this.removeJob(x, name);
       }
     }
 
@@ -239,9 +243,9 @@ export class CronScheduler {
       const existingJob = this.jobs.has(jobConfig.name);
       if (existingJob) {
         // Stop and reschedule if it exists (in case schedule/prompt changed)
-        this.removeJob(jobConfig.name);
+        this.removeJob(x, jobConfig.name);
       }
-      this.scheduleJob(jobConfig);
+      this.scheduleJob(x, jobConfig);
     }
 
     console.log(`Cron jobs reloaded: ${jobs.length} active job(s)`);

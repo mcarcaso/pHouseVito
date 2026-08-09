@@ -27,8 +27,8 @@ describe("PiOrchestratorService", () => {
     const service = new PiOrchestratorService();
 
     assert.equal(configReads, 0);
-    const scheduler = service.getCronScheduler(x);
-    assert.equal(service.getCronScheduler(x), scheduler);
+    service.reloadConfig(x, config);
+    service.reloadConfig(x, config);
     assert.equal(configReads, 1);
   });
 });

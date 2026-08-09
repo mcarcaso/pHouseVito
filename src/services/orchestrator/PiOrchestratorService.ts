@@ -4,7 +4,6 @@
  */
 
 import { parseInboundEventMetadata } from "../../contracts/inbound-event.js";
-import { CronScheduler } from "../../cron/scheduler.js";
 import type { Context } from "../../context/Context.js";
 import { withPersistence } from "./runtime/PersistencePiRuntime.js";
 import { withRelay } from "./runtime/RelayPiRuntime.js";
@@ -17,7 +16,7 @@ import type { AskOptions, OrchestratorService } from "./OrchestratorService.js";
 
 import { SessionManager } from "../../sessions/manager.js";
 import { getEffectiveSettings } from "../../settings.js";
-import { xChannelRegistryService, xMemoryService, xMessageStore, xSkillStore, xUserDir, xVitoService } from "../../lib/x.js";
+import { xChannelRegistryService, xCronService, xMemoryService, xMessageStore, xSkillStore, xUserDir, xVitoService } from "../../lib/x.js";
 
 import { randomBytes } from "crypto";
 import { mkdirSync, statSync, writeFileSync } from "fs";
@@ -56,7 +55,6 @@ export class PiOrchestratorService implements OrchestratorService {
   private initialized = false;
   private x!: Context;
   private sessionManager!: SessionManager;
-  private cronScheduler!: CronScheduler;
   private config!: VitoConfig;
 
   /** Per-session message queues and processing locks. */
@@ -92,17 +90,6 @@ export class PiOrchestratorService implements OrchestratorService {
     this.x = x;
     this.sessionManager = new SessionManager(x);
     this.config = xVitoService(x).getConfig(x);
-    this.cronScheduler = new CronScheduler(
-      async (event, channelName) => {
-        const channel = channelName
-          ? xChannelRegistryService(this.x).get(this.x, channelName)?.channel ?? null
-          : null;
-        await this.handleInbound(this.x, event, channel);
-      },
-      async (jobName: string) => {
-        await this.removeJobFromConfig(jobName);
-      }
-    );
     this.configMtimeMs = this.getConfigMtimeMs();
 
     const skills = this.getSkills();
@@ -123,17 +110,9 @@ export class PiOrchestratorService implements OrchestratorService {
     return xSkillStore(this.x).list(this.x, {});
   }
 
-  getCronScheduler(x: Context) {
-    this.initialize(x);
-    return this.cronScheduler;
-  }
-
   reloadCronJobs(x: Context, jobs: CronJobConfig[], timezone?: string): void {
     this.initialize(x);
-    if (timezone) {
-      this.cronScheduler.setTimezone(timezone);
-    }
-    this.cronScheduler.reload(jobs);
+    xCronService(x).reload(x, jobs, timezone);
   }
 
   reloadConfig(x: Context, config: VitoConfig): void {
@@ -253,13 +232,24 @@ export class PiOrchestratorService implements OrchestratorService {
         console.error(`[Orchestrator] Channel failed to start: ${channel.name}`, err);
       }
     }
-    const timezone = this.config.settings?.timezone;
-    this.cronScheduler.start(this.config.cron.jobs, timezone);
+    xCronService(x).start(x, {
+      jobs: this.config.cron.jobs,
+      timezone: this.config.settings?.timezone,
+      onJob: async (event, channelName) => {
+        const channel = channelName
+          ? xChannelRegistryService(this.x).get(this.x, channelName)?.channel ?? null
+          : null;
+        await this.handleInbound(this.x, event, channel);
+      },
+      onJobComplete: async (jobName) => {
+        await this.removeJobFromConfig(jobName);
+      },
+    });
   }
 
   async stop(x: Context): Promise<void> {
     this.initialize(x);
-    this.cronScheduler.stop();
+    xCronService(x).stop(x);
     for (const { channel, x } of xChannelRegistryService(this.x).list(this.x)) {
       await channel.stop(x);
     }

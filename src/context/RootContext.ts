@@ -6,6 +6,7 @@ import { DefaultAskApiService } from "../services/ask/DefaultAskApiService.js";
 import { InMemoryDashboardAuthService } from "../services/auth/InMemoryDashboardAuthService.js";
 import { DefaultChannelRegistryService } from "../services/channels/DefaultChannelRegistryService.js";
 import { DefaultDashboardChatService } from "../services/chat/DefaultDashboardChatService.js";
+import { CronerCronService } from "../services/cron/CronerCronService.js";
 import { FileSystemFileService } from "../services/files/FileSystemFileService.js";
 import { DefaultMemoryService } from "../services/memory/DefaultMemoryService.js";
 import { PiOrchestratorService } from "../services/orchestrator/PiOrchestratorService.js";
@@ -63,6 +64,7 @@ export function RootContext(args: RootContextArgs): Context {
     dashboardAuthService: () => new InMemoryDashboardAuthService(),
     channelRegistryService: () => new DefaultChannelRegistryService(),
     dashboardChatService: () => new DefaultDashboardChatService(),
+    cronService: () => new CronerCronService(),
     providerService: () => new DefaultProviderService(),
     appStore: () => new FileAppStore(),
     attachmentStore: () => new FileAttachmentStore(),

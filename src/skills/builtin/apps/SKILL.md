@@ -74,11 +74,11 @@ Use this skill when you need to:
 
 ## CLI Usage
 
-Run the CLI script at `src/skills/builtin/apps/index.js`:
+Use Vito's project CLI. It delegates to the existing app deployment workflow while keeping the agent-facing command stable for future gateway changes.
 
 ### Create/update an app
 ```bash
-node src/skills/builtin/apps/index.js create \
+./vito apps create \
   --name "my-app" \
   --description "My cool app" \
   --files '[{"path":"index.html","content":"<h1>Hello</h1>"},{"path":"style.css","content":"body{margin:0}"}]'
@@ -88,12 +88,12 @@ node src/skills/builtin/apps/index.js create \
 
 ### List all apps
 ```bash
-node src/skills/builtin/apps/index.js list
+./vito apps list
 ```
 
 ### Delete an app
 ```bash
-node src/skills/builtin/apps/index.js delete --name "my-app"
+./vito apps delete --name "my-app"
 ```
 
 ## Examples

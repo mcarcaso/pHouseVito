@@ -58,7 +58,7 @@ cp -r user.example user
 
 # Configure your settings
 # Edit user/vito.config.json to set model, channels, etc.
-npm run validate:config
+./vito config validate
 
 # Configure PM2 paths
 # Edit user/ecosystem.config.cjs and set your node path
@@ -68,6 +68,18 @@ npm start
 ```
 
 The dashboard will be available at **http://localhost:3030**
+
+### CLI
+
+Use the project-local CLI for agent and operator workflows:
+
+```bash
+./vito --help
+./vito config validate
+./vito apps list
+```
+
+The existing `npm run validate:config` command remains available for compatibility.
 
 ### User Directory
 

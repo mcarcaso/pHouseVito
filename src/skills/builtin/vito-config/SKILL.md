@@ -10,13 +10,13 @@ Vito's config remains directly editable with normal filesystem tools. Validate i
 ## Validate the active config
 
 ```bash
-npm run validate:config
+./vito config validate
 ```
 
 ## Validate another config file
 
 ```bash
-npm run validate:config -- path/to/vito.config.json
+./vito config validate path/to/vito.config.json
 ```
 
 A valid config exits with status 0. Invalid JSON or schema violations exit with status 1 and print each issue with its exact config path.

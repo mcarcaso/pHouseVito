@@ -3,6 +3,9 @@
   "version": "0.1.0",
   "private": true,
   "type": "module",
+  "bin": {
+    "vito": "./vito"
+  },
   "scripts": {
     "start": "cd dashboard && rm -rf dist && npm run build && cd .. && pm2 start user/ecosystem.config.cjs",
     "stop": "pm2 stop vito-server",
@@ -13,6 +16,7 @@
     "typecheck": "tsc --noEmit",
     "typecheck:dashboard": "npm --prefix dashboard run typecheck",
     "test": "tsx --test test/**/*.test.ts",
+    "vito": "tsx src/cli/vito.ts",
     "validate:config": "tsx src/cli/validate-config.ts",
     "check": "npm run typecheck && npm run typecheck:dashboard && npm test && npm run validate:config -- user.example/vito.config.json",
     "dev": "tsx watch src/index.ts",

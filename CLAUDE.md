@@ -15,7 +15,9 @@ npm run build            # tsc → dist/
 npm run build:dashboard  # Vite build → dashboard/dist/
 npm run check            # backend/dashboard types + tests + example config validation
 npm test                 # Node test runner via tsx
-npm run validate:config  # Zod-validate user/vito.config.json
+./vito config validate   # Zod-validate user/vito.config.json
+./vito apps list         # Stable agent/operator app-management CLI
+npm run validate:config  # Compatibility alias for config validation
 npm start                # build dashboard + pm2 start user/ecosystem.config.cjs
 npm run logs             # pm2 logs vito-server
 npm run status / stop / restart   # pm2 wrappers (service name: vito-server)

@@ -31,6 +31,7 @@ export const xAppStore = (x: Context): AppStore => x.get("appStore") as AppStore
 export const xAttachmentStore = (x: Context): AttachmentStore =>
   x.get("attachmentStore") as AttachmentStore;
 export const xUserDir = (x: Context): string => x.get("userDir") as string;
+export const xProjectDir = (x: Context): string => x.get("projectDir") as string;
 export const xSkillsDir = (x: Context): string => x.get("skillsDir") as string;
 export const xBuiltinSkillsDir = (x: Context): string =>
   x.get("builtinSkillsDir") as string;

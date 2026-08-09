@@ -11,5 +11,6 @@ export interface VitoService {
   validateConfig(x: Context, value: unknown): ConfigValidationResult;
   getSoul(x: Context): string;
   saveSoul(x: Context, soul: string): void;
+  getSystemPrompt(x: Context): string;
   getConfiguredJobs(x: Context): CronJobConfig[];
 }

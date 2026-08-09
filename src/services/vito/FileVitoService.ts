@@ -15,7 +15,7 @@ import {
   type VitoConfig,
   validateVitoConfig,
 } from "../../contracts/vito-config.js";
-import { xUserDir } from "../../lib/x.js";
+import { xProjectDir, xUserDir } from "../../lib/x.js";
 import type { VitoService } from "./VitoService.js";
 
 export class VitoConfigValidationError extends Error {
@@ -91,6 +91,12 @@ export class FileVitoService implements VitoService {
 
   saveSoul(x: Context, soul: string): void {
     this.writeAtomic(this.getSoulPath(x), soul);
+  }
+
+  getSystemPrompt(x: Context): string {
+    const systemPromptPath = join(xProjectDir(x), "SYSTEM.md");
+    if (!existsSync(systemPromptPath)) return "";
+    return readFileSync(systemPromptPath, "utf-8");
   }
 
   getConfiguredJobs(x: Context): CronJobConfig[] {

@@ -34,12 +34,12 @@ import {
 import { createSecretRouter } from "../routers/secrets/secret-router.js";
 import { createSessionRouter } from "../routers/sessions/session-router.js";
 import { createSkillRouter } from "../routers/skills/skill-router.js";
+import { createSystemContentRouter } from "../routers/system-content/system-content-router.js";
 import { createTraceRouter } from "../routers/traces/trace-router.js";
 import express from "express";
 import http from "http";
 const createServer = http.createServer.bind(http);
 import path from "path";
-import { readFileSync, writeFileSync, existsSync, mkdirSync, readdirSync, statSync, unlinkSync } from "fs";
 import { execSync } from "child_process";
 import { fileURLToPath } from "url";
 import { mountMcp } from "../mcp-server.js";
@@ -165,36 +165,7 @@ export class DashboardChannel implements Channel {
 
     this.app.use("/api/secrets", createSecretRouter(this.x));
 
-    this.app.get("/api/jobs", (_req, res) => {
-      res.json(xVitoService(this.x).getConfiguredJobs(this.x));
-    });
-
-    // Soul and System prompt endpoints
-    this.app.get("/api/soul", (_req, res) => {
-      res.json({ content: xVitoService(this.x).getSoul(this.x) });
-    });
-
-    this.app.put("/api/soul", (req, res) => {
-      const { content } = req.body;
-      xVitoService(this.x).saveSoul(this.x, content);
-      res.json({ content });
-    });
-
-    this.app.get("/api/system-prompt", (req, res) => {
-      const systemPath = path.join(process.cwd(), "SYSTEM.md");
-      if (!existsSync(systemPath)) {
-        res.json({ content: "" });
-        return;
-      }
-      res.json({ content: readFileSync(systemPath, "utf-8") });
-    });
-
-    this.app.put("/api/system-prompt", (req, res) => {
-      const systemPath = path.join(process.cwd(), "SYSTEM.md");
-      const { content } = req.body;
-      writeFileSync(systemPath, content, "utf-8");
-      res.json({ content });
-    });
+    this.app.use("/api", createSystemContentRouter(this.x));
 
     this.app.use("/api/memory", createMemoryRouter(this.x));
 

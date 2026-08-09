@@ -10,7 +10,7 @@ import { dashboardRouterContext } from "../support/dashboard-router-context.js";
 import {
   DriveRouterService,
   PublicDriveRouterService,
-} from "../../src/routers/drive/drive-router.js";
+} from "../../src/routers/DriveRouterService.js";
 import { FileDriveStore } from "../../src/stores/drive/FileDriveStore.js";
 
 const root = mkdtempSync(join(tmpdir(), "vito-drive-router-"));

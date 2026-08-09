@@ -1,21 +1,21 @@
 import express from "express";
 import type { NextFunction, Request, Response, Router } from "express";
 import { z } from "zod";
-import type { Context } from "../../context/Context.js";
-import type { RouterService } from "../RouterService.js";
+import type { Context } from "../context/Context.js";
+import type { RouterService } from "./RouterService.js";
 import {
   appFilePathSchema,
   appNameSchema,
   appProcessActionSchema,
   appReadFileResultSchema,
-} from "../../shared/contracts/app.js";
-import { xAppProcessService, xAppStore } from "../../lib/x.js";
-import { AppFileTooLargeError } from "../../stores/apps/FileAppStore.js";
+} from "../shared/contracts/app.js";
+import { xAppProcessService, xAppStore } from "../lib/x.js";
+import { AppFileTooLargeError } from "../stores/apps/FileAppStore.js";
 import {
   emptyRouteSchema,
   unknownRouteSchema,
   createRawRoute,
-} from "../route.js";
+} from "./createRoute.js";
 
 const appParamsSchema = z.object({ name: appNameSchema }).strict();
 const appFileParamsSchema = z

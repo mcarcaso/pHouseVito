@@ -1,7 +1,7 @@
 import http from "node:http";
 import type { RequestHandler } from "express";
-import type { Context } from "../../context/Context.js";
-import { xAppStore, xVitoService } from "../../lib/x.js";
+import type { Context } from "../context/Context.js";
+import { xAppStore, xVitoService } from "../lib/x.js";
 
 function isHostWithinDomain(host: string, baseDomain: string): boolean {
   const normalizedHost = host.toLowerCase();

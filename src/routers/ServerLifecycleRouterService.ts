@@ -1,14 +1,14 @@
 import express from "express";
 import type { Router } from "express";
-import type { Context } from "../../context/Context.js";
-import { xServerLifecycleService } from "../../lib/x.js";
+import type { Context } from "../context/Context.js";
+import { xServerLifecycleService } from "../lib/x.js";
 import {
   serverHealthResponseSchema,
   serverRestartResponseSchema,
   serverStatusResponseSchema,
-} from "../../shared/contracts/server-api.js";
-import type { RouterService } from "../RouterService.js";
-import { createRoute, emptyRouteSchema, unknownRouteSchema } from "../route.js";
+} from "../shared/contracts/server-api.js";
+import type { RouterService } from "./RouterService.js";
+import { createRoute, emptyRouteSchema, unknownRouteSchema } from "./createRoute.js";
 
 const emptyRequestSchemas = {
   params: emptyRouteSchema,

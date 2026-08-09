@@ -1,19 +1,19 @@
 import express from "express";
 import type { Router } from "express";
 import { z } from "zod";
-import type { Context } from "../../context/Context.js";
+import type { Context } from "../context/Context.js";
 import {
   secretKeySchema,
   secretUpdateRequestSchema,
-} from "../../shared/contracts/secret-api.js";
-import type { RouterService } from "../RouterService.js";
-import { xSecretService } from "../../lib/x.js";
-import { SystemSecretDeletionError } from "../../services/secrets/SecretService.js";
+} from "../shared/contracts/secret-api.js";
+import type { RouterService } from "./RouterService.js";
+import { xSecretService } from "../lib/x.js";
+import { SystemSecretDeletionError } from "../services/secrets/SecretService.js";
 import {
   emptyRouteSchema,
   unknownRouteSchema,
   createRawRoute,
-} from "../route.js";
+} from "./createRoute.js";
 
 const secretParamsSchema = z.object({ key: secretKeySchema }).strict();
 

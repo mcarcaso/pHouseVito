@@ -6,7 +6,7 @@ import { dashboardRouterContext } from "../support/dashboard-router-context.js";
 import {
   ModelRouterService,
   ProviderAuthRouterService,
-} from "../../src/routers/providers/provider-router.js";
+} from "../../src/routers/ProviderRouterService.js";
 import type {
   ProviderLoginStartResult,
   ProviderLoginStatus,

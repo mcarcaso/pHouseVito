@@ -1,10 +1,10 @@
 import express from "express";
 import type { Router } from "express";
-import type { Context } from "../../context/Context.js";
-import type { RouterService } from "../RouterService.js";
-import { askApiRequestSchema } from "../../shared/contracts/ask-api.js";
-import { xAskApiService } from "../../lib/x.js";
-import { emptyRouteSchema, createRawRoute } from "../route.js";
+import type { Context } from "../context/Context.js";
+import type { RouterService } from "./RouterService.js";
+import { askApiRequestSchema } from "../shared/contracts/ask-api.js";
+import { xAskApiService } from "../lib/x.js";
+import { emptyRouteSchema, createRawRoute } from "./createRoute.js";
 
 export class AskApiRouterService implements RouterService {
   async createRouter(x: Context): Promise<Router> {

@@ -11,7 +11,7 @@ import { RootContext } from "../../src/context/RootContext.js";
 import { dashboardRouterContext } from "../support/dashboard-router-context.js";
 import { createDatabase } from "../../src/db/schema.js";
 import { xVitoService } from "../../src/lib/x.js";
-import { ConfigRouterService } from "../../src/routers/config/config-router.js";
+import { ConfigRouterService } from "../../src/routers/ConfigRouterService.js";
 
 const userDir = mkdtempSync(join(tmpdir(), "vito-config-router-"));
 writeFileSync(

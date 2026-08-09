@@ -10,7 +10,7 @@ import { RootContext } from "../../src/context/RootContext.js";
 import { dashboardRouterContext } from "../support/dashboard-router-context.js";
 import { createDatabase } from "../../src/db/schema.js";
 import { xEmbeddingDb, xEmbeddingStore, xSessionStore } from "../../src/lib/x.js";
-import { MemoryRouterService } from "../../src/routers/memory/memory-router.js";
+import { MemoryRouterService } from "../../src/routers/MemoryRouterService.js";
 
 const userDir = mkdtempSync(join(tmpdir(), "vito-memory-router-"));
 writeFileSync(join(userDir, "profile.md"), "# Test Profile\n");

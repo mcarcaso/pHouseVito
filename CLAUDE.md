@@ -51,7 +51,7 @@ Channel emits `InboundEvent` → `Orchestrator.handleInbound()` → per-session 
 
 ### Memory: agent-initiated, not pre-loaded
 
-v2 does **not** auto-search embeddings on every turn and does **not** stuff prior messages into the system prompt. The agent calls memory skills explicitly when it needs them — `semantic-history-search` (hybrid: cosine + FTS5 BM25 + RRF) and `keyword-history-search` (raw SQL). Embedding persistence is isolated behind `EmbeddingStore`/`SqliteEmbeddingStore`; `MemoryService` coordinates incremental embedding, search, and statistics through context, while `src/memory/search.ts` and `src/memory/embeddings.ts` retain compatibility façades for standalone skills. Dashboard memory APIs live in `src/routers/memory/`. Within a single Vito session the conversation history lives in pi's `AgentSession`; cross-session lookup is only via those skills. `user/profile.md` is **not** inlined into the prompt — the capabilities map tells the agent to `Read` it on first response and `Edit` it when it learns something profile-worthy (see the `profile-maintenance` built-in skill for the rules).
+v2 does **not** auto-search embeddings on every turn and does **not** stuff prior messages into the system prompt. The agent calls memory skills explicitly when it needs them — `semantic-history-search` (hybrid: cosine + FTS5 BM25 + RRF) and `keyword-history-search` (raw SQL). Embedding persistence is isolated behind `EmbeddingStore`/`SqliteEmbeddingStore`; `MemoryService` coordinates incremental embedding, search, and statistics through context, while `src/memory/search.ts` and `src/memory/embeddings.ts` retain compatibility façades for standalone skills. Dashboard memory APIs live in `src/routers/MemoryRouterService.ts`. Within a single Vito session the conversation history lives in pi's `AgentSession`; cross-session lookup is only via those skills. `user/profile.md` is **not** inlined into the prompt — the capabilities map tells the agent to `Read` it on first response and `Edit` it when it learns something profile-worthy (see the `profile-maintenance` built-in skill for the rules).
 
 ### Pi sessions on disk
 
@@ -83,7 +83,7 @@ Four context-driven `ChannelService` implementations own their platform SDK life
 
 ### Cron
 
-`src/cron/scheduler.ts` (croner, timezone-aware). Jobs are defined in `vito.config.json` under `cron.jobs` and re-applied on hot-reload. `oneTime: true` removes the job from the config after firing. `sendCondition` forces `streamMode: "final"` and wraps the handler with `withNoReplyCheck` — if the response contains `NO_REPLY`, nothing gets relayed. Dashboard cron APIs live in `src/routers/cron/cron-router.ts`, use the context-scoped `CronService`, validate schedules before mutation, and persist configured jobs through `VitoService`.
+`src/cron/scheduler.ts` (croner, timezone-aware). Jobs are defined in `vito.config.json` under `cron.jobs` and re-applied on hot-reload. `oneTime: true` removes the job from the config after firing. `sendCondition` forces `streamMode: "final"` and wraps the handler with `withNoReplyCheck` — if the response contains `NO_REPLY`, nothing gets relayed. Dashboard cron APIs live in `src/routers/CronRouterService.ts`, use the context-scoped `CronService`, validate schedules before mutation, and persist configured jobs through `VitoService`.
 
 ### Harness layer (`src/harnesses/`)
 

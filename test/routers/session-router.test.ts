@@ -10,7 +10,7 @@ import { RootContext } from "../../src/context/RootContext.js";
 import { dashboardRouterContext } from "../support/dashboard-router-context.js";
 import { createDatabase } from "../../src/db/schema.js";
 import { xMessageStore, xSessionStore } from "../../src/lib/x.js";
-import { SessionRouterService } from "../../src/routers/sessions/session-router.js";
+import { SessionRouterService } from "../../src/routers/SessionRouterService.js";
 
 const userDir = mkdtempSync(join(tmpdir(), "vito-session-router-"));
 const exampleConfigPath = join(process.cwd(), "user.example", "vito.config.json");

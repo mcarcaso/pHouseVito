@@ -10,7 +10,7 @@ import { RootContext } from "../../src/context/RootContext.js";
 import { dashboardRouterContext } from "../support/dashboard-router-context.js";
 import { createDatabase } from "../../src/db/schema.js";
 import { xSessionStore } from "../../src/lib/x.js";
-import { PiSessionRouterService } from "../../src/routers/pi-sessions/pi-session-router.js";
+import { PiSessionRouterService } from "../../src/routers/PiSessionRouterService.js";
 
 const userDir = mkdtempSync(join(tmpdir(), "vito-pi-session-router-"));
 const piSessionsDir = join(userDir, "pi-sessions");

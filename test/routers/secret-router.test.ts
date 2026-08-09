@@ -7,7 +7,7 @@ import { after, before, describe, it } from "node:test";
 import express from "express";
 import { z } from "zod";
 import { dashboardRouterContext } from "../support/dashboard-router-context.js";
-import { SecretRouterService } from "../../src/routers/secrets/secret-router.js";
+import { SecretRouterService } from "../../src/routers/SecretRouterService.js";
 import { FileSecretService } from "../../src/services/secrets/FileSecretService.js";
 
 const root = mkdtempSync(join(tmpdir(), "vito-secret-router-"));

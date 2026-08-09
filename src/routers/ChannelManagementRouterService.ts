@@ -1,17 +1,17 @@
 import express from "express";
 import type { NextFunction, Request, Response, Router } from "express";
-import type { Context } from "../../context/Context.js";
-import type { RouterService } from "../RouterService.js";
-import { xChannelRegistryService } from "../../lib/x.js";
+import type { Context } from "../context/Context.js";
+import type { RouterService } from "./RouterService.js";
+import { xChannelRegistryService } from "../lib/x.js";
 import {
   ChannelManagementNotSupportedError,
   ChannelNotConfiguredError,
-} from "../../services/channels/ChannelRegistryService.js";
+} from "../services/channels/ChannelRegistryService.js";
 import {
   emptyRouteSchema,
   unknownRouteSchema,
   createRawRoute,
-} from "../route.js";
+} from "./createRoute.js";
 
 export type ManagedChannelName = "discord" | "telegram";
 

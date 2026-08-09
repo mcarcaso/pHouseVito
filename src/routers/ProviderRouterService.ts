@@ -1,19 +1,19 @@
 import express from "express";
 import type { NextFunction, Request, Response, Router } from "express";
 import { z } from "zod";
-import type { Context } from "../../context/Context.js";
+import type { Context } from "../context/Context.js";
 import {
   providerIdSchema,
   providerLoginPromptRequestSchema,
-} from "../../shared/contracts/provider-api.js";
-import type { RouterService } from "../RouterService.js";
-import { xProviderService } from "../../lib/x.js";
-import { ProviderLoginConflictError } from "../../services/providers/ProviderService.js";
+} from "../shared/contracts/provider-api.js";
+import type { RouterService } from "./RouterService.js";
+import { xProviderService } from "../lib/x.js";
+import { ProviderLoginConflictError } from "../services/providers/ProviderService.js";
 import {
   emptyRouteSchema,
   unknownRouteSchema,
   createRawRoute,
-} from "../route.js";
+} from "./createRoute.js";
 
 const providerParamsSchema = z.object({ id: providerIdSchema }).strict();
 const modelParamsSchema = z.object({ provider: providerIdSchema }).strict();

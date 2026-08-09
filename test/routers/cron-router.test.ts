@@ -12,7 +12,7 @@ import { RootContext } from "../../src/context/RootContext.js";
 import type { CronJobConfig } from "../../src/shared/contracts/vito-config.js";
 import { createDatabase } from "../../src/db/schema.js";
 import { xSessionStore, xVitoService } from "../../src/lib/x.js";
-import { CronRouterService } from "../../src/routers/cron/cron-router.js";
+import { CronRouterService } from "../../src/routers/CronRouterService.js";
 import type { CronHealth, CronService } from "../../src/services/cron/CronService.js";
 
 class FakeCronService implements CronService {

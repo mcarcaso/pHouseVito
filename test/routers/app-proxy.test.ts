@@ -6,7 +6,7 @@ import { join } from "node:path";
 import { after, before, describe, it } from "node:test";
 import express from "express";
 import { ObjectContext } from "../../src/context/ObjectContext.js";
-import { createAppProxyMiddleware } from "../../src/routers/apps/app-proxy.js";
+import { createAppProxyMiddleware } from "../../src/routers/AppProxyMiddleware.js";
 import { FileAppStore } from "../../src/stores/apps/FileAppStore.js";
 
 const root = mkdtempSync(join(tmpdir(), "vito-app-proxy-"));

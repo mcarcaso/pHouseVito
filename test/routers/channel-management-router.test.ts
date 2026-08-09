@@ -7,7 +7,7 @@ import { dashboardRouterContext } from "../support/dashboard-router-context.js";
 import {
   ChannelManagementRouterService,
   type ManagedChannelName,
-} from "../../src/routers/channels/channel-management-router.js";
+} from "../../src/routers/ChannelManagementRouterService.js";
 import type {
   AliasGenerationResult,
   ChannelRegistration,

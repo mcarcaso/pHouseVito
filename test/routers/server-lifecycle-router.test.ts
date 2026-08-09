@@ -4,7 +4,7 @@ import { after, before, describe, it } from "node:test";
 import express from "express";
 import { dashboardRouterContext } from "../support/dashboard-router-context.js";
 import type { Context } from "../../src/context/Context.js";
-import { ServerLifecycleRouterService } from "../../src/routers/server/server-lifecycle-router.js";
+import { ServerLifecycleRouterService } from "../../src/routers/ServerLifecycleRouterService.js";
 import type {
   ServerHealth,
   ServerLifecycleService,

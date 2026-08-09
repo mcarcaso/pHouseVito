@@ -1,14 +1,14 @@
 import express from "express";
 import type { Router } from "express";
-import type { Context } from "../../context/Context.js";
-import { dashboardLoginRequestSchema } from "../../shared/contracts/dashboard-auth.js";
-import type { RouterService } from "../RouterService.js";
-import { xDashboardAuthService } from "../../lib/x.js";
+import type { Context } from "../context/Context.js";
+import { dashboardLoginRequestSchema } from "../shared/contracts/dashboard-auth.js";
+import type { RouterService } from "./RouterService.js";
+import { xDashboardAuthService } from "../lib/x.js";
 import {
   emptyRouteSchema,
   unknownRouteSchema,
   createRawRoute,
-} from "../route.js";
+} from "./createRoute.js";
 
 export class DashboardAuthRouterService implements RouterService {
   async createRouter(x: Context): Promise<Router> {

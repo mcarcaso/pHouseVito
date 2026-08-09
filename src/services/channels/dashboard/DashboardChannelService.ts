@@ -6,35 +6,35 @@ import {
   xSecretService,
   xVitoService,
 } from "../../../lib/x.js";
-import { createAppProxyMiddleware } from "../../../routers/apps/app-proxy.js";
-import { AppRouterService } from "../../../routers/apps/app-router.js";
-import { AskApiRouterService } from "../../../routers/ask/ask-api-router.js";
+import { createAppProxyMiddleware } from "../../../routers/AppProxyMiddleware.js";
+import { AppRouterService } from "../../../routers/AppRouterService.js";
+import { AskApiRouterService } from "../../../routers/AskApiRouterService.js";
 import {
   AttachmentFileRouterService,
   AttachmentUploadRouterService,
-} from "../../../routers/attachments/attachment-router.js";
-import { DashboardAuthRouterService } from "../../../routers/auth/dashboard-auth-router.js";
-import { ChannelManagementRouterService } from "../../../routers/channels/channel-management-router.js";
-import { DashboardChatRouterService } from "../../../routers/chat/dashboard-chat-router.js";
-import { ConfigRouterService } from "../../../routers/config/config-router.js";
-import { CronRouterService } from "../../../routers/cron/cron-router.js";
+} from "../../../routers/AttachmentRouterService.js";
+import { DashboardAuthRouterService } from "../../../routers/DashboardAuthRouterService.js";
+import { ChannelManagementRouterService } from "../../../routers/ChannelManagementRouterService.js";
+import { DashboardChatRouterService } from "../../../routers/DashboardChatRouterService.js";
+import { ConfigRouterService } from "../../../routers/ConfigRouterService.js";
+import { CronRouterService } from "../../../routers/CronRouterService.js";
 import {
   DriveRouterService,
   PublicDriveRouterService,
-} from "../../../routers/drive/drive-router.js";
-import { FileRouterService } from "../../../routers/files/file-router.js";
-import { MemoryRouterService } from "../../../routers/memory/memory-router.js";
-import { PiSessionRouterService } from "../../../routers/pi-sessions/pi-session-router.js";
+} from "../../../routers/DriveRouterService.js";
+import { FileRouterService } from "../../../routers/FileRouterService.js";
+import { MemoryRouterService } from "../../../routers/MemoryRouterService.js";
+import { PiSessionRouterService } from "../../../routers/PiSessionRouterService.js";
 import {
   ModelRouterService,
   ProviderAuthRouterService,
-} from "../../../routers/providers/provider-router.js";
-import { SecretRouterService } from "../../../routers/secrets/secret-router.js";
-import { ServerLifecycleRouterService } from "../../../routers/server/server-lifecycle-router.js";
-import { SessionRouterService } from "../../../routers/sessions/session-router.js";
-import { SkillRouterService } from "../../../routers/skills/skill-router.js";
-import { SystemContentRouterService } from "../../../routers/system-content/system-content-router.js";
-import { TraceRouterService } from "../../../routers/traces/trace-router.js";
+} from "../../../routers/ProviderRouterService.js";
+import { SecretRouterService } from "../../../routers/SecretRouterService.js";
+import { ServerLifecycleRouterService } from "../../../routers/ServerLifecycleRouterService.js";
+import { SessionRouterService } from "../../../routers/SessionRouterService.js";
+import { SkillRouterService } from "../../../routers/SkillRouterService.js";
+import { SystemContentRouterService } from "../../../routers/SystemContentRouterService.js";
+import { TraceRouterService } from "../../../routers/TraceRouterService.js";
 import express from "express";
 import http from "node:http";
 const createServer = http.createServer.bind(http);

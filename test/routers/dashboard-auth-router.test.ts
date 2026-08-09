@@ -11,8 +11,8 @@ import {
   createRawRoute,
   emptyRouteSchema,
   unknownRouteSchema,
-} from "../../src/routers/route.js";
-import { DashboardAuthRouterService } from "../../src/routers/auth/dashboard-auth-router.js";
+} from "../../src/routers/createRoute.js";
+import { DashboardAuthRouterService } from "../../src/routers/DashboardAuthRouterService.js";
 import { InMemoryDashboardAuthService } from "../../src/services/auth/InMemoryDashboardAuthService.js";
 import { FileSecretService } from "../../src/services/secrets/FileSecretService.js";
 

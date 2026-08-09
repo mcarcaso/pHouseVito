@@ -1,21 +1,21 @@
 import express from "express";
 import type { Router } from "express";
 import { z } from "zod";
-import type { Context } from "../../context/Context.js";
-import type { RouterService } from "../RouterService.js";
+import type { Context } from "../context/Context.js";
+import type { RouterService } from "./RouterService.js";
 import {
   type VitoConfig,
   type VitoConfigPatch,
   streamModeUpdateSchema,
   vitoConfigPatchSchema,
-} from "../../shared/contracts/vito-config.js";
-import { xVitoService } from "../../lib/x.js";
-import { getDefaultSettings } from "../../settings.js";
+} from "../shared/contracts/vito-config.js";
+import { xVitoService } from "../lib/x.js";
+import { getDefaultSettings } from "../settings.js";
 import {
   emptyRouteSchema,
   unknownRouteSchema,
   createRawRoute,
-} from "../route.js";
+} from "./createRoute.js";
 
 const channelParamsSchema = z.object({
   name: z.string().min(1),

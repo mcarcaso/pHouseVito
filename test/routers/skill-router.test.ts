@@ -7,7 +7,7 @@ import { after, before, describe, it } from "node:test";
 import express from "express";
 import { z } from "zod";
 import { dashboardRouterContext } from "../support/dashboard-router-context.js";
-import { SkillRouterService } from "../../src/routers/skills/skill-router.js";
+import { SkillRouterService } from "../../src/routers/SkillRouterService.js";
 import { FileSkillStore } from "../../src/stores/skills/FileSkillStore.js";
 
 const root = mkdtempSync(join(tmpdir(), "vito-skill-router-"));

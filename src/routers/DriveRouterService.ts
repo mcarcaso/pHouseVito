@@ -1,31 +1,31 @@
 import express from "express";
 import type { NextFunction, Request, Response, Router } from "express";
 import { z } from "zod";
-import type { Context } from "../../context/Context.js";
+import type { Context } from "../context/Context.js";
 import {
   driveDirectoryMetaUpdateSchema,
   driveFileMetaUpdateSchema,
   driveSiteUploadRequestSchema,
   driveUploadRequestSchema,
-} from "../../shared/contracts/drive-api.js";
-import type { RouterService } from "../RouterService.js";
+} from "../shared/contracts/drive-api.js";
+import type { RouterService } from "./RouterService.js";
 import {
   driveDirectoryMetaSchema,
   drivePathSchema,
   driveReadResultSchema,
   nonRootDrivePathSchema,
-} from "../../contracts/drive.js";
-import { xDriveStore } from "../../lib/x.js";
+} from "../contracts/drive.js";
+import { xDriveStore } from "../lib/x.js";
 import {
   InvalidDriveArchiveError,
   InvalidDrivePathError,
-} from "../../stores/drive/FileDriveStore.js";
-import { StoreRecordNotFoundError } from "../../stores/Store.js";
+} from "../stores/drive/FileDriveStore.js";
+import { StoreRecordNotFoundError } from "../stores/Store.js";
 import {
   emptyRouteSchema,
   unknownRouteSchema,
   createRawRoute,
-} from "../route.js";
+} from "./createRoute.js";
 
 const pathQuerySchema = z
   .object({ path: drivePathSchema.default("") })

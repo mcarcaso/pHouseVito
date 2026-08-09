@@ -10,8 +10,8 @@ import { dashboardRouterContext } from "../support/dashboard-router-context.js";
 import {
   AttachmentFileRouterService,
   AttachmentUploadRouterService,
-} from "../../src/routers/attachments/attachment-router.js";
-import { FileRouterService } from "../../src/routers/files/file-router.js";
+} from "../../src/routers/AttachmentRouterService.js";
+import { FileRouterService } from "../../src/routers/FileRouterService.js";
 import { FileSystemFileService } from "../../src/services/files/FileSystemFileService.js";
 import { FileAttachmentStore } from "../../src/stores/attachments/FileAttachmentStore.js";
 

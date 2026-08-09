@@ -3,7 +3,7 @@ import type { Server } from "node:http";
 import { after, before, describe, it } from "node:test";
 import express from "express";
 import { dashboardRouterContext } from "../support/dashboard-router-context.js";
-import { DashboardChatRouterService } from "../../src/routers/chat/dashboard-chat-router.js";
+import { DashboardChatRouterService } from "../../src/routers/DashboardChatRouterService.js";
 import { DefaultDashboardChatService } from "../../src/services/chat/DefaultDashboardChatService.js";
 import type { InboundEvent } from "../../src/types.js";
 

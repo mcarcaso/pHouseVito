@@ -14,7 +14,7 @@ import {
   xTraceEventStore,
   xTraceStore,
 } from "../../src/lib/x.js";
-import { TraceRouterService } from "../../src/routers/traces/trace-router.js";
+import { TraceRouterService } from "../../src/routers/TraceRouterService.js";
 
 const logsDir = mkdtempSync(join(tmpdir(), "vito-trace-router-"));
 const userDir = mkdtempSync(join(tmpdir(), "vito-trace-user-"));

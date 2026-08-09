@@ -7,7 +7,7 @@ import { after, before, describe, it } from "node:test";
 import express from "express";
 import { z } from "zod";
 import { dashboardRouterContext } from "../support/dashboard-router-context.js";
-import { AppRouterService } from "../../src/routers/apps/app-router.js";
+import { AppRouterService } from "../../src/routers/AppRouterService.js";
 import type {
   AppProcessAction,
   AppProcessService,

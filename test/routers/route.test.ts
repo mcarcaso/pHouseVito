@@ -9,7 +9,7 @@ import {
   createRoute,
   emptyRouteSchema,
   unknownRouteSchema,
-} from "../../src/routers/route.js";
+} from "../../src/routers/createRoute.js";
 import type { DashboardAuthService } from "../../src/services/auth/DashboardAuthService.js";
 import { authenticatedDashboardAuthService } from "../support/authenticated-dashboard-auth-service.js";
 

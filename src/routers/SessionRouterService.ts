@@ -1,23 +1,23 @@
 import express from "express";
 import type { Router } from "express";
 import { z } from "zod";
-import type { Context } from "../../context/Context.js";
-import type { RouterService } from "../RouterService.js";
+import type { Context } from "../context/Context.js";
+import type { RouterService } from "./RouterService.js";
 import {
   sessionAliasUpdateSchema,
   sessionIdSchema,
   sessionMessagesQuerySchema,
-} from "../../shared/contracts/session-api.js";
+} from "../shared/contracts/session-api.js";
 import {
   settingsPatchSchema,
   settingsSchema,
-} from "../../shared/contracts/vito-config.js";
-import { xMessageStore, xSessionStore, xVitoService } from "../../lib/x.js";
+} from "../shared/contracts/vito-config.js";
+import { xMessageStore, xSessionStore, xVitoService } from "../lib/x.js";
 import {
   emptyRouteSchema,
   unknownRouteSchema,
   createRawRoute,
-} from "../route.js";
+} from "./createRoute.js";
 
 const sessionParamsSchema = z.object({ id: sessionIdSchema });
 

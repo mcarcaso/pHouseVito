@@ -1,14 +1,14 @@
 import express from "express";
 import type { Router } from "express";
-import type { Context } from "../../context/Context.js";
-import { memorySearchQuerySchema } from "../../shared/contracts/memory-api.js";
-import type { RouterService } from "../RouterService.js";
-import { xMemoryService, xSessionStore } from "../../lib/x.js";
+import type { Context } from "../context/Context.js";
+import { memorySearchQuerySchema } from "../shared/contracts/memory-api.js";
+import type { RouterService } from "./RouterService.js";
+import { xMemoryService, xSessionStore } from "../lib/x.js";
 import {
   emptyRouteSchema,
   unknownRouteSchema,
   createRawRoute,
-} from "../route.js";
+} from "./createRoute.js";
 
 export class MemoryRouterService implements RouterService {
   async createRouter(x: Context): Promise<Router> {

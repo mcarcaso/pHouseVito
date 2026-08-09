@@ -4,12 +4,12 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, it } from "node:test";
 import { ObjectContext } from "../../src/context/ObjectContext.js";
-import { withTracing } from "../../src/harnesses/tracing.js";
-import type { Harness } from "../../src/harnesses/types.js";
+import { withTracing } from "../../src/services/orchestrator/runtime/TracingPiRuntime.js";
+import type { PiRuntime } from "../../src/services/orchestrator/runtime/PiRuntime.js";
 import { FileTraceEventStore } from "../../src/stores/traces/FileTraceEventStore.js";
 import { FileTraceStore } from "../../src/stores/traces/FileTraceStore.js";
 
-const fakeHarness: Harness = {
+const fakeRuntime: PiRuntime = {
   getName: () => "fake",
   async run(_systemPrompt, _userMessage, callbacks) {
     callbacks.onInvocation?.("fake command");
@@ -18,9 +18,9 @@ const fakeHarness: Harness = {
   },
 };
 
-describe("TracingHarness", () => {
+describe("TracingPiRuntime", () => {
   it("persists trace metadata and events only through context stores", async () => {
-    const logsDir = mkdtempSync(join(tmpdir(), "vito-tracing-harness-"));
+    const logsDir = mkdtempSync(join(tmpdir(), "vito-tracing-runtime-"));
     const traceStore = new FileTraceStore();
     const traceEventStore = new FileTraceEventStore();
     const x = new ObjectContext({
@@ -29,14 +29,14 @@ describe("TracingHarness", () => {
       traceEventStore: () => traceEventStore,
     });
     try {
-      const harness = withTracing(fakeHarness, {
+      const runtime = withTracing(fakeRuntime, {
         x,
         session_id: "dashboard:test",
         channel: "dashboard",
         target: "test",
         model: "anthropic/test",
       });
-      await harness.run("system", "hello", {
+      await runtime.run("system", "hello", {
         onRawEvent: () => undefined,
         onNormalizedEvent: () => undefined,
       });
@@ -45,7 +45,7 @@ describe("TracingHarness", () => {
       if (!trace) throw new Error("Expected trace");
       assert.equal(trace.sessionId, "dashboard:test");
       assert.equal(trace.harness, "fake");
-      assert.ok(harness.tracePath.endsWith(trace.id));
+      assert.ok(runtime.tracePath.endsWith(trace.id));
       assert.deepEqual(
         traceEventStore
           .list(x, { traceIds: [trace.id], order: "oldest" })

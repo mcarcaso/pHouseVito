@@ -1,4 +1,4 @@
-import type { OutputHandler } from '../../types.js';
+import type { OutputHandler } from '../../../types.js';
 
 /**
  * NoReplyCheckHandler - Dead simple handler wrapper.

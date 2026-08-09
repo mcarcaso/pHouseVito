@@ -92,7 +92,7 @@ export type StreamMode = "stream" | "bundled" | "final";
 export type {
   ChannelConfig,
   CronJobConfig,
-  PiHarnessConfig,
+  PiRuntimeConfig,
   ResolvedSettings,
   Settings,
   VitoConfig,

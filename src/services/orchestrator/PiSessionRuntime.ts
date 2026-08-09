@@ -1,5 +1,5 @@
 /**
- * Long-lived Pi Session Harness (v2)
+ * Long-lived Pi session runtime
  *
  * Wraps @earendil-works/pi-coding-agent so a single AgentSession is reused across
  * multiple inbound user messages within the same Vito session. This is what
@@ -24,8 +24,8 @@ import {
 } from "@earendil-works/pi-coding-agent";
 import { existsSync, mkdirSync, readdirSync, unlinkSync, writeFileSync } from "fs";
 import { join } from "path";
-import type { Harness, HarnessCallbacks, HarnessUsage, NormalizedEvent } from "../harnesses/types.js";
-import type { Skill } from "../stores/skills/SkillStore.js";
+import type { NormalizedEvent, PiRuntime, PiRuntimeCallbacks, PiRuntimeUsage } from "./runtime/PiRuntime.js";
+import type { Skill } from "../../stores/skills/SkillStore.js";
 
 /** Filename written into a sessionDir to request "fresh on next create". */
 const FRESH_MARKER_FILE = ".fresh";
@@ -35,11 +35,11 @@ function writeFreshMarker(sessionDir: string): void {
     mkdirSync(sessionDir, { recursive: true });
     writeFileSync(join(sessionDir, FRESH_MARKER_FILE), "");
   } catch (err) {
-    console.warn("[v2 pi-session] Failed to write fresh marker:", err);
+    console.warn("[PiSessionRuntime] Failed to write fresh marker:", err);
   }
 }
 
-export interface PiSessionHarnessConfig {
+export interface PiSessionRuntimeConfig {
   model?: { provider: string; name: string };
   openRouterProvider?: string;
   thinkingLevel?: "off" | "low" | "medium" | "high";
@@ -52,7 +52,7 @@ export interface PiSessionHarnessConfig {
   sessionDir?: string;
 }
 
-const DEFAULT_CONFIG: PiSessionHarnessConfig = {
+const DEFAULT_CONFIG: PiSessionRuntimeConfig = {
   model: { provider: "anthropic", name: "claude-sonnet-4-20250514" },
   thinkingLevel: "off",
 };
@@ -73,7 +73,7 @@ function resolvePiModel(modelConfig: { provider: string; name: string }, openRou
   } as typeof model;
 }
 
-function toUsage(value: unknown): HarnessUsage | undefined {
+function toUsage(value: unknown): PiRuntimeUsage | undefined {
   if (!value || typeof value !== "object") return undefined;
   const usage = value as Record<string, unknown>;
   const cost = (usage.cost && typeof usage.cost === "object") ? usage.cost as Record<string, unknown> : {};
@@ -94,7 +94,7 @@ function toUsage(value: unknown): HarnessUsage | undefined {
   };
 }
 
-function addUsage(a: HarnessUsage | undefined, b: HarnessUsage | undefined): HarnessUsage | undefined {
+function addUsage(a: PiRuntimeUsage | undefined, b: PiRuntimeUsage | undefined): PiRuntimeUsage | undefined {
   if (!a) return b;
   if (!b) return a;
   return {
@@ -113,7 +113,7 @@ function addUsage(a: HarnessUsage | undefined, b: HarnessUsage | undefined): Har
   };
 }
 
-function getAssistantUsageFromMessage(message: unknown): HarnessUsage | undefined {
+function getAssistantUsageFromMessage(message: unknown): PiRuntimeUsage | undefined {
   if (!message || typeof message !== "object") return undefined;
   const msg = message as Record<string, unknown>;
   if (msg.role !== "assistant") return undefined;
@@ -139,16 +139,16 @@ async function waitForPiSessionSettled(piSession: AgentSession, getLastEventAt: 
     await sleep(100);
   }
 
-  console.warn("[v2 pi-session] Timed out waiting for pi session to settle after prompt; continuing to avoid a stuck relay.");
+  console.warn("[PiSessionRuntime] Timed out waiting for pi session to settle after prompt; continuing to avoid a stuck relay.");
 }
 
-export class PiSessionHarness implements Harness {
-  private config: PiSessionHarnessConfig;
+export class PiSessionRuntime implements PiRuntime {
+  private config: PiSessionRuntimeConfig;
   private piSession: AgentSession | null = null;
   private storedSystemPrompt: string | null = null;
   private aborted = false;
 
-  constructor(config: PiSessionHarnessConfig = {}) {
+  constructor(config: PiSessionRuntimeConfig = {}) {
     this.config = { ...DEFAULT_CONFIG, ...config };
   }
 
@@ -191,7 +191,7 @@ export class PiSessionHarness implements Harness {
   /**
    * Change the model for this long-lived pi session without requiring /new.
    * If the underlying AgentSession hasn't been created yet, this only updates
-   * the harness config so first run starts on the requested model.
+   * the runtime config so first run starts on the requested model.
    */
   async setModel(modelConfig: { provider: string; name: string; openRouterProvider?: string }): Promise<void> {
     this.config.model = { provider: modelConfig.provider, name: modelConfig.name };
@@ -276,7 +276,7 @@ export class PiSessionHarness implements Harness {
   async run(
     systemPrompt: string,
     userMessage: string,
-    callbacks: HarnessCallbacks,
+    callbacks: PiRuntimeCallbacks,
     signal?: AbortSignal
   ): Promise<void> {
     this.aborted = false;
@@ -338,7 +338,7 @@ export class PiSessionHarness implements Harness {
       try {
         piSession.setAutoCompactionEnabled(true);
       } catch (err) {
-        console.warn("[v2 pi-session] Failed to enable auto-compaction:", err);
+        console.warn("[PiSessionRuntime] Failed to enable auto-compaction:", err);
       }
 
       this.piSession = piSession;
@@ -363,8 +363,8 @@ export class PiSessionHarness implements Harness {
     let currentThinkingText = "";
     let hasEmittedAssistantText = false;
     let hasEmittedThought = false;
-    let accumulatedUsage: HarnessUsage | undefined;
-    let finalUsage: HarnessUsage | undefined;
+    let accumulatedUsage: PiRuntimeUsage | undefined;
+    let finalUsage: PiRuntimeUsage | undefined;
     let hasEmittedUsage = false;
     let turnErrorMessage: string | undefined;
 
@@ -498,7 +498,7 @@ export class PiSessionHarness implements Harness {
       }
       unsubscribe();
       signal?.removeEventListener("abort", abortHandler);
-      // NOTE: do NOT dispose the session here — that's the whole point of v2.
+      // NOTE: do NOT dispose the session here — that's the whole point of this runtime.
     }
   }
 

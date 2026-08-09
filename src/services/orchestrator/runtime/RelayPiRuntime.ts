@@ -1,5 +1,5 @@
 /**
- * RELAY HARNESS
+ * RELAY PI RUNTIME
  *
  * Decorator that handles all output to the channel handler:
  * - Streaming relay (each assistant message as it arrives)
@@ -9,21 +9,21 @@
  * - Error/interrupt relay
  */
 
-import type { OutputHandler, StreamMode } from "../types.js";
-import { ProxyHarness } from "./proxy.js";
-import type { Harness, HarnessCallbacks } from "./types.js";
+import type { OutputHandler, StreamMode } from "../../../types.js";
+import { ProxyPiRuntime } from "./ProxyPiRuntime.js";
+import type { PiRuntime, PiRuntimeCallbacks } from "./PiRuntime.js";
 
 export interface RelayOptions {
   handler: OutputHandler | null;
   streamMode: StreamMode;
 }
 
-export class RelayHarness extends ProxyHarness {
+export class RelayPiRuntime extends ProxyPiRuntime {
   private readonly handler: OutputHandler | null;
   private readonly streamMode: StreamMode;
   private completedMessages: string[] = [];
 
-  constructor(delegate: Harness, opts: RelayOptions) {
+  constructor(delegate: PiRuntime, opts: RelayOptions) {
     super(delegate);
     this.handler = opts.handler;
     this.streamMode = opts.streamMode;
@@ -32,12 +32,12 @@ export class RelayHarness extends ProxyHarness {
   async run(
     systemPrompt: string,
     userMessage: string,
-    callbacks: HarnessCallbacks,
+    callbacks: PiRuntimeCallbacks,
     signal?: AbortSignal
   ): Promise<void> {
     this.completedMessages = [];
 
-    const relayCallbacks: HarnessCallbacks = {
+    const relayCallbacks: PiRuntimeCallbacks = {
       onInvocation: callbacks.onInvocation,
       onRawEvent: callbacks.onRawEvent,
       onNormalizedEvent: (event) => {
@@ -109,6 +109,6 @@ export class RelayHarness extends ProxyHarness {
   }
 }
 
-export function withRelay(harness: Harness, opts: RelayOptions): RelayHarness {
-  return new RelayHarness(harness, opts);
+export function withRelay(runtime: PiRuntime, opts: RelayOptions): RelayPiRuntime {
+  return new RelayPiRuntime(runtime, opts);
 }

@@ -1,24 +1,24 @@
 /**
- * PROXY HARNESS
+ * PROXY PI RUNTIME
  *
- * Base class for harness decorators. Implements the Harness interface
- * and delegates all calls to a wrapped harness.
+ * Base class for runtime decorators. Implements the PiRuntime interface
+ * and delegates all calls to a wrapped runtime.
  *
  * Extend this to add behavior (logging, tracing, retries, etc.)
- * without modifying the underlying harness.
+ * without modifying the underlying runtime.
  *
  * Lifecycle methods (getModel/setModel/reset/compact/dispose) are NOT
  * forwarded — the orchestrator calls those on the inner (unwrapped)
- * harness only, since lifecycle is per-Vito-session and the decorator
+ * runtime only, since lifecycle is per-Vito-session and the decorator
  * chain is rebuilt per turn.
  */
 
-import type { Harness, HarnessCallbacks } from "./types.js";
+import type { PiRuntime, PiRuntimeCallbacks } from "./PiRuntime.js";
 
-export class ProxyHarness implements Harness {
-  protected readonly delegate: Harness;
+export class ProxyPiRuntime implements PiRuntime {
+  protected readonly delegate: PiRuntime;
 
-  constructor(delegate: Harness) {
+  constructor(delegate: PiRuntime) {
     this.delegate = delegate;
   }
 
@@ -29,7 +29,7 @@ export class ProxyHarness implements Harness {
   async run(
     systemPrompt: string,
     userMessage: string,
-    callbacks: HarnessCallbacks,
+    callbacks: PiRuntimeCallbacks,
     signal?: AbortSignal
   ): Promise<void> {
     return this.delegate.run(systemPrompt, userMessage, callbacks, signal);

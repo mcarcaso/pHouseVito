@@ -1,5 +1,5 @@
 /**
- * PERSISTENCE HARNESS
+ * PERSISTENCE PI RUNTIME
  *
  * Decorator that stores all messages in the DB:
  * - User message (from options) at the start of run()
@@ -9,11 +9,11 @@
  * - Stores "*(interrupted)*" on abort
  */
 
-import type { Context } from "../context/Context.js";
-import { xMessageStore } from "../lib/x.js";
-import type { MsgType } from "../types.js";
-import { ProxyHarness } from "./proxy.js";
-import type { Harness, HarnessCallbacks } from "./types.js";
+import type { Context } from "../../../context/Context.js";
+import { xMessageStore } from "../../../lib/x.js";
+import type { MsgType } from "../../../types.js";
+import { ProxyPiRuntime } from "./ProxyPiRuntime.js";
+import type { PiRuntime, PiRuntimeCallbacks } from "./PiRuntime.js";
 
 export interface PersistenceOptions {
   x: Context;
@@ -27,7 +27,7 @@ export interface PersistenceOptions {
   author?: string;
 }
 
-export class PersistenceHarness extends ProxyHarness {
+export class PersistencePiRuntime extends ProxyPiRuntime {
   private readonly x: Context;
   private readonly sessionId: string;
   private readonly channel: string;
@@ -37,7 +37,7 @@ export class PersistenceHarness extends ProxyHarness {
   private readonly author: string | null;
   private assistantMessageIds: number[] = [];
 
-  constructor(delegate: Harness, opts: PersistenceOptions) {
+  constructor(delegate: PiRuntime, opts: PersistenceOptions) {
     super(delegate);
     this.x = opts.x;
     this.sessionId = opts.sessionId;
@@ -64,7 +64,7 @@ export class PersistenceHarness extends ProxyHarness {
   async run(
     systemPrompt: string,
     userMessage: string,
-    callbacks: HarnessCallbacks,
+    callbacks: PiRuntimeCallbacks,
     signal?: AbortSignal
   ): Promise<void> {
     this.assistantMessageIds = [];
@@ -72,7 +72,7 @@ export class PersistenceHarness extends ProxyHarness {
     // Store user message before delegating (with author)
     this.insertMsg("user", this.userContent, this.userTimestamp, this.author);
 
-    const persistCallbacks: HarnessCallbacks = {
+    const persistCallbacks: PiRuntimeCallbacks = {
       onInvocation: callbacks.onInvocation,
       onRawEvent: callbacks.onRawEvent,
       onNormalizedEvent: (event) => {
@@ -122,6 +122,6 @@ export class PersistenceHarness extends ProxyHarness {
   }
 }
 
-export function withPersistence(harness: Harness, opts: PersistenceOptions): PersistenceHarness {
-  return new PersistenceHarness(harness, opts);
+export function withPersistence(runtime: PiRuntime, opts: PersistenceOptions): PersistencePiRuntime {
+  return new PersistencePiRuntime(runtime, opts);
 }

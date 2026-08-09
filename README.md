@@ -112,13 +112,12 @@ Edit `user/SOUL.md` to define your agent's personality. This is how you make Vit
 pHouseVito/
 ├── src/                       # Core application code
 │   ├── services/channels/     # Context-driven channel services and registry
+│   ├── services/orchestrator/ # Message orchestration and Pi session runtime pipeline
 │   ├── db/                    # SQLite schema and queries
-│   ├── harnesses/             # AI backend harnesses (pi-coding-agent)
 │   ├── memory/                # Memory management and compaction
 │   ├── shared/contracts/      # Browser-safe Zod API contracts shared with dashboard
 │   ├── sessions/              # Session management
-│   ├── skills/                # Builtin skill discovery and loading
-│   └── orchestrator.ts        # Core message flow
+│   └── skills/                # Builtin skill discovery and loading
 ├── dashboard/                 # React-based web UI
 ├── data/                      # Runtime data (attachments, etc.) — gitignored
 ├── user.example/              # Template — copy to user/ to get started

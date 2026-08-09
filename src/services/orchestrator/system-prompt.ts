@@ -1,11 +1,11 @@
 /**
- * System prompt builder for orchestrator v2.
+ * System prompt builder for orchestrator service.
  *
  * Goal: keep the system prompt small, stable, and deterministic so it can be
  * cached. Anything volatile (datetime, the user's message text, attachments)
  * goes into the per-turn user message instead.
  *
- * What's IN the v2 system prompt:
+ * What's IN the system prompt:
  *   - Personality (SOUL.md)
  *   - System rules (SYSTEM.md, via buildSystemBlock)
  *   - Channel-specific instructions
@@ -18,17 +18,17 @@
  *   - Auto-recalled memories (agent calls the recall skill on demand instead)
  *   - <memory> with current/cross-session messages (pi keeps current-session
  *     history in its AgentSession; cross-session is opt-in via skills)
- *   - Harness instructions (we control the harness, no quirks to document)
+ *   - PiRuntime instructions (we control the runtime, no quirks to document)
  *   - User profile — pi sessions live for days/weeks, but profile.md is updated
  *     by a background process every turn. Inlining it would freeze a stale
  *     snapshot in the cached system prompt. Instead, the capabilities map
  *     tells the agent to Read user/profile.md on first response in a session.
  */
 
-import { buildSystemBlock } from "../system-instructions.js";
+import { buildSystemBlock } from "../../system-instructions.js";
 import { CAPABILITIES_MAP } from "./capabilities.js";
 
-export interface BuildSystemPromptV2Options {
+export interface BuildSystemPromptOptions {
   soul: string;
   channelPrompt?: string;
   customInstructions?: string;
@@ -42,7 +42,7 @@ export interface BuildSystemPromptV2Options {
   };
 }
 
-export function buildSystemPromptV2(opts: BuildSystemPromptV2Options): string {
+export function buildSystemPrompt(opts: BuildSystemPromptOptions): string {
   const parts: string[] = [];
 
   if (opts.soul) {
@@ -87,7 +87,7 @@ export function buildSystemPromptV2(opts: BuildSystemPromptV2Options): string {
  * Build the per-turn user message. Datetime + author + channel context are
  * prepended so the system prompt stays stable.
  */
-export interface BuildUserMessageV2Options {
+export interface BuildUserMessageOptions {
   content: string;
   author?: string;
   channel?: string;
@@ -95,7 +95,7 @@ export interface BuildUserMessageV2Options {
   attachmentPaths?: string[];
 }
 
-export function buildUserMessageV2(opts: BuildUserMessageV2Options): string {
+export function buildUserMessage(opts: BuildUserMessageOptions): string {
   const tz = opts.timezone || "America/Toronto";
   const now = new Date();
   const dateStr = now.toLocaleString("en-CA", {

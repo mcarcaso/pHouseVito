@@ -8,6 +8,7 @@ import { DefaultChannelRegistryService } from "../services/channels/DefaultChann
 import { DefaultDashboardChatService } from "../services/chat/DefaultDashboardChatService.js";
 import { FileSystemFileService } from "../services/files/FileSystemFileService.js";
 import { DefaultMemoryService } from "../services/memory/DefaultMemoryService.js";
+import { PiOrchestratorService } from "../services/orchestrator/PiOrchestratorService.js";
 import { DefaultProviderService } from "../services/providers/DefaultProviderService.js";
 import { FileSecretService } from "../services/secrets/FileSecretService.js";
 import { DefaultServerLifecycleService } from "../services/server/DefaultServerLifecycleService.js";
@@ -69,6 +70,7 @@ export function RootContext(args: RootContextArgs): Context {
     embeddingDb: () => createEmbeddingDatabase(join(args.userDir, "embeddings.db")),
     embeddingStore: () => new SqliteEmbeddingStore(),
     memoryService: () => new DefaultMemoryService(),
+    orchestratorService: () => new PiOrchestratorService(),
     secretService: () => new FileSecretService(),
     serverLifecycleService: () => new DefaultServerLifecycleService(),
     piSessionStore: () => new FilePiSessionStore(),

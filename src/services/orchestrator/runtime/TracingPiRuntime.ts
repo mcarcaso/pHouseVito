@@ -1,16 +1,16 @@
 /**
- * TRACING HARNESS
+ * TRACING PI RUNTIME
  *
- * Decorator that logs all harness events to a .jsonl trace file.
+ * Decorator that logs all runtime events to a .jsonl trace file.
  */
 
 import { join } from "node:path";
-import type { Context } from "../context/Context.js";
-import type { WritableTraceEventData } from "../shared/contracts/trace-event.js";
-import { xLogsDir, xTraceEventStore, xTraceStore } from "../lib/x.js";
-import { TraceSizeLimitError } from "../stores/traces/FileTraceEventStore.js";
-import { ProxyHarness } from "./proxy.js";
-import type { Harness, HarnessCallbacks, HarnessUsage } from "./types.js";
+import type { Context } from "../../../context/Context.js";
+import type { WritableTraceEventData } from "../../../shared/contracts/trace-event.js";
+import { xLogsDir, xTraceEventStore, xTraceStore } from "../../../lib/x.js";
+import { TraceSizeLimitError } from "../../../stores/traces/FileTraceEventStore.js";
+import { ProxyPiRuntime } from "./ProxyPiRuntime.js";
+import type { PiRuntime, PiRuntimeCallbacks, PiRuntimeUsage } from "./PiRuntime.js";
 
 export interface TracingOptions {
   x: Context;
@@ -25,13 +25,13 @@ export interface TracingOptions {
 
 type TraceLine = WritableTraceEventData;
 
-export class TracingHarness extends ProxyHarness {
+export class TracingPiRuntime extends ProxyPiRuntime {
   private traceId: string = "";
   private readonly options: TracingOptions;
   private readonly traceMessageUpdates: boolean;
   private truncated: boolean = false;
 
-  constructor(delegate: Harness, options: TracingOptions) {
+  constructor(delegate: PiRuntime, options: TracingOptions) {
     super(delegate);
     this.options = options;
     this.traceMessageUpdates = options.traceMessageUpdates ?? false;
@@ -85,7 +85,7 @@ export class TracingHarness extends ProxyHarness {
   async run(
     systemPrompt: string,
     userMessage: string,
-    callbacks: HarnessCallbacks,
+    callbacks: PiRuntimeCallbacks,
     signal?: AbortSignal
   ): Promise<void> {
     const timestamp = new Date().toISOString();
@@ -108,7 +108,7 @@ export class TracingHarness extends ProxyHarness {
     let messageCount = 0;
     let toolCalls = 0;
     let error: string | undefined;
-    let usage: HarnessUsage | undefined;
+    let usage: PiRuntimeUsage | undefined;
 
     this.writeLine({ type: "prompt", content: systemPrompt, length: systemPrompt.length });
     this.writeLine({ type: "user_message", content: userMessage });
@@ -119,7 +119,7 @@ export class TracingHarness extends ProxyHarness {
     }
     this.pendingLines = [];
 
-    const tracingCallbacks: HarnessCallbacks = {
+    const tracingCallbacks: PiRuntimeCallbacks = {
       onInvocation: (cliCommand: string) => {
         this.writeLine({ type: "invocation", command: cliCommand });
         callbacks.onInvocation?.(cliCommand);
@@ -165,6 +165,6 @@ export class TracingHarness extends ProxyHarness {
   }
 }
 
-export function withTracing(harness: Harness, options: TracingOptions): TracingHarness {
-  return new TracingHarness(harness, options);
+export function withTracing(runtime: PiRuntime, options: TracingOptions): TracingPiRuntime {
+  return new TracingPiRuntime(runtime, options);
 }

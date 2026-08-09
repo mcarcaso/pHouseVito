@@ -4,8 +4,7 @@ import { createDatabase } from "./db/schema.js";
 import { ObjectContext } from "./context/ObjectContext.js";
 import { RootContext } from "./context/RootContext.js";
 import { ensureUserDir, USER_DIR } from "./config.js";
-import { xAskApiService, xEmbeddingDb, xSecretService, xVitoService } from "./lib/x.js";
-import { OrchestratorV2 as Orchestrator } from "./orchestrator_v2/index.js";
+import { xAskApiService, xEmbeddingDb, xOrchestratorService, xSecretService, xVitoService } from "./lib/x.js";
 import { DashboardChannelService } from "./services/channels/dashboard/DashboardChannelService.js";
 import { DiscordChannelService } from "./services/channels/discord/DiscordChannelService.js";
 import { TelegramChannelService } from "./services/channels/telegram/TelegramChannelService.js";
@@ -47,30 +46,30 @@ async function main() {
   }
 
   // Create orchestrator
-  const orchestrator = new Orchestrator(x);
+  const orchestrator = xOrchestratorService(x);
 
   // Register Dashboard channel (starts web server) with scheduler-scoped services.
   const dashboardX = new ObjectContext({
-    cronService: () => new CronSchedulerService(orchestrator.getCronScheduler()),
+    cronService: () => new CronSchedulerService(orchestrator.getCronScheduler(x)),
   }, x);
   const dashboard = new DashboardChannelService();
-  xAskApiService(dashboardX).configure(dashboardX, (opts) => orchestrator.ask(opts));
-  orchestrator.registerChannel(dashboard, dashboardX);
+  xAskApiService(dashboardX).configure(dashboardX, (opts) => orchestrator.ask(x, opts));
+  orchestrator.registerChannel(x, dashboard, dashboardX);
 
   // Register externally managed channel services. Their platform-specific
   // management capabilities are discovered through ChannelRegistryService.
-  orchestrator.registerChannel(new TelegramChannelService());
-  orchestrator.registerChannel(new DiscordChannelService());
+  orchestrator.registerChannel(x, new TelegramChannelService());
+  orchestrator.registerChannel(x, new DiscordChannelService());
 
   // Start channels
-  await orchestrator.start();
+  await orchestrator.start(x);
 
   console.log("\nVito is ready. Dashboard at http://localhost:3030\n");
 
   // Heartbeat log every 30 minutes
   setInterval(() => {
     console.log(`[Heartbeat] Server alive @ ${new Date().toLocaleString()}`);
-    const cronHealth = orchestrator.getCronScheduler().checkHealth();
+    const cronHealth = orchestrator.getCronScheduler(x).checkHealth();
     console.log(`[Heartbeat] Cron jobs: ${cronHealth.length} active`);
   }, 30 * 60 * 1000); // 30 minutes
 
@@ -89,13 +88,13 @@ async function main() {
           
           // Reload each component separately so one failure doesn't block others
           try {
-            orchestrator.reloadConfig(newConfig);
+            orchestrator.reloadConfig(x, newConfig);
           } catch (err) {
             console.error("[Config] Failed to reload orchestrator config:", err);
           }
           
           try {
-            orchestrator.reloadCronJobs(newConfig.cron.jobs);
+            orchestrator.reloadCronJobs(x, newConfig.cron.jobs);
           } catch (err) {
             console.error("[Config] Failed to reload cron jobs:", err);
           }
@@ -113,7 +112,7 @@ async function main() {
   // Handle graceful shutdown
   process.on("SIGINT", async () => {
     console.log("\nShutting down...");
-    await orchestrator.stop();
+    await orchestrator.stop(x);
     xEmbeddingDb(x).close();
     db.close();
     process.exit(0);

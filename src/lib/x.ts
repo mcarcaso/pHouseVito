@@ -14,6 +14,7 @@ import type { DriveStore } from "../stores/drive/DriveStore.js";
 import type { EmbeddingStore } from "../stores/embeddings/EmbeddingStore.js";
 import type { CronService } from "../services/cron/CronService.js";
 import type { MemoryService } from "../services/memory/MemoryService.js";
+import type { OrchestratorService } from "../services/orchestrator/OrchestratorService.js";
 import type { SecretService } from "../services/secrets/SecretService.js";
 import type { ServerLifecycleService } from "../services/server/ServerLifecycleService.js";
 import type { VitoService } from "../services/vito/VitoService.js";
@@ -65,6 +66,8 @@ export const xFileService = (x: Context): FileService => x.get("fileService") as
 export const xCronService = (x: Context): CronService => x.get("cronService") as CronService;
 export const xMemoryService = (x: Context): MemoryService =>
   x.get("memoryService") as MemoryService;
+export const xOrchestratorService = (x: Context): OrchestratorService =>
+  x.get("orchestratorService") as OrchestratorService;
 export const xSecretService = (x: Context): SecretService =>
   x.get("secretService") as SecretService;
 export const xServerLifecycleService = (x: Context): ServerLifecycleService =>

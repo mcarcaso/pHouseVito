@@ -29,13 +29,13 @@ Production deploy: `./aws_deploy/deploy.sh mike5` (git pull → npm ci → build
 
 ### Entry point
 
-`src/index.ts` boots in this order: ensure `user/` exists (copied from `user.example/` on first run), load secrets into `process.env`, open SQLite and construct `RootContext`, resolve validated `vito.config.json` and `SOUL.md` through `VitoService`, set `process.env.TZ` from `config.settings.timezone`, construct `OrchestratorV2`, register the three real channels (Dashboard, Telegram, Discord — Direct is registered lazily by `Orchestrator.ask()`), `orchestrator.start()`, then watch the user directory with a 3s debounce for atomic config hot-reloads.
+`src/index.ts` boots in this order: ensure `user/` exists (copied from `user.example/` on first run), load secrets into `process.env`, open SQLite and construct `RootContext`, resolve validated `vito.config.json` and `SOUL.md` through `VitoService`, set `process.env.TZ` from `config.settings.timezone`, resolve `OrchestratorService` from context, register the three real channels (Dashboard, Telegram, Discord — Direct is registered lazily by `orchestrator.ask()`), `orchestrator.start()`, then watch the user directory with a 3s debounce for atomic config hot-reloads.
 
-### Orchestrator V2 (`src/orchestrator_v2/`)
+### Orchestrator service (`src/services/orchestrator/`)
 
-The whole point of v2 is **one long-lived `PiSessionHarness` per Vito session**, reused across every turn. The system prompt is set once at creation; subsequent turns just call `piSession.prompt(userMessage)`. This is what gets Anthropic prompt caching to hit on every turn.
+`PiOrchestratorService` owns **one long-lived `PiSessionRuntime` per Vito session**, reused across every turn. The system prompt is set once at creation; subsequent turns just call `piSession.prompt(userMessage)`. This is what gets Anthropic prompt caching to hit on every turn. Public service methods take `Context` first; the orchestrator owns process-lifetime queues, abort controllers, cron state, and live Pi sessions.
 
-`orchestrator.ts` owns: per-session FIFO queues (sequential within a session, parallel across sessions), abort tracking for `/stop`, the harness map keyed by Vito session id, and inbound routing. `pi-session-harness.ts` is the actual long-lived wrapper around `@earendil-works/pi-coding-agent`, including `setModel()` and `compact()` for live mutation. `system-prompt.ts` builds the deliberately small/stable system prompt; `capabilities.ts` is the static "capabilities map" string injected into it.
+`PiOrchestratorService.ts` owns per-session FIFO queues (sequential within a session, parallel across sessions), abort tracking for `/stop`, the Pi runtime map keyed by Vito session id, and inbound routing. `PiSessionRuntime.ts` is the long-lived wrapper around `@earendil-works/pi-coding-agent`, including `setModel()` and `compact()` for live mutation. `system-prompt.ts` builds the deliberately small/stable system prompt; `capabilities.ts` is the static capabilities map injected into it.
 
 ### Per-turn flow
 
@@ -45,7 +45,7 @@ Channel emits `InboundEvent` → `Orchestrator.handleInbound()` → per-session 
 2. Download remote attachments (e.g., Telegram photos) into `user/drive/images/`.
 3. If `requireMention` is on and the bot wasn't mentioned, store and return.
 4. Resolve effective settings via `getEffectiveSettings()` (Global → Channel → Session deep merge).
-5. Get-or-create the long-lived `PiSessionHarness` for `vitoSession.id`. If a `.fresh` marker exists in the session dir (written by `/new`), force a brand-new pi `SessionManager.create()` instead of `continueRecent()`.
+5. Get-or-create the long-lived `PiSessionRuntime` for `vitoSession.id`. If a `.fresh` marker exists in the session dir (written by `/new`), force a brand-new pi `SessionManager.create()` instead of `continueRecent()`.
 6. Wrap with the decorator chain: `withTracing` → `withPersistence` → `withRelay` → `withTyping`.
 7. Build system prompt (only on first run for this pi session — afterwards ignored): personality (SOUL.md) + `<system>` block (SYSTEM.md, hot-loaded from project root) + capabilities map + channel prompt + custom instructions + session identity. Datetime, author, channel, and the user message itself go into the per-turn user message instead, so the prefix stays cacheable.
 8. Run with abort signal.
@@ -57,7 +57,7 @@ v2 does **not** auto-search embeddings on every turn and does **not** stuff prio
 
 ### Pi sessions on disk
 
-Each Vito session id (`channel:target`, e.g., `dashboard:default`, `telegram:123:456`) maps to a directory under `user/pi-sessions/<urlencoded-id>/`. Pi writes its own JSONL state there, which is why a process restart can resume the same conversation. Dashboard listing, reading, and deletion go through the context-scoped `PiSessionStore`; persisted JSONL lines are runtime-validated before being returned. `/new` writes a `.fresh` marker (handled even without an in-memory harness, e.g., right after a server restart) so the next create starts clean. `/compact` calls `piSession.compact()` to summarize older turns in place.
+Each Vito session id (`channel:target`, e.g., `dashboard:default`, `telegram:123:456`) maps to a directory under `user/pi-sessions/<urlencoded-id>/`. Pi writes its own JSONL state there, which is why a process restart can resume the same conversation. Dashboard listing, reading, and deletion go through the context-scoped `PiSessionStore`; persisted JSONL lines are runtime-validated before being returned. `/new` writes a `.fresh` marker (handled even without an in-memory Pi runtime, e.g., right after a server restart) so the next create starts clean. `/compact` calls `piSession.compact()` to summarize older turns in place.
 
 ### Channel services (`src/services/channels/`)
 
@@ -87,9 +87,9 @@ Four context-driven `ChannelService` implementations own their platform SDK life
 
 `src/cron/scheduler.ts` (croner, timezone-aware). Jobs are defined in `vito.config.json` under `cron.jobs` and re-applied on hot-reload. `oneTime: true` removes the job from the config after firing. `sendCondition` forces `streamMode: "final"` and wraps the handler with `withNoReplyCheck` — if the response contains `NO_REPLY`, nothing gets relayed. Dashboard cron APIs live in `src/routers/CronRouterService.ts`, use the context-scoped `CronService`, validate schedules before mutation, and persist configured jobs through `VitoService`.
 
-### Pi runtime decorators (`src/harnesses/`)
+### Pi runtime decorators (`src/services/orchestrator/runtime/`)
 
-Decorators wrap the long-lived `PiSessionHarness` through its runtime interface: `ProxyHarness` is the base for `TracingHarness`, `PersistenceHarness`, `RelayHarness`, `TypingHarness`. The decorator chain order matters: tracing (uses the context-scoped `TraceStore` and `TraceEventStore` to write append-only `.jsonl` traces into `logs/`, capped at 50MB) → persistence (writes user/assistant/tool rows into SQLite; never deletes — `/new` only archives) → relay (delivers to the channel's `OutputHandler` per `streamMode`) → typing. The current trace stores are file-backed; the harness and dashboard do not access trace files directly.
+Decorators wrap the long-lived `PiSessionRuntime` through the focused `PiRuntime` execution interface: `ProxyPiRuntime` is the base for `TracingPiRuntime`, `PersistencePiRuntime`, `RelayPiRuntime`, and `TypingPiRuntime`. The decorator chain order matters: tracing (uses the context-scoped `TraceStore` and `TraceEventStore` to write append-only `.jsonl` traces into `logs/`, capped at 50MB) → persistence (writes user/assistant/tool rows into SQLite; never deletes — `/new` only archives) → relay (delivers to the channel's `OutputHandler` per `streamMode`) → typing. Lifecycle operations stay on the undecorated `PiSessionRuntime`, which the orchestrator owns.
 
 ### Skills (`src/skills/`)
 
@@ -125,11 +125,11 @@ Separate `user/embeddings.db` holds chunk vectors + FTS5 index used by `semantic
 - TypeScript strict, target ES2022, `module: Node16`, `moduleResolution: Node16`.
 - `import type { ... }` for type-only.
 - Files: kebab-case. Interfaces/Classes: PascalCase. Functions/vars: camelCase.
-- Decorators extend `ProxyHarness`.
+- Pi runtime decorators extend `ProxyPiRuntime`.
 
 ## Operational notes
 
 - PM2 service is `vito-server`; npm scripts call bare `pm2`, not `npx pm2`.
 - The dashboard has its own `node_modules` — run `npm install` inside `dashboard/` to get `vite`/`typescript` etc.
 - Heartbeat log every 30 minutes (server alive + active cron count).
-- After a server restart, in-memory harness state is gone but pi-session JSONL on disk remains, so the next message resumes the same conversation. Vito's own message DB is append-only.
+- After a server restart, in-memory Pi runtime state is gone but pi-session JSONL on disk remains, so the next message resumes the same conversation. Vito's own message DB is append-only.

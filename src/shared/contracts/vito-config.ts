@@ -14,7 +14,7 @@ const modelSchema = z.object({
   name: z.string().min(1, "Model name is required"),
 });
 
-export const piHarnessConfigSchema = z.object({
+export const piRuntimeConfigSchema = z.object({
   model: modelSchema,
   openRouterProvider: z.string().min(1).optional(),
   thinkingLevel: z.enum(["off", "low", "medium", "high"]).optional(),
@@ -26,7 +26,7 @@ export const settingsSchema = z.object({
   requireMention: z.boolean().optional(),
   traceMessageUpdates: z.boolean().optional(),
   timezone: timezoneSchema.optional(),
-  "pi-coding-agent": piHarnessConfigSchema.partial().optional(),
+  "pi-coding-agent": piRuntimeConfigSchema.partial().optional(),
   memory: z.object({
     chunkContextualizerModel: modelSchema.optional(),
   }).passthrough().optional(),
@@ -44,7 +44,7 @@ export const settingsPatchSchema = z.object({
   requireMention: z.boolean().nullable().optional(),
   traceMessageUpdates: z.boolean().nullable().optional(),
   timezone: timezoneSchema.nullable().optional(),
-  "pi-coding-agent": piHarnessConfigSchema.partial().nullable().optional(),
+  "pi-coding-agent": piRuntimeConfigSchema.partial().nullable().optional(),
   memory: z.object({
     chunkContextualizerModel: modelSchema.optional(),
   }).passthrough().nullable().optional(),
@@ -60,7 +60,7 @@ export const appsConfigSchema = z.object({
 }).passthrough();
 
 export const harnessesConfigSchema = z.object({
-  "pi-coding-agent": piHarnessConfigSchema.optional(),
+  "pi-coding-agent": piRuntimeConfigSchema.optional(),
 }).passthrough();
 
 const channelIdentifierSchema = z.union([z.string(), z.number().int()])
@@ -131,7 +131,7 @@ export const vitoConfigSchema = z.object({
   }
 });
 
-export type PiHarnessConfig = z.infer<typeof piHarnessConfigSchema>;
+export type PiRuntimeConfig = z.infer<typeof piRuntimeConfigSchema>;
 export type Settings = z.infer<typeof settingsSchema>;
 export type ChannelConfig = z.infer<typeof channelConfigSchema>;
 export type CronJobConfig = z.infer<typeof cronJobConfigSchema>;
@@ -143,7 +143,7 @@ export type ResolvedSettings = Required<Pick<Settings, "streamMode">> & {
   requireMention?: boolean;
   traceMessageUpdates?: boolean;
   timezone?: string;
-  "pi-coding-agent"?: Partial<PiHarnessConfig>;
+  "pi-coding-agent"?: Partial<PiRuntimeConfig>;
   memory?: Settings["memory"];
 };
 

@@ -1,5 +1,5 @@
 /**
- * Capability map for v2 system prompt.
+ * Capability map for the Pi system prompt.
  *
  * Short pointers to what the agent can do. The point is to keep this STABLE
  * across turns (so it caches) and AGENT-INITIATED (the agent calls a tool or

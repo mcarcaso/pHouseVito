@@ -29,7 +29,7 @@ import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/
 import type { Context } from "./context/Context.js";
 import { xSkillStore } from "./lib/x.js";
 import { buildSystemBlock } from "./system-instructions.js";
-import { CAPABILITIES_MAP } from "./orchestrator_v2/capabilities.js";
+import { CAPABILITIES_MAP } from "./services/orchestrator/capabilities.js";
 
 const ROOT = process.cwd();
 const USER_DIR = path.join(ROOT, "user");

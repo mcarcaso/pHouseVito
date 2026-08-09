@@ -58,30 +58,8 @@ export function buildPromptText(
   return text;
 }
 
-export interface OutputHandler {
-  relay(msg: OutboundMessage): Promise<void>;
-  /** Send a structured agent event (tool calls, thinking, etc.) to the UI */
-  relayEvent?(event: AgentActivityEvent): Promise<void>;
-  startTyping?(): Promise<void>;
-  stopTyping?(): Promise<void>;
-  /** Signal that a complete assistant message has ended — flush any buffer */
-  endMessage?(): Promise<void>;
-  startReaction?(emoji?: string): Promise<void>;
-  stopReaction?(): Promise<void>;
-}
-
-export interface AgentActivityEvent {
-  kind: "tool_start" | "tool_end" | "thinking";
-  toolName?: string;
-  toolCallId?: string;
-  args?: unknown;
-  result?: unknown;
-  isError?: boolean;
-  content?: string;
-}
-
-// Channels receive plain text; they handle MEDIA: prefixes themselves
-export type OutboundMessage = string;
+// Compatibility re-exports. New code should import from output/OutputHandler.
+export type { AgentActivityEvent, OutboundMessage, OutputHandler } from "./output/OutputHandler.js";
 
 // ── Stream modes ──
 

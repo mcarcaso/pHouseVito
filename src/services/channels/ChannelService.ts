@@ -1,9 +1,6 @@
 import type { Context } from "../../context/Context.js";
-import type {
-  InboundEvent,
-  OutputHandler,
-  SessionRow,
-} from "../../types.js";
+import type { OutputHandler } from "../../output/OutputHandler.js";
+import type { InboundEvent, SessionRow } from "../../types.js";
 
 export interface ChannelCapabilities {
   typing: boolean;

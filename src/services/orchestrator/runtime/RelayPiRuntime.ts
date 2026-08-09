@@ -9,7 +9,8 @@
  * - Error/interrupt relay
  */
 
-import type { OutputHandler, StreamMode } from "../../../types.js";
+import type { OutputHandler } from "../../../output/OutputHandler.js";
+import type { StreamMode } from "../../../types.js";
 import { ProxyPiRuntime } from "./ProxyPiRuntime.js";
 import type { PiRuntime, PiRuntimeCallbacks } from "./PiRuntime.js";
 

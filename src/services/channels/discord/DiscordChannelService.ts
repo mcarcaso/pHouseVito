@@ -1,7 +1,8 @@
 import { Client, GatewayIntentBits, Partials, Message as DiscordMessage, REST, Routes, SlashCommandBuilder, ChatInputCommandInteraction } from "discord.js";
 import type { Context } from "../../../context/Context.js";
 import { xSecretService, xVitoService } from "../../../lib/x.js";
-import type { InboundEvent, OutputHandler, SessionRow } from "../../../types.js";
+import type { OutputHandler } from "../../../output/OutputHandler.js";
+import type { InboundEvent, SessionRow } from "../../../types.js";
 import type { ChannelManagement, ChannelService } from "../ChannelService.js";
 import { DiscordOutputHandler } from "./DiscordOutputHandler.js";
 

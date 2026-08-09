@@ -115,6 +115,7 @@ pHouseVito/
 │   ├── services/orchestrator/ # Message orchestration and Pi session runtime pipeline
 │   ├── db/                    # SQLite schema and queries
 │   ├── memory/                # Memory management and compaction
+│   ├── output/                # Shared output-handler contracts and decorators
 │   ├── shared/contracts/      # Browser-safe Zod API contracts shared with dashboard
 │   ├── sessions/              # Session management
 │   └── skills/                # Builtin skill discovery and loading

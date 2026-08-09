@@ -12,7 +12,7 @@ import {
   withTracing,
   withTyping,
 } from "./runtime/index.js";
-import { NoReplyOutputHandler } from "../channels/output/NoReplyOutputHandler.js";
+import { NoReplyOutputHandler } from "../../output/NoReplyOutputHandler.js";
 import { DirectChannelService } from "../channels/direct/DirectChannelService.js";
 import type { ChannelService } from "../channels/ChannelService.js";
 import type { AskOptions, OrchestratorService } from "./OrchestratorService.js";

@@ -1,4 +1,4 @@
-import type { OutputHandler } from "../../../types.js";
+import type { OutputHandler } from "./OutputHandler.js";
 
 /** Pass-through base for focused OutputHandler decorators. */
 export class ProxyOutputHandler implements OutputHandler {

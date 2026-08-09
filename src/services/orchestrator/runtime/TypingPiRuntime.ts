@@ -5,7 +5,7 @@
  * Calls startTyping() before run() and stopTyping() in finally.
  */
 
-import type { OutputHandler } from "../../../types.js";
+import type { OutputHandler } from "../../../output/OutputHandler.js";
 import { ProxyPiRuntime } from "./ProxyPiRuntime.js";
 import type { PiRuntime, PiRuntimeCallbacks } from "./PiRuntime.js";
 

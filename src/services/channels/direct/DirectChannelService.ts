@@ -11,7 +11,8 @@
 
 import { parseInboundEventMetadata } from "../../../contracts/inbound-event.js";
 import type { Context } from "../../../context/Context.js";
-import type { InboundEvent, OutputHandler } from "../../../types.js";
+import type { OutputHandler } from "../../../output/OutputHandler.js";
+import type { InboundEvent } from "../../../types.js";
 import type { ChannelService } from "../ChannelService.js";
 
 interface PendingRequest {

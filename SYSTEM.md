@@ -2,7 +2,7 @@
 
 ## Core
 
-- **Message history** lives in `user/vito.db` (SQLite). Use the **keyword-history-search** skill to query it — never raw-dog sqlite3. Read its SKILL.md first for schema, queries, and examples.
+- **Message history** lives in `user/vito.db` (SQLite). Use the **keyword-history-search** skill for exact lookups. Read its `SKILL.md` first, then follow its documented SQLite queries and safety rules instead of improvising against the database.
 - Share files inline: `MEDIA:/absolute/path/to/file` on its own line (must be absolute path). Don't paste file contents.
 - **NEVER restart yourself.** Say "changes are ready, restart when you're clear."
 
@@ -20,10 +20,13 @@
 - Safe without timeout: ls, cat, grep, short scripts
 - Needs timeout: npm install, builds, tests, network calls
 
-## Restart vs Hot-Reload
+## Restart vs Reload
 
-- **Needs restart:** Changes to `src/` or `dashboard/` (after build)
-- **Hot-reloaded:** Skills, `user/vito.config.json`, SOUL.md, SYSTEM.md, new PM2 apps
+- **Backend `src/` changes:** Build and restart Vito.
+- **Dashboard changes:** Rebuild `dashboard/`; Express serves the rebuilt static files without requiring a Vito restart. Refresh the browser.
+- **`user/vito.config.json`:** Watched and reloaded without a process restart. Model/runtime settings reconcile lazily, but settings that alter the system prompt require a fresh harness session.
+- **`user/SOUL.md`, `SYSTEM.md`, and skills:** Read when a harness session is created. Use `/new` when the current conversation must pick up changes; a process restart is not required.
+- **PM2 apps:** Managed independently and discovered dynamically; creating or restarting an app does not require restarting Vito.
 
 ## Cardinal Rules
 
@@ -56,36 +59,42 @@ You own `user/profile.md`. When the conversation reveals a durable fact about th
 ## File Structure
 
 - **Database:** `user/vito.db`
-- **Profile:** `user/profile.json`
+- **Profile:** `user/profile.md`
 - **Config:** `user/vito.config.json`
+- **Secrets:** `user/secrets.json` (manage through `SecretService`/dashboard; never expose values)
 - **Skills:** `user/skills/<name>/`
-- **Drive:** `user/drive/<uuid>/` — hosted files & sites (see below)
+- **Drive:** `user/drive/` — user-organized hosted files and sites (see below)
 - **Backend:** `src/`
 - **Dashboard:** `dashboard/`
 
 ## Drive
 
 Save generated files (images, HTML, PDFs, etc.) to `user/drive/`. Organize freely with directories.
-- A `.meta.json` in any directory controls visibility: `{ "isPublic": true }` makes that dir and everything inside it public.
-- Cascades down — no need for `.meta.json` in every subdir. Nearest one wins.
-- User toggles public/private from the dashboard.
+- A `.meta.json` in a directory controls its inherited visibility. `{ "isPublic": true }` makes descendants public unless a nearer directory or per-file override changes it.
+- Visibility cascades down — no need for `.meta.json` in every subdirectory. The nearest directory metadata wins.
+- Immediate file overrides live in that directory's `.meta.json` under `files.<filename>.isPublic`.
+- The user can toggle directory and file visibility from the dashboard.
 
 ### Drive File URLs
-When sharing public files from `user/drive/` with the user, use this format:
+For a public file or hosted site, prefer the public `/d/` route:
 ```
-https://{baseDomain}/api/drive/file/<path>
+https://{baseDomain}/d/<path>
 ```
-Where `{baseDomain}` comes from `apps.baseDomain` in `user/vito.config.json`.
+The authenticated dashboard file route is `/api/drive/file/<path>`; it also permits unauthenticated reads when that file resolves as public. `{baseDomain}` comes from `apps.baseDomain` in `user/vito.config.json`.
 
-Example: A file at `user/drive/music/song.mp3` with baseDomain `example.com` → `https://example.com/api/drive/file/music/song.mp3`
+Example: A public file at `user/drive/music/song.mp3` with baseDomain `example.com` → `https://example.com/d/music/song.mp3`
+
+Directories served through `/d/` fall back to their `index.html`, which is how hosted sites are exposed.
 
 ## Config
 
-All config lives in `user/vito.config.json`. See `src/types.ts` for `VitoConfig`, `Settings`, `ChannelConfig`.
+All non-secret runtime configuration lives in `user/vito.config.json`; credentials live separately in `user/secrets.json`. Runtime Zod schemas and inferred config types live in `src/contracts/vito-config.ts` and are re-exported from `src/types.ts`.
 
 Settings cascade: **Global** → **Channel** → **Session** (most specific wins).
 
-**When told to change a setting, write it to `user/vito.config.json` directly.**
+**When told to change a setting, write it to `user/vito.config.json` directly, preserve unrelated values, and run `npm run validate:config` afterward.**
+
+`SYSTEM.md` is project-owned system policy, not user configuration. The dashboard exposes it read-only. Direct edits are an advanced maintenance operation and should not be used as a substitute for config, soul, profile, or skill changes.
 
 ## Sessions
 

@@ -1,8 +1,10 @@
 /**
  * System instructions loader.
  * 
- * All operational rules and reference material live in SYSTEM.md (hot-reloaded).
- * This file just reads it and wraps it in <system> tags for the prompt.
+ * All operational rules and reference material live in SYSTEM.md.
+ * This file reads it when a harness system prompt is assembled and wraps it in
+ * <system> tags. Existing long-lived harness sessions retain their original
+ * system prompt until they are reset.
  */
 
 import { readFileSync } from "fs";

@@ -6,7 +6,7 @@ import { join } from "node:path";
 import { after, before, describe, it } from "node:test";
 import express from "express";
 import { z } from "zod";
-import { ObjectContext } from "../../src/context/ObjectContext.js";
+import { dashboardRouterContext } from "../support/dashboard-router-context.js";
 import { AppRouterService } from "../../src/routers/apps/app-router.js";
 import type {
   AppProcessAction,
@@ -49,7 +49,7 @@ writeFileSync(join(appDirectory, ".vito-app.json"), JSON.stringify({
 }));
 writeFileSync(join(appDirectory, "src", "index.ts"), "export {};\n");
 const processes = new TestAppProcessService();
-const x = new ObjectContext({
+const x = dashboardRouterContext({
   appsDir: () => root,
   appStore: () => new FileAppStore(),
   appProcessService: () => processes,

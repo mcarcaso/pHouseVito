@@ -12,7 +12,7 @@ import { SystemSecretDeletionError } from "../../services/secrets/SecretService.
 import {
   emptyRouteSchema,
   unknownRouteSchema,
-  validatedRoute,
+  createRawRoute,
 } from "../route.js";
 
 const secretParamsSchema = z.object({ key: secretKeySchema }).strict();
@@ -21,53 +21,62 @@ export class SecretRouterService implements RouterService {
   async createRouter(x: Context): Promise<Router> {
     const router = express.Router();
 
-    router.get("/", validatedRoute(
-      x,
-      {
-        params: emptyRouteSchema,
-        query: emptyRouteSchema,
-        body: unknownRouteSchema,
-      },
-      (routeX, _input, _req, res) => {
-        res.json(xSecretService(routeX).list(routeX));
-      }
-    ));
+    router.get(
+      "/",
+      createRawRoute(x, {
+        auth: "dashboard",
+        schemas: {
+          params: emptyRouteSchema,
+          query: emptyRouteSchema,
+          body: unknownRouteSchema,
+        },
+        handler: (routeX, _input, _req, res) => {
+          res.json(xSecretService(routeX).list(routeX));
+        },
+      }),
+    );
 
-    router.put("/:key", validatedRoute(
-      x,
-      {
-        params: secretParamsSchema,
-        query: emptyRouteSchema,
-        body: secretUpdateRequestSchema,
-      },
-      (routeX, { params, body }, _req, res) => {
-        const secret = xSecretService(routeX).set(routeX, {
-          key: params.key,
-          value: body.value,
-        });
-        res.json({ key: secret.key, value: secret.value });
-      }
-    ));
-
-    router.delete("/:key", validatedRoute(
-      x,
-      {
-        params: secretParamsSchema,
-        query: emptyRouteSchema,
-        body: unknownRouteSchema,
-      },
-      (routeX, { params }, _req, res) => {
-        try {
-          xSecretService(routeX).delete(routeX, { key: params.key });
-          res.status(204).end();
-        } catch (error) {
-          if (!(error instanceof SystemSecretDeletionError)) throw error;
-          res.status(400).json({
-            error: "Cannot delete a system key — clear its value instead",
+    router.put(
+      "/:key",
+      createRawRoute(x, {
+        auth: "dashboard",
+        schemas: {
+          params: secretParamsSchema,
+          query: emptyRouteSchema,
+          body: secretUpdateRequestSchema,
+        },
+        handler: (routeX, { params, body }, _req, res) => {
+          const secret = xSecretService(routeX).set(routeX, {
+            key: params.key,
+            value: body.value,
           });
-        }
-      }
-    ));
+          res.json({ key: secret.key, value: secret.value });
+        },
+      }),
+    );
+
+    router.delete(
+      "/:key",
+      createRawRoute(x, {
+        auth: "dashboard",
+        schemas: {
+          params: secretParamsSchema,
+          query: emptyRouteSchema,
+          body: unknownRouteSchema,
+        },
+        handler: (routeX, { params }, _req, res) => {
+          try {
+            xSecretService(routeX).delete(routeX, { key: params.key });
+            res.status(204).end();
+          } catch (error) {
+            if (!(error instanceof SystemSecretDeletionError)) throw error;
+            res.status(400).json({
+              error: "Cannot delete a system key — clear its value instead",
+            });
+          }
+        },
+      }),
+    );
 
     return router;
   }

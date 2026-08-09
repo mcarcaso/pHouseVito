@@ -10,7 +10,7 @@ import {
 import {
   emptyRouteSchema,
   unknownRouteSchema,
-  validatedRoute,
+  createRawRoute,
 } from "../route.js";
 
 export type ManagedChannelName = "discord" | "telegram";
@@ -19,11 +19,12 @@ function channelErrorMiddleware(
   error: unknown,
   _req: Request,
   res: Response,
-  _next: NextFunction
+  _next: NextFunction,
 ): void {
   const message = error instanceof Error ? error.message : String(error);
-  const isConfigurationError = error instanceof ChannelNotConfiguredError
-    || error instanceof ChannelManagementNotSupportedError;
+  const isConfigurationError =
+    error instanceof ChannelNotConfiguredError ||
+    error instanceof ChannelManagementNotSupportedError;
   res.status(isConfigurationError ? 400 : 500).json({
     success: false,
     error: message,
@@ -32,25 +33,49 @@ function channelErrorMiddleware(
 
 function createChannelManagementRouter(
   x: Context,
-  channel: ManagedChannelName
+  channel: ManagedChannelName,
 ): Router {
   const router = express.Router();
 
-  router.post("/register-commands", validatedRoute(
-    x,
-    { params: emptyRouteSchema, query: emptyRouteSchema, body: unknownRouteSchema },
-    async (routeX, _input, _req, res) => {
-      res.json(await xChannelRegistryService(routeX).registerCommands(routeX, channel));
-    }
-  ));
+  router.post(
+    "/register-commands",
+    createRawRoute(x, {
+      auth: "dashboard",
+      schemas: {
+        params: emptyRouteSchema,
+        query: emptyRouteSchema,
+        body: unknownRouteSchema,
+      },
+      handler: async (routeX, _input, _req, res) => {
+        res.json(
+          await xChannelRegistryService(routeX).registerCommands(
+            routeX,
+            channel,
+          ),
+        );
+      },
+    }),
+  );
 
-  router.post("/auto-alias", validatedRoute(
-    x,
-    { params: emptyRouteSchema, query: emptyRouteSchema, body: unknownRouteSchema },
-    async (routeX, _input, _req, res) => {
-      res.json(await xChannelRegistryService(routeX).generateAliases(routeX, channel));
-    }
-  ));
+  router.post(
+    "/auto-alias",
+    createRawRoute(x, {
+      auth: "dashboard",
+      schemas: {
+        params: emptyRouteSchema,
+        query: emptyRouteSchema,
+        body: unknownRouteSchema,
+      },
+      handler: async (routeX, _input, _req, res) => {
+        res.json(
+          await xChannelRegistryService(routeX).generateAliases(
+            routeX,
+            channel,
+          ),
+        );
+      },
+    }),
+  );
 
   router.use(channelErrorMiddleware);
   return router;

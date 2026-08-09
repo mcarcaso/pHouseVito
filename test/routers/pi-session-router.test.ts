@@ -7,6 +7,7 @@ import { after, before, describe, it } from "node:test";
 import express from "express";
 import { z } from "zod";
 import { RootContext } from "../../src/context/RootContext.js";
+import { dashboardRouterContext } from "../support/dashboard-router-context.js";
 import { createDatabase } from "../../src/db/schema.js";
 import { xSessionStore } from "../../src/lib/x.js";
 import { PiSessionRouterService } from "../../src/routers/pi-sessions/pi-session-router.js";
@@ -21,7 +22,7 @@ writeFileSync(join(sessionDirectory, "pi-1.jsonl"), [
 ].join("\n"));
 
 const db = createDatabase(":memory:");
-const x = RootContext({ db, userDir, skillsDir: join(userDir, "skills"), piSessionsDir });
+const x = dashboardRouterContext({}, RootContext({ db, userDir, skillsDir: join(userDir, "skills"), piSessionsDir }));
 xSessionStore(x).create(x, {
   id: "dashboard:test",
   channel: "dashboard",

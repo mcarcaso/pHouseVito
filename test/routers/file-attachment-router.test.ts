@@ -6,7 +6,7 @@ import { join } from "node:path";
 import { after, before, describe, it } from "node:test";
 import express from "express";
 import { z } from "zod";
-import { ObjectContext } from "../../src/context/ObjectContext.js";
+import { dashboardRouterContext } from "../support/dashboard-router-context.js";
 import {
   AttachmentFileRouterService,
   AttachmentUploadRouterService,
@@ -17,7 +17,7 @@ import { FileAttachmentStore } from "../../src/stores/attachments/FileAttachment
 
 const root = mkdtempSync(join(tmpdir(), "vito-file-router-"));
 const attachmentsDir = join(root, "attachments");
-const x = new ObjectContext({
+const x = dashboardRouterContext({
   attachmentsDir: () => attachmentsDir,
   attachmentStore: () => new FileAttachmentStore(),
   fileService: () => new FileSystemFileService(),

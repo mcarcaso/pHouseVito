@@ -2,13 +2,13 @@ import assert from "node:assert/strict";
 import type { Server } from "node:http";
 import { after, before, describe, it } from "node:test";
 import express from "express";
-import { ObjectContext } from "../../src/context/ObjectContext.js";
+import { dashboardRouterContext } from "../support/dashboard-router-context.js";
 import { DashboardChatRouterService } from "../../src/routers/chat/dashboard-chat-router.js";
 import { DefaultDashboardChatService } from "../../src/services/chat/DefaultDashboardChatService.js";
 import type { InboundEvent } from "../../src/types.js";
 
 const chatService = new DefaultDashboardChatService();
-const x = new ObjectContext({ dashboardChatService: () => chatService });
+const x = dashboardRouterContext({ dashboardChatService: () => chatService });
 const app = express();
 app.use(express.json());
 app.use("/api/chat", await new DashboardChatRouterService().createRouter(x));

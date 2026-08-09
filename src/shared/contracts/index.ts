@@ -8,6 +8,7 @@ export * from "./memory-api.js";
 export * from "./pi-session.js";
 export * from "./provider-api.js";
 export * from "./secret-api.js";
+export * from "./server-api.js";
 export * from "./session-api.js";
 export * from "./system-content.js";
 export * from "./trace-event.js";

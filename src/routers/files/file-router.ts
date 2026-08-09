@@ -7,38 +7,50 @@ import { xFileService } from "../../lib/x.js";
 import {
   emptyRouteSchema,
   unknownRouteSchema,
-  validatedRoute,
+  createRawRoute,
 } from "../route.js";
 
-const fileQuerySchema = z.object({ path: z.unknown().optional() }).passthrough();
+const fileQuerySchema = z
+  .object({ path: z.unknown().optional() })
+  .passthrough();
 
 export class FileRouterService implements RouterService {
   async createRouter(x: Context): Promise<Router> {
     const router = express.Router();
-    router.get("/", validatedRoute(
-      x,
-      { params: emptyRouteSchema, query: fileQuerySchema, body: unknownRouteSchema },
-      (routeX, { query }, _req, res) => {
-        if (typeof query.path !== "string" || !query.path) {
-          res.status(400).json({ error: "path query parameter required" });
-          return;
-        }
-        const file = xFileService(routeX).read(routeX, query.path);
-        if (!file) {
-          res.status(404).json({ error: "File not found" });
-          return;
-        }
-        const safeName = file.name.replace(/["\r\n]/g, "_");
-        res.setHeader("Content-Type", file.mimeType);
-        res.setHeader("Content-Length", file.size);
-        res.setHeader("Content-Disposition", `${file.disposition}; filename="${safeName}"`);
-        file.stream.on("error", () => {
-          if (!res.headersSent) res.status(500).end();
-          else res.destroy();
-        });
-        file.stream.pipe(res);
-      }
-    ));
+    router.get(
+      "/",
+      createRawRoute(x, {
+        auth: "dashboard",
+        schemas: {
+          params: emptyRouteSchema,
+          query: fileQuerySchema,
+          body: unknownRouteSchema,
+        },
+        handler: (routeX, { query }, _req, res) => {
+          if (typeof query.path !== "string" || !query.path) {
+            res.status(400).json({ error: "path query parameter required" });
+            return;
+          }
+          const file = xFileService(routeX).read(routeX, query.path);
+          if (!file) {
+            res.status(404).json({ error: "File not found" });
+            return;
+          }
+          const safeName = file.name.replace(/["\r\n]/g, "_");
+          res.setHeader("Content-Type", file.mimeType);
+          res.setHeader("Content-Length", file.size);
+          res.setHeader(
+            "Content-Disposition",
+            `${file.disposition}; filename="${safeName}"`,
+          );
+          file.stream.on("error", () => {
+            if (!res.headersSent) res.status(500).end();
+            else res.destroy();
+          });
+          file.stream.pipe(res);
+        },
+      }),
+    );
     return router;
   }
 }

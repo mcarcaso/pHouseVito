@@ -1,5 +1,6 @@
 import type Database from "better-sqlite3";
 import type { Context } from "../context/Context.js";
+import type { DashboardUser } from "../context/DashboardUserContext.js";
 import type { AppProcessService } from "../services/apps/AppProcessService.js";
 import type { AskApiService } from "../services/ask/AskApiService.js";
 import type { DashboardAuthService } from "../services/auth/DashboardAuthService.js";
@@ -24,6 +25,8 @@ import type { TraceEventStore } from "../stores/traces/TraceEventStore.js";
 import type { TraceStore } from "../stores/traces/TraceStore.js";
 
 // Context accessors are the intentional casting boundary for opaque scopes.
+export const xDashboardUser = (x: Context): DashboardUser =>
+  x.get("dashboardUser") as DashboardUser;
 export const xDb = (x: Context): Database.Database => x.get("db") as Database.Database;
 export const xEmbeddingDb = (x: Context): Database.Database =>
   x.get("embeddingDb") as Database.Database;

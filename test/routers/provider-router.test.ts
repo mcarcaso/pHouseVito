@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import type { Server } from "node:http";
 import { after, before, describe, it } from "node:test";
 import express from "express";
-import { ObjectContext } from "../../src/context/ObjectContext.js";
+import { dashboardRouterContext } from "../support/dashboard-router-context.js";
 import {
   ModelRouterService,
   ProviderAuthRouterService,
@@ -59,7 +59,7 @@ class TestProviderService implements ProviderService {
 }
 
 const service = new TestProviderService();
-const x = new ObjectContext({ providerService: () => service });
+const x = dashboardRouterContext({ providerService: () => service });
 const app = express();
 app.use(express.json());
 app.use("/api/models", await new ModelRouterService().createRouter(x));

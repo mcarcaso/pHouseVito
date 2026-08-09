@@ -13,10 +13,6 @@ import {
   AttachmentFileRouterService,
   AttachmentUploadRouterService,
 } from "../../../routers/attachments/attachment-router.js";
-import {
-  createAttachmentAuthMiddleware,
-  createDashboardApiAuthMiddleware,
-} from "../../../routers/auth/dashboard-auth-middleware.js";
 import { DashboardAuthRouterService } from "../../../routers/auth/dashboard-auth-router.js";
 import { ChannelManagementRouterService } from "../../../routers/channels/channel-management-router.js";
 import { DashboardChatRouterService } from "../../../routers/chat/dashboard-chat-router.js";
@@ -89,10 +85,8 @@ export class DashboardChannelService implements ChannelService {
     app.use("/d", await new PublicDriveRouterService().createRouter(x));
 
     app.use("/api/auth", await new DashboardAuthRouterService().createRouter(x));
-    app.use("/api", createDashboardApiAuthMiddleware(x));
     app.use(
       "/attachments",
-      createAttachmentAuthMiddleware(x),
       await new AttachmentFileRouterService().createRouter(x)
     );
 

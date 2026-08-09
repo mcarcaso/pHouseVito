@@ -7,48 +7,56 @@ import { xSkillStore } from "../../lib/x.js";
 import {
   emptyRouteSchema,
   unknownRouteSchema,
-  validatedRoute,
+  createRawRoute,
 } from "../route.js";
 
-const skillParamsSchema = z.object({
-  name: z.string().min(1),
-}).strict();
+const skillParamsSchema = z
+  .object({
+    name: z.string().min(1),
+  })
+  .strict();
 
 export class SkillRouterService implements RouterService {
   async createRouter(x: Context): Promise<Router> {
     const router = express.Router();
 
-    router.get("/", validatedRoute(
-      x,
-      {
-        params: emptyRouteSchema,
-        query: emptyRouteSchema,
-        body: unknownRouteSchema,
-      },
-      (routeX, _input, _req, res) => {
-        res.json(xSkillStore(routeX).list(routeX, {}));
-      }
-    ));
+    router.get(
+      "/",
+      createRawRoute(x, {
+        auth: "dashboard",
+        schemas: {
+          params: emptyRouteSchema,
+          query: emptyRouteSchema,
+          body: unknownRouteSchema,
+        },
+        handler: (routeX, _input, _req, res) => {
+          res.json(xSkillStore(routeX).list(routeX, {}));
+        },
+      }),
+    );
 
-    router.get("/:name/files", validatedRoute(
-      x,
-      {
-        params: skillParamsSchema,
-        query: emptyRouteSchema,
-        body: unknownRouteSchema,
-      },
-      (routeX, { params }, _req, res) => {
-        const skill = xSkillStore(routeX).list(routeX, {
-          names: [params.name],
-          includeFiles: true,
-        })[0];
-        if (!skill) {
-          res.status(404).json({ error: "Skill not found" });
-          return;
-        }
-        res.json(skill.files ?? []);
-      }
-    ));
+    router.get(
+      "/:name/files",
+      createRawRoute(x, {
+        auth: "dashboard",
+        schemas: {
+          params: skillParamsSchema,
+          query: emptyRouteSchema,
+          body: unknownRouteSchema,
+        },
+        handler: (routeX, { params }, _req, res) => {
+          const skill = xSkillStore(routeX).list(routeX, {
+            names: [params.name],
+            includeFiles: true,
+          })[0];
+          if (!skill) {
+            res.status(404).json({ error: "Skill not found" });
+            return;
+          }
+          res.json(skill.files ?? []);
+        },
+      }),
+    );
 
     return router;
   }

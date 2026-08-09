@@ -6,13 +6,13 @@ import { join } from "node:path";
 import { after, before, describe, it } from "node:test";
 import express from "express";
 import { z } from "zod";
-import { ObjectContext } from "../../src/context/ObjectContext.js";
+import { dashboardRouterContext } from "../support/dashboard-router-context.js";
 import { SecretRouterService } from "../../src/routers/secrets/secret-router.js";
 import { FileSecretService } from "../../src/services/secrets/FileSecretService.js";
 
 const root = mkdtempSync(join(tmpdir(), "vito-secret-router-"));
 const service = new FileSecretService();
-const x = new ObjectContext({
+const x = dashboardRouterContext({
   secretsPath: () => join(root, "secrets.json"),
   piAuthPath: () => join(root, "auth.json"),
   secretService: () => service,

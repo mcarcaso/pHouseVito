@@ -7,6 +7,7 @@ import { after, before, describe, it } from "node:test";
 import express from "express";
 import { z } from "zod";
 import { RootContext } from "../../src/context/RootContext.js";
+import { dashboardRouterContext } from "../support/dashboard-router-context.js";
 import { createDatabase } from "../../src/db/schema.js";
 import {
   xSessionStore,
@@ -18,12 +19,12 @@ import { TraceRouterService } from "../../src/routers/traces/trace-router.js";
 const logsDir = mkdtempSync(join(tmpdir(), "vito-trace-router-"));
 const userDir = mkdtempSync(join(tmpdir(), "vito-trace-user-"));
 const db = createDatabase(":memory:");
-const x = RootContext({
+const x = dashboardRouterContext({}, RootContext({
   db,
   userDir,
   skillsDir: join(userDir, "skills"),
   logsDir,
-});
+}));
 xSessionStore(x).create(x, {
   id: "dashboard:test",
   channel: "dashboard",

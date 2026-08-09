@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import type { Server } from "node:http";
 import { after, before, describe, it } from "node:test";
 import express from "express";
-import { ObjectContext } from "../../src/context/ObjectContext.js";
+import { dashboardRouterContext } from "../support/dashboard-router-context.js";
 import type { Context } from "../../src/context/Context.js";
 import type {
   ConfigValidationResult,
@@ -47,7 +47,7 @@ class TestVitoService implements VitoService {
 }
 
 const service = new TestVitoService();
-const x = new ObjectContext({ vitoService: () => service });
+const x = dashboardRouterContext({ vitoService: () => service });
 const app = express();
 app.use(express.json());
 app.use("/api", await new SystemContentRouterService().createRouter(x));

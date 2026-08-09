@@ -8,6 +8,7 @@ import express from "express";
 import { z } from "zod";
 import { vitoConfigSchema } from "../../src/shared/contracts/vito-config.js";
 import { RootContext } from "../../src/context/RootContext.js";
+import { dashboardRouterContext } from "../support/dashboard-router-context.js";
 import { createDatabase } from "../../src/db/schema.js";
 import { xVitoService } from "../../src/lib/x.js";
 import { ConfigRouterService } from "../../src/routers/config/config-router.js";
@@ -20,7 +21,11 @@ writeFileSync(
 writeFileSync(join(userDir, "SOUL.md"), "test soul\n");
 
 const db = createDatabase(":memory:");
-const x = RootContext({ db, userDir, skillsDir: join(userDir, "skills") });
+const x = dashboardRouterContext({}, RootContext({
+  db,
+  userDir,
+  skillsDir: join(userDir, "skills"),
+}));
 const app = express();
 app.use(express.json());
 app.use("/api", await new ConfigRouterService().createRouter(x));

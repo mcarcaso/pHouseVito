@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import type { Server } from "node:http";
 import { after, before, describe, it } from "node:test";
 import express from "express";
-import { ObjectContext } from "../../src/context/ObjectContext.js";
+import { dashboardRouterContext } from "../support/dashboard-router-context.js";
 import type { Context } from "../../src/context/Context.js";
 import { ServerLifecycleRouterService } from "../../src/routers/server/server-lifecycle-router.js";
 import type {
@@ -37,7 +37,7 @@ class TestServerLifecycleService implements ServerLifecycleService {
 }
 
 const service = new TestServerLifecycleService();
-const x = new ObjectContext({ serverLifecycleService: () => service });
+const x = dashboardRouterContext({ serverLifecycleService: () => service });
 const app = express();
 app.use("/api", await new ServerLifecycleRouterService().createRouter(x));
 

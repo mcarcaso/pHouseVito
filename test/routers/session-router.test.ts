@@ -7,6 +7,7 @@ import express from "express";
 import type { Server } from "node:http";
 import { z } from "zod";
 import { RootContext } from "../../src/context/RootContext.js";
+import { dashboardRouterContext } from "../support/dashboard-router-context.js";
 import { createDatabase } from "../../src/db/schema.js";
 import { xMessageStore, xSessionStore } from "../../src/lib/x.js";
 import { SessionRouterService } from "../../src/routers/sessions/session-router.js";
@@ -20,7 +21,7 @@ writeFileSync(
 writeFileSync(join(userDir, "SOUL.md"), "test soul\n");
 
 const db = createDatabase(":memory:");
-const x = RootContext({ db, userDir, skillsDir: join(userDir, "skills") });
+const x = dashboardRouterContext({}, RootContext({ db, userDir, skillsDir: join(userDir, "skills") }));
 const sessionId = "dashboard:test";
 const sessionStore = xSessionStore(x);
 sessionStore.create(x, {

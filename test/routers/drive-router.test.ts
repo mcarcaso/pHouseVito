@@ -6,7 +6,7 @@ import { join } from "node:path";
 import { after, before, describe, it } from "node:test";
 import express from "express";
 import { z } from "zod";
-import { ObjectContext } from "../../src/context/ObjectContext.js";
+import { dashboardRouterContext } from "../support/dashboard-router-context.js";
 import {
   DriveRouterService,
   PublicDriveRouterService,
@@ -14,7 +14,7 @@ import {
 import { FileDriveStore } from "../../src/stores/drive/FileDriveStore.js";
 
 const root = mkdtempSync(join(tmpdir(), "vito-drive-router-"));
-const x = new ObjectContext({
+const x = dashboardRouterContext({
   driveDir: () => root,
   driveStore: () => new FileDriveStore(),
 });

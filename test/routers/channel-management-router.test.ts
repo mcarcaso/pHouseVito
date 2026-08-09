@@ -3,7 +3,7 @@ import type { Server } from "node:http";
 import { after, before, describe, it } from "node:test";
 import express from "express";
 import type { Context } from "../../src/context/Context.js";
-import { ObjectContext } from "../../src/context/ObjectContext.js";
+import { dashboardRouterContext } from "../support/dashboard-router-context.js";
 import {
   ChannelManagementRouterService,
   type ManagedChannelName,
@@ -59,7 +59,7 @@ class TestChannelRegistryService implements ChannelRegistryService {
 }
 
 const service = new TestChannelRegistryService();
-const x = new ObjectContext({ channelRegistryService: () => service });
+const x = dashboardRouterContext({ channelRegistryService: () => service });
 const app = express();
 app.use("/api/discord", await new ChannelManagementRouterService("discord").createRouter(x));
 app.use("/api/telegram", await new ChannelManagementRouterService("telegram").createRouter(x));

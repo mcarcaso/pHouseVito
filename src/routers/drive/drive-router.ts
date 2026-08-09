@@ -24,19 +24,26 @@ import { StoreRecordNotFoundError } from "../../stores/Store.js";
 import {
   emptyRouteSchema,
   unknownRouteSchema,
-  validatedRoute,
+  createRawRoute,
 } from "../route.js";
 
-const pathQuerySchema = z.object({ path: drivePathSchema.default("") }).strict();
-const requiredPathQuerySchema = z.object({ path: nonRootDrivePathSchema }).strict();
-const wildcardPathSchema = z.object({
-  filepath: z.union([z.string(), z.array(z.string())])
-    .transform((value) => {
-      const path = Array.isArray(value) ? value.join("/") : value;
-      return path.replace(/\/+$/, "");
-    })
-    .pipe(nonRootDrivePathSchema),
-}).strict();
+const pathQuerySchema = z
+  .object({ path: drivePathSchema.default("") })
+  .strict();
+const requiredPathQuerySchema = z
+  .object({ path: nonRootDrivePathSchema })
+  .strict();
+const wildcardPathSchema = z
+  .object({
+    filepath: z
+      .union([z.string(), z.array(z.string())])
+      .transform((value) => {
+        const path = Array.isArray(value) ? value.join("/") : value;
+        return path.replace(/\/+$/, "");
+      })
+      .pipe(nonRootDrivePathSchema),
+  })
+  .strict();
 
 function decodeDataUrl(value: string): Buffer | undefined {
   const match = value.match(/^data:[^;]+;base64,([A-Za-z0-9+/]*={0,2})$/);
@@ -44,9 +51,14 @@ function decodeDataUrl(value: string): Buffer | undefined {
   return Buffer.from(match[1], "base64");
 }
 
-function sendDriveFile(x: Context, path: string, indexFallback: boolean, res: Response): boolean {
+function sendDriveFile(
+  x: Context,
+  path: string,
+  indexFallback: boolean,
+  res: Response,
+): boolean {
   const parsed = driveReadResultSchema.safeParse(
-    xDriveStore(x).cmd(x, { type: "read", path, indexFallback })
+    xDriveStore(x).cmd(x, { type: "read", path, indexFallback }),
   );
   if (!parsed.success) return false;
   if (parsed.data.isPublic) sendCorsHeaders(res);
@@ -68,41 +80,47 @@ function sendCorsHeaders(res: Response): void {
 export function isPublicDriveFile(x: Context, path: string): boolean {
   const parsed = drivePathSchema.safeParse(path);
   if (!parsed.success || parsed.data === "") return false;
-  const entry = xDriveStore(x).list(x, { paths: [parsed.data], kinds: ["file"] })[0];
+  const entry = xDriveStore(x).list(x, {
+    paths: [parsed.data],
+    kinds: ["file"],
+  })[0];
   return entry?.isPublic === true;
 }
 
 function createPublicDriveRouter(x: Context): Router {
   const router = express.Router();
-  router.get("/*filepath", validatedRoute(
-    x,
-    {
-      params: wildcardPathSchema,
-      query: emptyRouteSchema,
-      body: unknownRouteSchema,
-    },
-    (routeX, { params }, _req, res) => {
-      const result = driveReadResultSchema.safeParse(
-        xDriveStore(routeX).cmd(routeX, {
-          type: "read",
-          path: params.filepath,
-          indexFallback: true,
-        })
-      );
-      if (!result.success || !result.data.isPublic) {
-        result.success && result.data.stream.destroy();
-        res.status(404).send("Not found");
-        return;
-      }
-      sendCorsHeaders(res);
-      res.type(result.data.name);
-      result.data.stream.on("error", () => {
-        if (!res.headersSent) res.status(500).end();
-        else res.destroy();
-      });
-      result.data.stream.pipe(res);
-    }
-  ));
+  router.get(
+    "/*filepath",
+    createRawRoute(x, {
+      auth: "public-drive",
+      schemas: {
+        params: wildcardPathSchema,
+        query: emptyRouteSchema,
+        body: unknownRouteSchema,
+      },
+      handler: (routeX, { params }, _req, res) => {
+        const result = driveReadResultSchema.safeParse(
+          xDriveStore(routeX).cmd(routeX, {
+            type: "read",
+            path: params.filepath,
+            indexFallback: true,
+          }),
+        );
+        if (!result.success || !result.data.isPublic) {
+          result.success && result.data.stream.destroy();
+          res.status(404).send("Not found");
+          return;
+        }
+        sendCorsHeaders(res);
+        res.type(result.data.name);
+        result.data.stream.on("error", () => {
+          if (!res.headersSent) res.status(500).end();
+          else res.destroy();
+        });
+        result.data.stream.pipe(res);
+      },
+    }),
+  );
   return router;
 }
 
@@ -110,9 +128,12 @@ function driveErrorMiddleware(
   error: unknown,
   _req: Request,
   res: Response,
-  next: NextFunction
+  next: NextFunction,
 ): void {
-  if (error instanceof InvalidDriveArchiveError || error instanceof InvalidDrivePathError) {
+  if (
+    error instanceof InvalidDriveArchiveError ||
+    error instanceof InvalidDrivePathError
+  ) {
     res.status(400).json({ error: error.message });
     return;
   }
@@ -126,145 +147,205 @@ function driveErrorMiddleware(
 function createDriveRouter(x: Context): Router {
   const router = express.Router();
 
-  router.get("/ls", validatedRoute(
-    x,
-    { params: emptyRouteSchema, query: pathQuerySchema, body: unknownRouteSchema },
-    (routeX, { query }, _req, res) => {
-      const store = xDriveStore(routeX);
-      const directory = store.list(routeX, {
-        paths: [query.path],
-        kinds: ["directory"],
-      })[0];
-      if (!directory) {
-        res.status(404).json({ error: "Directory not found" });
-        return;
-      }
-      const children = store.list(routeX, { parentPaths: [query.path] });
-      res.json({
-        path: query.path,
-        meta: directory.meta ?? null,
-        isPublic: directory.isPublic,
-        dirs: children
-          .filter((entry) => entry.kind === "directory")
-          .map((entry) => ({
-            name: entry.name,
-            hasMeta: entry.meta !== null,
-            meta: entry.meta ?? null,
-          })),
-        files: children
-          .filter((entry) => entry.kind === "file")
-          .map((entry) => ({
-            name: entry.name,
-            size: entry.size,
-            isPublic: entry.isPublic,
-            createdAt: entry.createdAt,
-          })),
-      });
-    }
-  ));
+  router.get(
+    "/ls",
+    createRawRoute(x, {
+      auth: "dashboard",
+      schemas: {
+        params: emptyRouteSchema,
+        query: pathQuerySchema,
+        body: unknownRouteSchema,
+      },
+      handler: (routeX, { query }, _req, res) => {
+        const store = xDriveStore(routeX);
+        const directory = store.list(routeX, {
+          paths: [query.path],
+          kinds: ["directory"],
+        })[0];
+        if (!directory) {
+          res.status(404).json({ error: "Directory not found" });
+          return;
+        }
+        const children = store.list(routeX, { parentPaths: [query.path] });
+        res.json({
+          path: query.path,
+          meta: directory.meta ?? null,
+          isPublic: directory.isPublic,
+          dirs: children
+            .filter((entry) => entry.kind === "directory")
+            .map((entry) => ({
+              name: entry.name,
+              hasMeta: entry.meta !== null,
+              meta: entry.meta ?? null,
+            })),
+          files: children
+            .filter((entry) => entry.kind === "file")
+            .map((entry) => ({
+              name: entry.name,
+              size: entry.size,
+              isPublic: entry.isPublic,
+              createdAt: entry.createdAt,
+            })),
+        });
+      },
+    }),
+  );
 
-  router.post("/upload", validatedRoute(
-    x,
-    { params: emptyRouteSchema, query: emptyRouteSchema, body: driveUploadRequestSchema },
-    (routeX, { body }, _req, res) => {
-      const content = decodeDataUrl(body.data);
-      if (!content) {
-        res.status(400).json({ error: "Invalid data URL format" });
-        return;
-      }
-      const path = body.folder ? `${body.folder}/${body.filename}` : body.filename;
-      const parsedPath = nonRootDrivePathSchema.safeParse(path);
-      if (!parsedPath.success) {
-        res.status(400).json({ error: "Invalid drive path" });
-        return;
-      }
-      const entry = xDriveStore(routeX).create(routeX, {
-        kind: "file",
-        path: parsedPath.data,
-        content,
-      });
-      res.json({ success: true, path: entry.path });
-    }
-  ));
+  router.post(
+    "/upload",
+    createRawRoute(x, {
+      auth: "dashboard",
+      schemas: {
+        params: emptyRouteSchema,
+        query: emptyRouteSchema,
+        body: driveUploadRequestSchema,
+      },
+      handler: (routeX, { body }, _req, res) => {
+        const content = decodeDataUrl(body.data);
+        if (!content) {
+          res.status(400).json({ error: "Invalid data URL format" });
+          return;
+        }
+        const path = body.folder
+          ? `${body.folder}/${body.filename}`
+          : body.filename;
+        const parsedPath = nonRootDrivePathSchema.safeParse(path);
+        if (!parsedPath.success) {
+          res.status(400).json({ error: "Invalid drive path" });
+          return;
+        }
+        const entry = xDriveStore(routeX).create(routeX, {
+          kind: "file",
+          path: parsedPath.data,
+          content,
+        });
+        res.json({ success: true, path: entry.path });
+      },
+    }),
+  );
 
-  router.post("/upload-site", validatedRoute(
-    x,
-    { params: emptyRouteSchema, query: emptyRouteSchema, body: driveSiteUploadRequestSchema },
-    (routeX, { body }, _req, res) => {
-      const archive = decodeDataUrl(body.data);
-      if (!archive) {
-        res.status(400).json({ error: "Invalid data URL format" });
-        return;
-      }
-      const entry = xDriveStore(routeX).create(routeX, {
-        kind: "site",
-        path: body.folder,
-        archive,
-      });
-      res.json({ success: true, path: entry.path });
-    }
-  ));
+  router.post(
+    "/upload-site",
+    createRawRoute(x, {
+      auth: "dashboard",
+      schemas: {
+        params: emptyRouteSchema,
+        query: emptyRouteSchema,
+        body: driveSiteUploadRequestSchema,
+      },
+      handler: (routeX, { body }, _req, res) => {
+        const archive = decodeDataUrl(body.data);
+        if (!archive) {
+          res.status(400).json({ error: "Invalid data URL format" });
+          return;
+        }
+        const entry = xDriveStore(routeX).create(routeX, {
+          kind: "site",
+          path: body.folder,
+          archive,
+        });
+        res.json({ success: true, path: entry.path });
+      },
+    }),
+  );
 
-  router.put("/meta", validatedRoute(
-    x,
-    { params: emptyRouteSchema, query: pathQuerySchema, body: driveDirectoryMetaUpdateSchema },
-    (routeX, { query, body }, _req, res) => {
-      const updated = xDriveStore(routeX).update(routeX, {
-        path: query.path,
-        changes: { directoryMeta: body },
-      });
-      res.json(updated.meta ?? driveDirectoryMetaSchema.parse({}));
-    }
-  ));
+  router.put(
+    "/meta",
+    createRawRoute(x, {
+      auth: "dashboard",
+      schemas: {
+        params: emptyRouteSchema,
+        query: pathQuerySchema,
+        body: driveDirectoryMetaUpdateSchema,
+      },
+      handler: (routeX, { query, body }, _req, res) => {
+        const updated = xDriveStore(routeX).update(routeX, {
+          path: query.path,
+          changes: { directoryMeta: body },
+        });
+        res.json(updated.meta ?? driveDirectoryMetaSchema.parse({}));
+      },
+    }),
+  );
 
-  router.put("/file-meta", validatedRoute(
-    x,
-    { params: emptyRouteSchema, query: requiredPathQuerySchema, body: driveFileMetaUpdateSchema },
-    (routeX, { query, body }, _req, res) => {
-      const updated = xDriveStore(routeX).update(routeX, {
-        path: query.path,
-        changes: { fileIsPublic: body.isPublic ?? null },
-      });
-      res.json({ file: updated.name, isPublic: updated.isPublic });
-    }
-  ));
+  router.put(
+    "/file-meta",
+    createRawRoute(x, {
+      auth: "dashboard",
+      schemas: {
+        params: emptyRouteSchema,
+        query: requiredPathQuerySchema,
+        body: driveFileMetaUpdateSchema,
+      },
+      handler: (routeX, { query, body }, _req, res) => {
+        const updated = xDriveStore(routeX).update(routeX, {
+          path: query.path,
+          changes: { fileIsPublic: body.isPublic ?? null },
+        });
+        res.json({ file: updated.name, isPublic: updated.isPublic });
+      },
+    }),
+  );
 
-  router.delete("/", validatedRoute(
-    x,
-    { params: emptyRouteSchema, query: requiredPathQuerySchema, body: unknownRouteSchema },
-    (routeX, { query }, _req, res) => {
-      const deleted = xDriveStore(routeX).delete(routeX, { paths: [query.path] });
-      if (deleted === 0) {
-        res.status(404).json({ error: "Not found" });
-        return;
-      }
-      res.json({ success: true });
-    }
-  ));
+  router.delete(
+    "/",
+    createRawRoute(x, {
+      auth: "dashboard",
+      schemas: {
+        params: emptyRouteSchema,
+        query: requiredPathQuerySchema,
+        body: unknownRouteSchema,
+      },
+      handler: (routeX, { query }, _req, res) => {
+        const deleted = xDriveStore(routeX).delete(routeX, {
+          paths: [query.path],
+        });
+        if (deleted === 0) {
+          res.status(404).json({ error: "Not found" });
+          return;
+        }
+        res.json({ success: true });
+      },
+    }),
+  );
 
-  router.get("/file/*filepath", validatedRoute(
-    x,
-    { params: wildcardPathSchema, query: emptyRouteSchema, body: unknownRouteSchema },
-    (routeX, { params }, _req, res) => {
-      if (!sendDriveFile(routeX, params.filepath, false, res)) {
-        res.setHeader("Cache-Control", "no-store");
-        res.status(404).json({ error: "File not found" });
-      }
-    }
-  ));
+  router.get(
+    "/file/*filepath",
+    createRawRoute(x, {
+      auth: "dashboard",
+      schemas: {
+        params: wildcardPathSchema,
+        query: emptyRouteSchema,
+        body: unknownRouteSchema,
+      },
+      handler: (routeX, { params }, _req, res) => {
+        if (!sendDriveFile(routeX, params.filepath, false, res)) {
+          res.setHeader("Cache-Control", "no-store");
+          res.status(404).json({ error: "File not found" });
+        }
+      },
+    }),
+  );
 
-  router.options("/file/*filepath", validatedRoute(
-    x,
-    { params: wildcardPathSchema, query: emptyRouteSchema, body: unknownRouteSchema },
-    (routeX, { params }, _req, res) => {
-      if (!isPublicDriveFile(routeX, params.filepath)) {
-        res.status(403).end();
-        return;
-      }
-      sendCorsHeaders(res);
-      res.status(204).end();
-    }
-  ));
+  router.options(
+    "/file/*filepath",
+    createRawRoute(x, {
+      auth: "dashboard",
+      schemas: {
+        params: wildcardPathSchema,
+        query: emptyRouteSchema,
+        body: unknownRouteSchema,
+      },
+      handler: (routeX, { params }, _req, res) => {
+        if (!isPublicDriveFile(routeX, params.filepath)) {
+          res.status(403).end();
+          return;
+        }
+        sendCorsHeaders(res);
+        res.status(204).end();
+      },
+    }),
+  );
 
   router.use(driveErrorMiddleware);
   return router;

@@ -7,6 +7,7 @@ import { after, before, describe, it } from "node:test";
 import express from "express";
 import { z } from "zod";
 import { RootContext } from "../../src/context/RootContext.js";
+import { dashboardRouterContext } from "../support/dashboard-router-context.js";
 import { createDatabase } from "../../src/db/schema.js";
 import { xEmbeddingDb, xEmbeddingStore, xSessionStore } from "../../src/lib/x.js";
 import { MemoryRouterService } from "../../src/routers/memory/memory-router.js";
@@ -14,7 +15,7 @@ import { MemoryRouterService } from "../../src/routers/memory/memory-router.js";
 const userDir = mkdtempSync(join(tmpdir(), "vito-memory-router-"));
 writeFileSync(join(userDir, "profile.md"), "# Test Profile\n");
 const db = createDatabase(":memory:");
-const x = RootContext({ db, userDir, skillsDir: join(userDir, "skills") });
+const x = dashboardRouterContext({}, RootContext({ db, userDir, skillsDir: join(userDir, "skills") }));
 const sessionStore = xSessionStore(x);
 sessionStore.create(x, {
   id: "session:a",

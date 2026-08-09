@@ -7,7 +7,7 @@ import { after, before, describe, it } from "node:test";
 import express from "express";
 import { z } from "zod";
 import type { Context } from "../../src/context/Context.js";
-import { ObjectContext } from "../../src/context/ObjectContext.js";
+import { dashboardRouterContext } from "../support/dashboard-router-context.js";
 import { RootContext } from "../../src/context/RootContext.js";
 import type { CronJobConfig } from "../../src/shared/contracts/vito-config.js";
 import { createDatabase } from "../../src/db/schema.js";
@@ -66,7 +66,7 @@ xSessionStore(rootX).create(rootX, {
 });
 
 const cronService = new FakeCronService();
-const x = new ObjectContext({
+const x = dashboardRouterContext({
   cronService: () => cronService,
 }, rootX);
 const app = express();

@@ -19,8 +19,8 @@ Default behavior:
   - shows the backup manifest and asks for confirmation
   - records whether vito-server is currently running
   - creates a new pre-restore backup and leaves Vito stopped
-  - moves current runtime files into a safety directory
-  - restores user/, data/, logs/, SYSTEM.md, .env, vito.log, and Pi auth
+  - moves the runtime files being replaced into a safety directory
+  - restores the archive's runtime data while preserving paths omitted from upgrade backups
   - reinstalls dependencies, validates config, and rebuilds
   - restarts Vito only if it was running before the restore
 
@@ -171,8 +171,8 @@ fi
 
 TIMESTAMP="$(date -u +'%Y%m%dT%H%M%SZ')"
 PRE_RESTORE_BACKUP_DIR="${VITO_BACKUP_DIR:-$HOME/vito-backups}/pre-restore-$TIMESTAMP"
-log "Creating a pre-restore backup"
-"$SCRIPT_DIR/backup-vito.sh" --leave-stopped --output "$PRE_RESTORE_BACKUP_DIR"
+log "Creating a complete pre-restore backup"
+"$SCRIPT_DIR/backup-vito.sh" --full --leave-stopped --output "$PRE_RESTORE_BACKUP_DIR"
 SERVICE_STOPPED=$WAS_RUNNING
 printf 'Pre-restore backup directory:\n  %s\n' "$PRE_RESTORE_BACKUP_DIR"
 
@@ -180,13 +180,39 @@ SAFETY_DIR="$HOME/vito-restore-safety/$TIMESTAMP"
 [[ ! -e "$SAFETY_DIR" ]] || die "Safety directory already exists: $SAFETY_DIR"
 mkdir -p "$SAFETY_DIR/runtime" "$SAFETY_DIR/home/.pi/agent"
 chmod 700 "$HOME/vito-restore-safety" "$SAFETY_DIR"
-log "Moving current runtime files to $SAFETY_DIR/runtime"
-for relative_path in user data logs SYSTEM.md .env vito.log; do
-  current_path="$PROJECT_ROOT/$relative_path"
-  if [[ -e "$current_path" || -L "$current_path" ]]; then
-    mv "$current_path" "$SAFETY_DIR/runtime/"
+BACKUP_MODE="$(grep '^backup_mode=' "$BACKUP_ROOT/metadata/manifest.txt" | head -1 | cut -d= -f2- || true)"
+[[ -n "$BACKUP_MODE" ]] || BACKUP_MODE="full"
+
+if [[ "$BACKUP_MODE" == "upgrade" ]]; then
+  log "Moving runtime entries replaced by the upgrade backup to $SAFETY_DIR/runtime"
+  while IFS= read -r -d '' backup_path; do
+    entry_name="$(basename "$backup_path")"
+    current_path="$PROJECT_ROOT/$entry_name"
+    if [[ -e "$current_path" || -L "$current_path" ]]; then
+      mv "$current_path" "$SAFETY_DIR/runtime/"
+    fi
+  done < <(find "$BACKUP_ROOT/runtime" -mindepth 1 -maxdepth 1 ! -name user -print0)
+
+  mkdir -p "$SAFETY_DIR/runtime/user"
+  if [[ -d "$BACKUP_ROOT/runtime/user" ]]; then
+    mkdir -p "$PROJECT_ROOT/user"
+    while IFS= read -r -d '' backup_path; do
+      entry_name="$(basename "$backup_path")"
+      current_path="$PROJECT_ROOT/user/$entry_name"
+      if [[ -e "$current_path" || -L "$current_path" ]]; then
+        mv "$current_path" "$SAFETY_DIR/runtime/user/"
+      fi
+    done < <(find "$BACKUP_ROOT/runtime/user" -mindepth 1 -maxdepth 1 -print0)
   fi
-done
+else
+  log "Moving current runtime files to $SAFETY_DIR/runtime"
+  for relative_path in user data logs SYSTEM.md .env vito.log; do
+    current_path="$PROJECT_ROOT/$relative_path"
+    if [[ -e "$current_path" || -L "$current_path" ]]; then
+      mv "$current_path" "$SAFETY_DIR/runtime/"
+    fi
+  done
+fi
 
 CURRENT_PI_AUTH="$HOME/.pi/agent/auth.json"
 if [[ -f "$CURRENT_PI_AUTH" ]]; then

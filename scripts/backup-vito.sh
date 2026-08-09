@@ -7,22 +7,29 @@ PROJECT_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 OUTPUT_DIR="${VITO_BACKUP_DIR:-$HOME/vito-backups}"
 STOP_SERVICE=true
 LEAVE_STOPPED=false
+FULL_BACKUP=false
+BACKUP_COMPLETE=false
 
 usage() {
   cat <<'EOF'
 Usage: scripts/backup-vito.sh [options]
 
-Creates a private, compressed backup containing:
-  - user/, data/, logs/, SYSTEM.md, .env, and vito.log when present
+Creates a private, compressed upgrade backup containing:
+  - top-level files in user/ (databases, config, secrets, profile, and prompts)
+  - user/pi-sessions/, user/skills/, data/, SYSTEM.md, and .env when present
   - ~/.pi/agent/auth.json when present
   - a Git bundle, committed source snapshot, working-tree snapshot, and patches
   - Git, Node, npm, platform, and PM2 metadata
+
+Large, low-risk content such as user/drive/, user/apps/, user/images/, and logs
+is excluded by default. Use --full for a complete disaster-recovery backup.
 
 By default, a running PM2 service named vito-server is stopped while runtime
 files are copied and restarted after the backup is complete.
 
 Options:
   --output DIR       Backup destination (default: $VITO_BACKUP_DIR or ~/vito-backups)
+  --full             Include all runtime data, including Drive, apps, images, and logs
   --no-stop          Do not stop Vito; SQLite files may not be transactionally consistent
   --leave-stopped    Stop Vito for the backup and leave it stopped afterward
   -h, --help         Show this help
@@ -44,6 +51,10 @@ while (($# > 0)); do
       (($# >= 2)) || die "--output requires a directory"
       OUTPUT_DIR="$2"
       shift 2
+      ;;
+    --full)
+      FULL_BACKUP=true
+      shift
       ;;
     --no-stop)
       STOP_SERVICE=false
@@ -93,6 +104,9 @@ cleanup() {
     fi
   fi
   rm -rf "$STAGING_DIR"
+  if ! $BACKUP_COMPLETE; then
+    rm -f "$ARCHIVE_PATH" "$ARCHIVE_PATH.sha256"
+  fi
   exit "$exit_code"
 }
 trap cleanup EXIT
@@ -125,13 +139,38 @@ if command -v pm2 >/dev/null 2>&1; then
   fi
 fi
 
-log "Copying runtime data"
-for relative_path in user data logs SYSTEM.md .env vito.log; do
-  source_path="$PROJECT_ROOT/$relative_path"
-  if [[ -e "$source_path" || -L "$source_path" ]]; then
-    cp -a "$source_path" "$BACKUP_ROOT/runtime/"
+if $FULL_BACKUP; then
+  log "Copying complete runtime data"
+  for relative_path in user data logs SYSTEM.md .env vito.log; do
+    source_path="$PROJECT_ROOT/$relative_path"
+    if [[ -e "$source_path" || -L "$source_path" ]]; then
+      cp -a "$source_path" "$BACKUP_ROOT/runtime/"
+    fi
+  done
+  BACKUP_MODE="full"
+else
+  log "Copying upgrade-critical runtime data"
+  mkdir -p "$BACKUP_ROOT/runtime/user"
+  if [[ -d "$PROJECT_ROOT/user" ]]; then
+    while IFS= read -r -d '' source_path; do
+      cp -a "$source_path" "$BACKUP_ROOT/runtime/user/"
+    done < <(find "$PROJECT_ROOT/user" -mindepth 1 -maxdepth 1 \( -type f -o -type l \) -print0)
+
+    for relative_path in pi-sessions skills; do
+      source_path="$PROJECT_ROOT/user/$relative_path"
+      if [[ -e "$source_path" || -L "$source_path" ]]; then
+        cp -a "$source_path" "$BACKUP_ROOT/runtime/user/"
+      fi
+    done
   fi
-done
+  for relative_path in data SYSTEM.md .env; do
+    source_path="$PROJECT_ROOT/$relative_path"
+    if [[ -e "$source_path" || -L "$source_path" ]]; then
+      cp -a "$source_path" "$BACKUP_ROOT/runtime/"
+    fi
+  done
+  BACKUP_MODE="upgrade"
+fi
 
 PI_AUTH_PATH="$HOME/.pi/agent/auth.json"
 if [[ -f "$PI_AUTH_PATH" ]]; then
@@ -170,6 +209,7 @@ tar -czf "$BACKUP_ROOT/repository/working-tree.tar.gz" \
   printf 'project_root=%s\n' "$PROJECT_ROOT"
   printf 'git_sha=%s\n' "$GIT_SHA"
   printf 'service_name=%s\n' "$SERVICE_NAME"
+  printf 'backup_mode=%s\n' "$BACKUP_MODE"
   printf 'service_stopped_for_backup=%s\n' "$RESTART_NEEDED"
   printf 'node_version=%s\n' "$(node --version 2>/dev/null || printf 'unavailable')"
   printf 'npm_version=%s\n' "$(npm --version 2>/dev/null || printf 'unavailable')"
@@ -190,6 +230,7 @@ chmod 600 "$ARCHIVE_PATH.sha256"
 
 log "Verifying archive"
 tar -tzf "$ARCHIVE_PATH" >/dev/null
+BACKUP_COMPLETE=true
 
-printf '\nBackup created:\n  %s\n  %s\n' "$ARCHIVE_PATH" "$ARCHIVE_PATH.sha256"
+printf '\nBackup created (%s):\n  %s\n  %s\n' "$BACKUP_MODE" "$ARCHIVE_PATH" "$ARCHIVE_PATH.sha256"
 printf 'This archive contains secrets and authentication tokens; store it securely.\n'

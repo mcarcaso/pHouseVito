@@ -142,6 +142,19 @@ Type your messages and press Enter. Type `/quit` to exit.
    - View long-term memories
    - Manage skills and jobs
 
+### Ask API
+
+External integrations can send a question through Vito's full agent pipeline with `POST /api/ask`. Set `VITO_ASK_API_KEY` in `user/secrets.json`, then authenticate with a bearer token:
+
+```bash
+curl http://localhost:3030/api/ask \
+  -H "Authorization: Bearer $VITO_ASK_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{"question":"Hello","session":"api:integration"}'
+```
+
+The response is `{ "answer": "...", "elapsed": 123 }`. Optional request fields are `author`, `channelPrompt`, `timeoutMs`, and `relayToSession`. This API intentionally uses bearer authentication instead of dashboard cookies.
+
 ### Adding Skills
 
 Create a new directory in `user/skills/` with a `SKILL.md` file:

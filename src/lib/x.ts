@@ -1,6 +1,7 @@
 import type Database from "better-sqlite3";
 import type { Context } from "../context/Context.js";
 import type { AppProcessService } from "../services/apps/AppProcessService.js";
+import type { AskApiService } from "../services/ask/AskApiService.js";
 import type { DashboardAuthService } from "../services/auth/DashboardAuthService.js";
 import type { ChannelManagementService } from "../services/channels/ChannelManagementService.js";
 import type { FileService } from "../services/files/FileService.js";
@@ -45,6 +46,8 @@ export const xAttachmentsDir = (x: Context): string => x.get("attachmentsDir") a
 export const xVitoService = (x: Context): VitoService => x.get("vitoService") as VitoService;
 export const xAppProcessService = (x: Context): AppProcessService =>
   x.get("appProcessService") as AppProcessService;
+export const xAskApiService = (x: Context): AskApiService =>
+  x.get("askApiService") as AskApiService;
 export const xDashboardAuthService = (x: Context): DashboardAuthService =>
   x.get("dashboardAuthService") as DashboardAuthService;
 export const xChannelManagementService = (x: Context): ChannelManagementService =>

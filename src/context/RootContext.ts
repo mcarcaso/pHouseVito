@@ -2,6 +2,7 @@ import type Database from "better-sqlite3";
 import { homedir } from "node:os";
 import { join, resolve } from "node:path";
 import { Pm2AppProcessService } from "../services/apps/Pm2AppProcessService.js";
+import { DefaultAskApiService } from "../services/ask/DefaultAskApiService.js";
 import { InMemoryDashboardAuthService } from "../services/auth/InMemoryDashboardAuthService.js";
 import { DefaultChannelManagementService } from "../services/channels/DefaultChannelManagementService.js";
 import { FileSystemFileService } from "../services/files/FileSystemFileService.js";
@@ -55,6 +56,7 @@ export function RootContext(args: RootContextArgs): Context {
     vitoService: () => new FileVitoService(),
     fileService: () => new FileSystemFileService(),
     appProcessService: () => new Pm2AppProcessService(),
+    askApiService: () => new DefaultAskApiService(),
     dashboardAuthService: () => new InMemoryDashboardAuthService(),
     channelManagementService: () => new DefaultChannelManagementService(),
     providerService: () => new DefaultProviderService(),

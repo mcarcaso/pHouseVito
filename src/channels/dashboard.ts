@@ -4,9 +4,10 @@ import type {
   OutputHandler,
 } from "../types.js";
 import type { Context } from "../context/Context.js";
-import { xChannelManagementService, xSecretService, xVitoService } from "../lib/x.js";
+import { xAskApiService, xChannelManagementService, xVitoService } from "../lib/x.js";
 import { createAppProxyMiddleware } from "../routers/apps/app-proxy.js";
 import { createAppRouter } from "../routers/apps/app-router.js";
+import { createAskApiRouter } from "../routers/ask/ask-api-router.js";
 import {
   createAttachmentFileRouter,
   createAttachmentUploadRouter,
@@ -43,6 +44,7 @@ import path from "path";
 import { execSync } from "child_process";
 import { fileURLToPath } from "url";
 import { mountMcp } from "../mcp-server.js";
+import type { AskApiHandler } from "../services/ask/AskApiService.js";
 import type {
   DiscordManagementAdapter,
   TelegramManagementAdapter,
@@ -64,15 +66,6 @@ export class DashboardChannel implements Channel {
   private port = parseInt(process.env.PORT || "3030", 10);
   private eventHandler?: (event: InboundEvent) => void;
 
-  private askHandler?: (options: {
-    question: string;
-    session?: string;
-    author?: string;
-    channelPrompt?: string;
-    timeoutMs?: number | null;
-    relayToSession?: boolean;
-  }) => Promise<string>;
-
   constructor(private readonly x: Context) {
     this.setupExpress();
   }
@@ -91,19 +84,11 @@ export class DashboardChannel implements Channel {
     });
   }
 
-  setAskHandler(handler: (options: {
-    question: string;
-    session?: string;
-    author?: string;
-    channelPrompt?: string;
-    timeoutMs?: number | null;
-    relayToSession?: boolean;
-  }) => Promise<string>) {
-    this.askHandler = handler;
+  setAskHandler(handler: AskApiHandler) {
+    xAskApiService(this.x).configure(this.x, handler);
   }
 
   private setupExpress() {
-    const secretService = xSecretService(this.x);
     // Must precede body parsing so request bodies can stream to app processes.
     this.app.use(createAppProxyMiddleware(this.x));
 
@@ -172,54 +157,7 @@ export class DashboardChannel implements Channel {
     this.app.use("/api/file", createFileRouter(this.x));
     this.app.use("/api/attachments", createAttachmentUploadRouter(this.x));
 
-    // ── Public Ask API ──
-    // External integrations (Bland.ai phone, webhooks, etc.) call this to get a response.
-    // Routes through the full orchestrator pipeline: system prompt, memories, skills, tools.
-    this.app.post("/api/ask", async (req, res) => {
-      // Authenticate with Bearer token from secrets
-      const apiKey = secretService.get(this.x, "VITO_ASK_API_KEY");
-      if (!apiKey) {
-        res.status(503).json({ error: "Ask API is disabled — no VITO_ASK_API_KEY configured" });
-        return;
-      }
-      const authHeader = req.headers.authorization || "";
-      const token = authHeader.startsWith("Bearer ") ? authHeader.slice(7) : authHeader;
-      if (!token || token !== apiKey) {
-        res.status(401).json({ error: "Unauthorized — invalid or missing API key" });
-        return;
-      }
-
-      if (!this.askHandler) {
-        res.status(503).json({ error: "Ask handler not configured" });
-        return;
-      }
-
-      const { question, session, author, channelPrompt, timeoutMs, relayToSession } = req.body;
-      if (!question || typeof question !== "string") {
-        res.status(400).json({ error: "Missing or invalid 'question' field" });
-        return;
-      }
-
-      const start = Date.now();
-      console.log(`[Dashboard] /api/ask request: session=${session || "api:default"} question="${question.slice(0, 80)}"`);
-
-      try {
-        const answer = await this.askHandler({
-          question,
-          session: session || undefined,
-          author: author || undefined,
-          channelPrompt: channelPrompt || undefined,
-          timeoutMs: typeof timeoutMs === "number" ? timeoutMs : undefined,
-          relayToSession: relayToSession === true,
-        });
-        const elapsed = Date.now() - start;
-        console.log(`[Dashboard] /api/ask response (${elapsed}ms): "${answer.slice(0, 100)}"`);
-        res.json({ answer, elapsed });
-      } catch (err: any) {
-        console.error(`[Dashboard] /api/ask error:`, err);
-        res.status(500).json({ error: "Failed to process question", answer: "I hit a snag. Try again." });
-      }
-    });
+    this.app.use("/api/ask", createAskApiRouter(this.x));
 
     // HTTP fallback for sending chat messages (when WebSocket is dead)
     this.app.post("/api/chat", (req, res) => {

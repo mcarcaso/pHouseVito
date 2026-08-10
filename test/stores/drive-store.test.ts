@@ -12,7 +12,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, it } from "node:test";
 import { ObjectContext } from "../../src/context/ObjectContext.js";
-import { driveReadResultSchema } from "../../src/contracts/drive.js";
+import { driveReadResultSchema } from "../../src/lib/types/drive.js";
 import { FileDriveStore } from "../../src/stores/drive/FileDriveStore.js";
 
 function createHarness() {

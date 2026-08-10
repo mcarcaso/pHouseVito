@@ -2,7 +2,7 @@ import { Client, Message as DiscordMessage, ChatInputCommandInteraction } from "
 import * as fs from "node:fs";
 import * as path from "node:path";
 import type { OutputHandler, OutboundMessage } from "../../../output/OutputHandler.js";
-import type { InboundEvent } from "../../../contracts/inbound-event.js";
+import type { InboundEvent } from "../../../lib/types/inbound-event.js";
 
 const DISCORD_MAX_LENGTH = 2000;
 

@@ -14,7 +14,7 @@ import {
   drivePathSchema,
   driveReadResultSchema,
   nonRootDrivePathSchema,
-} from "../contracts/drive.js";
+} from "../lib/types/drive.js";
 import { xDriveStore } from "../lib/x.js";
 import {
   InvalidDriveArchiveError,

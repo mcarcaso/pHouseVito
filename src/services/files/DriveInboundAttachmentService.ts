@@ -1,7 +1,7 @@
 import { randomBytes } from "node:crypto";
 import { resolve } from "node:path";
 import type { Context } from "../../context/Context.js";
-import type { InboundEvent } from "../../contracts/inbound-event.js";
+import type { InboundEvent } from "../../lib/types/inbound-event.js";
 import { xDriveDir, xDriveStore } from "../../lib/x.js";
 import type { InboundAttachmentService } from "./InboundAttachmentService.js";
 

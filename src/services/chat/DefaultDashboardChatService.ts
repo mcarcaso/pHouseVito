@@ -1,6 +1,6 @@
 import type { Context } from "../../context/Context.js";
 import type { DashboardChatRequest } from "../../shared/contracts/dashboard-chat.js";
-import type { InboundEvent } from "../../contracts/inbound-event.js";
+import type { InboundEvent } from "../../lib/types/inbound-event.js";
 import type {
   DashboardChatService,
   DashboardInboundHandler,

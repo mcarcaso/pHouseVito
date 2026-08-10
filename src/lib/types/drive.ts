@@ -4,15 +4,15 @@ import {
   driveDirectoryMetaSchema,
   drivePathSchema,
   nonRootDrivePathSchema,
-} from "../shared/contracts/drive-api.js";
+} from "../../shared/contracts/drive-api.js";
 
 export {
   driveDirectoryMetaSchema,
   driveFileVisibilitySchema,
   drivePathSchema,
   nonRootDrivePathSchema,
-} from "../shared/contracts/drive-api.js";
-export type { DriveDirectoryMeta } from "../shared/contracts/drive-api.js";
+} from "../../shared/contracts/drive-api.js";
+export type { DriveDirectoryMeta } from "../../shared/contracts/drive-api.js";
 
 export const driveReadCommandSchema = z.object({
   type: z.literal("read"),

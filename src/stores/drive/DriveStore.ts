@@ -1,5 +1,5 @@
 import type { Context } from "../../context/Context.js";
-import type { DriveDirectoryMeta } from "../../contracts/drive.js";
+import type { DriveDirectoryMeta } from "../../lib/types/drive.js";
 import type { Store } from "../Store.js";
 
 export type DriveEntryKind = "directory" | "file";

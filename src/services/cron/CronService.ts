@@ -1,5 +1,5 @@
 import type { Context } from "../../context/Context.js";
-import type { InboundEvent } from "../../contracts/inbound-event.js";
+import type { InboundEvent } from "../../lib/types/inbound-event.js";
 import type { CronJobConfig } from "../../shared/contracts/vito-config.js";
 
 export interface CronHealth {

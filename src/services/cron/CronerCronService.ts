@@ -3,7 +3,7 @@ import { promisify } from "node:util";
 import { Cron } from "croner";
 import type { Context } from "../../context/Context.js";
 import { DEFAULT_TIMEZONE } from "../../shared/defaults.js";
-import type { InboundEvent } from "../../contracts/inbound-event.js";
+import type { InboundEvent } from "../../lib/types/inbound-event.js";
 import type { CronJobConfig } from "../../shared/contracts/vito-config.js";
 import type { CronHealth, CronService, StartCronArgs } from "./CronService.js";
 

@@ -116,10 +116,11 @@ pHouseVito/
 │   ├── services/memory/       # Memory workflows and embedding provider integration
 │   ├── services/orchestrator/ # Message orchestration and Pi session runtime pipeline
 │   ├── services/sessions/     # Vito session lifecycle
-│   ├── db/                    # SQLite schema bootstrap
+│   ├── lib/sqlite/            # SQLite connection and schema bootstrap
+│   ├── lib/types/             # Server-only types and runtime schemas
 │   ├── output/                # Shared output-handler contracts and decorators
-│   ├── shared/contracts/      # Browser-safe Zod API contracts shared with dashboard
-│   └── skills/                # Builtin skill discovery and loading
+│   └── shared/contracts/      # Browser-safe Zod API contracts shared with dashboard
+├── system/                    # Project-owned policy and bundled skills
 ├── dashboard/                 # React-based web UI
 ├── data/                      # Runtime data (attachments, etc.) — gitignored
 ├── user.example/              # Template — copy to user/ to get started

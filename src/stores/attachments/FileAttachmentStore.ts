@@ -14,7 +14,7 @@ import {
   attachmentIdSchema,
   attachmentMimeTypeSchema,
   attachmentReadCommandSchema,
-} from "../../contracts/attachment.js";
+} from "../../lib/types/attachment.js";
 import { xAttachmentsDir } from "../../lib/x.js";
 import { UnsupportedStoreOperationError } from "../Store.js";
 import type {

@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, it } from "node:test";
 import { ObjectContext } from "../../src/context/ObjectContext.js";
-import { attachmentReadResultSchema } from "../../src/contracts/attachment.js";
+import { attachmentReadResultSchema } from "../../src/lib/types/attachment.js";
 import { FileAttachmentStore } from "../../src/stores/attachments/FileAttachmentStore.js";
 
 function createHarness() {

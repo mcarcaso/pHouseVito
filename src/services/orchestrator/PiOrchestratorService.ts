@@ -3,7 +3,7 @@
  * commands, and one persisted PiSessionRuntime per Vito session.
  */
 
-import { parseInboundEventMetadata } from "../../contracts/inbound-event.js";
+import { parseInboundEventMetadata } from "../../lib/types/inbound-event.js";
 import type { Context } from "../../context/Context.js";
 import { withPersistence } from "./runtime/PersistencePiRuntime.js";
 import { withRelay } from "./runtime/RelayPiRuntime.js";
@@ -22,7 +22,7 @@ import { resolve } from "node:path";
 
 import { extractMessageText } from "../memory/message-content.js";
 
-import type { InboundEvent } from "../../contracts/inbound-event.js";
+import type { InboundEvent } from "../../lib/types/inbound-event.js";
 import type {
   CronJobConfig,
   ResolvedSettings,

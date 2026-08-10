@@ -29,7 +29,7 @@ import {
   driveReadCommandSchema,
   nonRootDrivePathSchema,
   type DriveDirectoryMeta,
-} from "../../contracts/drive.js";
+} from "../../lib/types/drive.js";
 import { xDriveDir } from "../../lib/x.js";
 import {
   StoreRecordNotFoundError,

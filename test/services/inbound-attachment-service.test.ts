@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, it } from "node:test";
 import { ObjectContext } from "../../src/context/ObjectContext.js";
-import type { InboundEvent } from "../../src/contracts/inbound-event.js";
+import type { InboundEvent } from "../../src/lib/types/inbound-event.js";
 import { DriveInboundAttachmentService } from "../../src/services/files/DriveInboundAttachmentService.js";
 import { FileDriveStore } from "../../src/stores/drive/FileDriveStore.js";
 

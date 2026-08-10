@@ -10,7 +10,7 @@ import type { RouterService } from "./RouterService.js";
 import {
   attachmentIdSchema,
   attachmentReadResultSchema,
-} from "../contracts/attachment.js";
+} from "../lib/types/attachment.js";
 import { xAttachmentStore } from "../lib/x.js";
 import {
   emptyRouteSchema,

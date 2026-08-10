@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useCallback, useLayoutEffect } from "react";
+import { useState, useEffect, useRef, useCallback, useLayoutEffect, useMemo } from "react";
 import ChatView, {
   parseDbMessage,
   type ParsedMessage,
@@ -11,12 +11,12 @@ import { useSearchParams } from "react-router-dom";
 import {
   useArchiveSessionMessages,
   useSendChatMessage,
-  useSessionMessages,
   useSessions,
   useUpdateSessionAlias,
   useUploadAttachment,
   type DashboardSession,
 } from "../hooks/useSessions";
+import { useChatMessages } from "../hooks/useChatMessages";
 
 // Memoize ChatView to prevent re-renders when typing in the input
 const MemoizedChatView = React.memo(ChatView);
@@ -77,24 +77,44 @@ function Chat() {
   const lastAssistantTsRef = useRef<number | null>(null);
   const sessionsQuery = useSessions({ refetchInterval: POLL_INTERVAL });
   const sessions = sessionsQuery.data ?? [];
-  const messagesQuery = useSessionMessages(selectedSessionId, {
-    hideThoughts: !filterState.showThoughts,
-    hideTools: !filterState.showTools,
-    refetchInterval: POLL_INTERVAL,
-  });
-  const rawMessages = messagesQuery.data?.messages ?? [];
-  const allMessages: ParsedMessage[] = rawMessages.map((message) =>
-    parseDbMessage({
-      type: message.type,
-      content: message.content,
-      timestamp: message.timestamp,
-      author: message.author,
-    }),
+  const messagesQuery = useChatMessages(selectedSessionId, filterState);
+  const allMessages: ParsedMessage[] = useMemo(
+    () =>
+      messagesQuery.messages.map((message) =>
+        parseDbMessage({
+          type: message.type,
+          content: message.content,
+          timestamp: message.timestamp,
+          author: message.author,
+        }),
+      ),
+    [messagesQuery.messages],
   );
   const uploadAttachment = useUploadAttachment();
   const sendChatMessage = useSendChatMessage();
   const archiveMessages = useArchiveSessionMessages();
   const updateAlias = useUpdateSessionAlias();
+  const prependAnchorRef = useRef<{ scrollHeight: number; scrollY: number } | null>(null);
+  const nearBottomRef = useRef(true);
+  const initialScrollRef = useRef(true);
+
+  const loadOlderMessages = useCallback(() => {
+    if (
+      prependAnchorRef.current ||
+      !messagesQuery.hasPreviousPage ||
+      messagesQuery.isFetchingPreviousPage
+    )
+      return;
+    prependAnchorRef.current = {
+      scrollHeight: document.documentElement.scrollHeight,
+      scrollY: window.scrollY,
+    };
+    void messagesQuery.fetchPreviousPage();
+  }, [
+    messagesQuery.fetchPreviousPage,
+    messagesQuery.hasPreviousPage,
+    messagesQuery.isFetchingPreviousPage,
+  ]);
 
   const formatSessionLabel = useCallback((session: DashboardSession) => {
     const name = session.alias || session.id;
@@ -106,7 +126,36 @@ function Chat() {
       localStorage.setItem(CHAT_SESSION_STORAGE_KEY, selectedSessionId);
     } catch {}
     lastAssistantTsRef.current = null;
-  }, [selectedSessionId]);
+    initialScrollRef.current = true;
+    nearBottomRef.current = true;
+    prependAnchorRef.current = null;
+  }, [selectedSessionId, filterState]);
+
+  useEffect(() => {
+    const handleScroll = () => {
+      const documentHeight = document.documentElement.scrollHeight;
+      nearBottomRef.current = window.scrollY + window.innerHeight >= documentHeight - 150;
+      if (window.scrollY <= 150) loadOlderMessages();
+    };
+    window.addEventListener("scroll", handleScroll, { passive: true });
+    return () => window.removeEventListener("scroll", handleScroll);
+  }, [loadOlderMessages]);
+
+  useLayoutEffect(() => {
+    const anchor = prependAnchorRef.current;
+    if (!anchor || messagesQuery.isFetchingPreviousPage) return;
+    const addedHeight = document.documentElement.scrollHeight - anchor.scrollHeight;
+    window.scrollTo({ top: anchor.scrollY + addedHeight, behavior: "instant" });
+    prependAnchorRef.current = null;
+  }, [messagesQuery.isFetchingPreviousPage, messagesQuery.lowWatermark]);
+
+  useLayoutEffect(() => {
+    if (allMessages.length === 0) return;
+    if (initialScrollRef.current || nearBottomRef.current) {
+      window.scrollTo({ top: document.documentElement.scrollHeight, behavior: "instant" });
+      initialScrollRef.current = false;
+    }
+  }, [messagesQuery.highWatermark, allMessages.length]);
 
   useEffect(() => {
     const latestAssistant = [...allMessages]
@@ -243,13 +292,6 @@ function Chat() {
     }
   };
 
-  // Auto-scroll to bottom on initial load
-  useLayoutEffect(() => {
-    if (allMessages.length > 0) {
-      window.scrollTo({ top: document.body.scrollHeight, behavior: "instant" });
-    }
-  }, [allMessages.length === 0]); // Only on first load when messages arrive
-
   return (
     <div className="flex flex-col min-h-full max-w-[1200px] mx-auto w-full">
       {/* Fixed status bar */}
@@ -335,8 +377,11 @@ function Chat() {
         </div>
       </div>
 
-      {/* Messages scroll naturally */}
+      {/* Messages scroll naturally. Older pages are prepended near the top. */}
       <div className="pt-[55px] md:pt-[60px] pb-[160px] md:pb-[180px] px-2 md:px-3">
+        {messagesQuery.isFetchingPreviousPage && (
+          <div className="py-3 text-center text-xs text-neutral-500">Loading earlier messages…</div>
+        )}
         <MemoizedChatView
           messages={allMessages}
           isTyping={isTyping}

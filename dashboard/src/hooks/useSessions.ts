@@ -19,7 +19,7 @@ export const dashboardMessageSchema = z.object({
   timestamp: z.number(),
   author: z.string().nullable().optional(),
 });
-const messagePageSchema = z.object({
+export const messagePageSchema = z.object({
   messages: z.array(dashboardMessageSchema),
   total: z.number(),
   hasMore: z.boolean().optional().default(false),
@@ -27,6 +27,7 @@ const messagePageSchema = z.object({
 
 export type DashboardSession = z.infer<typeof dashboardSessionSchema>;
 export type DashboardMessage = z.infer<typeof dashboardMessageSchema>;
+export type MessagePage = z.infer<typeof messagePageSchema>;
 
 export function useSessions(options?: { refetchInterval?: number | false }) {
   return useQuery({
@@ -110,7 +111,7 @@ export function useSendChatMessage() {
     },
     onSuccess: (_data, input) => {
       queryClient.invalidateQueries({ queryKey: ["sessions"] });
-      queryClient.invalidateQueries({ queryKey: ["sessions", input.sessionId, "messages"] });
+      queryClient.invalidateQueries({ queryKey: ["chat-new-messages", input.sessionId] });
     },
   });
 }
@@ -122,7 +123,10 @@ export function useArchiveSessionMessages() {
       requestJson(`/api/sessions/${encodeURIComponent(sessionId)}/messages`, z.unknown(), {
         method: "DELETE",
       }),
-    onSuccess: (_data, sessionId) =>
-      queryClient.invalidateQueries({ queryKey: ["sessions", sessionId, "messages"] }),
+    onSuccess: (_data, sessionId) => {
+      queryClient.removeQueries({ queryKey: ["chat-messages", sessionId] });
+      queryClient.removeQueries({ queryKey: ["chat-new-messages", sessionId] });
+      queryClient.invalidateQueries({ queryKey: ["sessions", sessionId, "messages"] });
+    },
   });
 }

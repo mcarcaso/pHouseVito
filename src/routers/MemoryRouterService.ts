@@ -1,7 +1,7 @@
 import express from "express";
 import type { Router } from "express";
 import type { Context } from "../context/Context.js";
-import { memorySearchQuerySchema } from "../shared/contracts/memory-api.js";
+import { memorySearchQuerySchema } from "../shared/schemas/memory-api.js";
 import type { RouterService } from "./RouterService.js";
 import { xMemoryService, xSessionStore } from "../lib/x.js";
 import {

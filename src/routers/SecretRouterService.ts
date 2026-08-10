@@ -5,7 +5,7 @@ import type { Context } from "../context/Context.js";
 import {
   secretKeySchema,
   secretUpdateRequestSchema,
-} from "../shared/contracts/secret-api.js";
+} from "../shared/schemas/secret-api.js";
 import type { RouterService } from "./RouterService.js";
 import { xSecretService } from "../lib/x.js";
 import { SystemSecretDeletionError } from "../services/secrets/SecretService.js";

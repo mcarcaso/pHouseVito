@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import { ObjectContext } from "../../src/context/ObjectContext.js";
 import { PiOrchestratorService } from "../../src/services/orchestrator/PiOrchestratorService.js";
-import { vitoConfigSchema } from "../../src/shared/contracts/vito-config.js";
+import { vitoConfigSchema } from "../../src/shared/schemas/vito-config.js";
 
 const config = vitoConfigSchema.parse({
   settings: {},

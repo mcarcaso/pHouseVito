@@ -8,7 +8,7 @@ import {
   type VitoConfigPatch,
   streamModeUpdateSchema,
   vitoConfigPatchSchema,
-} from "../shared/contracts/vito-config.js";
+} from "../shared/schemas/vito-config.js";
 import { xVitoService } from "../lib/x.js";
 import { getDefaultSettings } from "../services/vito/settings.js";
 import {

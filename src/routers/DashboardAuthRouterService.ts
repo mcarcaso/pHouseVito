@@ -1,7 +1,7 @@
 import express from "express";
 import type { Router } from "express";
 import type { Context } from "../context/Context.js";
-import { dashboardLoginRequestSchema } from "../shared/contracts/dashboard-auth.js";
+import { dashboardLoginRequestSchema } from "../shared/schemas/dashboard-auth.js";
 import type { RouterService } from "./RouterService.js";
 import { xDashboardAuthService } from "../lib/x.js";
 import {

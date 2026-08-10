@@ -2,7 +2,7 @@ import express from "express";
 import type { Router } from "express";
 import type { Context } from "../context/Context.js";
 import type { RouterService } from "./RouterService.js";
-import { systemContentUpdateSchema } from "../shared/contracts/system-content.js";
+import { systemContentUpdateSchema } from "../shared/schemas/system-content.js";
 import { xVitoService } from "../lib/x.js";
 import {
   emptyRouteSchema,

@@ -5,7 +5,7 @@ import {
   vitoConfigSchema,
   type Settings,
   type VitoConfig,
-} from "../../src/shared/contracts/vito-config.js";
+} from "../../src/shared/schemas/vito-config.js";
 
 function createConfig(args: {
   settings?: Settings;

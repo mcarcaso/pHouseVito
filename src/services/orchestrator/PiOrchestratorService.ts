@@ -27,7 +27,7 @@ import type {
   CronJobConfig,
   ResolvedSettings,
   VitoConfig,
-} from "../../shared/contracts/vito-config.js";
+} from "../../shared/schemas/vito-config.js";
 
 import { PiRuntimeRegistry } from "./PiRuntimeRegistry.js";
 import { buildSystemPrompt, buildUserMessage } from "./system-prompt.js";

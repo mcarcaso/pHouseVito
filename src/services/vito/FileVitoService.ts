@@ -14,7 +14,7 @@ import {
   type CronJobConfig,
   type VitoConfig,
   validateVitoConfig,
-} from "../../shared/contracts/vito-config.js";
+} from "../../shared/schemas/vito-config.js";
 import { xProjectDir, xUserDir } from "../../lib/x.js";
 import type { VitoService } from "./VitoService.js";
 

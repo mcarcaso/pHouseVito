@@ -3,7 +3,7 @@ import {
   vitoConfigSchema,
   type VitoConfig,
   type VitoConfigPatch,
-} from '../../../src/shared/contracts/vito-config';
+} from '../../../src/shared/schemas/vito-config';
 
 interface UseConfigReturn {
   config: VitoConfig | null;

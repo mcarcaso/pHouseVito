@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
-import type { PiRuntimeConfig } from '../../../../src/shared/contracts/vito-config';
+import type { PiRuntimeConfig } from '../../../../src/shared/schemas/vito-config';
 import type { VitoConfig } from '../../utils/settingsResolution';
 
 interface PiConfigEditorProps {

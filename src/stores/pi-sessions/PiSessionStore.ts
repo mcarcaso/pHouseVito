@@ -1,5 +1,5 @@
 import type { Context } from "../../context/Context.js";
-import type { PiSessionLine } from "../../shared/contracts/pi-session.js";
+import type { PiSessionLine } from "../../shared/schemas/pi-session.js";
 import type { Store } from "../Store.js";
 
 export interface PiSession {

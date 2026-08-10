@@ -9,7 +9,7 @@ import type {
   ResolvedSettings,
   Settings,
   VitoConfig,
-} from '../../../src/shared/contracts/vito-config';
+} from '../../../src/shared/schemas/vito-config';
 import { resolveSettings } from '../../../src/shared/settings-resolution';
 import { getDefaults } from './defaults';
 
@@ -18,7 +18,7 @@ export type {
   ResolvedSettings,
   Settings,
   VitoConfig,
-} from '../../../src/shared/contracts/vito-config';
+} from '../../../src/shared/schemas/vito-config';
 
 /**
  * Get effective settings for a given channel and session.

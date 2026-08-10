@@ -2,7 +2,7 @@ import { resolveSettings } from "../../shared/settings-resolution.js";
 import type {
   ResolvedSettings,
   VitoConfig,
-} from "../../shared/contracts/vito-config.js";
+} from "../../shared/schemas/vito-config.js";
 
 const DEFAULT_SETTINGS: ResolvedSettings = {
   streamMode: "stream",

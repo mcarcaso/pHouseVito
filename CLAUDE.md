@@ -70,7 +70,7 @@ Shared output-handler contracts and cross-channel decorators live under `src/out
 
 ### Vito service and config validation
 
-`src/services/vito/` owns access to mutable Vito state. `FileVitoService` reads `vito.config.json` and `SOUL.md`, validates config through the shared Zod schema in `src/shared/contracts/vito-config.ts`, writes application-originated updates atomically, and keeps the last known valid config when a runtime file edit is invalid. Agents may continue editing the files directly and should run `npm run validate:config` afterward; the built-in `vito-config` skill documents that workflow.
+`src/services/vito/` owns access to mutable Vito state. `FileVitoService` reads `vito.config.json` and `SOUL.md`, validates config through the shared Zod schema in `src/shared/schemas/vito-config.ts`, writes application-originated updates atomically, and keeps the last known valid config when a runtime file edit is invalid. Agents may continue editing the files directly and should run `npm run validate:config` afterward; the built-in `vito-config` skill documents that workflow.
 
 ### Settings cascade
 

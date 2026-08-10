@@ -6,7 +6,7 @@ import {
   serverHealthResponseSchema,
   serverRestartResponseSchema,
   serverStatusResponseSchema,
-} from "../shared/contracts/server-api.js";
+} from "../shared/schemas/server-api.js";
 import type { RouterService } from "./RouterService.js";
 import { createRoute, emptyRouteSchema, unknownRouteSchema } from "./createRoute.js";
 

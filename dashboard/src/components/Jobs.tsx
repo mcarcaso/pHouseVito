@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from "react";
-import type { CronJobConfig as CronJob } from "../../../src/shared/contracts/vito-config";
+import type { CronJobConfig as CronJob } from "../../../src/shared/schemas/vito-config";
 
 interface Session {
   id: string;

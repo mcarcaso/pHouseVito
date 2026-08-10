@@ -2,7 +2,7 @@ import type {
   ResolvedSettings,
   Settings,
   VitoConfig,
-} from "./contracts/vito-config.js";
+} from "./schemas/vito-config.js";
 
 function mergeSettings(base: Settings, override: Settings): Settings {
   const result: Settings = { ...base, ...override };

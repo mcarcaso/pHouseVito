@@ -8,7 +8,7 @@ import type { Context } from "../../context/Context.js";
 import {
   traceEventDataSchema,
   writableTraceEventDataSchema,
-} from "../../shared/contracts/trace-event.js";
+} from "../../shared/schemas/trace-event.js";
 import {
   StoreRecordNotFoundError,
   UnsupportedStoreOperationError,

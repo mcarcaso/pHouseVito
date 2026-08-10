@@ -3,7 +3,7 @@ import type {
   TraceEventData,
   TraceEventType,
   WritableTraceEventData,
-} from "../../shared/contracts/trace-event.js";
+} from "../../shared/schemas/trace-event.js";
 import type { Store } from "../Store.js";
 
 export interface TraceEvent {

@@ -1,6 +1,6 @@
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
-import { validateVitoConfig } from "../shared/contracts/vito-config.js";
+import { validateVitoConfig } from "../shared/schemas/vito-config.js";
 
 export interface ConfigValidationIssue {
   path: string;

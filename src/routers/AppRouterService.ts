@@ -8,7 +8,7 @@ import {
   appNameSchema,
   appProcessActionSchema,
   appReadFileResultSchema,
-} from "../shared/contracts/app.js";
+} from "../shared/schemas/app.js";
 import { xAppProcessService, xAppStore } from "../lib/x.js";
 import { AppFileTooLargeError } from "../stores/apps/FileAppStore.js";
 import {

@@ -9,7 +9,7 @@ import { z } from "zod";
 import type { Context } from "../../src/context/Context.js";
 import { dashboardRouterContext } from "../support/dashboard-router-context.js";
 import { RootContext } from "../../src/context/RootContext.js";
-import type { CronJobConfig } from "../../src/shared/contracts/vito-config.js";
+import type { CronJobConfig } from "../../src/shared/schemas/vito-config.js";
 import { createDatabase } from "../../src/lib/sqlite/database.js";
 import { xSessionStore, xVitoService } from "../../src/lib/x.js";
 import { CronRouterService } from "../../src/routers/CronRouterService.js";

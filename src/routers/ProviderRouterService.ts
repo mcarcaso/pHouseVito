@@ -5,7 +5,7 @@ import type { Context } from "../context/Context.js";
 import {
   providerIdSchema,
   providerLoginPromptRequestSchema,
-} from "../shared/contracts/provider-api.js";
+} from "../shared/schemas/provider-api.js";
 import type { RouterService } from "./RouterService.js";
 import { xProviderService } from "../lib/x.js";
 import { ProviderLoginConflictError } from "../services/providers/ProviderService.js";

@@ -1,7 +1,7 @@
 import { resolve } from "node:path";
 import type { Context } from "../../context/Context.js";
 import { xPiSessionsDir, xSkillStore } from "../../lib/x.js";
-import type { ResolvedSettings } from "../../shared/contracts/vito-config.js";
+import type { ResolvedSettings } from "../../shared/schemas/vito-config.js";
 import { PiSessionRuntime, type PiSessionRuntimeConfig } from "./PiSessionRuntime.js";
 
 export class PiRuntimeRegistry {

@@ -12,7 +12,7 @@ import {
   appMetadataSchema,
   appNameSchema,
   appReadFileCommandSchema,
-} from "../../shared/contracts/app.js";
+} from "../../shared/schemas/app.js";
 import { xAppsDir } from "../../lib/x.js";
 import { UnsupportedStoreOperationError } from "../Store.js";
 import type {

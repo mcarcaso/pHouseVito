@@ -6,7 +6,7 @@ import { join } from "node:path";
 import { after, before, describe, it } from "node:test";
 import express from "express";
 import { z } from "zod";
-import { vitoConfigSchema } from "../../src/shared/contracts/vito-config.js";
+import { vitoConfigSchema } from "../../src/shared/schemas/vito-config.js";
 import { RootContext } from "../../src/context/RootContext.js";
 import { dashboardRouterContext } from "../support/dashboard-router-context.js";
 import { createDatabase } from "../../src/lib/sqlite/database.js";

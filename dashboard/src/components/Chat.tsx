@@ -2,8 +2,8 @@ import { useState, useEffect, useRef, useCallback, useLayoutEffect } from 'react
 import ChatView, { parseDbMessage, type ParsedMessage, type Attachment, type FilterState } from './ChatView';
 import FilterButton from './FilterButton';
 import React from 'react';
-import { attachmentUploadResponseSchema } from '../../../src/shared/contracts/attachment-api';
-import { dashboardChatRequestSchema } from '../../../src/shared/contracts/dashboard-chat';
+import { attachmentUploadResponseSchema } from '../../../src/shared/schemas/attachment-api';
+import { dashboardChatRequestSchema } from '../../../src/shared/schemas/dashboard-chat';
 
 // Memoize ChatView to prevent re-renders when typing in the input
 const MemoizedChatView = React.memo(ChatView);

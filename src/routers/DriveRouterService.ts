@@ -7,7 +7,7 @@ import {
   driveFileMetaUpdateSchema,
   driveSiteUploadRequestSchema,
   driveUploadRequestSchema,
-} from "../shared/contracts/drive-api.js";
+} from "../shared/schemas/drive-api.js";
 import type { RouterService } from "./RouterService.js";
 import {
   driveDirectoryMetaSchema,

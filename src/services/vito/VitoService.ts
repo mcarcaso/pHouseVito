@@ -3,7 +3,7 @@ import type {
   ConfigValidationResult,
   CronJobConfig,
   VitoConfig,
-} from "../../shared/contracts/vito-config.js";
+} from "../../shared/schemas/vito-config.js";
 
 export interface VitoService {
   getConfig(x: Context): VitoConfig;

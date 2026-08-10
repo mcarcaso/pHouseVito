@@ -7,7 +7,7 @@ import {
   cronJobConfigSchema,
   cronJobPatchSchema,
   type CronJobConfig,
-} from "../shared/contracts/vito-config.js";
+} from "../shared/schemas/vito-config.js";
 import { xCronService, xSessionStore, xVitoService } from "../lib/x.js";
 import {
   emptyRouteSchema,

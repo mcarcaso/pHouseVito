@@ -7,11 +7,11 @@ import {
   sessionAliasUpdateSchema,
   sessionIdSchema,
   sessionMessagesQuerySchema,
-} from "../shared/contracts/session-api.js";
+} from "../shared/schemas/session-api.js";
 import {
   settingsPatchSchema,
   settingsSchema,
-} from "../shared/contracts/vito-config.js";
+} from "../shared/schemas/vito-config.js";
 import { xMessageStore, xSessionStore, xVitoService } from "../lib/x.js";
 import {
   emptyRouteSchema,

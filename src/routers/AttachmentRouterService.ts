@@ -5,7 +5,7 @@ import type { Context } from "../context/Context.js";
 import {
   attachmentUploadRequestSchema,
   attachmentUploadResponseSchema,
-} from "../shared/contracts/attachment-api.js";
+} from "../shared/schemas/attachment-api.js";
 import type { RouterService } from "./RouterService.js";
 import {
   attachmentIdSchema,

@@ -28,7 +28,7 @@ const DEFAULT_TIMEZONE = 'America/Toronto';
 function getGlobalTimezone() {
   try {
     // Navigate from skills/builtin/scheduler to project root
-    const configPath = resolve(__dirname, '../../../../user/vito.config.json');
+    const configPath = resolve(__dirname, '../../../user/vito.config.json');
     if (existsSync(configPath)) {
       const config = JSON.parse(readFileSync(configPath, 'utf-8'));
       return config.settings?.timezone || DEFAULT_TIMEZONE;

@@ -28,7 +28,7 @@ In `vito.config.json`:
 
 Or per-job (when scheduling):
 ```bash
-node src/skills/builtin/scheduler/index.js schedule \
+node skills/builtin/scheduler/index.js schedule \
   --name "london-report" \
   --schedule "0 9 * * 1-5" \
   --timezone "Europe/London" \
@@ -39,13 +39,13 @@ node src/skills/builtin/scheduler/index.js schedule \
 
 Primary/default method: edit `user/vito.config.json` directly under `cron.jobs`.
 
-The older CLI script at `src/skills/builtin/scheduler/index.js` talks to the dashboard cron API on `localhost:3030`, but this deployment keeps that API locked down and it should be expected to return `401 Unauthorized`. Do **not** use the API CLI as the normal path. Treat direct JSON edits as the supported path. The config is hot-reloaded, so no restart is usually needed.
+The older CLI script at `skills/builtin/scheduler/index.js` talks to the dashboard cron API on `localhost:3030`, but this deployment keeps that API locked down and it should be expected to return `401 Unauthorized`. Do **not** use the API CLI as the normal path. Treat direct JSON edits as the supported path. The config is hot-reloaded, so no restart is usually needed.
 
 Legacy API CLI, only if explicitly needed in an unlocked/dev environment:
 
 ### Schedule a job
 ```bash
-node src/skills/builtin/scheduler/index.js schedule \
+node skills/builtin/scheduler/index.js schedule \
   --name "morning-standup" \
   --schedule "0 9 * * 1-5" \
   --prompt "Give me a motivational quote to start the day"
@@ -59,7 +59,7 @@ Optional flags:
 
 ### One-time jobs with ISO dates
 ```bash
-node src/skills/builtin/scheduler/index.js schedule \
+node skills/builtin/scheduler/index.js schedule \
   --name "reminder" \
   --schedule "2026-04-06T09:45:00" \
   --prompt "Check your email for the presale code!"
@@ -76,12 +76,12 @@ ISO dates are interpreted in the job's effective timezone (job > global > defaul
 
 ### Cancel a job
 ```bash
-node src/skills/builtin/scheduler/index.js cancel --name "morning-standup"
+node skills/builtin/scheduler/index.js cancel --name "morning-standup"
 ```
 
 ### List all jobs
 ```bash
-node src/skills/builtin/scheduler/index.js list
+node skills/builtin/scheduler/index.js list
 ```
 
 ## Example Output

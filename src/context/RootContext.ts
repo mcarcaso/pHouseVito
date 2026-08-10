@@ -52,7 +52,7 @@ export function RootContext(args: RootContextArgs): Context {
     userDir: () => args.userDir,
     projectDir: () => args.projectDir ?? process.cwd(),
     skillsDir: () => args.skillsDir,
-    builtinSkillsDir: () => args.builtinSkillsDir ?? resolve(process.cwd(), "src", "skills", "builtin"),
+    builtinSkillsDir: () => args.builtinSkillsDir ?? resolve(process.cwd(), "skills", "builtin"),
     logsDir: () => args.logsDir ?? resolve(process.cwd(), "logs"),
     secretsPath: () => args.secretsPath ?? join(args.userDir, "secrets.json"),
     piAuthPath: () => args.piAuthPath ?? resolve(homedir(), ".pi", "agent", "auth.json"),

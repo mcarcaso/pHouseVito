@@ -20,7 +20,6 @@ export function runAppsCommand(args: string[], projectRoot: string): number {
   }
   const scriptPath = resolve(
     projectRoot,
-    "src",
     "skills",
     "builtin",
     "apps",

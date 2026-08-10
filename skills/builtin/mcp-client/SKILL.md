@@ -43,10 +43,10 @@ Secrets are resolved from `process.env` first, then `user/secrets.json`. Never h
 ## Commands
 
 ```bash
-node src/skills/builtin/mcp-client/mcp-client.mjs list <skill-md-or-url-or-dir>
-node src/skills/builtin/mcp-client/mcp-client.mjs call <skill-md-or-url-or-dir> <tool_name> '<json_args>'
-node src/skills/builtin/mcp-client/mcp-client.mjs batch <skill-md-or-url-or-dir> '<json_steps>'
-node src/skills/builtin/mcp-client/mcp-client.mjs schema <skill-md-or-url-or-dir> <tool_name>
+node skills/builtin/mcp-client/mcp-client.mjs list <skill-md-or-url-or-dir>
+node skills/builtin/mcp-client/mcp-client.mjs call <skill-md-or-url-or-dir> <tool_name> '<json_args>'
+node skills/builtin/mcp-client/mcp-client.mjs batch <skill-md-or-url-or-dir> '<json_steps>'
+node skills/builtin/mcp-client/mcp-client.mjs schema <skill-md-or-url-or-dir> <tool_name>
 ```
 
 Aliases:
@@ -59,25 +59,25 @@ Aliases:
 Discover tools from a skill with an `mcp:` block:
 
 ```bash
-node src/skills/builtin/mcp-client/mcp-client.mjs list user/skills/tavily/SKILL.md
+node skills/builtin/mcp-client/mcp-client.mjs list user/skills/tavily/SKILL.md
 ```
 
 Call a discovered tool:
 
 ```bash
-node src/skills/builtin/mcp-client/mcp-client.mjs call user/skills/tavily/SKILL.md tavily_search '{"query":"Forrest Frank Nashville GEODIS Park tickets","max_results":5}'
+node skills/builtin/mcp-client/mcp-client.mjs call user/skills/tavily/SKILL.md tavily_search '{"query":"Forrest Frank Nashville GEODIS Park tickets","max_results":5}'
 ```
 
 Call multiple tools over one MCP connection/session — useful for browser MCP servers where state matters:
 
 ```bash
-node src/skills/builtin/mcp-client/mcp-client.mjs batch user/skills/playwright/SKILL.md '[{"tool":"browser_navigate","args":{"url":"https://example.com"}},{"tool":"browser_snapshot","args":{}}]'
+node skills/builtin/mcp-client/mcp-client.mjs batch user/skills/playwright/SKILL.md '[{"tool":"browser_navigate","args":{"url":"https://example.com"}},{"tool":"browser_snapshot","args":{}}]'
 ```
 
 Use a raw remote MCP URL directly:
 
 ```bash
-node src/skills/builtin/mcp-client/mcp-client.mjs list 'https://mcp.example.com/mcp?apiKey=${API_KEY}'
+node skills/builtin/mcp-client/mcp-client.mjs list 'https://mcp.example.com/mcp?apiKey=${API_KEY}'
 ```
 
 ## Output

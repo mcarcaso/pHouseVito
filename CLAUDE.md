@@ -92,9 +92,9 @@ Shared output-handler contracts and cross-channel decorators live under `src/out
 
 Decorators wrap the long-lived `PiSessionRuntime` through the focused `PiRuntime` execution interface: `ProxyPiRuntime` is the base for `TracingPiRuntime`, `PersistencePiRuntime`, `RelayPiRuntime`, and `TypingPiRuntime`. The decorator chain order matters: tracing (uses the context-scoped `TraceStore` and `TraceEventStore` to write append-only `.jsonl` traces into `logs/`, capped at 50MB) → persistence (writes user/assistant/tool rows into SQLite; never deletes — `/new` only archives) → relay (delivers to the channel's `OutputHandler` per `streamMode`) → typing. Lifecycle operations stay on the undecorated `PiSessionRuntime`, which the orchestrator owns.
 
-### Skills (`src/skills/`)
+### Skills (`skills/builtin/` and `user/skills/`)
 
-`SkillStore` is the skill persistence/discovery boundary. Its current `FileSkillStore` scans `user/skills/` and `src/skills/builtin/` for Zod-validated `SKILL.md` frontmatter (`name`, `description`), optionally includes skill files, and applies user-overrides-built-in resolution. Built-in skills are read-only through the store. The agent calls skills via the Skill tool exposed by pi-coding-agent — they're not pre-listed in the system prompt.
+`SkillStore` is the skill persistence/discovery boundary. Its current `FileSkillStore` scans `user/skills/` and `skills/builtin/` for Zod-validated `SKILL.md` frontmatter (`name`, `description`), optionally includes skill files, and applies user-overrides-built-in resolution. Built-in skills are read-only through the store. The agent calls skills via the Skill tool exposed by pi-coding-agent — they're not pre-listed in the system prompt.
 
 ### Database
 

@@ -47,13 +47,13 @@ Use this skill when you need to:
 ## Discover Tools
 
 ```bash
-node src/skills/builtin/mcp-client/mcp-client.mjs list src/skills/builtin/playwright/SKILL.md
+node skills/builtin/mcp-client/mcp-client.mjs list skills/builtin/playwright/SKILL.md
 ```
 
 Inspect a tool:
 
 ```bash
-node src/skills/builtin/mcp-client/mcp-client.mjs schema src/skills/builtin/playwright/SKILL.md browser_navigate
+node skills/builtin/mcp-client/mcp-client.mjs schema skills/builtin/playwright/SKILL.md browser_navigate
 ```
 
 ## One-Shot Calls
@@ -61,7 +61,7 @@ node src/skills/builtin/mcp-client/mcp-client.mjs schema src/skills/builtin/play
 Navigation returns page metadata and a snapshot:
 
 ```bash
-node src/skills/builtin/mcp-client/mcp-client.mjs call src/skills/builtin/playwright/SKILL.md browser_navigate '{"url":"https://example.com"}'
+node skills/builtin/mcp-client/mcp-client.mjs call skills/builtin/playwright/SKILL.md browser_navigate '{"url":"https://example.com"}'
 ```
 
 ## Multi-Step Browser Sessions
@@ -69,7 +69,7 @@ node src/skills/builtin/mcp-client/mcp-client.mjs call src/skills/builtin/playwr
 Use `batch` when page state matters. It keeps one MCP browser connection alive for all steps.
 
 ```bash
-node src/skills/builtin/mcp-client/mcp-client.mjs batch src/skills/builtin/playwright/SKILL.md '[
+node skills/builtin/mcp-client/mcp-client.mjs batch skills/builtin/playwright/SKILL.md '[
   {"tool":"browser_navigate","args":{"url":"https://example.com"}},
   {"tool":"browser_snapshot","args":{}},
   {"tool":"browser_take_screenshot","args":{"filename":"example.png","fullPage":true}}

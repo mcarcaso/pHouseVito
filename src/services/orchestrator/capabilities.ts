@@ -19,7 +19,7 @@ User profile and personalization:
 
 Skills:
 - The Skill tool lists and runs skills from user/skills/ and the built-in set.
-- To create a new skill, write to user/skills/<name>/SKILL.md (frontmatter: name, description). Never put new skills in src/skills/builtin/ — that's reserved.
+- To create a new skill, write to user/skills/<name>/SKILL.md (frontmatter: name, description). Never put new skills in skills/builtin/ — that's reserved.
 
 Apps, drive, and scheduling:
 - apps skill — create and deploy web apps under the user's configured domain.

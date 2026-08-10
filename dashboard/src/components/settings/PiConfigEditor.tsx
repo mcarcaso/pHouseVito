@@ -10,32 +10,24 @@ import {
   useSubmitProviderPrompt,
 } from "../../hooks/useProviders";
 import { errorMessage } from "../../lib/api-client";
+import { OPENROUTER_PROVIDER_OPTIONS, THINKING_LEVEL_OPTIONS } from "./settings-values";
 
 interface PiConfigEditorProps {
   config: VitoConfig;
   onSave: (updates: Partial<VitoConfig>) => Promise<void>;
 }
 
-const THINKING_LEVELS = [
-  { id: "off", label: "Off" },
-  { id: "low", label: "Low" },
-  { id: "medium", label: "Medium" },
-  { id: "high", label: "High" },
-] as const;
+const THINKING_LEVELS = THINKING_LEVEL_OPTIONS.map(({ value, label }) => ({
+  id: value,
+  label,
+}));
 
 type ThinkingLevel = (typeof THINKING_LEVELS)[number]["id"];
 
-const OPENROUTER_PROVIDER_ROUTES = [
-  { id: "", label: "Auto" },
-  { id: "deepinfra", label: "DeepInfra" },
-  { id: "groq", label: "Groq" },
-  { id: "fireworks", label: "Fireworks" },
-  { id: "together", label: "Together" },
-  { id: "novita", label: "Novita" },
-  { id: "siliconflow", label: "SiliconFlow" },
-  { id: "hyperbolic", label: "Hyperbolic" },
-  { id: "lambda", label: "Lambda" },
-];
+const OPENROUTER_PROVIDER_ROUTES = OPENROUTER_PROVIDER_OPTIONS.map(({ value, label }) => ({
+  id: value,
+  label,
+}));
 
 const selectClass =
   "w-full sm:w-64 bg-neutral-950 border border-neutral-700 rounded-md px-3 py-2 text-neutral-200 text-sm focus:outline-none focus:border-blue-600 transition-colors cursor-pointer appearance-none bg-[url('data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20width%3D%2210%22%20height%3D%2210%22%20viewBox%3D%220%200%2012%2012%22%3E%3Cpath%20fill%3D%22%23666%22%20d%3D%22M6%208L1%203h10z%22%2F%3E%3C%2Fsvg%3E')] bg-no-repeat bg-[right_0.75rem_center] pr-8";

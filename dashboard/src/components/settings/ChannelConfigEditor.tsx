@@ -1,54 +1,21 @@
 import { useState } from "react";
 import type { ChannelConfig, VitoConfig, Settings } from "../../utils/settingsResolution";
 import { countActiveSettingOverrides, getEffectiveSettings } from "../../utils/settingsResolution";
-import SettingRow, { renderSegmented, renderToggle, renderTextarea } from "./SettingRow";
-import { channelConfigComponents, CHANNEL_ICONS } from "./channels";
+import { channelConfigComponents, CHANNEL_ICONS, type ChannelIdField } from "./channels";
+import ScopedSettingsFields from "./ScopedSettingsFields";
+import PiSettingsOverrideFields from "./PiSettingsOverrideFields";
+import {
+  removeSettingsValue,
+  setSettingsValue,
+  type SettingsPath,
+  type SettingsUpdate,
+} from "./settings-values";
 
 interface ChannelConfigEditorProps {
   name: string;
   channelConfig: ChannelConfig;
   config: VitoConfig;
   onSave: (updates: Partial<VitoConfig>) => Promise<void>;
-}
-
-const STREAM_MODES = [
-  { value: "stream", label: "Stream" },
-  { value: "bundled", label: "Bundled" },
-  { value: "final", label: "Final" },
-];
-
-function setNestedValue(target: Record<string, any>, path: string, value: any) {
-  const parts = path.split(".");
-  let cursor: Record<string, any> = target;
-  for (let i = 0; i < parts.length - 1; i++) {
-    const key = parts[i];
-    cursor[key] = { ...(cursor[key] || {}) };
-    cursor = cursor[key];
-  }
-  cursor[parts[parts.length - 1]] = value;
-}
-
-function deleteNestedValue(target: Record<string, any>, path: string) {
-  const parts = path.split(".");
-  const stack: Array<{ parent: Record<string, any>; key: string }> = [];
-  let cursor: Record<string, any> | undefined = target;
-
-  for (let i = 0; i < parts.length - 1; i++) {
-    const key = parts[i];
-    if (!cursor?.[key] || typeof cursor[key] !== "object") return;
-    stack.push({ parent: cursor, key });
-    cursor = cursor[key];
-  }
-
-  if (!cursor) return;
-  delete cursor[parts[parts.length - 1]];
-
-  for (let i = stack.length - 1; i >= 0; i--) {
-    const { parent, key } = stack[i];
-    if (parent[key] && typeof parent[key] === "object" && Object.keys(parent[key]).length === 0) {
-      delete parent[key];
-    }
-  }
 }
 
 export default function ChannelConfigEditor({
@@ -69,10 +36,12 @@ export default function ChannelConfigEditor({
   const channelSettings = channelConfig.settings || {};
   const activeOverrideCount = countActiveSettingOverrides(channelSettings);
 
-  const updateChannelField = async (key: string, value: any) => {
-    const updatedChannel = { ...channelConfig, [key]: value };
+  const updateChannelField = async (
+    update: { key: "enabled"; value: boolean } | { key: ChannelIdField; value: string[] },
+  ) => {
+    const updatedChannel = { ...channelConfig, [update.key]: update.value };
     await onSave({ channels: { ...config.channels, [name]: updatedChannel } });
-    if (key === "enabled") setNeedsRestart(true);
+    if (update.key === "enabled") setNeedsRestart(true);
   };
 
   const saveChannelSettings = async (newSettings: Settings) => {
@@ -80,15 +49,12 @@ export default function ChannelConfigEditor({
     await onSave({ channels: { ...config.channels, [name]: updatedChannel } });
   };
 
-  const updateChannelSetting = async (field: string, value: any) => {
-    const newSettings: Settings = structuredClone(channelSettings);
-    setNestedValue(newSettings as any, field, value);
-    await saveChannelSettings(newSettings);
+  const updateChannelSetting = async (update: SettingsUpdate) => {
+    await saveChannelSettings(setSettingsValue(channelSettings, update));
   };
 
-  const resetChannelSetting = async (field: string) => {
-    const newSettings: Settings = structuredClone(channelSettings);
-    deleteNestedValue(newSettings as any, field);
+  const resetChannelSetting = async (path: SettingsPath) => {
+    const newSettings = removeSettingsValue(channelSettings, path);
     // Clean up: if settings is now empty, remove the key
     const updatedChannel = { ...channelConfig };
     if (Object.keys(newSettings).length === 0) {
@@ -99,27 +65,38 @@ export default function ChannelConfigEditor({
     await onSave({ channels: { ...config.channels, [name]: updatedChannel } });
   };
 
-  const addId = (field: string) => {
+  const removeAllSettingOverrides = async () => {
+    const updatedChannel = { ...channelConfig };
+    delete updatedChannel.settings;
+    await onSave({ channels: { ...config.channels, [name]: updatedChannel } });
+  };
+
+  const addId = (field: ChannelIdField) => {
     const inputKey = `${name}-${field}`;
-    const val = newId[inputKey]?.trim();
-    if (!val) return;
-    const current: string[] = (channelConfig as any)[field] || [];
-    if (current.includes(val)) return;
-    updateChannelField(field, [...current, val]);
+    const value = newId[inputKey]?.trim();
+    if (!value) return;
+    const current = channelConfig[field] || [];
+    if (current.includes(value)) return;
+    updateChannelField({ key: field, value: [...current, value] });
     setNewId({ ...newId, [inputKey]: "" });
   };
 
-  const removeId = (field: string, id: string) => {
-    const current: string[] = (channelConfig as any)[field] || [];
-    updateChannelField(
-      field,
-      current.filter((c: string) => c !== id),
-    );
+  const removeId = (field: ChannelIdField, id: string) => {
+    const current = channelConfig[field] || [];
+    updateChannelField({
+      key: field,
+      value: current.filter((candidate) => candidate !== id),
+    });
   };
 
   // Shared ID list renderer — passed to channel-specific components
-  const renderIdList = (field: string, label: string, emptyText: string, placeholder: string) => {
-    const ids: string[] = (channelConfig as any)[field] || [];
+  const renderIdList = (
+    field: ChannelIdField,
+    label: string,
+    emptyText: string,
+    placeholder: string,
+  ) => {
+    const ids = channelConfig[field] || [];
     const inputKey = `${name}-${field}`;
     return (
       <div className="flex flex-col gap-2 py-2.5 border-t border-neutral-800/50">
@@ -216,7 +193,9 @@ export default function ChannelConfigEditor({
                 <input
                   type="checkbox"
                   checked={channelConfig.enabled}
-                  onChange={(e) => updateChannelField("enabled", e.target.checked)}
+                  onChange={(event) =>
+                    updateChannelField({ key: "enabled", value: event.target.checked })
+                  }
                   className="opacity-0 w-0 h-0 peer"
                 />
                 <span className="absolute inset-0 bg-neutral-700 rounded-full transition-colors peer-checked:bg-blue-800" />
@@ -237,64 +216,45 @@ export default function ChannelConfigEditor({
 
           {/* ── Setting Overrides (cascading) — ALWAYS shown for all channels ── */}
           <div className="mt-6">
-            <h5 className="text-xs font-semibold text-neutral-500 uppercase tracking-wider mb-3">
-              Setting Overrides
-            </h5>
+            <div className="flex items-center justify-between mb-3">
+              <h5 className="text-xs font-semibold text-neutral-500 uppercase tracking-wider">
+                Setting Overrides
+              </h5>
+              {activeOverrideCount > 0 && (
+                <button
+                  onClick={() => void removeAllSettingOverrides()}
+                  className="text-xs text-red-400 hover:text-red-300 transition-colors"
+                >
+                  Reset all
+                </button>
+              )}
+            </div>
             <p className="text-xs text-neutral-600 mb-3">
               Override global defaults for this channel. Unset values inherit from Global.
             </p>
 
-            <SettingRow
-              label="Stream Mode"
-              inheritedValue={globalResolved.streamMode}
+            <ScopedSettingsFields
+              inherited={globalResolved}
               inheritedFrom="global"
-              overrideValue={channelSettings.streamMode}
-              onOverride={(val) => updateChannelSetting("streamMode", val)}
-              onReset={() => resetChannelSetting("streamMode")}
-              renderInput={(val, onChange) => renderSegmented(val, onChange, STREAM_MODES)}
+              overrides={channelSettings}
+              instructionScope="channel"
+              onUpdate={(update) => void updateChannelSetting(update)}
+              onReset={(path) => void resetChannelSetting(path)}
             />
 
-            <SettingRow
-              label="Require @Mention"
-              inheritedValue={globalResolved.requireMention !== false}
+            <div className="mt-5 mb-2 flex items-center justify-between">
+              <span className="text-xs font-semibold text-neutral-500 uppercase tracking-wide">
+                Pi Coding Agent Config
+              </span>
+              <span className="text-xs text-neutral-600">Per-channel Pi overrides</span>
+            </div>
+            <PiSettingsOverrideFields
+              inherited={globalResolved["pi-coding-agent"]}
+              fallback={config.settings?.["pi-coding-agent"]}
               inheritedFrom="global"
-              overrideValue={channelSettings.requireMention}
-              onOverride={(val) => updateChannelSetting("requireMention", val)}
-              onReset={() => resetChannelSetting("requireMention")}
-              renderInput={(val, onChange) => renderToggle(val, onChange)}
-              formatValue={(v) => (v ? "On" : "Off")}
-            />
-
-            <SettingRow
-              label="Trace Message Updates"
-              hint="Log raw message_update events in traces (noisy)"
-              inheritedValue={globalResolved.traceMessageUpdates ?? false}
-              inheritedFrom="global"
-              overrideValue={channelSettings.traceMessageUpdates}
-              onOverride={(val) => updateChannelSetting("traceMessageUpdates", val)}
-              onReset={() => resetChannelSetting("traceMessageUpdates")}
-              renderInput={(val, onChange) => renderToggle(val, onChange)}
-              formatValue={(v) => (v ? "On" : "Off")}
-            />
-
-            <SettingRow
-              label="Custom Instructions"
-              hint="Additional system prompt instructions for this channel"
-              inheritedValue={globalResolved.customInstructions || ""}
-              inheritedFrom="global"
-              overrideValue={channelSettings.customInstructions}
-              onOverride={(val) => updateChannelSetting("customInstructions", val)}
-              onReset={() => resetChannelSetting("customInstructions")}
-              renderInput={(val, onChange) =>
-                renderTextarea(val, onChange, {
-                  placeholder: "Custom instructions for this channel...",
-                })
-              }
-              formatValue={(v) =>
-                v
-                  ? `"${(v as string).slice(0, 50)}${(v as string).length > 50 ? "..." : ""}"`
-                  : "(none)"
-              }
+              overrides={channelSettings["pi-coding-agent"]}
+              onUpdate={(update) => void updateChannelSetting(update)}
+              onReset={(path) => void resetChannelSetting(path)}
             />
           </div>
         </div>

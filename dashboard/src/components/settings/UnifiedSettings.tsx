@@ -1,4 +1,3 @@
-import { useState } from "react";
 import { useSearchParams } from "react-router-dom";
 import { useConfig } from "../../hooks/useConfig";
 import GlobalSettings from "./GlobalSettings";
@@ -9,13 +8,13 @@ type Tab = "global" | "channels" | "sessions";
 
 export default function UnifiedSettings() {
   const [searchParams, setSearchParams] = useSearchParams();
-  const initialTab = (searchParams.get("tab") as Tab) || "global";
+  const requestedTab = searchParams.get("tab");
+  const tab: Tab =
+    requestedTab === "channels" || requestedTab === "sessions" ? requestedTab : "global";
   const initialSessionId = searchParams.get("session") || undefined;
-  const [tab, setTab] = useState<Tab>(initialTab);
   const { config, loading, error, saving, saved, updateConfig } = useConfig();
 
   const switchTab = (newTab: Tab) => {
-    setTab(newTab);
     const params = new URLSearchParams();
     if (newTab !== "global") params.set("tab", newTab);
     setSearchParams(params, { replace: true });

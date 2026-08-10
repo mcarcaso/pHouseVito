@@ -1,79 +1,21 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import type { VitoConfig, Settings } from "../../utils/settingsResolution";
-import { useModels, useProviders } from "../../hooks/useProviders";
 import { useSessions } from "../../hooks/useSessions";
 import { countActiveSettingOverrides, getEffectiveSettings } from "../../utils/settingsResolution";
-import SettingRow, {
-  renderSelect,
-  renderSegmented,
-  renderToggle,
-  renderTextarea,
-} from "./SettingRow";
+import ScopedSettingsFields from "./ScopedSettingsFields";
+import PiSettingsOverrideFields from "./PiSettingsOverrideFields";
+import {
+  removeSettingsValue,
+  setSettingsValue,
+  type SettingsPath,
+  type SettingsUpdate,
+} from "./settings-values";
 
 interface SessionSettingsPanelProps {
   config: VitoConfig;
   onSave: (updates: Partial<VitoConfig>) => Promise<void>;
   /** Pre-select a session (from query params) */
   initialSessionId?: string;
-}
-
-const STREAM_MODES = [
-  { value: "stream", label: "Stream" },
-  { value: "bundled", label: "Bundled" },
-  { value: "final", label: "Final" },
-];
-
-const THINKING_LEVELS = [
-  { value: "off", label: "Off" },
-  { value: "low", label: "Low" },
-  { value: "medium", label: "Medium" },
-  { value: "high", label: "High" },
-];
-
-const OPENROUTER_PROVIDER_ROUTES = [
-  { value: "", label: "Auto" },
-  { value: "deepinfra", label: "DeepInfra" },
-  { value: "groq", label: "Groq" },
-  { value: "fireworks", label: "Fireworks" },
-  { value: "together", label: "Together" },
-  { value: "novita", label: "Novita" },
-  { value: "siliconflow", label: "SiliconFlow" },
-  { value: "hyperbolic", label: "Hyperbolic" },
-  { value: "lambda", label: "Lambda" },
-];
-
-function setNestedValue(target: Record<string, any>, path: string, value: any) {
-  const parts = path.split(".");
-  let cursor: Record<string, any> = target;
-  for (let i = 0; i < parts.length - 1; i++) {
-    const key = parts[i];
-    cursor[key] = { ...(cursor[key] || {}) };
-    cursor = cursor[key];
-  }
-  cursor[parts[parts.length - 1]] = value;
-}
-
-function deleteNestedValue(target: Record<string, any>, path: string) {
-  const parts = path.split(".");
-  const stack: Array<{ parent: Record<string, any>; key: string }> = [];
-  let cursor: Record<string, any> | undefined = target;
-
-  for (let i = 0; i < parts.length - 1; i++) {
-    const key = parts[i];
-    if (!cursor?.[key] || typeof cursor[key] !== "object") return;
-    stack.push({ parent: cursor, key });
-    cursor = cursor[key];
-  }
-
-  if (!cursor) return;
-  delete cursor[parts[parts.length - 1]];
-
-  for (let i = stack.length - 1; i >= 0; i--) {
-    const { parent, key } = stack[i];
-    if (parent[key] && typeof parent[key] === "object" && Object.keys(parent[key]).length === 0) {
-      delete parent[key];
-    }
-  }
 }
 
 export default function SessionSettingsPanel({
@@ -84,38 +26,12 @@ export default function SessionSettingsPanel({
   const sessionsQuery = useSessions();
   const sessions = sessionsQuery.data ?? [];
   const loading = sessionsQuery.isPending;
-  const providersQuery = useProviders();
-  const providers = providersQuery.data?.providers ?? [];
-  const authStatus = providersQuery.data?.authStatus ?? {};
   const [expandedSession, setExpandedSession] = useState<string | null>(initialSessionId || null);
   const [showPicker, setShowPicker] = useState(false);
 
-  const expandedOverrides = expandedSession ? config.sessions?.[expandedSession] : undefined;
-  const expandedInherited = expandedSession
-    ? getEffectiveSettings(config, expandedSession.split(":")[0])
-    : undefined;
-  const expandedProvider =
-    expandedOverrides?.["pi-coding-agent"]?.model?.provider ??
-    expandedInherited?.["pi-coding-agent"]?.model?.provider ??
-    config.settings?.["pi-coding-agent"]?.model?.provider ??
-    "";
-  const modelsQuery = useModels(expandedProvider);
-
-  const availableProviders = providers.filter((p) => authStatus[p]?.hasAuth === true);
-  const popularProviders = [
-    "anthropic",
-    "openai",
-    "openai-codex",
-    "google",
-    "xai",
-    "groq",
-    "mistral",
-    "openrouter",
-  ];
-  const sortedProviders = [
-    ...popularProviders.filter((p) => availableProviders.includes(p)),
-    ...availableProviders.filter((p) => !popularProviders.includes(p)).sort(),
-  ];
+  useEffect(() => {
+    if (initialSessionId) setExpandedSession(initialSessionId);
+  }, [initialSessionId]);
 
   const sessionOverrides = config.sessions || {};
   const sessionIds = Object.keys(sessionOverrides);
@@ -132,17 +48,14 @@ export default function SessionSettingsPanel({
     await onSave({ sessions: { ...sessionOverrides, [sessionId]: newSettings } });
   };
 
-  const updateSessionSetting = async (sessionId: string, field: string, value: any) => {
+  const updateSessionSetting = async (sessionId: string, update: SettingsUpdate) => {
     const current = sessionOverrides[sessionId] || {};
-    const newSettings: Settings = structuredClone(current);
-    setNestedValue(newSettings as any, field, value);
-    await saveSessionSettings(sessionId, newSettings);
+    await saveSessionSettings(sessionId, setSettingsValue(current, update));
   };
 
-  const resetSessionSetting = async (sessionId: string, field: string) => {
+  const resetSessionSetting = async (sessionId: string, path: SettingsPath) => {
     const current = sessionOverrides[sessionId] || {};
-    const newSettings: Settings = structuredClone(current);
-    deleteNestedValue(newSettings as any, field);
+    const newSettings = removeSettingsValue(current, path);
 
     // If empty, remove session entry entirely
     if (Object.keys(newSettings).length === 0) {
@@ -155,13 +68,6 @@ export default function SessionSettingsPanel({
   };
 
   const removeAllOverrides = async (sessionId: string) => {
-    // Send null values so backend removes the keys
-    const current = sessionOverrides[sessionId] || {};
-    const nullConfig: any = {};
-    for (const key of Object.keys(current)) {
-      nullConfig[key] = null;
-    }
-    // Update local config
     const newSessions = { ...sessionOverrides };
     delete newSessions[sessionId];
     await onSave({ sessions: newSessions });
@@ -184,108 +90,6 @@ export default function SessionSettingsPanel({
     if (hours < 24) return `${hours}h ago`;
     const days = Math.floor(hours / 24);
     return `${days}d ago`;
-  };
-
-  // Get the global Pi config as the inherited value for session overrides.
-  const getGlobalPiConfig = () =>
-    config.settings?.["pi-coding-agent"] || { model: { provider: "", name: "" } };
-
-  const renderPiCodingAgentOverrides = (
-    sessionId: string,
-    overrides: Settings,
-    inherited: ReturnType<typeof getEffectiveSettings>,
-    inheritFrom: "global" | "channel",
-  ) => {
-    const globalPi = getGlobalPiConfig();
-    const piOverrides = overrides["pi-coding-agent"] || {};
-    // inherited['pi-coding-agent'] might be empty object, so check for model property
-    const rawInherited = inherited["pi-coding-agent"];
-    const piInherited = rawInherited && rawInherited.model ? rawInherited : globalPi;
-
-    // Provider from override or inherited
-    const currentProvider = piOverrides.model?.provider || piInherited.model?.provider || "";
-
-    const providerOptions = sortedProviders.map((p) => ({ value: p, label: p }));
-    const modelOptions =
-      currentProvider === expandedProvider
-        ? (modelsQuery.data ?? []).map((model) => ({ value: model.id, label: model.id }))
-        : [];
-
-    return (
-      <>
-        <SettingRow
-          label="Provider"
-          inheritedValue={piInherited.model?.provider || "(not set)"}
-          inheritedFrom={inheritFrom}
-          overrideValue={piOverrides.model?.provider}
-          onOverride={(val) => {
-            updateSessionSetting(sessionId, "pi-coding-agent.model", { provider: val, name: "" });
-          }}
-          onReset={() => resetSessionSetting(sessionId, "pi-coding-agent.model")}
-          renderInput={(val, onChange) =>
-            renderSelect(val, onChange, [{ value: "", label: "Select..." }, ...providerOptions])
-          }
-        />
-
-        <SettingRow
-          label="Model"
-          inheritedValue={piInherited.model?.name || "(not set)"}
-          inheritedFrom={inheritFrom}
-          overrideValue={piOverrides.model?.name}
-          onOverride={(val) => {
-            const provider = piOverrides.model?.provider || piInherited.model?.provider || "";
-            updateSessionSetting(sessionId, "pi-coding-agent.model", { provider, name: val });
-          }}
-          onReset={() => {
-            // Keep provider if set, just reset model name
-            if (piOverrides.model?.provider) {
-              updateSessionSetting(sessionId, "pi-coding-agent.model", {
-                provider: piOverrides.model.provider,
-                name: "",
-              });
-            } else {
-              resetSessionSetting(sessionId, "pi-coding-agent.model");
-            }
-          }}
-          renderInput={(val, onChange) =>
-            modelsQuery.isFetching && expandedProvider === currentProvider ? (
-              <span className="text-xs text-neutral-500">Loading...</span>
-            ) : (
-              renderSelect(val, onChange, [{ value: "", label: "Select..." }, ...modelOptions])
-            )
-          }
-        />
-
-        {currentProvider === "openrouter" && (
-          <SettingRow
-            label="OR Route"
-            inheritedValue={piInherited.openRouterProvider || "Auto"}
-            inheritedFrom={inheritFrom}
-            overrideValue={piOverrides.openRouterProvider}
-            onOverride={(val) => {
-              if (val) updateSessionSetting(sessionId, "pi-coding-agent.openRouterProvider", val);
-              else resetSessionSetting(sessionId, "pi-coding-agent.openRouterProvider");
-            }}
-            onReset={() => resetSessionSetting(sessionId, "pi-coding-agent.openRouterProvider")}
-            renderInput={(val, onChange) =>
-              renderSelect(val || "", onChange, OPENROUTER_PROVIDER_ROUTES)
-            }
-          />
-        )}
-
-        <SettingRow
-          label="Thinking Level"
-          inheritedValue={piInherited.thinkingLevel || "off"}
-          inheritedFrom={inheritFrom}
-          overrideValue={piOverrides.thinkingLevel}
-          onOverride={(val) =>
-            updateSessionSetting(sessionId, "pi-coding-agent.thinkingLevel", val)
-          }
-          onReset={() => resetSessionSetting(sessionId, "pi-coding-agent.thinkingLevel")}
-          renderInput={(val, onChange) => renderSelect(val, onChange, THINKING_LEVELS)}
-        />
-      </>
-    );
   };
 
   const renderSessionOverrides = (sessionId: string) => {
@@ -311,57 +115,13 @@ export default function SessionSettingsPanel({
         </div>
 
         <div className="mt-3">
-          <SettingRow
-            label="Stream Mode"
-            inheritedValue={inherited.streamMode}
+          <ScopedSettingsFields
+            inherited={inherited}
             inheritedFrom={inheritFrom}
-            overrideValue={overrides.streamMode}
-            onOverride={(val) => updateSessionSetting(sessionId, "streamMode", val)}
-            onReset={() => resetSessionSetting(sessionId, "streamMode")}
-            renderInput={(val, onChange) => renderSegmented(val, onChange, STREAM_MODES)}
-          />
-
-          <SettingRow
-            label="Require @Mention"
-            inheritedValue={inherited.requireMention !== false}
-            inheritedFrom={inheritFrom}
-            overrideValue={overrides.requireMention}
-            onOverride={(val) => updateSessionSetting(sessionId, "requireMention", val)}
-            onReset={() => resetSessionSetting(sessionId, "requireMention")}
-            renderInput={(val, onChange) => renderToggle(val, onChange)}
-            formatValue={(v) => (v ? "On" : "Off")}
-          />
-
-          <SettingRow
-            label="Trace Message Updates"
-            hint="Log raw message_update events in traces (noisy)"
-            inheritedValue={inherited.traceMessageUpdates ?? false}
-            inheritedFrom={inheritFrom}
-            overrideValue={overrides.traceMessageUpdates}
-            onOverride={(val) => updateSessionSetting(sessionId, "traceMessageUpdates", val)}
-            onReset={() => resetSessionSetting(sessionId, "traceMessageUpdates")}
-            renderInput={(val, onChange) => renderToggle(val, onChange)}
-            formatValue={(v) => (v ? "On" : "Off")}
-          />
-
-          <SettingRow
-            label="Custom Instructions"
-            hint="Additional system prompt instructions for this session"
-            inheritedValue={inherited.customInstructions || ""}
-            inheritedFrom={inheritFrom}
-            overrideValue={overrides.customInstructions}
-            onOverride={(val) => updateSessionSetting(sessionId, "customInstructions", val)}
-            onReset={() => resetSessionSetting(sessionId, "customInstructions")}
-            renderInput={(val, onChange) =>
-              renderTextarea(val, onChange, {
-                placeholder: "Custom instructions for this session...",
-              })
-            }
-            formatValue={(v) =>
-              v
-                ? `"${(v as string).slice(0, 50)}${(v as string).length > 50 ? "..." : ""}"`
-                : "(none)"
-            }
+            overrides={overrides}
+            instructionScope="session"
+            onUpdate={(update) => void updateSessionSetting(sessionId, update)}
+            onReset={(path) => void resetSessionSetting(sessionId, path)}
           />
 
           {/* Pi Coding Agent Overrides */}
@@ -374,7 +134,14 @@ export default function SessionSettingsPanel({
             </div>
           </div>
 
-          {renderPiCodingAgentOverrides(sessionId, overrides, inherited, inheritFrom)}
+          <PiSettingsOverrideFields
+            inherited={inherited["pi-coding-agent"]}
+            fallback={config.settings?.["pi-coding-agent"]}
+            inheritedFrom={inheritFrom}
+            overrides={overrides["pi-coding-agent"]}
+            onUpdate={(update) => void updateSessionSetting(sessionId, update)}
+            onReset={(path) => void resetSessionSetting(sessionId, path)}
+          />
         </div>
       </div>
     );

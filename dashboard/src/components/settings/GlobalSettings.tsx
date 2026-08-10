@@ -1,20 +1,21 @@
 import { useState, useEffect, useRef } from "react";
 
-import { type VitoConfig } from "../../utils/settingsResolution";
+import { type Settings, type VitoConfig } from "../../utils/settingsResolution";
 import { useModels, useProviders } from "../../hooks/useProviders";
 import { renderSelect, renderSegmented, renderSliderToggle } from "./SettingRow";
 import PiConfigEditor from "./PiConfigEditor";
+import {
+  STREAM_MODE_OPTIONS,
+  removeSettingsValue,
+  setSettingsValue,
+  type SettingsUpdate,
+} from "./settings-values";
+import { streamModeSchema } from "../../../../src/shared/schemas/vito-config";
 
 interface GlobalSettingsProps {
   config: VitoConfig;
   onSave: (updates: Partial<VitoConfig>) => Promise<void>;
 }
-
-const STREAM_MODES = [
-  { value: "stream", label: "Stream" },
-  { value: "bundled", label: "Bundled" },
-  { value: "final", label: "Final" },
-];
 
 const TIMEZONE_OPTIONS = [
   { value: "America/Toronto", label: "America/Toronto" },
@@ -123,16 +124,13 @@ export default function GlobalSettings({ config, onSave }: GlobalSettingsProps) 
   const saveChunkModel = async () => {
     if (!chunkProvider || !chunkModelName) return;
     setSavingChunkModel(true);
-    await updateSetting("memory.chunkContextualizerModel", {
-      provider: chunkProvider,
-      name: chunkModelName,
-    });
+    await updateContextualizerModel({ provider: chunkProvider, name: chunkModelName });
     setEditingChunkModel(false);
     setSavingChunkModel(false);
   };
 
   const resetChunkModel = async () => {
-    await updateSetting("memory.chunkContextualizerModel", undefined);
+    await updateContextualizerModel(undefined);
   };
 
   // Auto-resize textarea
@@ -143,23 +141,29 @@ export default function GlobalSettings({ config, onSave }: GlobalSettingsProps) 
     }
   }, [localCustomInstructions]);
 
-  const updateSetting = async (field: string, value: any) => {
-    const newSettings: any = { ...settings };
-    const parts = field.split(".");
-    if (parts.length === 1) {
-      newSettings[parts[0]] = value;
-    } else if (parts.length === 2) {
-      newSettings[parts[0]] = { ...newSettings[parts[0]], [parts[1]]: value };
-    } else {
-      // 3+ levels (e.g., pi-coding-agent.model.provider)
-      let cursor = newSettings;
-      for (let i = 0; i < parts.length - 1; i++) {
-        cursor[parts[i]] = { ...cursor[parts[i]] };
-        cursor = cursor[parts[i]];
-      }
-      cursor[parts[parts.length - 1]] = value;
-    }
-    await onSave({ settings: newSettings });
+  const updateSetting = async (update: SettingsUpdate) => {
+    await onSave({ settings: setSettingsValue(settings, update) });
+  };
+
+  const updateContextualizerModel = async (
+    model: NonNullable<NonNullable<Settings["memory"]>["chunkContextualizerModel"]> | undefined,
+  ) => {
+    const memory = { ...settings.memory };
+    if (model) memory.chunkContextualizerModel = model;
+    else delete memory.chunkContextualizerModel;
+    await onSave({ settings: { ...settings, memory } });
+  };
+
+  const updateTimezone = async (timezone: string) => {
+    await onSave({ settings: { ...settings, timezone } });
+  };
+
+  const updateCustomInstructions = async (value: string) => {
+    await onSave({
+      settings: value
+        ? setSettingsValue(settings, { path: "customInstructions", value })
+        : removeSettingsValue(settings, "customInstructions"),
+    });
   };
 
   const updateBotName = async (name: string) => {
@@ -211,7 +215,7 @@ export default function GlobalSettings({ config, onSave }: GlobalSettingsProps) 
           <label className="text-sm text-neutral-400 sm:w-48 sm:shrink-0">Timezone</label>
           {renderSelect(
             settings.timezone || "America/Toronto",
-            (val) => updateSetting("timezone", val),
+            (value) => void updateTimezone(typeof value === "string" ? value : "America/Toronto"),
             TIMEZONE_OPTIONS,
           )}
           <span className="text-xs text-neutral-600">Used for scheduler + datetime in prompts</span>
@@ -330,8 +334,9 @@ export default function GlobalSettings({ config, onSave }: GlobalSettingsProps) 
           <label className="text-sm text-neutral-400 sm:w-48 sm:shrink-0">Stream Mode</label>
           {renderSegmented(
             settings.streamMode || "stream",
-            (val) => updateSetting("streamMode", val),
-            STREAM_MODES,
+            (value) =>
+              void updateSetting({ path: "streamMode", value: streamModeSchema.parse(value) }),
+            [...STREAM_MODE_OPTIONS],
           )}
         </div>
 
@@ -339,14 +344,14 @@ export default function GlobalSettings({ config, onSave }: GlobalSettingsProps) 
           title="Require @Mention"
           description="Only respond when @mentioned (Discord/Telegram guild channels)"
           value={settings.requireMention !== false}
-          onChange={(val) => updateSetting("requireMention", val)}
+          onChange={(value) => void updateSetting({ path: "requireMention", value })}
         />
 
         <ToggleRow
           title="Trace Message Updates"
           description="Log raw message_update events in traces (noisy)"
           value={settings.traceMessageUpdates ?? false}
-          onChange={(val) => updateSetting("traceMessageUpdates", val)}
+          onChange={(value) => void updateSetting({ path: "traceMessageUpdates", value })}
         />
       </section>
 
@@ -364,7 +369,7 @@ export default function GlobalSettings({ config, onSave }: GlobalSettingsProps) 
           onChange={(e) => setLocalCustomInstructions(e.target.value)}
           onBlur={() => {
             if (localCustomInstructions !== (settings.customInstructions || "")) {
-              updateSetting("customInstructions", localCustomInstructions || undefined);
+              updateCustomInstructions(localCustomInstructions);
             }
           }}
           placeholder="e.g., Always respond in Italian when discussing food..."

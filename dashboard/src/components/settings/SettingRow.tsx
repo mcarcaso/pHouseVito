@@ -1,23 +1,23 @@
 import { useState, useEffect, useRef, type ReactNode } from "react";
 import type { InheritSource } from "../../utils/settingsResolution";
 
-interface SettingRowProps {
+interface SettingRowProps<Value> {
   label: string;
   hint?: string;
   /** The inherited value from the parent level */
-  inheritedValue?: any;
+  inheritedValue?: Value;
   /** Which level the inherited value comes from */
   inheritedFrom?: InheritSource;
   /** Current override value at this level (undefined = not overridden) */
-  overrideValue?: any;
+  overrideValue?: Value;
   /** Called when user wants to add an override */
-  onOverride: (value: any) => void;
+  onOverride: (value: Value) => void;
   /** Called when user wants to remove the override */
   onReset: () => void;
   /** Render the editable input for this setting */
-  renderInput: (value: any, onChange: (val: any) => void) => ReactNode;
+  renderInput: (value: Value, onChange: (value: Value) => void) => ReactNode;
   /** Format a value for display (when showing inherited) */
-  formatValue?: (value: any) => string;
+  formatValue?: (value: Value | undefined) => string;
 }
 
 const SOURCE_LABELS: Record<InheritSource, string> = {
@@ -27,7 +27,7 @@ const SOURCE_LABELS: Record<InheritSource, string> = {
   session: "Session",
 };
 
-export default function SettingRow({
+export default function SettingRow<Value>({
   label,
   hint,
   inheritedValue,
@@ -37,7 +37,7 @@ export default function SettingRow({
   onReset,
   renderInput,
   formatValue = (v) => String(v ?? "—"),
-}: SettingRowProps) {
+}: SettingRowProps<Value>) {
   const isOverridden = overrideValue !== undefined;
 
   return (
@@ -68,7 +68,9 @@ export default function SettingRow({
               from {SOURCE_LABELS[inheritedFrom]}
             </span>
             <button
-              onClick={() => onOverride(inheritedValue)}
+              onClick={() => {
+                if (inheritedValue !== undefined) onOverride(inheritedValue);
+              }}
               className="text-xs text-blue-400 hover:text-blue-300 transition-colors whitespace-nowrap shrink-0"
             >
               Override
@@ -87,13 +89,20 @@ const selectClass =
 const inputClass =
   "bg-neutral-950 border border-neutral-700 rounded-md px-3 py-1.5 text-neutral-200 text-sm focus:outline-none focus:border-blue-600 transition-colors";
 
-export function renderSelect(
-  value: any,
-  onChange: (val: any) => void,
-  options: { value: string; label: string }[],
+export function renderSelect<Value extends string>(
+  value: unknown,
+  onChange: (value: Value) => void,
+  options: readonly { value: Value; label: string }[],
 ) {
   return (
-    <select className={selectClass} value={value || ""} onChange={(e) => onChange(e.target.value)}>
+    <select
+      className={selectClass}
+      value={typeof value === "string" ? value : ""}
+      onChange={(event) => {
+        const selected = options.find((option) => option.value === event.target.value);
+        if (selected) onChange(selected.value);
+      }}
+    >
       {options.map((o) => (
         <option key={o.value} value={o.value}>
           {o.label}
@@ -111,8 +120,8 @@ function NumberField({
   step,
   className,
 }: {
-  value: any;
-  onChange: (val: number) => void;
+  value: number | undefined;
+  onChange: (value: number) => void;
   min?: number;
   max?: number;
   step?: number;
@@ -151,8 +160,8 @@ function NumberField({
 }
 
 export function renderNumberInput(
-  value: any,
-  onChange: (val: any) => void,
+  value: number | undefined,
+  onChange: (value: number) => void,
   opts?: { min?: number; max?: number; step?: number },
 ) {
   return (
@@ -167,10 +176,10 @@ export function renderNumberInput(
   );
 }
 
-export function renderSegmented(
-  value: any,
-  onChange: (val: any) => void,
-  options: { value: string; label: string }[],
+export function renderSegmented<Value extends string>(
+  value: unknown,
+  onChange: (value: Value) => void,
+  options: readonly { value: Value; label: string }[],
 ) {
   return (
     <div className="inline-flex rounded-md overflow-hidden border border-neutral-700 shrink-0 w-fit">

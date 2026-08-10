@@ -3,12 +3,14 @@ import type { ChannelConfig, VitoConfig } from "../../../utils/settingsResolutio
 import DiscordConfig from "./DiscordConfig";
 import TelegramConfig from "./TelegramConfig";
 
+export type ChannelIdField = "allowedChatIds" | "allowedGuildIds" | "allowedChannelIds";
+
 export interface ChannelSpecificConfigProps {
   channelConfig: ChannelConfig;
   config: VitoConfig;
   onSave: (updates: Partial<VitoConfig>) => Promise<void>;
   renderIdList: (
-    field: string,
+    field: ChannelIdField,
     label: string,
     emptyText: string,
     placeholder: string,

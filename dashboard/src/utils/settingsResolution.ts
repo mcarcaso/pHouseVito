@@ -44,7 +44,7 @@ export function getInheritSource(
   config: VitoConfig,
   channelName?: string,
   sessionKey?: string,
-): { value: any; source: InheritSource } {
+): { value: unknown; source: InheritSource } {
   // Check session level
   if (sessionKey) {
     const sessionVal = getNestedValue(config.sessions?.[sessionKey], field);
@@ -67,13 +67,11 @@ export function getInheritSource(
 }
 
 /** Get a nested value from an object using dot notation (e.g., "pi-coding-agent.model") */
-function getNestedValue(obj: any, path: string): any {
-  if (!obj) return undefined;
-  const parts = path.split(".");
-  let current = obj;
-  for (const part of parts) {
-    if (current === undefined || current === null) return undefined;
-    current = current[part];
+function getNestedValue(value: unknown, path: string): unknown {
+  let current = value;
+  for (const part of path.split(".")) {
+    if (!current || typeof current !== "object" || Array.isArray(current)) return undefined;
+    current = Reflect.get(current, part);
   }
   return current;
 }
@@ -85,6 +83,7 @@ export const CASCADING_FIELDS = [
   { key: "traceMessageUpdates", label: "Trace Message Updates", type: "boolean" as const },
   { key: "customInstructions", label: "Custom Instructions", type: "text" as const },
   { key: "pi-coding-agent.model", label: "Pi Model", type: "select" as const },
+  { key: "pi-coding-agent.openRouterProvider", label: "OpenRouter Route", type: "select" as const },
   { key: "pi-coding-agent.thinkingLevel", label: "Thinking Level", type: "select" as const },
 ] as const;
 

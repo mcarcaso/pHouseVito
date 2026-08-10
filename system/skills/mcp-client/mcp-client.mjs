@@ -21,9 +21,9 @@ function usage(exitCode = 1) {
   mcp-client batch <skill-md-or-url-or-dir> '<json_steps>'
 
 Examples:
-  node skills/builtin/mcp-client/mcp-client.mjs list user/skills/tavily/SKILL.md
-  node skills/builtin/mcp-client/mcp-client.mjs call user/skills/tavily/SKILL.md tavily_search '{"query":"news"}'
-  node skills/builtin/mcp-client/mcp-client.mjs batch user/skills/playwright/SKILL.md '[{"tool":"browser_navigate","args":{"url":"https://example.com"}},{"tool":"browser_snapshot","args":{}}]'
+  node system/skills/mcp-client/mcp-client.mjs list user/skills/tavily/SKILL.md
+  node system/skills/mcp-client/mcp-client.mjs call user/skills/tavily/SKILL.md tavily_search '{"query":"news"}'
+  node system/skills/mcp-client/mcp-client.mjs batch user/skills/playwright/SKILL.md '[{"tool":"browser_navigate","args":{"url":"https://example.com"}},{"tool":"browser_snapshot","args":{}}]'
 `);
   process.exit(exitCode);
 }

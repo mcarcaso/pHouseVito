@@ -23,26 +23,26 @@ function writeSkill(
 
 function createHarness() {
   const root = mkdtempSync(join(tmpdir(), "vito-skill-store-"));
-  const builtinSkillsDir = join(root, "builtin");
+  const systemSkillsDir = join(root, "builtin");
   const skillsDir = join(root, "user");
-  mkdirSync(builtinSkillsDir, { recursive: true });
+  mkdirSync(systemSkillsDir, { recursive: true });
   mkdirSync(skillsDir, { recursive: true });
   const x = new ObjectContext({
-    builtinSkillsDir: () => builtinSkillsDir,
+    systemSkillsDir: () => systemSkillsDir,
     skillsDir: () => skillsDir,
   });
-  return { root, builtinSkillsDir, skillsDir, x, store: new FileSkillStore() };
+  return { root, systemSkillsDir, skillsDir, x, store: new FileSkillStore() };
 }
 
 describe("FileSkillStore", () => {
   it("merges built-in and user skills with user overrides", () => {
-    const { root, builtinSkillsDir, skillsDir, x, store } = createHarness();
+    const { root, systemSkillsDir, skillsDir, x, store } = createHarness();
     try {
-      writeSkill(builtinSkillsDir, "shared", {
+      writeSkill(systemSkillsDir, "shared", {
         name: "shared",
         description: "Built-in version",
       });
-      writeSkill(builtinSkillsDir, "builtin-only", {
+      writeSkill(systemSkillsDir, "builtin-only", {
         description: "Built-in only",
       });
       writeSkill(skillsDir, "shared", {
@@ -110,9 +110,9 @@ describe("FileSkillStore", () => {
   });
 
   it("rejects mutations of built-in skills", () => {
-    const { root, builtinSkillsDir, x, store } = createHarness();
+    const { root, systemSkillsDir, x, store } = createHarness();
     try {
-      writeSkill(builtinSkillsDir, "protected", {
+      writeSkill(systemSkillsDir, "protected", {
         name: "protected",
         description: "Read only",
       });

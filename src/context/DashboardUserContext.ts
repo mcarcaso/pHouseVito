@@ -17,7 +17,7 @@ const dashboardDependencyKeys = [
   "userDir",
   "projectDir",
   "skillsDir",
-  "builtinSkillsDir",
+  "systemSkillsDir",
   "logsDir",
   "secretsPath",
   "piAuthPath",

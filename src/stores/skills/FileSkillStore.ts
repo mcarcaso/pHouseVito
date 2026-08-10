@@ -12,7 +12,7 @@ import { basename, dirname, join, relative, resolve } from "node:path";
 import matter from "gray-matter";
 import { z } from "zod";
 import type { Context } from "../../context/Context.js";
-import { xBuiltinSkillsDir, xSkillsDir } from "../../lib/x.js";
+import { xSystemSkillsDir, xSkillsDir } from "../../lib/x.js";
 import {
   StorePermissionDeniedError,
   StoreRecordNotFoundError,
@@ -120,7 +120,7 @@ export class FileSkillStore implements SkillStore {
     if (args.names?.length === 0 || args.sources?.length === 0) return [];
     const merged = new Map<string, Skill>();
     for (const skill of scanDirectory(
-      xBuiltinSkillsDir(x),
+      xSystemSkillsDir(x),
       "builtin",
       args.includeFiles === true
     )) {

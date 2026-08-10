@@ -25,7 +25,7 @@
 - **Backend `src/` changes:** Build and restart Vito.
 - **Dashboard changes:** Rebuild `dashboard/`; Express serves the rebuilt static files without requiring a Vito restart. Refresh the browser.
 - **`user/vito.config.json`:** Watched and reloaded without a process restart. Model/runtime settings reconcile lazily, but settings that alter the system prompt require a fresh harness session.
-- **`user/SOUL.md`, `SYSTEM.md`, and skills:** Read when a harness session is created. Use `/new` when the current conversation must pick up changes; a process restart is not required.
+- **`user/SOUL.md`, `system/SYSTEM.md`, and skills:** Read when a harness session is created. Use `/new` when the current conversation must pick up changes; a process restart is not required.
 - **PM2 apps:** Managed independently and discovered dynamically; creating or restarting an app does not require restarting Vito.
 
 ## Cardinal Rules
@@ -94,7 +94,7 @@ Settings cascade: **Global** → **Channel** → **Session** (most specific wins
 
 **When told to change a setting, write it to `user/vito.config.json` directly, preserve unrelated values, and run `npm run validate:config` afterward.**
 
-`SYSTEM.md` is project-owned system policy, not user configuration. The dashboard exposes it read-only. Direct edits are an advanced maintenance operation and should not be used as a substitute for config, soul, profile, or skill changes.
+`system/SYSTEM.md` is project-owned system policy, not user configuration. The dashboard exposes it read-only. Direct edits are an advanced maintenance operation and should not be used as a substitute for config, soul, profile, or skill changes.
 
 ## Sessions
 

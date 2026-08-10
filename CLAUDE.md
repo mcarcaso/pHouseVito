@@ -48,7 +48,7 @@ Channel emits `InboundEvent` → `Orchestrator.handleInbound()` → per-session 
 4. Resolve effective settings via `getEffectiveSettings()` (Global → Channel → Session deep merge).
 5. Get-or-create the long-lived `PiSessionRuntime` for `vitoSession.id`. If a `.fresh` marker exists in the session dir (written by `/new`), force a brand-new pi `SessionManager.create()` instead of `continueRecent()`.
 6. Wrap with the decorator chain: `withTracing` → `withPersistence` → `withRelay` → `withTyping`.
-7. Build system prompt (only on first run for this pi session — afterwards ignored): personality (SOUL.md) + `<system>` block (SYSTEM.md, hot-loaded from project root) + capabilities map + channel prompt + custom instructions + session identity. Datetime, author, channel, and the user message itself go into the per-turn user message instead, so the prefix stays cacheable.
+7. Build system prompt (only on first run for this pi session — afterwards ignored): personality (SOUL.md) + `<system>` block (system/SYSTEM.md, hot-loaded from the project-owned system directory) + capabilities map + channel prompt + custom instructions + session identity. Datetime, author, channel, and the user message itself go into the per-turn user message instead, so the prefix stays cacheable.
 8. Run with abort signal.
 9. Background: `maybeEmbedNewChunks()` chunks new messages (2–4K chars) and embeds them into `user/embeddings.db` via OpenRouter (`text-embedding-3-small`, falling back to native OpenAI).
 
@@ -92,9 +92,9 @@ Shared output-handler contracts and cross-channel decorators live under `src/out
 
 Decorators wrap the long-lived `PiSessionRuntime` through the focused `PiRuntime` execution interface: `ProxyPiRuntime` is the base for `TracingPiRuntime`, `PersistencePiRuntime`, `RelayPiRuntime`, and `TypingPiRuntime`. The decorator chain order matters: tracing (uses the context-scoped `TraceStore` and `TraceEventStore` to write append-only `.jsonl` traces into `logs/`, capped at 50MB) → persistence (writes user/assistant/tool rows into SQLite; never deletes — `/new` only archives) → relay (delivers to the channel's `OutputHandler` per `streamMode`) → typing. Lifecycle operations stay on the undecorated `PiSessionRuntime`, which the orchestrator owns.
 
-### Skills (`skills/builtin/` and `user/skills/`)
+### Skills (`system/skills/` and `user/skills/`)
 
-`SkillStore` is the skill persistence/discovery boundary. Its current `FileSkillStore` scans `user/skills/` and `skills/builtin/` for Zod-validated `SKILL.md` frontmatter (`name`, `description`), optionally includes skill files, and applies user-overrides-built-in resolution. Built-in skills are read-only through the store. The agent calls skills via the Skill tool exposed by pi-coding-agent — they're not pre-listed in the system prompt.
+`SkillStore` is the skill persistence/discovery boundary. Its current `FileSkillStore` scans `user/skills/` and `system/skills/` for Zod-validated `SKILL.md` frontmatter (`name`, `description`), optionally includes skill files, and applies user-overrides-built-in resolution. Built-in skills are read-only through the store. The agent calls skills via the Skill tool exposed by pi-coding-agent — they're not pre-listed in the system prompt.
 
 ### Database
 
@@ -115,7 +115,7 @@ Separate `user/embeddings.db` holds chunk vectors + FTS5 index used by `semantic
 
 - `user/vito.config.json` — `bot`, `settings` (including global `pi-coding-agent` configuration), `channels[]`, `sessions{}` (per-key overrides), and `cron.jobs[]`. Legacy `harnesses["pi-coding-agent"]` input is migrated into settings during validation. Configuration is hot-reloaded with a 3s debounce; live Pi sessions get their model re-synced on reload.
 - `user/secrets.json` — flat key-value managed through the context-scoped `SecretService` and injected into `process.env` at boot. Writes are atomic and empty values clear the corresponding environment variable. Provider keys: `ANTHROPIC_API_KEY`, `OPENAI_API_KEY`, `GOOGLE_GENERATIVE_AI_API_KEY`, `GROQ_API_KEY`, `XAI_API_KEY`, `OPENROUTER_API_KEY`. Channel tokens: `TELEGRAM_BOT_TOKEN`, `DISCORD_BOT_TOKEN`. Other: `DASHBOARD_PASSWORD_HASH` (managed by the dashboard, don't hand-edit), `BLAND_WEBHOOK_SECRET`.
-- `SYSTEM.md` (project root, **not** under `user/`) — hot-loaded into every system prompt.
+- `system/SYSTEM.md` (**not** under `user/`) — hot-loaded into every system prompt.
 - `user/SOUL.md` — agent personality, hot-loaded.
 - `user/profile.md` — agent-managed user profile. Read by the agent on first response in a session.
 - `~/.pi/agent/auth.json` — pi's OAuth tokens (separate from `secrets.json`).

@@ -94,7 +94,7 @@ export class FileVitoService implements VitoService {
   }
 
   getSystemPrompt(x: Context): string {
-    const systemPromptPath = join(xProjectDir(x), "SYSTEM.md");
+    const systemPromptPath = join(xProjectDir(x), "system", "SYSTEM.md");
     if (!existsSync(systemPromptPath)) return "";
     return readFileSync(systemPromptPath, "utf-8");
   }

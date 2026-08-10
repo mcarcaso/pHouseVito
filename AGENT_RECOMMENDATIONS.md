@@ -15,7 +15,7 @@ Add to the agent's user config under `cron.jobs` and adjust `session` / `timezon
   "timezone": "America/Toronto",
   "session": "dashboard:default",
   "oneTime": false,
-  "prompt": "Run profile discovery for the last 24 hours. Read skills/builtin/profile/SKILL.md and user/profile.md first. Use the adaptive raw-vs-semantic process from the profile skill. Apply only high-confidence durable profile updates directly to user/profile.md. Keep the final report short: applied edits, skipped/uncertain candidates, or no changes. Do not create extra report files unless needed."
+  "prompt": "Run profile discovery for the last 24 hours. Read system/skills/profile/SKILL.md and user/profile.md first. Use the adaptive raw-vs-semantic process from the profile skill. Apply only high-confidence durable profile updates directly to user/profile.md. Keep the final report short: applied edits, skipped/uncertain candidates, or no changes. Do not create extra report files unless needed."
 }
 ```
 
@@ -60,19 +60,19 @@ Use Tavily through the built-in `mcp-client` skill.
 ## Discover Tools
 
 \`\`\`bash
-node skills/builtin/mcp-client/mcp-client.mjs list user/skills/web-search/SKILL.md
+node system/skills/mcp-client/mcp-client.mjs list user/skills/web-search/SKILL.md
 \`\`\`
 
 ## Search
 
 \`\`\`bash
-node skills/builtin/mcp-client/mcp-client.mjs call user/skills/web-search/SKILL.md tavily_search '{"query":"your search query","max_results":5,"search_depth":"basic"}'
+node system/skills/mcp-client/mcp-client.mjs call user/skills/web-search/SKILL.md tavily_search '{"query":"your search query","max_results":5,"search_depth":"basic"}'
 \`\`\`
 
 ## Extract URL
 
 \`\`\`bash
-node skills/builtin/mcp-client/mcp-client.mjs call user/skills/web-search/SKILL.md tavily_extract '{"urls":["https://example.com"],"extract_depth":"basic","format":"markdown"}'
+node system/skills/mcp-client/mcp-client.mjs call user/skills/web-search/SKILL.md tavily_extract '{"urls":["https://example.com"],"extract_depth":"basic","format":"markdown"}'
 \`\`\`
 
 ## Notes

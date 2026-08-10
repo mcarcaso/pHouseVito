@@ -251,7 +251,7 @@ Conditional cron output is wrapped with `NoReplyOutputHandler`, which suppresses
 
 ### System Instructions
 
-Project-owned instructions live in `SYSTEM.md`. `VitoService` reads them and the orchestrator's pure prompt builder combines them with personality, commands, capabilities, and session context.
+Project-owned instructions live in `system/SYSTEM.md`. `VitoService` reads them and the orchestrator's pure prompt builder combines them with personality, commands, capabilities, and session context.
 - **Cardinal rules** (verify facts, investigate before assuming)
 - **Investigation-first behavior**
 

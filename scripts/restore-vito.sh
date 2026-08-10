@@ -211,7 +211,7 @@ if [[ "$BACKUP_MODE" == "upgrade" ]]; then
   fi
 else
   log "Moving current runtime files to $SAFETY_DIR/runtime"
-  for relative_path in user data logs SYSTEM.md .env vito.log; do
+  for relative_path in user data logs system .env vito.log; do
     current_path="$PROJECT_ROOT/$relative_path"
     if [[ -e "$current_path" || -L "$current_path" ]]; then
       mv "$current_path" "$SAFETY_DIR/runtime/"
@@ -226,6 +226,13 @@ fi
 
 log "Restoring runtime files"
 cp -a "$BACKUP_ROOT/runtime/." "$PROJECT_ROOT/"
+
+# Archives created before system-owned assets were grouped stored SYSTEM.md at
+# the project root. Preserve that policy content at its current location.
+if [[ -f "$PROJECT_ROOT/SYSTEM.md" && ! -f "$BACKUP_ROOT/runtime/system/SYSTEM.md" ]]; then
+  mkdir -p "$PROJECT_ROOT/system"
+  mv "$PROJECT_ROOT/SYSTEM.md" "$PROJECT_ROOT/system/SYSTEM.md"
+fi
 
 BACKUP_PI_AUTH="$BACKUP_ROOT/home/.pi/agent/auth.json"
 if [[ -f "$BACKUP_PI_AUTH" ]]; then

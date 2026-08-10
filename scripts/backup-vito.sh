@@ -16,7 +16,7 @@ Usage: scripts/backup-vito.sh [options]
 
 Creates a private, compressed upgrade backup containing:
   - top-level files in user/ (databases, config, secrets, profile, and prompts)
-  - user/pi-sessions/, user/skills/, data/, SYSTEM.md, and .env when present
+  - user/pi-sessions/, user/skills/, data/, system/, and .env when present
   - ~/.pi/agent/auth.json when present
   - a Git bundle, committed source snapshot, working-tree snapshot, and patches
   - Git, Node, npm, platform, and PM2 metadata
@@ -141,7 +141,7 @@ fi
 
 if $FULL_BACKUP; then
   log "Copying complete runtime data"
-  for relative_path in user data logs SYSTEM.md .env vito.log; do
+  for relative_path in user data logs system .env vito.log; do
     source_path="$PROJECT_ROOT/$relative_path"
     if [[ -e "$source_path" || -L "$source_path" ]]; then
       cp -a "$source_path" "$BACKUP_ROOT/runtime/"
@@ -163,7 +163,7 @@ else
       fi
     done
   fi
-  for relative_path in data SYSTEM.md .env; do
+  for relative_path in data system .env; do
     source_path="$PROJECT_ROOT/$relative_path"
     if [[ -e "$source_path" || -L "$source_path" ]]; then
       cp -a "$source_path" "$BACKUP_ROOT/runtime/"

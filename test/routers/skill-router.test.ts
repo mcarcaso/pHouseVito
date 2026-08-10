@@ -11,10 +11,10 @@ import { SkillRouterService } from "../../src/routers/SkillRouterService.js";
 import { FileSkillStore } from "../../src/stores/skills/FileSkillStore.js";
 
 const root = mkdtempSync(join(tmpdir(), "vito-skill-router-"));
-const builtinSkillsDir = join(root, "builtin");
+const systemSkillsDir = join(root, "builtin");
 const skillsDir = join(root, "user");
 const skillDir = join(skillsDir, "example");
-mkdirSync(builtinSkillsDir, { recursive: true });
+mkdirSync(systemSkillsDir, { recursive: true });
 mkdirSync(skillDir, { recursive: true });
 writeFileSync(
   join(skillDir, "SKILL.md"),
@@ -23,7 +23,7 @@ writeFileSync(
 writeFileSync(join(skillDir, "script.ts"), "export {};\n");
 
 const x = dashboardRouterContext({
-  builtinSkillsDir: () => builtinSkillsDir,
+  systemSkillsDir: () => systemSkillsDir,
   skillsDir: () => skillsDir,
   skillStore: () => new FileSkillStore(),
 });

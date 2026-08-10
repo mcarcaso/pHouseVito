@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, it } from "node:test";
@@ -26,9 +26,10 @@ describe("FileVitoService system content", () => {
     const service = new FileVitoService();
     try {
       assert.equal(service.getSystemPrompt(x), "");
-      writeFileSync(join(root, "SYSTEM.md"), "First version", "utf-8");
+      mkdirSync(join(root, "system"));
+      writeFileSync(join(root, "system", "SYSTEM.md"), "First version", "utf-8");
       assert.equal(service.getSystemPrompt(x), "First version");
-      writeFileSync(join(root, "SYSTEM.md"), "Direct edit", "utf-8");
+      writeFileSync(join(root, "system", "SYSTEM.md"), "Direct edit", "utf-8");
       assert.equal(service.getSystemPrompt(x), "Direct edit");
     } finally {
       rmSync(root, { recursive: true, force: true });

@@ -196,7 +196,7 @@ if [[ "$BACKUP_MODE" == "upgrade" ]]; then
     if [[ -e "$current_path" || -L "$current_path" ]]; then
       mv "$current_path" "$SAFETY_DIR/runtime/"
     fi
-  done < <(find "$BACKUP_ROOT/runtime" -mindepth 1 -maxdepth 1 ! -name user -print0)
+  done < <(find "$BACKUP_ROOT/runtime" -mindepth 1 -maxdepth 1 ! -name user ! -name system -print0)
 
   mkdir -p "$SAFETY_DIR/runtime/user"
   if [[ -d "$BACKUP_ROOT/runtime/user" ]]; then
@@ -211,12 +211,34 @@ if [[ "$BACKUP_MODE" == "upgrade" ]]; then
   fi
 else
   log "Moving current runtime files to $SAFETY_DIR/runtime"
-  for relative_path in user data logs system .env vito.log; do
+  for relative_path in user data logs .env vito.log; do
     current_path="$PROJECT_ROOT/$relative_path"
     if [[ -e "$current_path" || -L "$current_path" ]]; then
       mv "$current_path" "$SAFETY_DIR/runtime/"
     fi
   done
+fi
+
+# System-owned skills come from the checked-out code. Restore only the policy
+# files actually present in the archive so a config rollback cannot downgrade
+# bundled skills independently of code.
+if [[ -d "$BACKUP_ROOT/runtime/system" ]]; then
+  mkdir -p "$SAFETY_DIR/runtime/system" "$PROJECT_ROOT/system"
+  while IFS= read -r -d '' backup_path; do
+    entry_name="$(basename "$backup_path")"
+    current_path="$PROJECT_ROOT/system/$entry_name"
+    if [[ -e "$current_path" || -L "$current_path" ]]; then
+      mv "$current_path" "$SAFETY_DIR/runtime/system/"
+    fi
+  done < <(find "$BACKUP_ROOT/runtime/system" -mindepth 1 -maxdepth 1 -print0)
+fi
+
+# Legacy archives stored the same policy file at the project root.
+if [[ -f "$BACKUP_ROOT/runtime/SYSTEM.md" && ! -f "$BACKUP_ROOT/runtime/system/SYSTEM.md" ]]; then
+  mkdir -p "$SAFETY_DIR/runtime/system" "$PROJECT_ROOT/system"
+  if [[ -f "$PROJECT_ROOT/system/SYSTEM.md" ]]; then
+    mv "$PROJECT_ROOT/system/SYSTEM.md" "$SAFETY_DIR/runtime/system/SYSTEM.md"
+  fi
 fi
 
 CURRENT_PI_AUTH="$HOME/.pi/agent/auth.json"

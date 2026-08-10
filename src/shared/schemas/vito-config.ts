@@ -32,6 +32,13 @@ export const settingsSchema = z.object({
   }).passthrough().optional(),
 }).passthrough();
 
+type ParsedSettings = z.infer<typeof settingsSchema>;
+
+function removeLegacyHarnessSelector(settings: ParsedSettings): ParsedSettings {
+  const { harness: _legacyHarness, ...currentSettings } = settings;
+  return currentSettings;
+}
+
 export const streamModeSchema = z.enum(["stream", "bundled", "final"]);
 
 export const streamModeUpdateSchema = z.object({
@@ -130,17 +137,39 @@ export const vitoConfigSchema = z.object({
   }
 }).transform((config) => {
   const { harnesses, ...currentConfig } = config;
+  const settings = removeLegacyHarnessSelector(currentConfig.settings);
+  const channels = Object.fromEntries(
+    Object.entries(currentConfig.channels).map(([name, channel]) => [
+      name,
+      channel.settings
+        ? { ...channel, settings: removeLegacyHarnessSelector(channel.settings) }
+        : channel,
+    ]),
+  );
+  const sessions = currentConfig.sessions
+    ? Object.fromEntries(
+      Object.entries(currentConfig.sessions).map(([key, sessionSettings]) => [
+        key,
+        removeLegacyHarnessSelector(sessionSettings),
+      ]),
+    )
+    : undefined;
   const legacyPi = harnesses?.["pi-coding-agent"];
-  if (!legacyPi) return currentConfig;
   return {
     ...currentConfig,
     settings: {
-      ...currentConfig.settings,
-      "pi-coding-agent": {
-        ...legacyPi,
-        ...currentConfig.settings["pi-coding-agent"],
-      },
+      ...settings,
+      ...(legacyPi || settings["pi-coding-agent"]
+        ? {
+          "pi-coding-agent": {
+            ...legacyPi,
+            ...settings["pi-coding-agent"],
+          },
+        }
+        : {}),
     },
+    channels,
+    ...(sessions ? { sessions } : {}),
   };
 });
 

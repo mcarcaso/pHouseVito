@@ -16,6 +16,7 @@ npm run build:dashboard  # Vite build → dashboard/dist/
 npm run check            # backend/dashboard types + tests + example config validation
 npm test                 # Node test runner via tsx
 ./vito config validate   # Zod-validate user/vito.config.json
+./scripts/migrate-vito.sh # Back up and canonicalize legacy configuration
 ./vito apps list         # Stable agent/operator app-management CLI
 ./vito memory search "query"  # Search embedded conversation history
 npm run validate:config  # Compatibility alias for config validation
@@ -109,11 +110,11 @@ memories  (legacy table, no live readers/writers)
 traces    (legacy table retained for existing data; live tracing uses file-backed stores)
 ```
 
-Separate `user/embeddings.db` holds chunk vectors + FTS5 index used by `semantic-history-search`. Schema migrations live in `src/db/schema.ts` and run on startup.
+Separate `user/embeddings.db` holds chunk vectors + FTS5 index used by `semantic-history-search`. Schema migrations live in `src/lib/sqlite/database.ts` and run on startup.
 
 ### Configuration files
 
-- `user/vito.config.json` — `bot`, `settings` (including global `pi-coding-agent` configuration), `channels[]`, `sessions{}` (per-key overrides), and `cron.jobs[]`. Legacy `harnesses["pi-coding-agent"]` input is migrated into settings during validation. Configuration is hot-reloaded with a 3s debounce; live Pi sessions get their model re-synced on reload.
+- `user/vito.config.json` — `bot`, `settings` (including global `pi-coding-agent` configuration), `channels{}`, `sessions{}` (per-key overrides), and `cron.jobs[]`. Legacy `harnesses["pi-coding-agent"]` input is migrated into settings during validation. Configuration is hot-reloaded with a 3s debounce; live Pi sessions get their model re-synced on reload.
 - `user/secrets.json` — flat key-value managed through the context-scoped `SecretService` and injected into `process.env` at boot. Writes are atomic and empty values clear the corresponding environment variable. Provider keys: `ANTHROPIC_API_KEY`, `OPENAI_API_KEY`, `GOOGLE_GENERATIVE_AI_API_KEY`, `GROQ_API_KEY`, `XAI_API_KEY`, `OPENROUTER_API_KEY`. Channel tokens: `TELEGRAM_BOT_TOKEN`, `DISCORD_BOT_TOKEN`. Other: `DASHBOARD_PASSWORD_HASH` (managed by the dashboard, don't hand-edit), `BLAND_WEBHOOK_SECRET`.
 - `system/SYSTEM.md` (**not** under `user/`) — hot-loaded into every system prompt.
 - `user/SOUL.md` — agent personality, hot-loaded.

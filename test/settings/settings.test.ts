@@ -30,18 +30,24 @@ function createConfig(args: {
 describe("getEffectiveSettings", () => {
   it("migrates legacy Pi configuration into global settings", () => {
     const config = vitoConfigSchema.parse({
-      settings: {},
+      settings: { harness: "pi-coding-agent" },
       harnesses: {
         "pi-coding-agent": {
           model: { provider: "anthropic", name: "legacy-model" },
           thinkingLevel: "low",
         },
       },
-      channels: {},
+      channels: {
+        discord: { enabled: true, settings: { harness: "pi-coding-agent" } },
+      },
+      sessions: { default: { harness: "pi-coding-agent" } },
       cron: { jobs: [] },
     });
 
     assert.equal(config.settings["pi-coding-agent"]?.model?.name, "legacy-model");
+    assert.equal("harness" in config.settings, false);
+    assert.equal("harness" in (config.channels.discord.settings ?? {}), false);
+    assert.equal("harness" in (config.sessions?.default ?? {}), false);
     assert.equal("harnesses" in config, false);
   });
 

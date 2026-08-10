@@ -1,15 +1,5 @@
-import { useState, useEffect } from "react";
-
-interface ServerStatus {
-  uptime: number;
-  pid: number;
-  nodeVersion: string;
-  memoryUsage: {
-    rss: number;
-    heapTotal: number;
-    heapUsed: number;
-  };
-}
+import { useState } from "react";
+import { useRestartServer, useServerStatus } from "../hooks/useServer";
 
 function formatUptime(seconds: number): string {
   const d = Math.floor(seconds / 86400);
@@ -30,22 +20,11 @@ function formatBytes(bytes: number): string {
 }
 
 export default function Server() {
-  const [status, setStatus] = useState<ServerStatus | null>(null);
-  const [restarting, setRestarting] = useState(false);
+  const statusQuery = useServerStatus();
+  const restartServer = useRestartServer();
+  const status = statusQuery.data ?? null;
+  const restarting = restartServer.isPending;
   const [confirmRestart, setConfirmRestart] = useState(false);
-
-  const fetchStatus = () => {
-    fetch("/api/server/status")
-      .then((r) => r.json())
-      .then(setStatus)
-      .catch(() => setStatus(null));
-  };
-
-  useEffect(() => {
-    fetchStatus();
-    const interval = setInterval(fetchStatus, 5000);
-    return () => clearInterval(interval);
-  }, []);
 
   const handleRestart = async () => {
     if (!confirmRestart) {
@@ -54,34 +33,8 @@ export default function Server() {
       return;
     }
 
-    setRestarting(true);
     setConfirmRestart(false);
-
-    try {
-      await fetch("/api/server/restart", { method: "POST" });
-    } catch {
-      // Expected — server dies mid-request
-    }
-
-    // Poll until server comes back
-    const poll = setInterval(async () => {
-      try {
-        const res = await fetch("/api/server/status");
-        if (res.ok) {
-          clearInterval(poll);
-          setRestarting(false);
-          fetchStatus();
-        }
-      } catch {
-        // Still restarting
-      }
-    }, 1000);
-
-    // Stop polling after 30s
-    setTimeout(() => {
-      clearInterval(poll);
-      setRestarting(false);
-    }, 30000);
+    await restartServer.mutateAsync().catch(() => undefined);
   };
 
   return (

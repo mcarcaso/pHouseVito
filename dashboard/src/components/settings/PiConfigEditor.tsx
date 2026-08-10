@@ -1,30 +1,19 @@
-import { useState, useEffect, useRef, useCallback } from "react";
+import { useState, useEffect } from "react";
 import type { PiRuntimeConfig } from "../../../../src/shared/schemas/vito-config";
 import type { VitoConfig } from "../../utils/settingsResolution";
+import {
+  useModels,
+  useProviderLoginStatus,
+  useProviderLogout,
+  useProviders,
+  useStartProviderLogin,
+  useSubmitProviderPrompt,
+} from "../../hooks/useProviders";
+import { errorMessage } from "../../lib/api-client";
 
 interface PiConfigEditorProps {
   config: VitoConfig;
   onSave: (updates: Partial<VitoConfig>) => Promise<void>;
-}
-
-interface ModelOption {
-  id: string;
-}
-
-interface AuthStatus {
-  hasAuth: boolean;
-  authType?: "apiKey" | "oauth";
-  expiresAt?: number;
-}
-
-interface ProviderKeyInfo {
-  envVar: string;
-  description: string;
-}
-
-interface OAuthProviderInfo {
-  id: string;
-  name: string;
 }
 
 const THINKING_LEVELS = [
@@ -54,12 +43,11 @@ const selectClass =
 export default function PiConfigEditor({ config, onSave }: PiConfigEditorProps) {
   // Pi state
   const [editingPi, setEditingPi] = useState(false);
-  const [providers, setProviders] = useState<string[]>([]);
-  const [keyInfo, setKeyInfo] = useState<Record<string, ProviderKeyInfo>>({});
-  const [authStatus, setAuthStatus] = useState<Record<string, AuthStatus>>({});
-  const [oauthProviders, setOauthProviders] = useState<OAuthProviderInfo[]>([]);
-  const [models, setModels] = useState<ModelOption[]>([]);
-  const [loadingModels, setLoadingModels] = useState(false);
+  const providersQuery = useProviders();
+  const providers = providersQuery.data?.providers ?? [];
+  const keyInfo = providersQuery.data?.keyInfo ?? {};
+  const authStatus = providersQuery.data?.authStatus ?? {};
+  const oauthProviders = providersQuery.data?.oauthProviders ?? [];
   const [selectedProvider, setSelectedProvider] = useState("");
   const [selectedModel, setSelectedModel] = useState("");
   const [selectedOpenRouterProvider, setSelectedOpenRouterProvider] = useState("");
@@ -79,30 +67,13 @@ export default function PiConfigEditor({ config, onSave }: PiConfigEditorProps) 
     null,
   );
   const [promptValue, setPromptValue] = useState("");
-  const loginPollRef = useRef<ReturnType<typeof setInterval> | null>(null);
-
-  const refreshProviders = useCallback(() => {
-    return fetch("/api/models/providers")
-      .then((r) => r.json())
-      .then((data) => {
-        setProviders(data.providers || []);
-        setKeyInfo(data.keyInfo || {});
-        setAuthStatus(data.authStatus || {});
-        setOauthProviders(data.oauthProviders || []);
-      })
-      .catch(console.error);
-  }, []);
-
-  useEffect(() => {
-    refreshProviders();
-  }, [refreshProviders]);
-
-  // Cleanup polling on unmount
-  useEffect(() => {
-    return () => {
-      if (loginPollRef.current) clearInterval(loginPollRef.current);
-    };
-  }, []);
+  const modelsQuery = useModels(selectedProvider);
+  const models = modelsQuery.data ?? [];
+  const loadingModels = modelsQuery.isFetching;
+  const startLogin = useStartProviderLogin();
+  const loginStatus = useProviderLoginStatus(loggingIn);
+  const submitPrompt = useSubmitProviderPrompt();
+  const logout = useProviderLogout();
 
   // Sync from config
   useEffect(() => {
@@ -111,29 +82,38 @@ export default function PiConfigEditor({ config, onSave }: PiConfigEditorProps) 
       setSelectedProvider(piConfig.model.provider || "");
       setSelectedModel(piConfig.model.name || "");
       setSelectedOpenRouterProvider(piConfig.openRouterProvider || "");
-      if (piConfig.model.provider) loadModelsForProvider(piConfig.model.provider);
     }
     if (piConfig?.thinkingLevel) {
       setSelectedThinking(piConfig.thinkingLevel);
     }
   }, [config]);
 
-  const loadModelsForProvider = async (provider: string) => {
-    setLoadingModels(true);
-    try {
-      const res = await fetch(`/api/models/${provider}`);
-      setModels(await res.json());
-    } catch {
-      setModels([]);
+  useEffect(() => {
+    const status = loginStatus.data;
+    if (!status || !loggingIn) return;
+    if (status.status === "success") {
+      setLoggingIn(null);
+      setDeviceLogin(null);
+      setPromptLogin(null);
+      void providersQuery.refetch();
+      return;
     }
-    setLoadingModels(false);
-  };
+    if (status.status === "prompt") {
+      setPromptLogin({ providerId: loggingIn, message: status.promptMessage });
+      return;
+    }
+    if (status.status === "error") {
+      setLoginError(status.error || "Login failed");
+      setLoggingIn(null);
+      setDeviceLogin(null);
+      setPromptLogin(null);
+    }
+  }, [loginStatus.data, loggingIn, providersQuery]);
 
   const handleProviderChange = (provider: string) => {
     setSelectedProvider(provider);
     setSelectedModel("");
     if (provider !== "openrouter") setSelectedOpenRouterProvider("");
-    loadModelsForProvider(provider);
   };
 
   const handleOAuthLogin = async (providerId: string) => {
@@ -143,22 +123,13 @@ export default function PiConfigEditor({ config, onSave }: PiConfigEditorProps) 
     setPromptLogin(null);
     setPromptValue("");
     try {
-      const res = await fetch(`/api/auth/provider/${providerId}/login`, { method: "POST" });
-      const data = await res.json();
-      if (data.error) {
-        setLoginError(data.error);
-        setLoggingIn(null);
-        return;
-      }
+      const data = await startLogin.mutateAsync(providerId);
       if (data.status === "already_authenticated") {
         setLoggingIn(null);
-        refreshProviders();
+        await providersQuery.refetch();
         return;
       }
-      // Open browser OAuth URLs, or show a device code for remote-dashboard-safe auth.
-      if (data.url) {
-        window.open(data.url, "_blank");
-      }
+      if (data.status === "login_started") window.open(data.url, "_blank");
       if (data.status === "device_code_started") {
         setDeviceLogin({
           providerId,
@@ -168,34 +139,8 @@ export default function PiConfigEditor({ config, onSave }: PiConfigEditorProps) 
         });
         window.open(data.verificationUri, "_blank");
       }
-      // Poll for login completion
-      loginPollRef.current = setInterval(async () => {
-        try {
-          const statusRes = await fetch(`/api/auth/provider/${providerId}/login/status`);
-          const statusData = await statusRes.json();
-          if (statusData.status === "success") {
-            if (loginPollRef.current) clearInterval(loginPollRef.current);
-            loginPollRef.current = null;
-            setLoggingIn(null);
-            setDeviceLogin(null);
-            setPromptLogin(null);
-            refreshProviders();
-          } else if (statusData.status === "prompt") {
-            setPromptLogin({ providerId, message: statusData.promptMessage });
-          } else if (statusData.status === "error") {
-            if (loginPollRef.current) clearInterval(loginPollRef.current);
-            loginPollRef.current = null;
-            setLoginError(statusData.error || "Login failed");
-            setLoggingIn(null);
-            setDeviceLogin(null);
-            setPromptLogin(null);
-          }
-        } catch {
-          // Ignore poll errors
-        }
-      }, 2000);
-    } catch (err: any) {
-      setLoginError(err.message || "Login request failed");
+    } catch (error: unknown) {
+      setLoginError(errorMessage(error, "Login request failed"));
       setLoggingIn(null);
     }
   };
@@ -203,29 +148,19 @@ export default function PiConfigEditor({ config, onSave }: PiConfigEditorProps) 
   const submitOAuthPrompt = async (providerId: string) => {
     setLoginError(null);
     try {
-      const res = await fetch(`/api/auth/provider/${providerId}/login/prompt`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ value: promptValue }),
-      });
-      const data = await res.json();
-      if (data.error) {
-        setLoginError(data.error);
-        return;
-      }
+      await submitPrompt.mutateAsync({ providerId, value: promptValue });
       setPromptLogin(null);
       setPromptValue("");
-    } catch (err: any) {
-      setLoginError(err.message || "Failed to submit login response");
+    } catch (error: unknown) {
+      setLoginError(errorMessage(error, "Failed to submit login response"));
     }
   };
 
   const handleOAuthLogout = async (providerId: string) => {
     try {
-      await fetch(`/api/auth/provider/${providerId}/logout`, { method: "POST" });
-      refreshProviders();
-    } catch (err: any) {
-      console.error("Logout failed:", err);
+      await logout.mutateAsync(providerId);
+    } catch (error: unknown) {
+      console.error("Logout failed:", error);
     }
   };
 

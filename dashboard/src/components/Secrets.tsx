@@ -1,69 +1,36 @@
-import { useState, useEffect } from "react";
-
-interface Secret {
-  key: string;
-  value: string;
-  system?: boolean;
-  description?: string;
-}
+import { useState } from "react";
+import { useDeleteSecret, useSaveSecret, useSecrets, type Secret } from "../hooks/useSecrets";
 
 function Secrets() {
-  const [secrets, setSecrets] = useState<Secret[]>([]);
-  const [loading, setLoading] = useState(true);
+  const secretsQuery = useSecrets();
+  const saveSecret = useSaveSecret();
+  const deleteSecretMutation = useDeleteSecret();
+  const secrets = secretsQuery.data ?? [];
+  const loading = secretsQuery.isPending;
   const [newKey, setNewKey] = useState("");
   const [newValue, setNewValue] = useState("");
   const [editingKey, setEditingKey] = useState<string | null>(null);
   const [editValue, setEditValue] = useState("");
   const [revealed, setRevealed] = useState<Set<string>>(new Set());
 
-  useEffect(() => {
-    fetchSecrets();
-  }, []);
-
-  const fetchSecrets = async () => {
-    try {
-      const res = await fetch("/api/secrets");
-      const data = await res.json();
-      setSecrets(data);
-    } catch (err) {
-      console.error("Failed to fetch secrets:", err);
-    } finally {
-      setLoading(false);
-    }
-  };
-
   const addSecret = async () => {
     const key = newKey.trim();
     if (!key || !newValue) return;
-    await fetch(`/api/secrets/${encodeURIComponent(key)}`, {
-      method: "PUT",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ value: newValue }),
-    });
+    await saveSecret.mutateAsync({ key, value: newValue });
     setNewKey("");
     setNewValue("");
-    fetchSecrets();
   };
 
   const updateSecret = async (key: string) => {
-    await fetch(`/api/secrets/${encodeURIComponent(key)}`, {
-      method: "PUT",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ value: editValue }),
-    });
+    await saveSecret.mutateAsync({ key, value: editValue });
     setEditingKey(null);
     setEditValue("");
-    fetchSecrets();
   };
 
   const deleteSecret = async (key: string) => {
-    const res = await fetch(`/api/secrets/${encodeURIComponent(key)}`, {
-      method: "DELETE",
-    });
-    if (!res.ok) return;
+    await deleteSecretMutation.mutateAsync(key);
     revealed.delete(key);
     setRevealed(new Set(revealed));
-    fetchSecrets();
   };
 
   const toggleReveal = (key: string) => {

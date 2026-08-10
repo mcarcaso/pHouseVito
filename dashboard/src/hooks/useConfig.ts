@@ -1,9 +1,11 @@
-import { useState, useEffect, useCallback, useRef } from "react";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useEffect, useRef, useState } from "react";
 import {
   vitoConfigSchema,
   type VitoConfig,
   type VitoConfigPatch,
 } from "../../../src/shared/schemas/vito-config";
+import { errorMessage, jsonRequest, requestJson } from "../lib/api-client";
 
 interface UseConfigReturn {
   config: VitoConfig | null;
@@ -11,60 +13,53 @@ interface UseConfigReturn {
   error: string | null;
   saving: boolean;
   saved: boolean;
-  /** Update specific fields via deep merge and save */
   updateConfig: (updates: VitoConfigPatch) => Promise<void>;
-  /** Reload config from server */
   reload: () => Promise<void>;
 }
 
+const configQueryKey = ["config"] as const;
+
 export function useConfig(): UseConfigReturn {
-  const [config, setConfig] = useState<VitoConfig | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-  const [saving, setSaving] = useState(false);
-  const [saved, setSaved] = useState(false);
+  const queryClient = useQueryClient();
   const savedTimer = useRef<number>();
-
-  const load = useCallback(async () => {
-    try {
-      const res = await fetch("/api/config");
-      const data = vitoConfigSchema.parse(await res.json());
-      setConfig(data);
-      setError(null);
-    } catch (error: unknown) {
-      setError(error instanceof Error ? error.message : "Failed to load config");
-    } finally {
-      setLoading(false);
-    }
-  }, []);
-
-  useEffect(() => {
-    load();
-    return () => {
-      if (savedTimer.current) clearTimeout(savedTimer.current);
-    };
-  }, [load]);
-
-  const updateConfig = useCallback(async (updates: VitoConfigPatch) => {
-    setSaving(true);
-    try {
-      const res = await fetch("/api/config", {
-        method: "PUT",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(updates),
-      });
-      const updated = vitoConfigSchema.parse(await res.json());
-      setConfig(updated);
+  const [saved, setSaved] = useState(false);
+  const configQuery = useQuery({
+    queryKey: configQueryKey,
+    queryFn: () => requestJson("/api/config", vitoConfigSchema),
+  });
+  const updateMutation = useMutation({
+    mutationFn: (updates: VitoConfigPatch) =>
+      requestJson("/api/config", vitoConfigSchema, jsonRequest("PUT", updates)),
+    onSuccess: (config) => {
+      queryClient.setQueryData(configQueryKey, config);
       setSaved(true);
       if (savedTimer.current) clearTimeout(savedTimer.current);
-      savedTimer.current = window.setTimeout(() => setSaved(false), 2000);
-    } catch (error: unknown) {
-      console.error("Failed to save config:", error);
-      setError(error instanceof Error ? error.message : "Failed to save");
-    } finally {
-      setSaving(false);
-    }
-  }, []);
+      savedTimer.current = window.setTimeout(() => setSaved(false), 2_000);
+    },
+  });
 
-  return { config, loading, error, saving, saved, updateConfig, reload: load };
+  useEffect(
+    () => () => {
+      if (savedTimer.current) clearTimeout(savedTimer.current);
+    },
+    [],
+  );
+
+  return {
+    config: configQuery.data ?? null,
+    loading: configQuery.isPending,
+    error: configQuery.error
+      ? errorMessage(configQuery.error, "Failed to load config")
+      : updateMutation.error
+        ? errorMessage(updateMutation.error, "Failed to save")
+        : null,
+    saving: updateMutation.isPending,
+    saved,
+    updateConfig: async (updates) => {
+      await updateMutation.mutateAsync(updates);
+    },
+    reload: async () => {
+      await configQuery.refetch();
+    },
+  };
 }

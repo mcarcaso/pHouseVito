@@ -1,5 +1,7 @@
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import type { VitoConfig, Settings } from "../../utils/settingsResolution";
+import { useModels, useProviders } from "../../hooks/useProviders";
+import { useSessions } from "../../hooks/useSessions";
 import { countActiveSettingOverrides, getEffectiveSettings } from "../../utils/settingsResolution";
 import SettingRow, {
   renderSelect,
@@ -13,23 +15,6 @@ interface SessionSettingsPanelProps {
   onSave: (updates: Partial<VitoConfig>) => Promise<void>;
   /** Pre-select a session (from query params) */
   initialSessionId?: string;
-}
-
-interface SessionInfo {
-  id: string;
-  channel: string;
-  channel_target: string;
-  last_active_at: number;
-  alias: string | null;
-}
-
-interface ModelOption {
-  id: string;
-}
-
-interface AuthStatus {
-  hasAuth: boolean;
-  authType?: "apiKey" | "oauth";
 }
 
 const STREAM_MODES = [
@@ -96,48 +81,25 @@ export default function SessionSettingsPanel({
   onSave,
   initialSessionId,
 }: SessionSettingsPanelProps) {
-  const [sessions, setSessions] = useState<SessionInfo[]>([]);
-  const [loading, setLoading] = useState(true);
+  const sessionsQuery = useSessions();
+  const sessions = sessionsQuery.data ?? [];
+  const loading = sessionsQuery.isPending;
+  const providersQuery = useProviders();
+  const providers = providersQuery.data?.providers ?? [];
+  const authStatus = providersQuery.data?.authStatus ?? {};
   const [expandedSession, setExpandedSession] = useState<string | null>(initialSessionId || null);
   const [showPicker, setShowPicker] = useState(false);
 
-  // For pi-coding-agent model selection
-  const [providers, setProviders] = useState<string[]>([]);
-  const [authStatus, setAuthStatus] = useState<Record<string, AuthStatus>>({});
-  const [models, setModels] = useState<Record<string, ModelOption[]>>({});
-  const [loadingModels, setLoadingModels] = useState<string | null>(null);
-
-  useEffect(() => {
-    fetch("/api/sessions")
-      .then((r) => r.json())
-      .then((data) => {
-        setSessions(data);
-        setLoading(false);
-      })
-      .catch(() => setLoading(false));
-
-    // Fetch providers for pi-coding-agent overrides
-    fetch("/api/models/providers")
-      .then((r) => r.json())
-      .then((data) => {
-        setProviders(data.providers || []);
-        setAuthStatus(data.authStatus || {});
-      })
-      .catch(console.error);
-  }, []);
-
-  const loadModelsForProvider = async (provider: string) => {
-    if (models[provider]) return; // Already loaded
-    setLoadingModels(provider);
-    try {
-      const res = await fetch(`/api/models/${provider}`);
-      const data = await res.json();
-      setModels((prev) => ({ ...prev, [provider]: data }));
-    } catch {
-      setModels((prev) => ({ ...prev, [provider]: [] }));
-    }
-    setLoadingModels(null);
-  };
+  const expandedOverrides = expandedSession ? config.sessions?.[expandedSession] : undefined;
+  const expandedInherited = expandedSession
+    ? getEffectiveSettings(config, expandedSession.split(":")[0])
+    : undefined;
+  const expandedProvider =
+    expandedOverrides?.["pi-coding-agent"]?.model?.provider ??
+    expandedInherited?.["pi-coding-agent"]?.model?.provider ??
+    config.settings?.["pi-coding-agent"]?.model?.provider ??
+    "";
+  const modelsQuery = useModels(expandedProvider);
 
   const availableProviders = providers.filter((p) => authStatus[p]?.hasAuth === true);
   const popularProviders = [
@@ -244,12 +206,10 @@ export default function SessionSettingsPanel({
     const currentProvider = piOverrides.model?.provider || piInherited.model?.provider || "";
 
     const providerOptions = sortedProviders.map((p) => ({ value: p, label: p }));
-    const modelOptions = (models[currentProvider] || []).map((m) => ({ value: m.id, label: m.id }));
-
-    // Side effect: load models if needed (schedule for after render)
-    if (currentProvider && !models[currentProvider] && loadingModels !== currentProvider) {
-      setTimeout(() => loadModelsForProvider(currentProvider), 0);
-    }
+    const modelOptions =
+      currentProvider === expandedProvider
+        ? (modelsQuery.data ?? []).map((model) => ({ value: model.id, label: model.id }))
+        : [];
 
     return (
       <>
@@ -259,7 +219,6 @@ export default function SessionSettingsPanel({
           inheritedFrom={inheritFrom}
           overrideValue={piOverrides.model?.provider}
           onOverride={(val) => {
-            loadModelsForProvider(val);
             updateSessionSetting(sessionId, "pi-coding-agent.model", { provider: val, name: "" });
           }}
           onReset={() => resetSessionSetting(sessionId, "pi-coding-agent.model")}
@@ -289,7 +248,7 @@ export default function SessionSettingsPanel({
             }
           }}
           renderInput={(val, onChange) =>
-            loadingModels === currentProvider ? (
+            modelsQuery.isFetching && expandedProvider === currentProvider ? (
               <span className="text-xs text-neutral-500">Loading...</span>
             ) : (
               renderSelect(val, onChange, [{ value: "", label: "Select..." }, ...modelOptions])

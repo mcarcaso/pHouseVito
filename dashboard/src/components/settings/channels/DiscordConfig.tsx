@@ -1,5 +1,10 @@
 import { useState } from "react";
 import type { ChannelConfig, VitoConfig } from "../../../utils/settingsResolution";
+import {
+  useAutoAliasChannel,
+  useRegisterChannelCommands,
+} from "../../../hooks/useChannelManagement";
+import { errorMessage } from "../../../lib/api-client";
 
 interface DiscordConfigProps {
   channelConfig: ChannelConfig;
@@ -14,12 +19,14 @@ interface DiscordConfigProps {
 }
 
 export default function DiscordConfig({ renderIdList }: DiscordConfigProps) {
-  const [registeringCommands, setRegisteringCommands] = useState(false);
+  const registerCommands = useRegisterChannelCommands();
+  const registeringCommands = registerCommands.isPending;
   const [commandsResult, setCommandsResult] = useState<{
     success: boolean;
     message: string;
   } | null>(null);
-  const [autoAliasing, setAutoAliasing] = useState(false);
+  const autoAlias = useAutoAliasChannel();
+  const autoAliasing = autoAlias.isPending;
   const [aliasResult, setAliasResult] = useState<{ success: boolean; message: string } | null>(
     null,
   );
@@ -51,20 +58,17 @@ export default function DiscordConfig({ renderIdList }: DiscordConfigProps) {
             className="bg-green-950/40 text-green-400 border border-green-800/40 rounded-md px-3 py-1.5 text-sm cursor-pointer hover:bg-green-900/40 disabled:opacity-40"
             disabled={registeringCommands}
             onClick={async () => {
-              setRegisteringCommands(true);
               setCommandsResult(null);
               try {
-                const res = await fetch("/api/discord/register-commands", { method: "POST" });
-                const data = await res.json();
+                const data = await registerCommands.mutateAsync("discord");
                 setCommandsResult(
                   data.success
                     ? { success: true, message: `Registered ${data.count} command(s)` }
                     : { success: false, message: data.error || "Failed" },
                 );
-              } catch (err: any) {
-                setCommandsResult({ success: false, message: err.message });
+              } catch (error: unknown) {
+                setCommandsResult({ success: false, message: errorMessage(error, "Failed") });
               }
-              setRegisteringCommands(false);
               setTimeout(() => setCommandsResult(null), 5000);
             }}
           >
@@ -91,23 +95,20 @@ export default function DiscordConfig({ renderIdList }: DiscordConfigProps) {
             className="bg-purple-950/40 text-purple-400 border border-purple-800/40 rounded-md px-3 py-1.5 text-sm cursor-pointer hover:bg-purple-900/40 disabled:opacity-40"
             disabled={autoAliasing}
             onClick={async () => {
-              setAutoAliasing(true);
               setAliasResult(null);
               try {
-                const res = await fetch("/api/discord/auto-alias", { method: "POST" });
-                const data = await res.json();
+                const data = await autoAlias.mutateAsync("discord");
                 setAliasResult(
                   data.success
                     ? {
                         success: true,
-                        message: `Updated ${data.updated} session(s)${data.failed > 0 ? `, ${data.failed} failed` : ""}`,
+                        message: `Updated ${data.updated ?? 0} session(s)${(data.failed ?? 0) > 0 ? `, ${data.failed} failed` : ""}`,
                       }
                     : { success: false, message: data.error || "Failed" },
                 );
-              } catch (err: any) {
-                setAliasResult({ success: false, message: err.message });
+              } catch (error: unknown) {
+                setAliasResult({ success: false, message: errorMessage(error, "Failed") });
               }
-              setAutoAliasing(false);
               setTimeout(() => setAliasResult(null), 5000);
             }}
           >

@@ -14,40 +14,17 @@ import Traces from "./components/Traces";
 import PiSessions from "./components/PiSessions";
 import UnifiedSettings from "./components/settings/UnifiedSettings";
 import Login from "./components/Login";
-import { loadDefaults } from "./utils/defaults";
+import { useAuthStatus, useLogout } from "./hooks/useAuth";
+import { useSettingsDefaults } from "./hooks/useSettingsDefaults";
 
 function App() {
   const [menuOpen, setMenuOpen] = useState(false);
-  const [authState, setAuthState] = useState<"loading" | "authenticated" | "login" | "setup">(
-    "loading",
-  );
-  const [defaultsLoaded, setDefaultsLoaded] = useState(false);
+  const authQuery = useAuthStatus();
+  const logout = useLogout();
+  const defaultsQuery = useSettingsDefaults();
   const menuRef = useRef<HTMLDivElement>(null);
   const location = useLocation();
   const navigate = useNavigate();
-
-  // Check auth status on mount
-  useEffect(() => {
-    fetch("/api/auth/check")
-      .then((r) => r.json())
-      .then((data) => {
-        if (!data.passwordSet) setAuthState("setup");
-        else if (data.authenticated) setAuthState("authenticated");
-        else setAuthState("login");
-      })
-      .catch(() => setAuthState("authenticated")); // If check fails, allow through (offline/dev)
-  }, []);
-
-  // Load resolved settings defaults from the backend before any settings UI
-  // can render — settingsResolution.ts pulls them out via getDefaults().
-  useEffect(() => {
-    loadDefaults()
-      .then(() => setDefaultsLoaded(true))
-      .catch((err) => {
-        console.error("Failed to load settings defaults:", err);
-        setDefaultsLoaded(true); // unblock the UI; settings panels will surface the error themselves
-      });
-  }, []);
 
   // Close menu on route change (mobile only)
   useEffect(() => {
@@ -85,12 +62,21 @@ function App() {
   };
 
   const handleLogout = async () => {
-    await fetch("/api/auth/logout", { method: "POST" });
-    setAuthState("login");
+    await logout.mutateAsync();
   };
 
-  // Show loading spinner while checking auth or loading defaults
-  if (authState === "loading" || !defaultsLoaded) {
+  const authState = authQuery.error
+    ? "authenticated"
+    : authQuery.isPending
+      ? "loading"
+      : !authQuery.data.passwordSet
+        ? "setup"
+        : authQuery.data.authenticated
+          ? "authenticated"
+          : "login";
+
+  // Preserve the existing offline/dev fallback: auth/default failures do not block the UI.
+  if (authState === "loading" || defaultsQuery.isPending) {
     return (
       <div className="flex items-center justify-center min-h-screen bg-[#0a0a0a] text-neutral-400">
         Loading...
@@ -104,7 +90,7 @@ function App() {
       <Login
         mode={authState}
         onSuccess={() => {
-          setAuthState("authenticated");
+          void authQuery.refetch();
           const returnTo = new URLSearchParams(location.search).get("returnTo");
           if (returnTo && returnTo.startsWith("/")) {
             window.location.href = returnTo;

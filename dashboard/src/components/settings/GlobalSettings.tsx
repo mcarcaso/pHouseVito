@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from "react";
 
 import { type VitoConfig } from "../../utils/settingsResolution";
+import { useModels, useProviders } from "../../hooks/useProviders";
 import { renderSelect, renderSegmented, renderSliderToggle } from "./SettingRow";
 import PiConfigEditor from "./PiConfigEditor";
 
@@ -88,9 +89,11 @@ export default function GlobalSettings({ config, onSave }: GlobalSettingsProps) 
   const [editingChunkModel, setEditingChunkModel] = useState(false);
   const [chunkProvider, setChunkProvider] = useState("");
   const [chunkModelName, setChunkModelName] = useState("");
-  const [chunkProviders, setChunkProviders] = useState<string[]>([]);
-  const [chunkModels, setChunkModels] = useState<{ id: string }[]>([]);
-  const [chunkLoadingModels, setChunkLoadingModels] = useState(false);
+  const providersQuery = useProviders();
+  const modelsQuery = useModels(chunkProvider);
+  const chunkProviders = providersQuery.data?.providers ?? [];
+  const chunkModels = modelsQuery.data ?? [];
+  const chunkLoadingModels = modelsQuery.isFetching;
   const [savingChunkModel, setSavingChunkModel] = useState(false);
 
   // Sync local state when config changes externally
@@ -110,28 +113,11 @@ export default function GlobalSettings({ config, onSave }: GlobalSettingsProps) 
     const initialName = saved?.name || CHUNK_CONTEXTUALIZER_DEFAULT.name;
     setChunkProvider(initialProvider);
     setChunkModelName(initialName);
-    fetch("/api/models/providers")
-      .then((r) => r.json())
-      .then((data) => setChunkProviders(data.providers || []))
-      .catch(() => setChunkProviders([]));
-    if (initialProvider) loadChunkModels(initialProvider);
-  }, [editingChunkModel]);
-
-  const loadChunkModels = async (provider: string) => {
-    setChunkLoadingModels(true);
-    try {
-      const res = await fetch(`/api/models/${provider}`);
-      setChunkModels(await res.json());
-    } catch {
-      setChunkModels([]);
-    }
-    setChunkLoadingModels(false);
-  };
+  }, [editingChunkModel, config.settings?.memory?.chunkContextualizerModel]);
 
   const handleChunkProviderChange = (provider: string) => {
     setChunkProvider(provider);
     setChunkModelName("");
-    loadChunkModels(provider);
   };
 
   const saveChunkModel = async () => {

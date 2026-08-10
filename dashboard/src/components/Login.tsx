@@ -1,4 +1,6 @@
 import { useState, FormEvent } from "react";
+import { useLogin, useSetup } from "../hooks/useAuth";
+import { errorMessage } from "../lib/api-client";
 
 interface LoginProps {
   mode: "login" | "setup";
@@ -9,29 +11,19 @@ export default function Login({ mode, onSuccess }: LoginProps) {
   const [password, setPassword] = useState("");
   const [generatedPassword, setGeneratedPassword] = useState("");
   const [error, setError] = useState("");
-  const [loading, setLoading] = useState(false);
   const [copied, setCopied] = useState(false);
+  const login = useLogin();
+  const setup = useSetup();
+  const loading = login.isPending || setup.isPending;
 
   const handleSetup = async () => {
     setError("");
-    setLoading(true);
     try {
-      const res = await fetch("/api/auth/setup", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: "{}",
-      });
-      if (!res.ok) {
-        const data = await res.json().catch(() => ({ error: "Request failed" }));
-        setError(data.error || "Request failed");
-        return;
-      }
-      const data = await res.json();
+      const data = await setup.mutateAsync();
+      if (!data.password) throw new Error("Setup did not return a password");
       setGeneratedPassword(data.password);
-    } catch {
-      setError("Connection failed");
-    } finally {
-      setLoading(false);
+    } catch (error: unknown) {
+      setError(errorMessage(error, "Connection failed"));
     }
   };
 
@@ -45,23 +37,11 @@ export default function Login({ mode, onSuccess }: LoginProps) {
     e.preventDefault();
     setError("");
     if (!password) return;
-    setLoading(true);
     try {
-      const res = await fetch("/api/auth/login", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ password }),
-      });
-      if (!res.ok) {
-        const data = await res.json().catch(() => ({ error: "Request failed" }));
-        setError(data.error || "Request failed");
-        return;
-      }
+      await login.mutateAsync(password);
       onSuccess();
-    } catch {
-      setError("Connection failed");
-    } finally {
-      setLoading(false);
+    } catch (error: unknown) {
+      setError(errorMessage(error, "Connection failed"));
     }
   };
 

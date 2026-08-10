@@ -1,22 +1,6 @@
-import { useState, useEffect } from "react";
-
-interface App {
-  name: string;
-  description: string;
-  port: number;
-  url: string;
-  createdAt: string;
-  status: string;
-  uptime: number | null;
-  restarts: number;
-  memory: number | null;
-}
-
-interface AppFile {
-  path: string;
-  size: number;
-  isDir: boolean;
-}
+import { useState } from "react";
+import { useAppAction, useAppFile, useAppFiles, useApps } from "../hooks/useApps";
+import { errorMessage } from "../lib/api-client";
 
 function formatUptime(ms: number): string {
   const seconds = Math.floor(ms / 1000);
@@ -56,16 +40,17 @@ const statusBadgeClass: Record<string, string> = {
 };
 
 export default function Apps() {
-  const [apps, setApps] = useState<App[]>([]);
-  const [loading, setLoading] = useState(true);
+  const appsQuery = useApps();
+  const apps = appsQuery.data ?? [];
+  const loading = appsQuery.isPending;
   const [expandedApp, setExpandedApp] = useState<string | null>(null);
-  const [appFiles, setAppFiles] = useState<Record<string, AppFile[]>>({});
-  const [selectedFile, setSelectedFile] = useState<{
-    app: string;
-    path: string;
-    content: string;
-  } | null>(null);
-  const [actionLoading, setActionLoading] = useState<string | null>(null);
+  const [selectedFile, setSelectedFile] = useState<{ app: string; path: string } | null>(null);
+  const filesQuery = useAppFiles(expandedApp);
+  const fileQuery = useAppFile(selectedFile?.app ?? null, selectedFile?.path ?? null);
+  const appAction = useAppAction();
+  const actionLoading = appAction.isPending
+    ? `${appAction.variables.appName}-${appAction.variables.action}`
+    : null;
   const [deleteConfirm, setDeleteConfirm] = useState<string | null>(null);
   const [toast, setToast] = useState<{ message: string; type: "success" | "error" } | null>(null);
 
@@ -74,66 +59,16 @@ export default function Apps() {
     setTimeout(() => setToast(null), 3000);
   };
 
-  const fetchApps = () => {
-    fetch("/api/apps")
-      .then((r) => r.json())
-      .then((data) => {
-        setApps(data);
-        setLoading(false);
-      })
-      .catch(() => setLoading(false));
-  };
-
-  useEffect(() => {
-    fetchApps();
-    const interval = setInterval(fetchApps, 10000);
-    return () => clearInterval(interval);
-  }, []);
-
-  const fetchFiles = async (appName: string) => {
-    if (appFiles[appName]) return;
-    try {
-      const res = await fetch(`/api/apps/${appName}/files`);
-      const files = await res.json();
-      setAppFiles((prev) => ({ ...prev, [appName]: files }));
-    } catch (e) {
-      console.error("Failed to fetch files:", e);
-    }
-  };
-
-  const fetchFileContent = async (appName: string, filePath: string) => {
-    try {
-      const res = await fetch(`/api/apps/${appName}/files/${filePath}`);
-      const data = await res.json();
-      setSelectedFile({ app: appName, path: filePath, content: data.content });
-    } catch (e) {
-      console.error("Failed to fetch file:", e);
-    }
-  };
-
   const handleAction = async (appName: string, action: "restart" | "stop" | "start" | "delete") => {
-    setActionLoading(`${appName}-${action}`);
     try {
-      const method = action === "delete" ? "DELETE" : "POST";
-      const url = action === "delete" ? `/api/apps/${appName}` : `/api/apps/${appName}/${action}`;
-
-      const res = await fetch(url, { method });
-      const data = await res.json();
-
-      if (res.ok) {
-        showToast(data.message || `${action} successful`, "success");
-        if (action === "delete") {
-          setExpandedApp(null);
-          setDeleteConfirm(null);
-        }
-        fetchApps();
-      } else {
-        showToast(data.error || `${action} failed`, "error");
+      const data = await appAction.mutateAsync({ appName, action });
+      showToast(data.message || `${action} successful`, "success");
+      if (action === "delete") {
+        setExpandedApp(null);
+        setDeleteConfirm(null);
       }
-    } catch (e: any) {
-      showToast(e.message || `${action} failed`, "error");
-    } finally {
-      setActionLoading(null);
+    } catch (error: unknown) {
+      showToast(errorMessage(error, `${action} failed`), "error");
     }
   };
 
@@ -142,7 +77,6 @@ export default function Apps() {
       setExpandedApp(null);
     } else {
       setExpandedApp(appName);
-      fetchFiles(appName);
     }
     setSelectedFile(null);
     setDeleteConfirm(null);
@@ -288,19 +222,21 @@ export default function Apps() {
                     <div className="p-4">
                       <h4 className="text-sm font-semibold text-neutral-400 mb-3">Files</h4>
 
-                      {!appFiles[app.name] ? (
+                      {filesQuery.isPending ? (
                         <div className="text-sm text-neutral-600">Loading files...</div>
                       ) : (
                         <div className="flex flex-col sm:flex-row gap-4">
                           {/* File list */}
                           <div className="sm:w-56 shrink-0">
                             <div className="flex flex-col gap-1 max-h-64 overflow-y-auto">
-                              {appFiles[app.name]
+                              {(filesQuery.data ?? [])
                                 .filter((f) => !f.isDir)
                                 .map((file) => (
                                   <button
                                     key={file.path}
-                                    onClick={() => fetchFileContent(app.name, file.path)}
+                                    onClick={() =>
+                                      setSelectedFile({ app: app.name, path: file.path })
+                                    }
                                     className={`text-left px-2 py-2 rounded text-sm transition-colors ${
                                       selectedFile?.app === app.name &&
                                       selectedFile?.path === file.path
@@ -327,7 +263,8 @@ export default function Apps() {
                                   {selectedFile.path}
                                 </div>
                                 <pre className="p-3 text-xs text-neutral-300 font-mono overflow-x-auto max-h-64 whitespace-pre-wrap break-all">
-                                  {selectedFile.content}
+                                  {fileQuery.data?.content ??
+                                    (fileQuery.isPending ? "Loading..." : "")}
                                 </pre>
                               </div>
                             ) : (

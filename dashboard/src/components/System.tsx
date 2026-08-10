@@ -1,27 +1,16 @@
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
+import { useSoulContent, useSystemPromptContent } from "../hooks/useSystemContent";
 
 type Tab = "soul" | "system";
 
 function System() {
   const [tab, setTab] = useState<Tab>("soul");
-  const [soulContent, setSoulContent] = useState("");
-  const [systemContent, setSystemContent] = useState("");
-
-  useEffect(() => {
-    fetch("/api/soul")
-      .then((res) => res.json())
-      .then((data) => setSoulContent(data.content))
-      .catch((err) => console.error("Failed to load soul:", err));
-
-    fetch("/api/system-prompt")
-      .then((res) => res.json())
-      .then((data) => setSystemContent(data.content))
-      .catch((err) => console.error("Failed to load system prompt:", err));
-  }, []);
-
-  const currentContent = tab === "soul" ? soulContent : systemContent;
+  const soulQuery = useSoulContent();
+  const systemPromptQuery = useSystemPromptContent();
+  const currentContent =
+    tab === "soul" ? (soulQuery.data?.content ?? "") : (systemPromptQuery.data?.content ?? "");
 
   return (
     <div className="flex flex-col pb-8">

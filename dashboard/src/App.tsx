@@ -19,8 +19,17 @@ import { useSettingsDefaults } from "./hooks/useSettingsDefaults";
 function App() {
   const [menuOpen, setMenuOpen] = useState(false);
   const authQuery = useAuthStatus();
+  const authState = authQuery.error
+    ? "authenticated"
+    : authQuery.isPending
+      ? "loading"
+      : !authQuery.data.passwordSet
+        ? "setup"
+        : authQuery.data.authenticated
+          ? "authenticated"
+          : "login";
   const logout = useLogout();
-  const defaultsQuery = useSettingsDefaults();
+  const defaultsQuery = useSettingsDefaults(authState === "authenticated");
   const menuRef = useRef<HTMLDivElement>(null);
   const location = useLocation();
   const navigate = useNavigate();
@@ -63,18 +72,8 @@ function App() {
     await logout.mutateAsync();
   };
 
-  const authState = authQuery.error
-    ? "authenticated"
-    : authQuery.isPending
-      ? "loading"
-      : !authQuery.data.passwordSet
-        ? "setup"
-        : authQuery.data.authenticated
-          ? "authenticated"
-          : "login";
-
   // Preserve the existing offline/dev fallback: auth/default failures do not block the UI.
-  if (authState === "loading" || defaultsQuery.isPending) {
+  if (authState === "loading" || (authState === "authenticated" && defaultsQuery.isPending)) {
     return (
       <div className="flex items-center justify-center min-h-screen bg-[#0a0a0a] text-neutral-400">
         Loading...

@@ -7,7 +7,7 @@ const resolvedSettingsSchema = settingsSchema.and(
   settingsSchema.extend({ streamMode: streamModeSchema }),
 );
 
-export function useSettingsDefaults() {
+export function useSettingsDefaults(enabled: boolean) {
   return useQuery({
     queryKey: ["settings-defaults"],
     queryFn: async () => {
@@ -16,5 +16,7 @@ export function useSettingsDefaults() {
       return defaults;
     },
     staleTime: Number.POSITIVE_INFINITY,
+    enabled,
+    retry: false,
   });
 }

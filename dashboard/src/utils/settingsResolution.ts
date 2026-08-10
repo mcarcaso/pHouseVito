@@ -1,8 +1,8 @@
 /**
  * Client-side settings cascade resolution.
  * Mirrors src/settings.ts logic for the dashboard UI. Default values are
- * loaded from the backend at startup via loadDefaults() and read here through
- * getDefaults() — no constants are duplicated.
+ * initialized from shared defaults, then refreshed from the backend after
+ * authentication. Synchronous consumers always have a safe fallback.
  */
 
 import type {

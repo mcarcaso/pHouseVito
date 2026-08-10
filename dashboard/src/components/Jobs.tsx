@@ -1,14 +1,24 @@
-import React, { useState, useEffect } from "react";
+import React, { useState } from "react";
 import type { CronJobConfig as CronJob } from "../../../src/shared/schemas/vito-config";
-
-interface Session {
-  id: string;
-  alias: string | null;
-}
+import {
+  useCreateCronJob,
+  useCronHealth,
+  useCronJobs,
+  useDeleteCronJob,
+  useTriggerCronJob,
+  useUpdateCronJob,
+} from "../hooks/useCronJobs";
+import { useSessions } from "../hooks/useSessions";
 
 export default function Jobs() {
-  const [jobs, setJobs] = useState<CronJob[]>([]);
-  const [sessions, setSessions] = useState<Session[]>([]);
+  const jobsQuery = useCronJobs();
+  const sessionsQuery = useSessions();
+  const createJob = useCreateCronJob();
+  const deleteJob = useDeleteCronJob();
+  const triggerJob = useTriggerCronJob();
+  const updateJob = useUpdateCronJob();
+  const jobs = jobsQuery.data ?? [];
+  const sessions = sessionsQuery.data ?? [];
   const [showForm, setShowForm] = useState(false);
   const [formData, setFormData] = useState<CronJob>({
     name: "",
@@ -21,25 +31,10 @@ export default function Jobs() {
   });
   const [editingCondition, setEditingCondition] = useState<string | null>(null);
   const [conditionValue, setConditionValue] = useState("");
-  const [healthData, setHealthData] = useState<any>(null);
   const [showHealth, setShowHealth] = useState(false);
-
-  useEffect(() => {
-    fetchJobs();
-    fetchSessions();
-  }, []);
-
-  const fetchJobs = async () => {
-    const res = await fetch("/api/cron/jobs");
-    const data = await res.json();
-    setJobs(data);
-  };
-
-  const fetchSessions = async () => {
-    const res = await fetch("/api/sessions");
-    const data = await res.json();
-    setSessions(data);
-  };
+  const healthQuery = useCronHealth(showHealth);
+  const healthData =
+    healthQuery.data ?? (healthQuery.error ? { error: healthQuery.error.message } : null);
 
   const getSessionDisplay = (sessionId: string) => {
     const session = sessions.find((s) => s.id === sessionId);
@@ -60,14 +55,8 @@ export default function Jobs() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    const res = await fetch("/api/cron/jobs", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(formData),
-    });
-
-    if (res.ok) {
-      await fetchJobs();
+    try {
+      await createJob.mutateAsync(formData);
       setShowForm(false);
       setFormData({
         name: "",
@@ -77,41 +66,32 @@ export default function Jobs() {
         prompt: "",
         oneTime: false,
       });
-    } else {
-      const error = await res.json();
-      alert(`Error: ${error.error}`);
+    } catch (error: unknown) {
+      alert(`Error: ${error instanceof Error ? error.message : "Failed to create job"}`);
     }
   };
 
   const handleDelete = async (name: string) => {
     if (!confirm(`Delete job "${name}"?`)) return;
-    const res = await fetch(`/api/cron/jobs/${name}`, { method: "DELETE" });
-    if (res.ok) await fetchJobs();
+    await deleteJob.mutateAsync(name);
   };
 
   const handleTrigger = async (name: string) => {
     if (!confirm(`Run job "${name}" now?`)) return;
-    const res = await fetch(`/api/cron/jobs/${name}/trigger`, { method: "POST" });
-    if (res.ok) {
+    try {
+      await triggerJob.mutateAsync(name);
       alert(`Job "${name}" triggered!`);
-    } else {
-      const error = await res.json();
-      alert(`Error: ${error.error}`);
+    } catch (error: unknown) {
+      alert(`Error: ${error instanceof Error ? error.message : "Failed to trigger job"}`);
     }
   };
 
   const handleUpdateCondition = async (name: string, sendCondition: string) => {
-    const res = await fetch(`/api/cron/jobs/${name}`, {
-      method: "PUT",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ sendCondition }),
-    });
-    if (res.ok) {
-      await fetchJobs();
+    try {
+      await updateJob.mutateAsync({ name, updates: { sendCondition } });
       setEditingCondition(null);
-    } else {
-      const error = await res.json();
-      alert(`Error: ${error.error}`);
+    } catch (error: unknown) {
+      alert(`Error: ${error instanceof Error ? error.message : "Failed to update job"}`);
     }
   };
 
@@ -120,21 +100,7 @@ export default function Jobs() {
     setConditionValue(job.sendCondition || "");
   };
 
-  const checkHealth = async () => {
-    console.log("[Jobs] checkHealth called");
-    try {
-      const res = await fetch("/api/cron/health");
-      console.log("[Jobs] health response status:", res.status);
-      const data = await res.json();
-      console.log("[Jobs] health data:", data);
-      setHealthData(data);
-      setShowHealth(true);
-    } catch (err) {
-      console.error("[Jobs] health error:", err);
-      setHealthData({ error: "Failed to fetch health data" });
-      setShowHealth(true);
-    }
-  };
+  const checkHealth = () => setShowHealth(true);
 
   return (
     <div className="flex flex-col pb-8">

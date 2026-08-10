@@ -2,89 +2,31 @@ import { useState, useEffect } from "react";
 import { useSearchParams } from "react-router-dom";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
-
-interface Skill {
-  name: string;
-  description: string;
-  path: string;
-  source: "builtin" | "user";
-}
-
-interface SkillFile {
-  name: string;
-  path: string;
-}
+import {
+  useSkillFile,
+  useSkillFiles,
+  useSkills,
+  type Skill,
+  type SkillFile,
+} from "../hooks/useSkills";
 
 function Skills() {
   const [searchParams, setSearchParams] = useSearchParams();
   const selectedSkillName = searchParams.get("name");
 
-  const [skills, setSkills] = useState<Skill[]>([]);
-  const [selectedSkill, setSelectedSkill] = useState<Skill | null>(null);
-  const [files, setFiles] = useState<SkillFile[]>([]);
+  const skillsQuery = useSkills();
+  const skills = skillsQuery.data ?? [];
+  const selectedSkill = skills.find((skill) => skill.name === selectedSkillName) ?? null;
+  const filesQuery = useSkillFiles(selectedSkillName);
+  const files = filesQuery.data ?? [];
   const [selectedFile, setSelectedFile] = useState<SkillFile | null>(null);
-  const [fileContent, setFileContent] = useState<string>("");
-  const [loading, setLoading] = useState(true);
+  const fileQuery = useSkillFile(selectedFile?.path ?? null);
+  const fileContent = fileQuery.data ?? "";
+  const loading = skillsQuery.isPending;
 
   useEffect(() => {
-    fetchSkills();
-  }, []);
-
-  useEffect(() => {
-    if (selectedSkillName && skills.length > 0) {
-      const skill = skills.find((s) => s.name === selectedSkillName);
-      if (skill) {
-        setSelectedSkill(skill);
-        fetchFiles(skill.name);
-      }
-    } else if (!selectedSkillName) {
-      setSelectedSkill(null);
-      setFiles([]);
-      setSelectedFile(null);
-      setFileContent("");
-    }
-  }, [selectedSkillName, skills]);
-
-  useEffect(() => {
-    if (selectedFile) {
-      fetchFileContent(selectedFile.path);
-    }
-  }, [selectedFile]);
-
-  const fetchSkills = async () => {
-    try {
-      const res = await fetch("/api/skills");
-      const data = await res.json();
-      setSkills(data);
-    } catch (err) {
-      console.error("Failed to fetch skills:", err);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const fetchFiles = async (skillName: string) => {
-    try {
-      const res = await fetch(`/api/skills/${encodeURIComponent(skillName)}/files`);
-      const data = await res.json();
-      setFiles(data);
-      if (data.length > 0) setSelectedFile(data[0]);
-    } catch (err) {
-      console.error("Failed to fetch skill files:", err);
-      setFiles([]);
-    }
-  };
-
-  const fetchFileContent = async (filePath: string) => {
-    try {
-      const res = await fetch(`/api/file?path=${encodeURIComponent(filePath)}`);
-      const text = await res.text();
-      setFileContent(text);
-    } catch (err) {
-      console.error("Failed to fetch file content:", err);
-      setFileContent("Error loading file");
-    }
-  };
+    setSelectedFile(files[0] ?? null);
+  }, [selectedSkillName, files]);
 
   const renderFileContent = () => {
     if (!selectedFile) return null;

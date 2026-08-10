@@ -1,5 +1,12 @@
 import { useCallback, useEffect, useState } from "react";
 import { useSearchParams } from "react-router-dom";
+import { z } from "zod";
+import {
+  useDeletePiSession,
+  usePiSessionDetail,
+  usePiSessions,
+  type PiSessionListItem,
+} from "../hooks/usePiSessions";
 
 // ── Types mirroring pi's session-manager.d.ts ───────────────────────────────
 
@@ -101,20 +108,6 @@ interface AgentMessage {
   [key: string]: unknown;
 }
 
-interface PiSessionListItem {
-  rel: string;
-  size: number;
-  mtime: number;
-  vitoSessionId: string;
-  alias: string | null;
-  piSessionId: string;
-  piTimestamp: string;
-  piCwd: string;
-  messageCount: number;
-  lastModel: string;
-  lastUserMessage: string;
-}
-
 interface PiSessionDetail {
   rel: string;
   format: "jsonl";
@@ -185,10 +178,16 @@ function PiSessions() {
   const [searchParams, setSearchParams] = useSearchParams();
   const selectedRel = searchParams.get("file");
 
-  const [list, setList] = useState<PiSessionListItem[]>([]);
-  const [detail, setDetail] = useState<PiSessionDetail | null>(null);
-  const [loading, setLoading] = useState(true);
   const [autoRefresh, setAutoRefresh] = useState(true);
+  const listQuery = usePiSessions(autoRefresh);
+  const lineSchema = z.custom<SessionLine>(
+    (value) => typeof value === "object" && value !== null && "type" in value,
+  );
+  const detailQuery = usePiSessionDetail(selectedRel, lineSchema, autoRefresh);
+  const deleteSession = useDeletePiSession();
+  const list: PiSessionListItem[] = listQuery.data ?? [];
+  const detail: PiSessionDetail | null = detailQuery.data ?? null;
+  const loading = listQuery.isPending;
   const [showRaw, setShowRaw] = useState(false);
 
   // Per-message expansion (line-index keyed). Messages render as a single
@@ -211,85 +210,25 @@ function PiSessions() {
     });
   }, []);
 
-  const fetchList = useCallback(async () => {
-    try {
-      const res = await fetch("/api/pi-sessions");
-      const data = await res.json();
-      setList(Array.isArray(data) ? data : data.files || []);
-    } catch (err) {
-      console.error("Failed to fetch pi sessions:", err);
-    } finally {
-      setLoading(false);
-    }
-  }, []);
-
-  const fetchDetail = useCallback(async (rel: string) => {
-    try {
-      // rel is a path-like "encoded-vito/<pi-session>.jsonl". Each segment
-      // needs to be encoded for the URL but the slashes between them must
-      // remain literal so Express's wildcard matches.
-      const path = rel.split("/").map(encodeURIComponent).join("/");
-      const res = await fetch(`/api/pi-sessions/${path}`);
-      const data = await res.json();
-      setDetail(data);
-    } catch (err) {
-      console.error("Failed to fetch pi session:", err);
-    }
-  }, []);
-
   const deleteFile = useCallback(
     async (rel: string) => {
       if (!confirm(`Delete pi session "${rel}"?`)) return;
-      try {
-        const path = rel.split("/").map(encodeURIComponent).join("/");
-        await fetch(`/api/pi-sessions/${path}`, { method: "DELETE" });
-        if (selectedRel === rel) {
-          setSearchParams({});
-          setDetail(null);
-        }
-        fetchList();
-      } catch (err) {
-        console.error("Failed to delete pi session:", err);
-      }
+      await deleteSession.mutateAsync(rel);
+      if (selectedRel === rel) setSearchParams({});
     },
-    [selectedRel, setSearchParams, fetchList],
+    [deleteSession, selectedRel, setSearchParams],
   );
 
   const deleteAll = useCallback(async () => {
     if (!confirm(`Delete ALL ${list.length} pi sessions? This cannot be undone.`)) return;
-    try {
-      await fetch("/api/pi-sessions", { method: "DELETE" });
-      fetchList();
-    } catch (err) {
-      console.error("Failed to delete pi sessions:", err);
-    }
-  }, [list.length, fetchList]);
+    await deleteSession.mutateAsync(null);
+  }, [deleteSession, list.length]);
 
   useEffect(() => {
-    if (selectedRel) {
-      setDetail(null);
-      // Reset per-detail UI state when switching files so we don't carry
-      // expansion / windowing from a previous session.
-      setExpandedMessages(new Set());
-      setTopExpanded(0);
-      setBottomExpanded(0);
-      fetchDetail(selectedRel);
-    } else {
-      fetchList();
-    }
-  }, [selectedRel, fetchDetail, fetchList]);
-
-  useEffect(() => {
-    if (!autoRefresh) return;
-    const interval = setInterval(() => {
-      if (selectedRel) {
-        fetchDetail(selectedRel);
-      } else {
-        fetchList();
-      }
-    }, 5000);
-    return () => clearInterval(interval);
-  }, [autoRefresh, selectedRel, fetchDetail, fetchList]);
+    setExpandedMessages(new Set());
+    setTopExpanded(0);
+    setBottomExpanded(0);
+  }, [selectedRel]);
 
   // ── Detail view ──────────────────────────────────────────────────────────
 
@@ -854,7 +793,6 @@ function PiSessions() {
             className="bg-transparent border-none text-blue-500 text-2xl cursor-pointer px-2 py-1 leading-none hover:text-blue-400"
             onClick={() => {
               setSearchParams({});
-              setDetail(null);
             }}
           >
             ‹
@@ -917,7 +855,7 @@ function PiSessions() {
           </label>
           <button
             className="w-8 h-8 flex items-center justify-center rounded-md border bg-neutral-900 border-neutral-800 text-neutral-400 hover:bg-neutral-800 hover:border-neutral-700 text-lg cursor-pointer transition-all"
-            onClick={fetchList}
+            onClick={() => void listQuery.refetch()}
             title="Refresh"
           >
             ↻

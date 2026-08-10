@@ -1,5 +1,7 @@
 import { useState, useEffect, useCallback } from "react";
 import { useSearchParams } from "react-router-dom";
+import { z } from "zod";
+import { useDeleteTrace, useTraceDetail, useTraces } from "../hooks/useTraces";
 
 // ══════════════════════════════════════════════════════════════════════════════
 // TRACE LINE TYPES — Matches src/traceTypes.ts
@@ -204,10 +206,19 @@ function Traces() {
   const [searchParams, setSearchParams] = useSearchParams();
   const selectedLog = searchParams.get("file");
 
-  const [logs, setLogs] = useState<LogFile[]>([]);
-  const [logDetail, setLogDetail] = useState<LogDetail | null>(null);
-  const [loading, setLoading] = useState(true);
   const [autoRefresh, setAutoRefresh] = useState(true);
+  const logSchema = z.custom<LogFile>(
+    (value) => typeof value === "object" && value !== null && "filename" in value,
+  );
+  const detailSchema = z.custom<LogDetail>(
+    (value) => typeof value === "object" && value !== null && "lines" in value,
+  );
+  const logsQuery = useTraces(logSchema, autoRefresh);
+  const detailQuery = useTraceDetail(selectedLog, detailSchema, autoRefresh);
+  const deleteTrace = useDeleteTrace();
+  const logs = logsQuery.data ?? [];
+  const logDetail = detailQuery.data ?? null;
+  const loading = logsQuery.isPending;
   const [expandedSections, setExpandedSections] = useState<Set<string>>(new Set());
   const [showRaw, setShowRaw] = useState(false); // Hide raw events by default
 
@@ -221,65 +232,19 @@ function Traces() {
     return localStorage.getItem(SESSION_FILTER_STORAGE_KEY) || "all";
   });
 
-  const fetchLogs = useCallback(async () => {
-    try {
-      const res = await fetch("/api/logs?limit=100");
-      const data = await res.json();
-      // API returns { files, totalCount, offset, limit }
-      setLogs(Array.isArray(data) ? data : data.files || []);
-    } catch (err) {
-      console.error("Failed to fetch logs:", err);
-    } finally {
-      setLoading(false);
-    }
-  }, []);
-
-  const fetchLogDetail = useCallback(async (filename: string) => {
-    try {
-      const res = await fetch(`/api/logs/${encodeURIComponent(filename)}`);
-      const data = await res.json();
-      setLogDetail(data);
-    } catch (err) {
-      console.error("Failed to fetch log detail:", err);
-    }
-  }, []);
-
   const deleteLog = useCallback(
     async (filename: string) => {
       if (!confirm(`Delete trace "${filename}"?`)) return;
-      try {
-        await fetch(`/api/logs/${encodeURIComponent(filename)}`, { method: "DELETE" });
-        // If we're viewing this log, go back to list
-        if (selectedLog === filename) {
-          setSearchParams({});
-          setLogDetail(null);
-        }
-        fetchLogs();
-      } catch (err) {
-        console.error("Failed to delete log:", err);
-      }
+      await deleteTrace.mutateAsync(filename);
+      if (selectedLog === filename) setSearchParams({});
     },
-    [selectedLog, setSearchParams, fetchLogs],
+    [deleteTrace, selectedLog, setSearchParams],
   );
 
   const deleteAllLogs = useCallback(async () => {
     if (!confirm(`Delete ALL ${logs.length} traces? This cannot be undone.`)) return;
-    try {
-      await fetch("/api/logs", { method: "DELETE" });
-      fetchLogs();
-    } catch (err) {
-      console.error("Failed to delete logs:", err);
-    }
-  }, [logs.length, fetchLogs]);
-
-  useEffect(() => {
-    if (selectedLog) {
-      setLogDetail(null); // Clear stale data while loading new trace
-      fetchLogDetail(selectedLog);
-    } else {
-      fetchLogs();
-    }
-  }, [selectedLog, fetchLogs, fetchLogDetail]);
+    await deleteTrace.mutateAsync(null);
+  }, [deleteTrace, logs.length]);
 
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -290,19 +255,6 @@ function Traces() {
     if (typeof window === "undefined") return;
     localStorage.setItem(SESSION_FILTER_STORAGE_KEY, sessionFilter);
   }, [sessionFilter]);
-
-  // Auto-refresh every 5s (both list and detail views)
-  useEffect(() => {
-    if (!autoRefresh) return;
-    const interval = setInterval(() => {
-      if (selectedLog) {
-        fetchLogDetail(selectedLog);
-      } else {
-        fetchLogs();
-      }
-    }, 5000);
-    return () => clearInterval(interval);
-  }, [autoRefresh, selectedLog, fetchLogs, fetchLogDetail]);
 
   useEffect(() => {
     if (sessionFilter === "all") return;
@@ -1047,7 +999,6 @@ function Traces() {
             className="bg-transparent border-none text-blue-500 text-2xl cursor-pointer px-2 py-1 leading-none hover:text-blue-400"
             onClick={() => {
               setSearchParams({});
-              setLogDetail(null);
               setExpandedSections(new Set());
             }}
           >
@@ -1136,7 +1087,7 @@ function Traces() {
           </label>
           <button
             className="w-8 h-8 flex items-center justify-center rounded-md border bg-neutral-900 border-neutral-800 text-neutral-400 hover:bg-neutral-800 hover:border-neutral-700 text-lg cursor-pointer transition-all"
-            onClick={fetchLogs}
+            onClick={() => void logsQuery.refetch()}
             title="Refresh"
           >
             ↻

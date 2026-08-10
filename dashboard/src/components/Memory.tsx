@@ -1,50 +1,5 @@
-import { useState, useEffect, useCallback, useRef } from "react";
-
-// ══════════════════════════════════════════════════════════════════════════════
-// TYPES
-// ══════════════════════════════════════════════════════════════════════════════
-
-interface ProfileResponse {
-  content: string | null;
-}
-
-interface EmbeddingsStats {
-  totalChunks: number;
-  totalSessions: number;
-  totalDays: number;
-  oldestDay: string;
-  newestDay: string;
-  sessions: Array<{
-    session_id: string;
-    alias: string | null;
-    count: number;
-    first_day: string;
-    last_day: string;
-  }>;
-}
-
-interface SearchResult {
-  id: number;
-  session_id: string;
-  day: string;
-  chunk_index: number;
-  text: string;
-  context: string | null;
-  msg_count: number;
-  rrfScore: number;
-  embeddingScore: number;
-  rawEmbeddingScore: number;
-  recencyFactor: number;
-  daysAgo: number;
-  bm25Score: number;
-}
-
-interface SearchResponse {
-  query: string;
-  mode: string;
-  duration_ms: number;
-  results: SearchResult[];
-}
+import { useState, useCallback, useRef } from "react";
+import { useEmbeddingStats, useMemoryProfile, useMemorySearch } from "../hooks/useMemory";
 
 // ══════════════════════════════════════════════════════════════════════════════
 // MAIN COMPONENT
@@ -94,22 +49,10 @@ function Memory() {
 // ══════════════════════════════════════════════════════════════════════════════
 
 function ProfileTab() {
-  const [content, setContent] = useState<string | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-
-  useEffect(() => {
-    fetch("/api/memory/profile")
-      .then((res) => res.json())
-      .then((data: ProfileResponse) => {
-        setContent(data.content);
-        setLoading(false);
-      })
-      .catch((err) => {
-        setError(err.message);
-        setLoading(false);
-      });
-  }, []);
+  const profileQuery = useMemoryProfile();
+  const content = profileQuery.data?.content ?? null;
+  const loading = profileQuery.isPending;
+  const error = profileQuery.error?.message ?? null;
 
   if (loading) return <div className="p-4 text-neutral-400">Loading profile...</div>;
   if (error) return <div className="p-4 text-red-400">Error: {error}</div>;
@@ -251,40 +194,23 @@ function InlineMarkdown({ text }: { text: string }) {
 // ══════════════════════════════════════════════════════════════════════════════
 
 function EmbeddingsTab() {
-  const [stats, setStats] = useState<EmbeddingsStats | null>(null);
-  const [loading, setLoading] = useState(true);
+  const statsQuery = useEmbeddingStats();
+  const search = useMemorySearch();
+  const stats = statsQuery.data ?? null;
+  const loading = statsQuery.isPending;
   const [searchQuery, setSearchQuery] = useState("");
   const [searchMode, setSearchMode] = useState<"hybrid" | "embedding" | "bm25">("hybrid");
   const [searchLimit, setSearchLimit] = useState(10);
-  const [searchResults, setSearchResults] = useState<SearchResponse | null>(null);
-  const [searching, setSearching] = useState(false);
+  const searchResults = search.data ?? null;
+  const searching = search.isPending;
   const searchInputRef = useRef<HTMLInputElement>(null);
-
-  useEffect(() => {
-    fetch("/api/memory/embeddings/stats")
-      .then((res) => res.json())
-      .then((data) => {
-        setStats(data);
-        setLoading(false);
-      })
-      .catch(() => setLoading(false));
-  }, []);
 
   const handleSearch = useCallback(async () => {
     if (!searchQuery.trim()) return;
-    setSearching(true);
-    try {
-      const res = await fetch(
-        `/api/memory/embeddings/search?q=${encodeURIComponent(searchQuery)}&mode=${searchMode}&limit=${searchLimit}`,
-      );
-      const data = await res.json();
-      setSearchResults(data);
-    } catch (err) {
-      console.error("Search failed:", err);
-    } finally {
-      setSearching(false);
-    }
-  }, [searchQuery, searchMode]);
+    await search
+      .mutateAsync({ query: searchQuery, mode: searchMode, limit: searchLimit })
+      .catch((error: unknown) => console.error("Search failed:", error));
+  }, [searchQuery, searchMode, searchLimit, search]);
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
     if (e.key === "Enter") handleSearch();
@@ -354,7 +280,7 @@ function EmbeddingsTab() {
           <div className="flex gap-2">
             <select
               value={searchMode}
-              onChange={(e) => setSearchMode(e.target.value as any)}
+              onChange={(e) => setSearchMode(e.target.value as "hybrid" | "embedding" | "bm25")}
               className="flex-1 sm:flex-none bg-neutral-800 border border-neutral-700 rounded-lg px-3 py-2.5 text-xs text-neutral-300 focus:outline-none focus:border-blue-600"
             >
               <option value="hybrid">Hybrid</option>

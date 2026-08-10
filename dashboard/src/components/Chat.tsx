@@ -7,8 +7,16 @@ import ChatView, {
 } from "./ChatView";
 import FilterButton from "./FilterButton";
 import React from "react";
-import { attachmentUploadResponseSchema } from "../../../src/shared/schemas/attachment-api";
-import { dashboardChatRequestSchema } from "../../../src/shared/schemas/dashboard-chat";
+import { useSearchParams } from "react-router-dom";
+import {
+  useArchiveSessionMessages,
+  useSendChatMessage,
+  useSessionMessages,
+  useSessions,
+  useUpdateSessionAlias,
+  useUploadAttachment,
+  type DashboardSession,
+} from "../hooks/useSessions";
 
 // Memoize ChatView to prevent re-renders when typing in the input
 const MemoizedChatView = React.memo(ChatView);
@@ -31,33 +39,21 @@ function playNotificationSound() {
   }
 }
 
-const POLL_INTERVAL = 5000; // 5 seconds
-
-interface DashboardMessage {
-  id: number;
-  type: string;
-  content: string;
-  timestamp: number;
-  author?: string | null;
-}
-
-interface DashboardSession {
-  id: string;
-  channel: string;
-  channel_target: string;
-  last_active_at: number;
-  alias?: string | null;
-}
+const POLL_INTERVAL = 5000;
 
 const DEFAULT_SESSION_ID = "dashboard:default";
 const CHAT_SESSION_STORAGE_KEY = "chat-selected-session-id";
 
 function Chat() {
-  const [allMessages, setAllMessages] = useState<ParsedMessage[]>([]);
-  const [sessions, setSessions] = useState<DashboardSession[]>([]);
+  const [searchParams, setSearchParams] = useSearchParams();
   const [selectedSessionId, setSelectedSessionId] = useState<string>(() => {
     try {
-      return localStorage.getItem(CHAT_SESSION_STORAGE_KEY) || DEFAULT_SESSION_ID;
+      return (
+        searchParams.get("session") ||
+        searchParams.get("id") ||
+        localStorage.getItem(CHAT_SESSION_STORAGE_KEY) ||
+        DEFAULT_SESSION_ID
+      );
     } catch {
       return DEFAULT_SESSION_ID;
     }
@@ -79,127 +75,52 @@ function Chat() {
   }, [filterState]);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const lastAssistantTsRef = useRef<number | null>(null);
-  const lastMessageIdRef = useRef<number | null>(null);
-  const initialLoadRef = useRef(true);
-  const pollTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const sessionsQuery = useSessions({ refetchInterval: POLL_INTERVAL });
+  const sessions = sessionsQuery.data ?? [];
+  const messagesQuery = useSessionMessages(selectedSessionId, {
+    hideThoughts: !filterState.showThoughts,
+    hideTools: !filterState.showTools,
+    refetchInterval: POLL_INTERVAL,
+  });
+  const rawMessages = messagesQuery.data?.messages ?? [];
+  const allMessages: ParsedMessage[] = rawMessages.map((message) =>
+    parseDbMessage({
+      type: message.type,
+      content: message.content,
+      timestamp: message.timestamp,
+      author: message.author,
+    }),
+  );
+  const uploadAttachment = useUploadAttachment();
+  const sendChatMessage = useSendChatMessage();
+  const archiveMessages = useArchiveSessionMessages();
+  const updateAlias = useUpdateSessionAlias();
 
   const formatSessionLabel = useCallback((session: DashboardSession) => {
     const name = session.alias || session.id;
     return name === session.id ? session.id : `${name} — ${session.id}`;
   }, []);
 
-  const fetchSessions = useCallback(() => {
-    fetch("/api/sessions")
-      .then((res) => res.json())
-      .then((data) => {
-        if (!Array.isArray(data)) return;
-        setSessions(data as DashboardSession[]);
-      })
-      .catch((err) => console.error("Failed to load sessions:", err));
-  }, []);
-
-  useEffect(() => {
-    fetchSessions();
-  }, [fetchSessions]);
-
   useEffect(() => {
     try {
       localStorage.setItem(CHAT_SESSION_STORAGE_KEY, selectedSessionId);
     } catch {}
-    initialLoadRef.current = true;
     lastAssistantTsRef.current = null;
-    lastMessageIdRef.current = null;
-    setAllMessages([]);
   }, [selectedSessionId]);
 
-  const applyMessages = useCallback(
-    (rawMessages: DashboardMessage[], mode: "replace" | "append") => {
-      if (!Array.isArray(rawMessages) || rawMessages.length === 0) return;
-
-      const messages = rawMessages.map((msg) =>
-        parseDbMessage({
-          type: msg.type,
-          content: msg.content,
-          timestamp: msg.timestamp,
-          author: msg.author,
-        }),
-      );
-
-      const latestAssistant =
-        [...messages].reverse().find((msg) => msg.role === "assistant") ?? null;
-
-      if (
-        !initialLoadRef.current &&
-        latestAssistant &&
-        latestAssistant.timestamp !== lastAssistantTsRef.current
-      ) {
-        playNotificationSound();
-      }
-
-      initialLoadRef.current = false;
-      if (latestAssistant) {
-        lastAssistantTsRef.current = latestAssistant.timestamp;
-      }
-      lastMessageIdRef.current =
-        rawMessages[rawMessages.length - 1]?.id ?? lastMessageIdRef.current;
-
-      setAllMessages((prev) => (mode === "append" ? [...prev, ...messages] : messages));
-    },
-    [],
-  );
-
-  const fetchMessages = useCallback(
-    (filter?: FilterState, mode: "replace" | "append" = "replace") => {
-      const params = new URLSearchParams();
-      if (filter) {
-        if (!filter.showThoughts) params.set("hideThoughts", "true");
-        if (!filter.showTools) params.set("hideTools", "true");
-      }
-      if (mode === "append" && lastMessageIdRef.current) {
-        params.set("after", String(lastMessageIdRef.current));
-      }
-      const url = `/api/sessions/${encodeURIComponent(selectedSessionId)}/messages${params.toString() ? "?" + params.toString() : ""}`;
-      fetch(url)
-        .then((res) => res.json())
-        .then((data) => {
-          const rawMessages = Array.isArray(data) ? data : data.messages;
-          if (!Array.isArray(rawMessages)) return;
-
-          if (mode === "append") {
-            applyMessages(rawMessages as DashboardMessage[], "append");
-            return;
-          }
-
-          if (rawMessages.length === 0) {
-            initialLoadRef.current = false;
-            lastAssistantTsRef.current = null;
-            lastMessageIdRef.current = null;
-            setAllMessages([]);
-            return;
-          }
-
-          applyMessages(rawMessages as DashboardMessage[], "replace");
-        })
-        .catch((err) => console.error("Failed to load messages:", err));
-    },
-    [applyMessages, selectedSessionId],
-  );
-
-  // Polling — initial full load, then incremental append every 5s
   useEffect(() => {
-    fetchMessages(filterState, "replace");
-
-    pollTimerRef.current = setInterval(() => {
-      fetchMessages(filterState, "append");
-    }, POLL_INTERVAL);
-
-    return () => {
-      if (pollTimerRef.current) {
-        clearInterval(pollTimerRef.current);
-        pollTimerRef.current = null;
-      }
-    };
-  }, [fetchMessages, filterState]);
+    const latestAssistant = [...allMessages]
+      .reverse()
+      .find((message) => message.role === "assistant");
+    if (!latestAssistant) return;
+    if (
+      lastAssistantTsRef.current !== null &&
+      latestAssistant.timestamp !== lastAssistantTsRef.current
+    ) {
+      playNotificationSound();
+    }
+    lastAssistantTsRef.current = latestAssistant.timestamp;
+  }, [allMessages]);
 
   const handleFileSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = e.target.files;
@@ -244,12 +165,10 @@ function Chat() {
     for (const att of currentAttachments) {
       if (att.data) {
         try {
-          const res = await fetch("/api/attachments", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ data: att.data, filename: att.filename }),
+          const result = await uploadAttachment.mutateAsync({
+            data: att.data,
+            filename: att.filename,
           });
-          const result = attachmentUploadResponseSchema.parse(await res.json());
           uploaded.push({
             type: att.type,
             path: result.path,
@@ -263,29 +182,25 @@ function Chat() {
       }
     }
 
-    const payload = dashboardChatRequestSchema.parse({
-      type: "chat" as const,
-      content: text,
-      attachments: uploaded.length > 0 ? uploaded : undefined,
-      sessionId: selectedSessionId,
-    });
-
-    // Send via HTTP POST
     try {
-      await fetch("/api/chat", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload),
+      await sendChatMessage.mutateAsync({
+        type: "chat",
+        content: text,
+        attachments:
+          uploaded.length > 0
+            ? uploaded.map(({ type, url, path, mimeType, filename }) => ({
+                type,
+                url,
+                path,
+                mimeType,
+                filename,
+              }))
+            : undefined,
+        sessionId: selectedSessionId,
       });
-    } catch (err) {
-      console.error("Failed to send message:", err);
+    } catch (error: unknown) {
+      console.error("Failed to send message:", error);
     }
-
-    // Fetch immediately to show our sent message, and refresh sessions in case this created/updated one
-    setTimeout(() => {
-      fetchMessages(filterState, "append");
-      fetchSessions();
-    }, 200);
   };
 
   const handleKeyPress = (e: React.KeyboardEvent) => {
@@ -347,7 +262,10 @@ function Chat() {
             </div>
             <select
               value={selectedSessionId}
-              onChange={(e) => setSelectedSessionId(e.target.value)}
+              onChange={(e) => {
+                setSelectedSessionId(e.target.value);
+                setSearchParams({ session: e.target.value }, { replace: true });
+              }}
               className="bg-neutral-950 border border-neutral-700 rounded-lg px-3 py-2 text-sm text-neutral-200 min-w-[220px] max-w-[520px] truncate focus:outline-none focus:border-neutral-500"
               title="Chat session"
             >
@@ -362,6 +280,28 @@ function Chat() {
             </select>
           </div>
           <div className="flex gap-2 shrink-0">
+            <button
+              onClick={() => {
+                const session = sessions.find(({ id }) => id === selectedSessionId);
+                const alias = prompt("Session alias", session?.alias ?? "");
+                if (alias === null) return;
+                void updateAlias.mutateAsync({
+                  sessionId: selectedSessionId,
+                  alias: alias.trim() || null,
+                });
+              }}
+              className="p-2 rounded-lg bg-neutral-800 hover:bg-neutral-700 text-neutral-400 hover:text-white transition-colors"
+              title="Edit session alias"
+            >
+              ✏️
+            </button>
+            <a
+              href={`/settings?tab=sessions&session=${encodeURIComponent(selectedSessionId)}`}
+              className="p-2 rounded-lg bg-neutral-800 hover:bg-neutral-700 text-neutral-400 hover:text-white transition-colors"
+              title="Session settings"
+            >
+              ⚙️
+            </a>
             <FilterButton
               active={!filterState.showThoughts}
               onClick={() =>
@@ -380,13 +320,8 @@ function Chat() {
               onClick={async () => {
                 if (!confirm("Clear all messages in this chat?")) return;
                 try {
-                  await fetch(`/api/sessions/${encodeURIComponent(selectedSessionId)}/messages`, {
-                    method: "DELETE",
-                  });
-                  initialLoadRef.current = false;
+                  await archiveMessages.mutateAsync(selectedSessionId);
                   lastAssistantTsRef.current = null;
-                  lastMessageIdRef.current = null;
-                  setAllMessages([]);
                 } catch (err) {
                   console.error("Failed to clear messages:", err);
                 }

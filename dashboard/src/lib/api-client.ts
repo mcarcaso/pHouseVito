@@ -37,6 +37,13 @@ export async function requestJson<Schema extends z.ZodTypeAny>(
   return schema.parse(body);
 }
 
+export async function requestText(url: string, init?: RequestInit): Promise<string> {
+  const response = await fetch(url, init);
+  if (!response.ok)
+    throw new ApiError(`Request failed (${response.status})`, response.status, undefined);
+  return response.text();
+}
+
 export function jsonRequest(method: "POST" | "PUT" | "PATCH", body?: unknown): RequestInit {
   return {
     method,

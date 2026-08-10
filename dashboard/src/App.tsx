@@ -1,7 +1,6 @@
 import { useState, useRef, useEffect } from "react";
 import { Routes, Route, NavLink, Navigate, useLocation, useNavigate } from "react-router-dom";
 import Chat from "./components/Chat";
-import Sessions from "./components/Sessions";
 import Memory from "./components/Memory";
 import Skills from "./components/Skills";
 import Secrets from "./components/Secrets";
@@ -46,7 +45,6 @@ function App() {
   const getPageTitle = () => {
     const path = location.pathname;
     if (path === "/chat" || path === "/") return "Chat";
-    if (path.startsWith("/sessions")) return "Sessions";
     if (path.startsWith("/memory")) return "Memory";
     if (path.startsWith("/skills")) return "Skills";
     if (path.startsWith("/jobs")) return "Jobs";
@@ -121,10 +119,6 @@ function App() {
         Admin
       </span>
 
-      <NavLink to="/sessions" className={navItemClass}>
-        <span className="w-6 text-center text-base">📡</span>
-        Sessions
-      </NavLink>
       <NavLink to="/memory" className={navItemClass}>
         <span className="w-6 text-center text-base">🧠</span>
         Memory
@@ -247,7 +241,7 @@ function App() {
       <main className="flex-1 flex flex-col min-h-0 pt-[52px] md:pt-0 md:ml-[220px]">
         <Routes>
           <Route path="/chat" element={<Chat />} />
-          <Route path="/sessions" element={<Sessions />} />
+          <Route path="/sessions" element={<Navigate to={`/chat${location.search}`} replace />} />
           <Route path="/settings" element={<UnifiedSettings />} />
           <Route path="/memory" element={<Memory />} />
           <Route path="/skills" element={<Skills />} />

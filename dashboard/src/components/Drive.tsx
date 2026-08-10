@@ -1,19 +1,13 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useRef } from "react";
 import { useNavigate, useLocation } from "react-router-dom";
+import { useDriveCommand, useDriveListing, useDriveTextFile } from "../hooks/useDrive";
+import { errorMessage } from "../lib/api-client";
 
 interface DriveFile {
   name: string;
   size: number;
   isPublic: boolean;
   createdAt?: string;
-}
-
-interface DirListing {
-  path: string;
-  meta: any | null;
-  isPublic: boolean;
-  dirs: { name: string; hasMeta: boolean; meta: any | null }[];
-  files: DriveFile[];
 }
 
 type SortField = "name" | "createdAt" | "type" | "size";
@@ -97,12 +91,23 @@ export default function Drive() {
     return match?.[1] || "";
   };
 
-  const [listing, setListing] = useState<DirListing | null>(null);
-  const [loading, setLoading] = useState(true);
   const currentPath = getPathFromUrl();
+  const listingQuery = useDriveListing(currentPath);
+  const driveCommand = useDriveCommand();
+  const listing = listingQuery.data ?? null;
+  const loading = listingQuery.isPending;
   const [selectedFile, setSelectedFile] = useState<string | null>(null);
   const [deleteConfirm, setDeleteConfirm] = useState<string | null>(null);
-  const [actionLoading, setActionLoading] = useState<string | null>(null);
+  const command = driveCommand.variables;
+  const actionLoading = driveCommand.isPending
+    ? command?.type === "delete"
+      ? `delete-${command.path.split("/").pop()}`
+      : command?.type === "file-meta"
+        ? `toggle-${command.path.split("/").pop()}`
+        : command?.type === "directory-meta"
+          ? "toggle"
+          : null
+    : null;
   const [toast, setToast] = useState<{ message: string; type: "success" | "error" } | null>(null);
 
   // Sort
@@ -125,7 +130,7 @@ export default function Drive() {
   const [showUpload, setShowUpload] = useState(false);
   const [uploadType, setUploadType] = useState<"file" | "site">("file");
   const [uploadFile, setUploadFile] = useState<File | null>(null);
-  const [uploading, setUploading] = useState(false);
+  const uploading = driveCommand.isPending && command?.type === "upload";
   const [siteFolderName, setSiteFolderName] = useState("");
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -137,21 +142,6 @@ export default function Drive() {
     setToast({ message, type });
     setTimeout(() => setToast(null), 3000);
   };
-
-  const fetchListing = () => {
-    setLoading(true);
-    fetch(`/api/drive/ls?path=${encodeURIComponent(currentPath)}`)
-      .then((r) => r.json())
-      .then((data) => {
-        setListing(data);
-        setLoading(false);
-      })
-      .catch(() => setLoading(false));
-  };
-
-  useEffect(() => {
-    fetchListing();
-  }, [location.pathname]);
 
   const navigateTo = (folder: string) => {
     setSelectedFile(null);
@@ -172,67 +162,44 @@ export default function Drive() {
 
   const togglePublic = async () => {
     if (!listing) return;
-    setActionLoading("toggle");
     try {
-      const res = await fetch(`/api/drive/meta?path=${encodeURIComponent(currentPath)}`, {
-        method: "PUT",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ isPublic: !listing.isPublic }),
+      await driveCommand.mutateAsync({
+        type: "directory-meta",
+        path: currentPath,
+        isPublic: !listing.isPublic,
       });
-      if (res.ok) {
-        showToast(listing.isPublic ? "Made private" : "Made public", "success");
-        fetchListing();
-      }
-    } catch (e: any) {
-      showToast(e.message || "Failed", "error");
-    } finally {
-      setActionLoading(null);
+      showToast(listing.isPublic ? "Made private" : "Made public", "success");
+    } catch (error: unknown) {
+      showToast(errorMessage(error, "Failed"), "error");
     }
   };
 
   const toggleFilePublic = async (fileName: string, currentlyPublic: boolean) => {
     const filePath = currentPath ? `${currentPath}/${fileName}` : fileName;
-    setActionLoading(`toggle-${fileName}`);
     try {
-      const res = await fetch(`/api/drive/file-meta?path=${encodeURIComponent(filePath)}`, {
-        method: "PUT",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ isPublic: !currentlyPublic }),
+      await driveCommand.mutateAsync({
+        type: "file-meta",
+        path: filePath,
+        isPublic: !currentlyPublic,
       });
-      if (res.ok) {
-        showToast(
-          currentlyPublic ? `${fileName} made private` : `${fileName} made public`,
-          "success",
-        );
-        fetchListing();
-      }
-    } catch (e: any) {
-      showToast(e.message || "Failed", "error");
-    } finally {
-      setActionLoading(null);
+      showToast(
+        currentlyPublic ? `${fileName} made private` : `${fileName} made public`,
+        "success",
+      );
+    } catch (error: unknown) {
+      showToast(errorMessage(error, "Failed"), "error");
     }
   };
 
   const handleDelete = async (name: string, _isDir: boolean) => {
     const targetPath = currentPath ? `${currentPath}/${name}` : name;
-    setActionLoading(`delete-${name}`);
     try {
-      const res = await fetch(`/api/drive?path=${encodeURIComponent(targetPath)}`, {
-        method: "DELETE",
-      });
-      if (res.ok) {
-        showToast(`Deleted ${name}`, "success");
-        setDeleteConfirm(null);
-        if (selectedFile === name) setSelectedFile(null);
-        fetchListing();
-      } else {
-        const data = await res.json();
-        showToast(data.error || "Delete failed", "error");
-      }
-    } catch (e: any) {
-      showToast(e.message || "Delete failed", "error");
-    } finally {
-      setActionLoading(null);
+      await driveCommand.mutateAsync({ type: "delete", path: targetPath });
+      showToast(`Deleted ${name}`, "success");
+      setDeleteConfirm(null);
+      if (selectedFile === name) setSelectedFile(null);
+    } catch (error: unknown) {
+      showToast(errorMessage(error, "Delete failed"), "error");
     }
   };
 
@@ -250,7 +217,6 @@ export default function Drive() {
       }
     }
 
-    setUploading(true);
     try {
       const dataUrl = await new Promise<string>((resolve, reject) => {
         const reader = new FileReader();
@@ -259,7 +225,6 @@ export default function Drive() {
         reader.readAsDataURL(uploadFile);
       });
 
-      const endpoint = uploadType === "site" ? "/api/drive/upload-site" : "/api/drive/upload";
       const body =
         uploadType === "site"
           ? {
@@ -270,28 +235,15 @@ export default function Drive() {
             }
           : { data: dataUrl, filename: uploadFile.name, folder: currentPath || undefined };
 
-      const res = await fetch(endpoint, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(body),
-      });
-
-      const data = await res.json();
-      if (res.ok) {
-        showToast("Uploaded", "success");
-        setShowUpload(false);
-        setUploadFile(null);
-        setUploadType("file");
-        setSiteFolderName("");
-        if (fileInputRef.current) fileInputRef.current.value = "";
-        fetchListing();
-      } else {
-        showToast(data.error || "Upload failed", "error");
-      }
-    } catch (e: any) {
-      showToast(e.message || "Upload failed", "error");
-    } finally {
-      setUploading(false);
+      await driveCommand.mutateAsync({ type: "upload", site: uploadType === "site", body });
+      showToast("Uploaded", "success");
+      setShowUpload(false);
+      setUploadFile(null);
+      setUploadType("file");
+      setSiteFolderName("");
+      if (fileInputRef.current) fileInputRef.current.value = "";
+    } catch (error: unknown) {
+      showToast(errorMessage(error, "Upload failed"), "error");
     }
   };
 
@@ -302,19 +254,10 @@ export default function Drive() {
       : newFolderName.trim();
     // Creating a .meta.json in the folder will create the folder
     try {
-      const res = await fetch(`/api/drive/meta?path=${encodeURIComponent(folderPath)}`, {
-        method: "PUT",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ isPublic: false }),
-      });
-      if (res.ok) {
-        showToast("Folder created", "success");
-        setShowNewFolder(false);
-        setNewFolderName("");
-        fetchListing();
-      } else {
-        showToast("Failed to create folder", "error");
-      }
+      await driveCommand.mutateAsync({ type: "directory-meta", path: folderPath, isPublic: false });
+      showToast("Folder created", "success");
+      setShowNewFolder(false);
+      setNewFolderName("");
     } catch {
       showToast("Failed to create folder", "error");
     }
@@ -910,14 +853,8 @@ function TextFilePreview({
   filePath: string;
   fullscreen?: boolean;
 }) {
-  const [content, setContent] = useState<string | null>(null);
-
-  useEffect(() => {
-    fetch(url)
-      .then((r) => r.text())
-      .then(setContent)
-      .catch(() => setContent("(failed to load)"));
-  }, [url]);
+  const contentQuery = useDriveTextFile(url);
+  const content = contentQuery.data ?? (contentQuery.error ? "(failed to load)" : null);
 
   return (
     <div

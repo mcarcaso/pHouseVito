@@ -10,7 +10,8 @@ export interface PiSession {
   cwd: string;
   size: number;
   updatedAt: number;
-  messageCount: number;
+  /** Exact when the session was fully read; null for bounded list summaries. */
+  messageCount: number | null;
   lastModel: string;
   lastUserMessage: string;
   lines?: PiSessionLine[];

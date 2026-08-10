@@ -75,7 +75,7 @@ describe("Pi session router", () => {
               rel: z.string(),
               vitoSessionId: z.string(),
               alias: z.string().nullable(),
-              messageCount: z.number(),
+              messageCount: z.number().nullable(),
             })
             .passthrough(),
         ),

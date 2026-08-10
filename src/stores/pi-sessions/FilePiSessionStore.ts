@@ -1,4 +1,13 @@
-import { existsSync, lstatSync, readFileSync, readdirSync, unlinkSync } from "node:fs";
+import {
+  closeSync,
+  existsSync,
+  lstatSync,
+  openSync,
+  readFileSync,
+  readSync,
+  readdirSync,
+  unlinkSync,
+} from "node:fs";
 import { resolve, sep } from "node:path";
 import type { Context } from "../../context/Context.js";
 import {
@@ -54,6 +63,21 @@ function extractMessageText(value: JsonValue | undefined): string {
   return "";
 }
 
+const SUMMARY_HEAD_BYTES = 64 * 1024;
+const SUMMARY_TAIL_BYTES = 256 * 1024;
+
+function readRange(path: string, position: number, length: number): string {
+  if (length <= 0) return "";
+  const descriptor = openSync(path, "r");
+  try {
+    const buffer = Buffer.alloc(length);
+    const bytesRead = readSync(descriptor, buffer, 0, length, position);
+    return buffer.subarray(0, bytesRead).toString("utf-8");
+  } finally {
+    closeSync(descriptor);
+  }
+}
+
 function parseLines(content: string): PiSessionLine[] {
   return content
     .split("\n")
@@ -67,10 +91,31 @@ function parseLines(content: string): PiSessionLine[] {
     });
 }
 
+function readSummaryLines(file: SessionFile): { lines: PiSessionLine[]; complete: boolean } {
+  if (file.size <= SUMMARY_TAIL_BYTES) {
+    return { lines: parseLines(readRange(file.path, 0, file.size)), complete: true };
+  }
+
+  const head = readRange(file.path, 0, Math.min(file.size, SUMMARY_HEAD_BYTES));
+  const firstLine = head.split("\n", 1)[0] ?? "";
+  const tailPosition = Math.max(0, file.size - SUMMARY_TAIL_BYTES);
+  const tailParts = readRange(file.path, tailPosition, SUMMARY_TAIL_BYTES).split("\n");
+  // The first tail fragment usually starts in the middle of a JSON line.
+  if (tailPosition > 0) tailParts.shift();
+  return { lines: parseLines([firstLine, ...tailParts].join("\n")), complete: false };
+}
+
 function buildSession(file: SessionFile, includeLines: boolean): PiSession {
   let lines: PiSessionLine[] = [];
+  let complete = includeLines;
   try {
-    lines = parseLines(readFileSync(file.path, "utf-8"));
+    if (includeLines) {
+      lines = parseLines(readFileSync(file.path, "utf-8"));
+    } else {
+      const summary = readSummaryLines(file);
+      lines = summary.lines;
+      complete = summary.complete;
+    }
   } catch {
     // Preserve discoverable file metadata even if a file becomes unreadable.
   }
@@ -103,6 +148,12 @@ function buildSession(file: SessionFile, includeLines: boolean): PiSession {
     if (message?.role === "user") {
       lastUserMessage = extractMessageText(message.content);
     }
+    if (message?.role === "assistant") {
+      const provider = stringValue(message.provider);
+      const model = stringValue(message.model);
+      if (provider || model)
+        lastModel = provider && model ? `${provider}/${model}` : provider || model;
+    }
   }
 
   return {
@@ -113,7 +164,7 @@ function buildSession(file: SessionFile, includeLines: boolean): PiSession {
     cwd,
     size: file.size,
     updatedAt: file.updatedAt,
-    messageCount,
+    messageCount: complete ? messageCount : null,
     lastModel,
     lastUserMessage,
     ...(includeLines ? { lines } : {}),
@@ -166,13 +217,13 @@ export class FilePiSessionStore implements PiSessionStore {
     const limit = Math.max(0, args.limit ?? Number.MAX_SAFE_INTEGER);
     return this.listFiles(x)
       .filter((file) => matchesFile(file, args))
-      .map((file) => buildSession(file, args.includeLines ?? false))
       .sort((a, b) =>
         order === "recent"
           ? b.updatedAt - a.updatedAt || a.id.localeCompare(b.id)
           : a.updatedAt - b.updatedAt || a.id.localeCompare(b.id),
       )
-      .slice(offset, offset + limit);
+      .slice(offset, offset + limit)
+      .map((file) => buildSession(file, args.includeLines ?? false));
   }
 
   count(x: Context, args: PiSessionFilter): number {

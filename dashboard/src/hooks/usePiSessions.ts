@@ -10,7 +10,7 @@ const itemSchema = z.object({
   piSessionId: z.string(),
   piTimestamp: z.string(),
   piCwd: z.string(),
-  messageCount: z.number(),
+  messageCount: z.number().nullable(),
   lastModel: z.string(),
   lastUserMessage: z.string(),
 });

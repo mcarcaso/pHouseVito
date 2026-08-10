@@ -888,9 +888,11 @@ function PiSessions() {
               <span className="text-blue-400 bg-blue-500/10 px-2 py-0.5 rounded text-xs">
                 JSONL
               </span>
-              <span className="text-neutral-500 bg-neutral-800 px-2 py-0.5 rounded text-xs">
-                {item.messageCount} msgs
-              </span>
+              {item.messageCount !== null && (
+                <span className="text-neutral-500 bg-neutral-800 px-2 py-0.5 rounded text-xs">
+                  {item.messageCount} msgs
+                </span>
+              )}
               <span className="text-neutral-600 text-xs">{formatSize(item.size)}</span>
               <span className="text-neutral-600 ml-auto text-xs">{formatDate(item.mtime)}</span>
               <button

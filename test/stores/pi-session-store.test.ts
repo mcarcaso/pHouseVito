@@ -53,6 +53,36 @@ describe("FilePiSessionStore", () => {
     }
   });
 
+  it("builds large list summaries from bounded head and tail data", () => {
+    const { root, x, store } = createHarness();
+    try {
+      writeSession(root, "dashboard:large", "large.jsonl", [
+        JSON.stringify({ type: "session", id: "pi-large", timestamp: "2026-01-01", cwd: "/app" }),
+        JSON.stringify({
+          type: "message",
+          message: { role: "toolResult", content: "x".repeat(300 * 1024) },
+        }),
+        JSON.stringify({
+          type: "message",
+          message: { role: "user", content: [{ type: "text", text: "latest question" }] },
+        }),
+        JSON.stringify({
+          type: "message",
+          message: { role: "assistant", provider: "openrouter", model: "test/model", content: [] },
+        }),
+      ]);
+
+      const session = store.list(x, {})[0];
+      assert.equal(session.piSessionId, "pi-large");
+      assert.equal(session.lastUserMessage, "latest question");
+      assert.equal(session.lastModel, "openrouter/test/model");
+      assert.equal(session.messageCount, null);
+      assert.equal(session.lines, undefined);
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
   it("filters consistently and orders sessions by modification time", () => {
     const { root, x, store } = createHarness();
     try {

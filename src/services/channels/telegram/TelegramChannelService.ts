@@ -1,7 +1,7 @@
 import { Bot } from "grammy";
 import type { Context } from "../../../context/Context.js";
 import { xSecretService, xVitoService } from "../../../lib/x.js";
-import type { OutputHandler } from "../../../output/OutputHandler.js";
+import type { OutputHandler } from "../../../lib/output/OutputHandler.js";
 import type { InboundEvent } from "../../../lib/types/inbound-event.js";
 import type { SessionRow } from "../../../stores/sessions/SessionStore.js";
 import type { ChannelManagement, ChannelService } from "../ChannelService.js";

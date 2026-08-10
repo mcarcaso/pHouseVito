@@ -11,7 +11,7 @@ import {
   ChannelNotConfiguredError,
 } from "../../src/services/channels/ChannelRegistryService.js";
 import { SqliteSessionStore } from "../../src/stores/sessions/SqliteSessionStore.js";
-import type { OutputHandler } from "../../src/output/OutputHandler.js";
+import type { OutputHandler } from "../../src/lib/output/OutputHandler.js";
 import type { InboundEvent } from "../../src/lib/types/inbound-event.js";
 import type { SessionRow } from "../../src/stores/sessions/SessionStore.js";
 

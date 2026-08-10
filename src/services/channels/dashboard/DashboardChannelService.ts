@@ -1,4 +1,4 @@
-import type { OutputHandler } from "../../../output/OutputHandler.js";
+import type { OutputHandler } from "../../../lib/output/OutputHandler.js";
 import type { InboundEvent } from "../../../lib/types/inbound-event.js";
 import type { ChannelService } from "../ChannelService.js";
 import type { Context } from "../../../context/Context.js";

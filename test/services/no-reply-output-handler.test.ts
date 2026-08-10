@@ -1,8 +1,8 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
-import { NoReplyOutputHandler } from "../../src/output/NoReplyOutputHandler.js";
-import type { OutputHandler } from "../../src/output/OutputHandler.js";
-import { ProxyOutputHandler } from "../../src/output/ProxyOutputHandler.js";
+import { NoReplyOutputHandler } from "../../src/lib/output/NoReplyOutputHandler.js";
+import type { OutputHandler } from "../../src/lib/output/OutputHandler.js";
+import { ProxyOutputHandler } from "../../src/lib/output/ProxyOutputHandler.js";
 
 describe("ProxyOutputHandler", () => {
   it("delegates output without advertising unsupported optional capabilities", async () => {

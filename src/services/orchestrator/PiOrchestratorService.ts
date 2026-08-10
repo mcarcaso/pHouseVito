@@ -9,7 +9,7 @@ import { withPersistence } from "./runtime/PersistencePiRuntime.js";
 import { withRelay } from "./runtime/RelayPiRuntime.js";
 import { withTracing } from "./runtime/TracingPiRuntime.js";
 import { withTyping } from "./runtime/TypingPiRuntime.js";
-import { NoReplyOutputHandler } from "../../output/NoReplyOutputHandler.js";
+import { NoReplyOutputHandler } from "../../lib/output/NoReplyOutputHandler.js";
 import { DirectChannelService } from "../channels/direct/DirectChannelService.js";
 import type { ChannelService } from "../channels/ChannelService.js";
 import type { AskOptions, OrchestratorService } from "./OrchestratorService.js";

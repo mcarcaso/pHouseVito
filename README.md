@@ -118,7 +118,7 @@ pHouseVito/
 │   ├── services/sessions/     # Vito session lifecycle
 │   ├── lib/sqlite/            # SQLite connection and schema bootstrap
 │   ├── lib/types/             # Server-only types and runtime schemas
-│   ├── output/                # Shared output-handler contracts and decorators
+│   ├── lib/output/            # Shared output-handler interfaces and decorators
 │   └── shared/schemas/        # Browser-safe Zod schemas shared with dashboard
 ├── system/                    # Project-owned policy and bundled skills
 ├── dashboard/                 # React-based web UI

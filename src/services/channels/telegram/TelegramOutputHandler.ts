@@ -1,6 +1,6 @@
 import { Bot } from "grammy";
 import * as path from "node:path";
-import type { OutputHandler, OutboundMessage } from "../../../output/OutputHandler.js";
+import type { OutputHandler, OutboundMessage } from "../../../lib/output/OutputHandler.js";
 import type { InboundEvent } from "../../../lib/types/inbound-event.js";
 
 const TELEGRAM_MAX_LENGTH = 4096;

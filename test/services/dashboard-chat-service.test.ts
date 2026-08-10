@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import { ObjectContext } from "../../src/context/ObjectContext.js";
 import { DefaultDashboardChatService } from "../../src/services/chat/DefaultDashboardChatService.js";
-import type { InboundEvent } from "../../src/types.js";
+import type { InboundEvent } from "../../src/contracts/inbound-event.js";
 
 describe("DefaultDashboardChatService", () => {
   it("reports an unconfigured inbound handler", () => {

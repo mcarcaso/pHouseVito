@@ -1,7 +1,7 @@
 import { z } from "zod";
 import type { Context } from "../../context/Context.js";
 import { xDb } from "../../lib/x.js";
-import type { MessageRow } from "../../types.js";
+import type { MessageRow } from "./MessageStore.js";
 import { StoreRecordNotFoundError } from "../Store.js";
 import type {
   CreateMessageArgs,

@@ -1,6 +1,6 @@
 import type { Context } from "../../context/Context.js";
 import { xDb } from "../../lib/x.js";
-import type { SessionRow } from "../../types.js";
+import type { SessionRow } from "./SessionStore.js";
 import { StoreRecordNotFoundError } from "../Store.js";
 import type {
   CreateSessionArgs,

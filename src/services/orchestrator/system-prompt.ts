@@ -25,11 +25,25 @@
  *     tells the agent to Read user/profile.md on first response in a session.
  */
 
-import { buildSystemBlock } from "../../system-instructions.js";
+import { DEFAULT_TIMEZONE } from "../../shared/defaults.js";
 import { CAPABILITIES_MAP } from "./capabilities.js";
+
+const COMMANDS_SECTION = "Available commands: /new (full reset — start a fresh pi session, archives the current chat), /compact (summarize older turns to free context, conversation continues), /model [provider/model] (inspect or switch the live pi model for this session), /stop (abort current request + clear queue)";
+
+function buildSystemBlock(systemInstructions: string, botName?: string): string {
+  const parts: string[] = [];
+  if (botName) {
+    parts.push(`Your name is ${botName}.`);
+    parts.push(`If the user message is only your name (e.g., "@${botName}"), interpret it as a follow-up to the previous user message.`);
+  }
+  parts.push(systemInstructions || "(SYSTEM.md not found — operating without system reference)");
+  parts.push(COMMANDS_SECTION);
+  return `<system>\n${parts.join("\n\n")}\n</system>`;
+}
 
 export interface BuildSystemPromptOptions {
   soul: string;
+  systemInstructions: string;
   channelPrompt?: string;
   customInstructions?: string;
   botName?: string;
@@ -50,7 +64,7 @@ export function buildSystemPrompt(opts: BuildSystemPromptOptions): string {
   }
 
   // SYSTEM.md + commands
-  parts.push(buildSystemBlock(true, opts.botName));
+  parts.push(buildSystemBlock(opts.systemInstructions, opts.botName));
 
   // Stable session identity. Doesn't change for the lifetime of this pi
   // session, so it caches with the rest of the prefix. Useful when memory
@@ -96,7 +110,7 @@ export interface BuildUserMessageOptions {
 }
 
 export function buildUserMessage(opts: BuildUserMessageOptions): string {
-  const tz = opts.timezone || "America/Toronto";
+  const tz = opts.timezone || DEFAULT_TIMEZONE;
   const now = new Date();
   const dateStr = now.toLocaleString("en-CA", {
     timeZone: tz,

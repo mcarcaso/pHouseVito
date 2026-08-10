@@ -9,7 +9,7 @@ A web-based interface for managing and interacting with Vito.
 - 🧠 **Memories** - View and search long-term memories
 - 🛠️ **Skills** - Browse installed skills
 - ⏰ **Jobs** - View and manage scheduled cron jobs
-- ⚙️ **Settings** - Configure harness, channels, and per-session overrides
+- ⚙️ **Settings** - Configure Pi, channels, and per-session overrides
 
 ## Development
 

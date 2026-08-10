@@ -2,12 +2,12 @@ import { resolve } from "path";
 import { watch } from "fs";
 import { createDatabase } from "./db/schema.js";
 import { RootContext } from "./context/RootContext.js";
-import { ensureUserDir, USER_DIR } from "./config.js";
+import { ensureUserDir, USER_DIR } from "./user-directory.js";
 import { xAskApiService, xCronService, xEmbeddingDb, xOrchestratorService, xSecretService, xVitoService } from "./lib/x.js";
 import { DashboardChannelService } from "./services/channels/dashboard/DashboardChannelService.js";
 import { DiscordChannelService } from "./services/channels/discord/DiscordChannelService.js";
 import { TelegramChannelService } from "./services/channels/telegram/TelegramChannelService.js";
-import { DEFAULT_TIMEZONE } from "./system-instructions.js";
+import { DEFAULT_TIMEZONE } from "./shared/defaults.js";
 
 async function main() {
   // Ensure user/ directory exists (copy from user.example/ on first run)
@@ -35,7 +35,7 @@ async function main() {
   console.log(`Timezone: ${tz}`);
 
   // Log the configured Pi model.
-  const piConfig = config.settings?.["pi-coding-agent"]?.model || config.harnesses?.["pi-coding-agent"]?.model;
+  const piConfig = config.settings?.["pi-coding-agent"]?.model;
   if (piConfig) {
     console.log(`Pi model: ${piConfig.provider}/${piConfig.name}`);
   }

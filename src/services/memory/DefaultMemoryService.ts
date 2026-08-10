@@ -2,15 +2,15 @@ import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import type { Context } from "../../context/Context.js";
 import {
-  maybeEmbedNewChunksInContext,
+  embedNewChunks,
   type EmbedOptions,
   type EmbeddingResult,
-} from "../../memory/embeddings.js";
+} from "./chunking.js";
 import {
-  searchMemoryInContext,
+  searchMemory,
   type SearchOptions,
   type SearchResult,
-} from "../../memory/search.js";
+} from "./search.js";
 import { xEmbeddingStore, xUserDir } from "../../lib/x.js";
 import type { EmbeddingStats } from "../../stores/embeddings/EmbeddingStore.js";
 import type { MemoryService } from "./MemoryService.js";
@@ -28,7 +28,7 @@ export class DefaultMemoryService implements MemoryService {
     query: string,
     options: SearchOptions = {}
   ): Promise<SearchResult[]> {
-    return searchMemoryInContext(x, query, options);
+    return searchMemory(x, query, options);
   }
 
   async maybeEmbedNewChunks(
@@ -50,7 +50,7 @@ export class DefaultMemoryService implements MemoryService {
 
     this.embeddingInProgress = true;
     try {
-      return await maybeEmbedNewChunksInContext(x, sessionId, options);
+      return await embedNewChunks(x, sessionId, options);
     } finally {
       this.embeddingInProgress = false;
     }

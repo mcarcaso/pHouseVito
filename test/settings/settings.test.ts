@@ -1,7 +1,11 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
-import { getEffectiveSettings } from "../../src/settings.js";
-import type { Settings, VitoConfig } from "../../src/types.js";
+import { getEffectiveSettings } from "../../src/services/vito/settings.js";
+import {
+  vitoConfigSchema,
+  type Settings,
+  type VitoConfig,
+} from "../../src/shared/contracts/vito-config.js";
 
 function createConfig(args: {
   settings?: Settings;
@@ -10,7 +14,6 @@ function createConfig(args: {
 } = {}): VitoConfig {
   return {
     settings: args.settings ?? {},
-    harnesses: {},
     channels: {
       discord: {
         enabled: true,
@@ -25,6 +28,23 @@ function createConfig(args: {
 }
 
 describe("getEffectiveSettings", () => {
+  it("migrates legacy Pi configuration into global settings", () => {
+    const config = vitoConfigSchema.parse({
+      settings: {},
+      harnesses: {
+        "pi-coding-agent": {
+          model: { provider: "anthropic", name: "legacy-model" },
+          thinkingLevel: "low",
+        },
+      },
+      channels: {},
+      cron: { jobs: [] },
+    });
+
+    assert.equal(config.settings["pi-coding-agent"]?.model?.name, "legacy-model");
+    assert.equal("harnesses" in config, false);
+  });
+
   it("provides required defaults", () => {
     const settings = getEffectiveSettings(createConfig(), "discord", "discord:session");
 

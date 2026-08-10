@@ -1,6 +1,19 @@
 import type { Context } from "../../context/Context.js";
-import type { MessageRow, MsgType } from "../../types.js";
 import type { Store } from "../Store.js";
+
+export type MsgType = "user" | "thought" | "assistant" | "tool_start" | "tool_end";
+
+export interface MessageRow {
+  id: number;
+  session_id: string;
+  channel: string | null;
+  channel_target: string | null;
+  timestamp: number;
+  type: MsgType;
+  content: string;
+  archived: number;
+  author: string | null;
+}
 
 export interface MessageFilter {
   ids?: number[];

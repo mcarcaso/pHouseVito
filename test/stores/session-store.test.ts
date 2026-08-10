@@ -4,7 +4,7 @@ import { ObjectContext } from "../../src/context/ObjectContext.js";
 import { createDatabase } from "../../src/db/schema.js";
 import { StoreRecordNotFoundError } from "../../src/stores/Store.js";
 import { SqliteSessionStore } from "../../src/stores/sessions/SqliteSessionStore.js";
-import type { SessionRow } from "../../src/types.js";
+import type { SessionRow } from "../../src/stores/sessions/SessionStore.js";
 
 function createHarness() {
   const db = createDatabase(":memory:");

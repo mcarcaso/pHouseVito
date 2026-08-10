@@ -10,6 +10,7 @@ import type {
   Settings,
   VitoConfig,
 } from '../../../src/shared/contracts/vito-config';
+import { resolveSettings } from '../../../src/shared/settings-resolution';
 import { getDefaults } from './defaults';
 
 export type {
@@ -18,19 +19,6 @@ export type {
   Settings,
   VitoConfig,
 } from '../../../src/shared/contracts/vito-config';
-
-/** Deep merge two Settings objects. Later values win. */
-function mergeSettings(base: Settings, override: Settings): Settings {
-  const result: Settings = { ...base, ...override };
-
-  if (override['pi-coding-agent'] !== undefined) {
-    result['pi-coding-agent'] = { ...base['pi-coding-agent'], ...override['pi-coding-agent'] };
-  }
-  if (override.memory !== undefined) {
-    result.memory = { ...base.memory, ...override.memory };
-  }
-  return result;
-}
 
 /**
  * Get effective settings for a given channel and session.
@@ -41,39 +29,7 @@ export function getEffectiveSettings(
   channelName?: string,
   sessionKey?: string
 ): ResolvedSettings {
-  const defaults = getDefaults();
-  let settings: Settings = { ...defaults };
-
-  // Layer 1: Global
-  if (config.settings) {
-    settings = mergeSettings(settings, config.settings);
-  }
-
-  // Layer 2: Channel
-  if (channelName) {
-    const channelConfig = config.channels?.[channelName];
-    if (channelConfig?.settings) {
-      settings = mergeSettings(settings, channelConfig.settings);
-    }
-  }
-
-  // Layer 3: Session
-  if (sessionKey) {
-    const sessionSettings = config.sessions?.[sessionKey];
-    if (sessionSettings) {
-      settings = mergeSettings(settings, sessionSettings);
-    }
-  }
-
-  return {
-    streamMode: settings.streamMode || defaults.streamMode,
-    customInstructions: settings.customInstructions,
-    requireMention: settings.requireMention,
-    traceMessageUpdates: settings.traceMessageUpdates ?? false,
-    timezone: settings.timezone,
-    'pi-coding-agent': settings['pi-coding-agent'],
-    memory: settings.memory,
-  };
+  return resolveSettings(config, getDefaults(), channelName, sessionKey);
 }
 
 /** Which level is a setting value coming from? */
@@ -132,7 +88,7 @@ export const CASCADING_FIELDS = [
   { key: 'pi-coding-agent.thinkingLevel', label: 'Thinking Level', type: 'select' as const },
 ] as const;
 
-/** Count only settings that are still live in the v2 UI. Ignores stale legacy keys left in config. */
+/** Count settings that are active in the current UI. */
 export function countActiveSettingOverrides(settings?: Settings): number {
   if (!settings) return 0;
   return CASCADING_FIELDS.reduce((count, field) => (

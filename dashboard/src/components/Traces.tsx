@@ -32,14 +32,14 @@ interface TraceUserMessage {
   attachments?: { type: string; path: string }[];
 }
 
-// Raw event — exactly what the harness emitted
+// Raw event — exactly what the Pi runtime emitted
 interface TraceRawEvent {
   type: "raw_event";
   ts: number;
   event: unknown;
 }
 
-// Normalized event — our harness-agnostic format
+// Normalized event — the stable event format used by Vito
 interface TraceNormalizedEvent {
   type: "normalized_event";
   ts: number;
@@ -126,7 +126,7 @@ interface TraceProfileUpdate {
   events?: NormalizedEvent[];  // Legacy: inline events (for old traces)
 }
 
-// Normalized event types from the harness
+// Normalized event types from the Pi runtime
 interface NormalizedEvent {
   kind: string;
   tool?: string;

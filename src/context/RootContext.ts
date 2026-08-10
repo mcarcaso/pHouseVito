@@ -7,11 +7,14 @@ import { InMemoryDashboardAuthService } from "../services/auth/InMemoryDashboard
 import { DefaultChannelRegistryService } from "../services/channels/DefaultChannelRegistryService.js";
 import { DefaultDashboardChatService } from "../services/chat/DefaultDashboardChatService.js";
 import { CronerCronService } from "../services/cron/CronerCronService.js";
+import { DriveInboundAttachmentService } from "../services/files/DriveInboundAttachmentService.js";
 import { FileSystemFileService } from "../services/files/FileSystemFileService.js";
 import { DefaultMemoryService } from "../services/memory/DefaultMemoryService.js";
+import { OpenAiEmbeddingService } from "../services/memory/OpenAiEmbeddingService.js";
 import { PiOrchestratorService } from "../services/orchestrator/PiOrchestratorService.js";
 import { DefaultProviderService } from "../services/providers/DefaultProviderService.js";
 import { FileSecretService } from "../services/secrets/FileSecretService.js";
+import { DefaultSessionService } from "../services/sessions/DefaultSessionService.js";
 import { DefaultServerLifecycleService } from "../services/server/DefaultServerLifecycleService.js";
 import { FileVitoService } from "../services/vito/FileVitoService.js";
 import { FileAppStore } from "../stores/apps/FileAppStore.js";
@@ -59,6 +62,7 @@ export function RootContext(args: RootContextArgs): Context {
     attachmentsDir: () => args.attachmentsDir ?? resolve(process.cwd(), "data", "attachments"),
     vitoService: () => new FileVitoService(),
     fileService: () => new FileSystemFileService(),
+    inboundAttachmentService: () => new DriveInboundAttachmentService(),
     appProcessService: () => new Pm2AppProcessService(),
     askApiService: () => new DefaultAskApiService(),
     dashboardAuthService: () => new InMemoryDashboardAuthService(),
@@ -71,10 +75,12 @@ export function RootContext(args: RootContextArgs): Context {
     driveStore: () => new FileDriveStore(),
     embeddingDb: () => createEmbeddingDatabase(join(args.userDir, "embeddings.db")),
     embeddingStore: () => new SqliteEmbeddingStore(),
+    embeddingService: () => new OpenAiEmbeddingService(),
     memoryService: () => new DefaultMemoryService(),
     orchestratorService: () => new PiOrchestratorService(),
     secretService: () => new FileSecretService(),
     serverLifecycleService: () => new DefaultServerLifecycleService(),
+    sessionService: () => new DefaultSessionService(),
     piSessionStore: () => new FilePiSessionStore(),
     sessionStore: () => new SqliteSessionStore(),
     skillStore: () => new FileSkillStore(),

@@ -6,7 +6,6 @@ import { vitoConfigSchema } from "../../src/shared/contracts/vito-config.js";
 
 const config = vitoConfigSchema.parse({
   settings: {},
-  harnesses: {},
   channels: {},
   cron: { jobs: [] },
 });

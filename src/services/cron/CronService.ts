@@ -1,5 +1,6 @@
 import type { Context } from "../../context/Context.js";
-import type { CronJobConfig, InboundEvent } from "../../types.js";
+import type { InboundEvent } from "../../contracts/inbound-event.js";
+import type { CronJobConfig } from "../../shared/contracts/vito-config.js";
 
 export interface CronHealth {
   name: string;
@@ -18,6 +19,7 @@ export interface CronService {
   start(x: Context, args: StartCronArgs): void;
   stop(x: Context): void;
   reload(x: Context, jobs: CronJobConfig[], timezone?: string): void;
+  getScheduleError(x: Context, job: CronJobConfig, globalTimezone?: string): string | null;
   scheduleJob(x: Context, job: CronJobConfig): void;
   removeJob(x: Context, name: string): boolean;
   triggerJob(x: Context, name: string): Promise<boolean>;

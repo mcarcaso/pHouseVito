@@ -263,7 +263,6 @@ function App() {
           <Route path="/pi-sessions" element={<PiSessions />} />
           {/* Redirects for old routes */}
           <Route path="/channels" element={<Navigate to="/settings?tab=channels" replace />} />
-          <Route path="/harnesses" element={<Navigate to="/settings" replace />} />
           <Route path="/memories" element={<Navigate to="/memory" replace />} />
           <Route path="/sessions/:id/settings" element={<SessionSettingsRedirect />} />
           <Route path="*" element={<Navigate to="/chat" replace />} />

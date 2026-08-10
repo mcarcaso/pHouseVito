@@ -7,16 +7,19 @@ import type { DashboardAuthService } from "../services/auth/DashboardAuthService
 import type { ChannelRegistryService } from "../services/channels/ChannelRegistryService.js";
 import type { DashboardChatService } from "../services/chat/DashboardChatService.js";
 import type { FileService } from "../services/files/FileService.js";
+import type { InboundAttachmentService } from "../services/files/InboundAttachmentService.js";
 import type { ProviderService } from "../services/providers/ProviderService.js";
 import type { AppStore } from "../stores/apps/AppStore.js";
 import type { AttachmentStore } from "../stores/attachments/AttachmentStore.js";
 import type { DriveStore } from "../stores/drive/DriveStore.js";
 import type { EmbeddingStore } from "../stores/embeddings/EmbeddingStore.js";
 import type { CronService } from "../services/cron/CronService.js";
+import type { EmbeddingService } from "../services/memory/EmbeddingService.js";
 import type { MemoryService } from "../services/memory/MemoryService.js";
 import type { OrchestratorService } from "../services/orchestrator/OrchestratorService.js";
 import type { SecretService } from "../services/secrets/SecretService.js";
 import type { ServerLifecycleService } from "../services/server/ServerLifecycleService.js";
+import type { SessionService } from "../services/sessions/SessionService.js";
 import type { VitoService } from "../services/vito/VitoService.js";
 import type { MessageStore } from "../stores/messages/MessageStore.js";
 import type { PiSessionStore } from "../stores/pi-sessions/PiSessionStore.js";
@@ -33,6 +36,8 @@ export const xEmbeddingDb = (x: Context): Database.Database =>
   x.get("embeddingDb") as Database.Database;
 export const xEmbeddingStore = (x: Context): EmbeddingStore =>
   x.get("embeddingStore") as EmbeddingStore;
+export const xEmbeddingService = (x: Context): EmbeddingService =>
+  x.get("embeddingService") as EmbeddingService;
 export const xDriveStore = (x: Context): DriveStore => x.get("driveStore") as DriveStore;
 export const xAppStore = (x: Context): AppStore => x.get("appStore") as AppStore;
 export const xAttachmentStore = (x: Context): AttachmentStore =>
@@ -63,6 +68,8 @@ export const xDashboardChatService = (x: Context): DashboardChatService =>
 export const xProviderService = (x: Context): ProviderService =>
   x.get("providerService") as ProviderService;
 export const xFileService = (x: Context): FileService => x.get("fileService") as FileService;
+export const xInboundAttachmentService = (x: Context): InboundAttachmentService =>
+  x.get("inboundAttachmentService") as InboundAttachmentService;
 export const xCronService = (x: Context): CronService => x.get("cronService") as CronService;
 export const xMemoryService = (x: Context): MemoryService =>
   x.get("memoryService") as MemoryService;
@@ -72,6 +79,8 @@ export const xSecretService = (x: Context): SecretService =>
   x.get("secretService") as SecretService;
 export const xServerLifecycleService = (x: Context): ServerLifecycleService =>
   x.get("serverLifecycleService") as ServerLifecycleService;
+export const xSessionService = (x: Context): SessionService =>
+  x.get("sessionService") as SessionService;
 export const xPiSessionStore = (x: Context): PiSessionStore =>
   x.get("piSessionStore") as PiSessionStore;
 export const xSessionStore = (x: Context): SessionStore => x.get("sessionStore") as SessionStore;

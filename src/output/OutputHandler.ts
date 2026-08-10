@@ -1,4 +1,5 @@
 export type OutboundMessage = string;
+export type StreamMode = "stream" | "bundled" | "final";
 
 export interface AgentActivityEvent {
   kind: "tool_start" | "tool_end" | "thinking";

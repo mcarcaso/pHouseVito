@@ -31,7 +31,6 @@ describe("channel services", () => {
   it("normalizes legacy numeric Telegram allowlist identifiers", () => {
     const result = validateVitoConfig({
       settings: {},
-      harnesses: {},
       channels: { telegram: { enabled: true, allowedChatIds: [12345, "67890"] } },
       cron: { jobs: [] },
     });

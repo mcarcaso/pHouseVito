@@ -2,8 +2,9 @@ import { exec } from "node:child_process";
 import { promisify } from "node:util";
 import { Cron } from "croner";
 import type { Context } from "../../context/Context.js";
-import { DEFAULT_TIMEZONE } from "../../system-instructions.js";
-import type { CronJobConfig, InboundEvent } from "../../types.js";
+import { DEFAULT_TIMEZONE } from "../../shared/defaults.js";
+import type { InboundEvent } from "../../contracts/inbound-event.js";
+import type { CronJobConfig } from "../../shared/contracts/vito-config.js";
 import type { CronHealth, CronService, StartCronArgs } from "./CronService.js";
 
 const execAsync = promisify(exec);
@@ -24,6 +25,24 @@ export class CronerCronService implements CronService {
   /** Get the effective timezone for a job (job-specific > global > default) */
   private getJobTimezone(job: CronJobConfig): string {
     return job.timezone || this.globalTimezone || DEFAULT_TIMEZONE;
+  }
+
+  getScheduleError(_x: Context, job: CronJobConfig, globalTimezone?: string): string | null {
+    const timezone = job.timezone || globalTimezone || DEFAULT_TIMEZONE;
+    if (this.isISODate(job.schedule)) {
+      const date = new Date(job.schedule);
+      if (Number.isNaN(date.getTime())) return "Invalid ISO date schedule";
+      if (date.getTime() <= Date.now()) return "One-time schedule must be in the future";
+      return null;
+    }
+
+    try {
+      const cron = new Cron(job.schedule, { paused: true, timezone }, () => {});
+      cron.stop();
+      return null;
+    } catch (error) {
+      return error instanceof Error ? error.message : "Invalid cron schedule";
+    }
   }
 
   /** Start all jobs from config and connect them to the application event sink. */

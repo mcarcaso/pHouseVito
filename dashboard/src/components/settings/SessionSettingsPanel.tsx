@@ -207,7 +207,7 @@ export default function SessionSettingsPanel({ config, onSave, initialSessionId 
   };
 
   // Get the global Pi config as the inherited value for session overrides.
-  const getGlobalPiConfig = () => config.harnesses?.['pi-coding-agent'] || { model: { provider: '', name: '' } };
+  const getGlobalPiConfig = () => config.settings?.['pi-coding-agent'] || { model: { provider: '', name: '' } };
 
   const renderPiCodingAgentOverrides = (
     sessionId: string,

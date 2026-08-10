@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import { ObjectContext } from "../../src/context/ObjectContext.js";
 import { CronerCronService } from "../../src/services/cron/CronerCronService.js";
-import type { InboundEvent } from "../../src/types.js";
+import type { InboundEvent } from "../../src/contracts/inbound-event.js";
 
 describe("CronerCronService", () => {
   it("owns scheduler lifecycle and dispatches jobs through its configured sink", async () => {

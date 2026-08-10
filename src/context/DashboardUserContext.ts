@@ -10,6 +10,7 @@ const dashboardDependencyKeys = [
   "db",
   "embeddingDb",
   "embeddingStore",
+  "embeddingService",
   "driveStore",
   "appStore",
   "attachmentStore",

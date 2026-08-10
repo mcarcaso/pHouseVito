@@ -112,12 +112,12 @@ Edit `user/SOUL.md` to define your agent's personality. This is how you make Vit
 pHouseVito/
 ├── src/                       # Core application code
 │   ├── services/channels/     # Context-driven channel services and registry
+│   ├── services/memory/       # Memory workflows and embedding provider integration
 │   ├── services/orchestrator/ # Message orchestration and Pi session runtime pipeline
-│   ├── db/                    # SQLite schema and queries
-│   ├── memory/                # Memory management and compaction
+│   ├── services/sessions/     # Vito session lifecycle
+│   ├── db/                    # SQLite schema bootstrap
 │   ├── output/                # Shared output-handler contracts and decorators
 │   ├── shared/contracts/      # Browser-safe Zod API contracts shared with dashboard
-│   ├── sessions/              # Session management
 │   └── skills/                # Builtin skill discovery and loading
 ├── dashboard/                 # React-based web UI
 ├── data/                      # Runtime data (attachments, etc.) — gitignored
@@ -227,7 +227,7 @@ Vito uses the Pi Coding Agent SDK for all model interaction. Pi supports multipl
 Configure in `user/vito.config.json`:
 ```json
 {
-  "harnesses": {
+  "settings": {
     "pi-coding-agent": {
       "model": { "provider": "openrouter", "name": "anthropic/claude-sonnet-4.6" },
       "thinkingLevel": "off"
@@ -245,13 +245,12 @@ Runtime behaviors are layered via decorators:
 - `withPersistence()` — SQLite message storage
 - `withRelay()` — Streaming to channels
 - `withTyping()` — Typing indicators
-- `withNoReplyCheck()` — Drops responses containing `NO_REPLY`
+
+Conditional cron output is wrapped with `NoReplyOutputHandler`, which suppresses responses containing `NO_REPLY`.
 
 ### System Instructions
 
-System instructions are centralized in `src/system-instructions.ts`, including:
-- **Core instructions** (tools, MEDIA protocol, restart rules)
-- **Commands block** (`/new` only for interactive sessions)
+Project-owned instructions live in `SYSTEM.md`. `VitoService` reads them and the orchestrator's pure prompt builder combines them with personality, commands, capabilities, and session context.
 - **Cardinal rules** (verify facts, investigate before assuming)
 - **Investigation-first behavior**
 

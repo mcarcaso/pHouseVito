@@ -1,5 +1,14 @@
 import type { Context } from "../../context/Context.js";
-import type { SessionRow } from "../../types.js";
+
+export interface SessionRow {
+  id: string;
+  channel: string | null;
+  channel_target: string | null;
+  created_at: number;
+  last_active_at: number;
+  config: string;
+  alias: string | null;
+}
 
 export interface SessionFilter {
   ids?: string[];

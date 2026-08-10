@@ -12,7 +12,8 @@ import {
 } from "../../src/services/channels/ChannelRegistryService.js";
 import { SqliteSessionStore } from "../../src/stores/sessions/SqliteSessionStore.js";
 import type { OutputHandler } from "../../src/output/OutputHandler.js";
-import type { InboundEvent, SessionRow } from "../../src/types.js";
+import type { InboundEvent } from "../../src/contracts/inbound-event.js";
+import type { SessionRow } from "../../src/stores/sessions/SessionStore.js";
 
 function createManagedChannel(
   name: "discord" | "telegram",

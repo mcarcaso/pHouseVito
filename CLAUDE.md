@@ -53,7 +53,7 @@ Channel emits `InboundEvent` → `Orchestrator.handleInbound()` → per-session 
 
 ### Memory: agent-initiated, not pre-loaded
 
-v2 does **not** auto-search embeddings on every turn and does **not** stuff prior messages into the system prompt. The agent calls memory skills explicitly when it needs them — `semantic-history-search` (hybrid: cosine + FTS5 BM25 + RRF) and `keyword-history-search` (raw SQL). Embedding persistence is isolated behind `EmbeddingStore`/`SqliteEmbeddingStore`; `MemoryService` coordinates incremental embedding, search, and statistics through context, while `src/memory/search.ts` and `src/memory/embeddings.ts` retain compatibility façades for standalone skills. Dashboard memory APIs live in `src/routers/MemoryRouterService.ts`. Within a single Vito session the conversation history lives in pi's `AgentSession`; cross-session lookup is only via those skills. `user/profile.md` is **not** inlined into the prompt — the capabilities map tells the agent to `Read` it on first response and `Edit` it when it learns something profile-worthy (see the `profile-maintenance` built-in skill for the rules).
+Vito does **not** auto-search embeddings on every turn and does **not** stuff prior messages into the system prompt. The agent calls memory skills explicitly when needed: `semantic-history-search` (hybrid cosine + FTS5 BM25 + RRF) and `keyword-history-search` (raw SQL). `MemoryService` owns chunking and search workflows, `EmbeddingService` owns provider integration, and `EmbeddingStore` owns persistence. `src/memory/search.ts` remains only as the standalone skill adapter. Dashboard memory APIs live in `src/routers/MemoryRouterService.ts`. Within one Vito session, conversation history lives in Pi's `AgentSession`; cross-session lookup is only through memory skills. `user/profile.md` is not inlined into the prompt—the capabilities map tells the agent to read it on the first response and update it when appropriate.
 
 ### Pi sessions on disk
 
@@ -73,7 +73,7 @@ Shared output-handler contracts and cross-channel decorators live under `src/out
 
 ### Settings cascade
 
-`getEffectiveSettings(config, channelName, sessionKey)` in `src/settings.ts` deep-merges Global → Channel → Session. The whole live surface is: `streamMode` (`stream`/`bundled`/`final`), `customInstructions`, `requireMention`, `traceMessageUpdates`, `timezone`, and `pi-coding-agent` (with `model.{provider,name}`, `openRouterProvider`, and `thinkingLevel`). Pi is the only runtime. Defaults: `streamMode=stream`, `timezone=America/Toronto`, default model `anthropic/claude-sonnet-4-20250514`.
+`getEffectiveSettings(config, channelName, sessionKey)` in `src/services/vito/settings.ts` uses the shared resolver to deep-merge Global → Channel → Session. The whole live surface is: `streamMode` (`stream`/`bundled`/`final`), `customInstructions`, `requireMention`, `traceMessageUpdates`, `timezone`, and `pi-coding-agent` (with `model.{provider,name}`, `openRouterProvider`, and `thinkingLevel`). Pi is the only runtime. Defaults: `streamMode=stream`, `timezone=America/Toronto`, default model `anthropic/claude-sonnet-4-20250514`.
 
 ### Slash commands (priority, bypass queue)
 
@@ -112,7 +112,7 @@ Separate `user/embeddings.db` holds chunk vectors + FTS5 index used by `semantic
 
 ### Configuration files
 
-- `user/vito.config.json` — `bot`, `settings` (global), `harnesses["pi-coding-agent"]`, `channels[]`, `sessions{}` (per-key overrides), `cron.jobs[]`. Hot-reloaded with 3s debounce; live pi sessions get their model re-synced on reload.
+- `user/vito.config.json` — `bot`, `settings` (including global `pi-coding-agent` configuration), `channels[]`, `sessions{}` (per-key overrides), and `cron.jobs[]`. Legacy `harnesses["pi-coding-agent"]` input is migrated into settings during validation. Configuration is hot-reloaded with a 3s debounce; live Pi sessions get their model re-synced on reload.
 - `user/secrets.json` — flat key-value managed through the context-scoped `SecretService` and injected into `process.env` at boot. Writes are atomic and empty values clear the corresponding environment variable. Provider keys: `ANTHROPIC_API_KEY`, `OPENAI_API_KEY`, `GOOGLE_GENERATIVE_AI_API_KEY`, `GROQ_API_KEY`, `XAI_API_KEY`, `OPENROUTER_API_KEY`. Channel tokens: `TELEGRAM_BOT_TOKEN`, `DISCORD_BOT_TOKEN`. Other: `DASHBOARD_PASSWORD_HASH` (managed by the dashboard, don't hand-edit), `BLAND_WEBHOOK_SECRET`.
 - `SYSTEM.md` (project root, **not** under `user/`) — hot-loaded into every system prompt.
 - `user/SOUL.md` — agent personality, hot-loaded.

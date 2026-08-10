@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
+import type { PiRuntimeConfig } from '../../../../src/shared/contracts/vito-config';
 import type { VitoConfig } from '../../utils/settingsResolution';
 
 interface PiConfigEditorProps {
@@ -31,7 +32,9 @@ const THINKING_LEVELS = [
   { id: 'low', label: 'Low' },
   { id: 'medium', label: 'Medium' },
   { id: 'high', label: 'High' },
-];
+] as const;
+
+type ThinkingLevel = (typeof THINKING_LEVELS)[number]['id'];
 
 const OPENROUTER_PROVIDER_ROUTES = [
   { id: '', label: 'Auto' },
@@ -59,7 +62,7 @@ export default function PiConfigEditor({ config, onSave }: PiConfigEditorProps) 
   const [selectedProvider, setSelectedProvider] = useState('');
   const [selectedModel, setSelectedModel] = useState('');
   const [selectedOpenRouterProvider, setSelectedOpenRouterProvider] = useState('');
-  const [selectedThinking, setSelectedThinking] = useState('off');
+  const [selectedThinking, setSelectedThinking] = useState<ThinkingLevel>('off');
   const [savingPi, setSavingPi] = useState(false);
 
   // OAuth login state
@@ -95,7 +98,7 @@ export default function PiConfigEditor({ config, onSave }: PiConfigEditorProps) 
 
   // Sync from config
   useEffect(() => {
-    const piConfig = config.harnesses?.['pi-coding-agent'];
+    const piConfig = config.settings?.['pi-coding-agent'];
     if (piConfig?.model) {
       setSelectedProvider(piConfig.model.provider || '');
       setSelectedModel(piConfig.model.name || '');
@@ -222,8 +225,8 @@ export default function PiConfigEditor({ config, onSave }: PiConfigEditorProps) 
   const savePi = async () => {
     if (!selectedProvider || !selectedModel) return;
     setSavingPi(true);
-    const piConfig: any = {
-      ...config.harnesses?.['pi-coding-agent'],
+    const piConfig: PiRuntimeConfig = {
+      ...config.settings?.['pi-coding-agent'],
       model: { provider: selectedProvider, name: selectedModel },
       thinkingLevel: selectedThinking,
     };
@@ -232,7 +235,7 @@ export default function PiConfigEditor({ config, onSave }: PiConfigEditorProps) 
     } else {
       delete piConfig.openRouterProvider;
     }
-    await onSave({ harnesses: { ...config.harnesses, 'pi-coding-agent': piConfig } });
+    await onSave({ settings: { ...config.settings, 'pi-coding-agent': piConfig } });
     setEditingPi(false);
     setSavingPi(false);
   };
@@ -263,7 +266,7 @@ export default function PiConfigEditor({ config, onSave }: PiConfigEditorProps) 
     return `\u2713 ${keyInfo[provider]?.envVar || 'API Key'}`;
   };
 
-  const piConfig = config.harnesses?.['pi-coding-agent'];
+  const piConfig = config.settings?.['pi-coding-agent'];
 
   return (
     <div className="space-y-3">
@@ -425,7 +428,14 @@ export default function PiConfigEditor({ config, onSave }: PiConfigEditorProps) 
             )}
             <div className="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-4">
               <label className="text-sm text-neutral-400 sm:w-24 shrink-0">Thinking</label>
-              <select className={selectClass} value={selectedThinking} onChange={(e) => setSelectedThinking(e.target.value)}>
+              <select
+                className={selectClass}
+                value={selectedThinking}
+                onChange={(event) => {
+                  const level = THINKING_LEVELS.find((option) => option.id === event.target.value);
+                  if (level) setSelectedThinking(level.id);
+                }}
+              >
                 {THINKING_LEVELS.map((t) => <option key={t.id} value={t.id}>{t.label}</option>)}
               </select>
             </div>

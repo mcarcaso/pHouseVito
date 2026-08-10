@@ -33,6 +33,10 @@ class FakeCronService implements CronService {
     this.jobs = new Map(jobs.map((job) => [job.name, job]));
   }
 
+  getScheduleError(_x: Context, job: CronJobConfig): string | null {
+    return job.schedule === "not a schedule" ? "Invalid cron schedule" : null;
+  }
+
   scheduleJob(_x: Context, job: CronJobConfig): void {
     this.jobs.set(job.name, job);
     this.scheduled.push(job.name);

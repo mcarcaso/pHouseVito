@@ -59,7 +59,7 @@ export const appsConfigSchema = z.object({
   portStart: z.number().int().min(1).max(65_535).optional(),
 }).passthrough();
 
-export const harnessesConfigSchema = z.object({
+const legacyHarnessesConfigSchema = z.object({
   "pi-coding-agent": piRuntimeConfigSchema.optional(),
 }).passthrough();
 
@@ -100,7 +100,6 @@ export const vitoConfigPatchSchema = z.object({
   bot: botConfigSchema.partial().optional(),
   apps: appsConfigSchema.partial().optional(),
   settings: settingsSchema.optional(),
-  harnesses: harnessesConfigSchema.partial().optional(),
   channels: z.record(z.string(), channelConfigSchema).optional(),
   sessions: z.record(z.string(), settingsSchema).nullable().optional(),
   compaction: z.record(z.string(), z.unknown()).optional(),
@@ -110,7 +109,7 @@ export const vitoConfigSchema = z.object({
   bot: botConfigSchema.optional(),
   apps: appsConfigSchema.optional(),
   settings: settingsSchema,
-  harnesses: harnessesConfigSchema,
+  harnesses: legacyHarnessesConfigSchema.optional(),
   channels: z.record(z.string(), channelConfigSchema),
   sessions: z.record(z.string(), settingsSchema).optional(),
   cron: z.object({
@@ -129,6 +128,20 @@ export const vitoConfigSchema = z.object({
     }
     seenJobNames.add(job.name);
   }
+}).transform((config) => {
+  const { harnesses, ...currentConfig } = config;
+  const legacyPi = harnesses?.["pi-coding-agent"];
+  if (!legacyPi) return currentConfig;
+  return {
+    ...currentConfig,
+    settings: {
+      ...currentConfig.settings,
+      "pi-coding-agent": {
+        ...legacyPi,
+        ...currentConfig.settings["pi-coding-agent"],
+      },
+    },
+  };
 });
 
 export type PiRuntimeConfig = z.infer<typeof piRuntimeConfigSchema>;

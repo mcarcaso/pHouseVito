@@ -10,7 +10,7 @@
  */
 
 import type { OutputHandler } from "../../../output/OutputHandler.js";
-import type { StreamMode } from "../../../types.js";
+import type { StreamMode } from "../../../output/OutputHandler.js";
 import { ProxyPiRuntime } from "./ProxyPiRuntime.js";
 import type { PiRuntime, PiRuntimeCallbacks } from "./PiRuntime.js";
 

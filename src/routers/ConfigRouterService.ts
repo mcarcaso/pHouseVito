@@ -10,7 +10,7 @@ import {
   vitoConfigPatchSchema,
 } from "../shared/contracts/vito-config.js";
 import { xVitoService } from "../lib/x.js";
-import { getDefaultSettings } from "../settings.js";
+import { getDefaultSettings } from "../services/vito/settings.js";
 import {
   emptyRouteSchema,
   unknownRouteSchema,
@@ -38,9 +38,6 @@ function applyConfigPatch(
     settings: patch.settings
       ? { ...config.settings, ...patch.settings }
       : config.settings,
-    harnesses: patch.harnesses
-      ? { ...config.harnesses, ...patch.harnesses }
-      : config.harnesses,
     channels: patch.channels
       ? { ...config.channels, ...patch.channels }
       : config.channels,

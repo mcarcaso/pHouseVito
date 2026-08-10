@@ -835,7 +835,7 @@ function PiSessions() {
         ))}
         {list.length === 0 && (
           <div className="text-center text-neutral-500 py-12">
-            No pi sessions yet. Send a message via orchestrator v2 to start logging.
+            No Pi sessions yet. Send a message to start one.
           </div>
         )}
       </div>

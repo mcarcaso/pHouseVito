@@ -2,7 +2,8 @@ import { Bot } from "grammy";
 import type { Context } from "../../../context/Context.js";
 import { xSecretService, xVitoService } from "../../../lib/x.js";
 import type { OutputHandler } from "../../../output/OutputHandler.js";
-import type { InboundEvent, SessionRow } from "../../../types.js";
+import type { InboundEvent } from "../../../contracts/inbound-event.js";
+import type { SessionRow } from "../../../stores/sessions/SessionStore.js";
 import type { ChannelManagement, ChannelService } from "../ChannelService.js";
 import { TelegramOutputHandler } from "./TelegramOutputHandler.js";
 

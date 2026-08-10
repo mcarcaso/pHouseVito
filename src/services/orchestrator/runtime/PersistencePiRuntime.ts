@@ -11,7 +11,7 @@
 
 import type { Context } from "../../../context/Context.js";
 import { xMessageStore } from "../../../lib/x.js";
-import type { MsgType } from "../../../types.js";
+import type { MsgType } from "../../../stores/messages/MessageStore.js";
 import { ProxyPiRuntime } from "./ProxyPiRuntime.js";
 import type { PiRuntime, PiRuntimeCallbacks } from "./PiRuntime.js";
 

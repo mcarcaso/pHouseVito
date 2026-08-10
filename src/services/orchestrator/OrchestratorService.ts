@@ -1,6 +1,7 @@
 import type { Context } from "../../context/Context.js";
 import type { ChannelService } from "../channels/ChannelService.js";
-import type { CronJobConfig, InboundEvent, VitoConfig } from "../../types.js";
+import type { InboundEvent } from "../../contracts/inbound-event.js";
+import type { CronJobConfig, VitoConfig } from "../../shared/contracts/vito-config.js";
 
 export interface AskOptions {
   question: string;

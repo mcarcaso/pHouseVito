@@ -16,17 +16,10 @@
  * - Uses the same chunking/embedding logic as the backfill scripts
  */
 
-import { join, resolve } from "node:path";
 import { completeSimple, getModel } from "@earendil-works/pi-ai/compat";
 import { AuthStorage } from "@earendil-works/pi-coding-agent";
-import type { Context } from "../context/Context.js";
-import { ObjectContext } from "../context/ObjectContext.js";
-import { createDatabase } from "../db/schema.js";
-import { xDb, xEmbeddingDb, xEmbeddingStore, xMessageStore } from "../lib/x.js";
-import { createEmbeddingDatabase } from "../stores/embeddings/embedding-database.js";
-import { SqliteEmbeddingStore } from "../stores/embeddings/SqliteEmbeddingStore.js";
-import { SqliteMessageStore } from "../stores/messages/SqliteMessageStore.js";
-import { createEmbedding } from "./client.js";
+import type { Context } from "../../context/Context.js";
+import { xEmbeddingService, xEmbeddingStore, xMessageStore } from "../../lib/x.js";
 
 // ── Config ─────────────────────────────────────────────────
 
@@ -36,10 +29,6 @@ const ASSISTANT_LABEL = "assistant";
 /** Default model used to write the per-chunk context sentence. */
 const DEFAULT_CONTEXTUAL_MODEL = { provider: "openrouter", name: "openai/gpt-5.4-nano" };
 
-
-// ── Global Lock ────────────────────────────────────────────
-
-let isRunning = false;
 
 // ── Message Formatting (mirrors chunker.mjs) ───────────────
 
@@ -267,7 +256,7 @@ export interface EmbedOptions {
  * 
  * Returns a result object for trace reporting.
  */
-export async function maybeEmbedNewChunksInContext(
+export async function embedNewChunks(
   x: Context,
   sessionId: string,
   options: EmbedOptions = {}
@@ -346,7 +335,7 @@ async function doEmbedding(
         options.contextualizerModel ?? DEFAULT_CONTEXTUAL_MODEL
       );
       const embeddedText = `${context}\n\n${chunk.text}`;
-      const vector = await createEmbedding(embeddedText);
+      const vector = await xEmbeddingService(x).create(x, embeddedText);
       embeddingStore.createChunk(x, {
         sessionId,
         day: chunk.day,
@@ -379,34 +368,4 @@ async function doEmbedding(
     unembedded_chars: totalChars,
     duration_ms: Date.now() - start,
   };
-}
-
-function createStandaloneContext(): Context {
-  const userDir = join(resolve(process.cwd()), "user");
-  return new ObjectContext({
-    db: () => createDatabase(join(userDir, "vito.db")),
-    messageStore: () => new SqliteMessageStore(),
-    embeddingDb: () => createEmbeddingDatabase(join(userDir, "embeddings.db")),
-    embeddingStore: () => new SqliteEmbeddingStore(),
-  });
-}
-
-/** Compatibility façade for standalone callers. */
-export async function maybeEmbedNewChunks(
-  sessionId: string,
-  options: EmbedOptions = {}
-): Promise<EmbeddingResult> {
-  const start = Date.now();
-  if (isRunning) {
-    return { skipped: "lock_held", chunks_created: 0, chunks: [], unembedded_messages: 0, unembedded_chars: 0, duration_ms: Date.now() - start };
-  }
-  isRunning = true;
-  const x = createStandaloneContext();
-  try {
-    return await maybeEmbedNewChunksInContext(x, sessionId, options);
-  } finally {
-    xEmbeddingDb(x).close();
-    xDb(x).close();
-    isRunning = false;
-  }
 }

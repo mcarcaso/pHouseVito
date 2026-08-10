@@ -1,7 +1,7 @@
 import { Bot } from "grammy";
 import * as path from "node:path";
 import type { OutputHandler, OutboundMessage } from "../../../output/OutputHandler.js";
-import type { InboundEvent } from "../../../types.js";
+import type { InboundEvent } from "../../../contracts/inbound-event.js";
 
 const TELEGRAM_MAX_LENGTH = 4096;
 
@@ -30,7 +30,7 @@ export class TelegramOutputHandler implements OutputHandler {
   async startTyping(): Promise<void> {
     console.log(`[Telegram] startTyping() called for chat ${this.chatId}${this.threadId ? ` thread ${this.threadId}` : ''}`);
     // Idempotent: clear any existing interval before starting a new one so that
-    // double-call (e.g., early start in orchestrator + typing harness) doesn't leak.
+    // double-call (e.g., early start in orchestrator + typing runtime) doesn't leak.
     if (this.typingInterval) {
       clearInterval(this.typingInterval);
       this.typingInterval = null;

@@ -14,38 +14,23 @@ import { DirectChannelService } from "../channels/direct/DirectChannelService.js
 import type { ChannelService } from "../channels/ChannelService.js";
 import type { AskOptions, OrchestratorService } from "./OrchestratorService.js";
 
-import { SessionManager } from "../../sessions/manager.js";
-import { getEffectiveSettings } from "../../settings.js";
-import { xChannelRegistryService, xCronService, xMemoryService, xMessageStore, xSkillStore, xUserDir, xVitoService } from "../../lib/x.js";
+import { getEffectiveSettings } from "../vito/settings.js";
+import { xChannelRegistryService, xCronService, xInboundAttachmentService, xMemoryService, xMessageStore, xServerLifecycleService, xSessionService, xSkillStore, xUserDir, xVitoService } from "../../lib/x.js";
 
-import { randomBytes } from "crypto";
-import { mkdirSync, statSync, writeFileSync } from "fs";
-import { join, resolve } from "path";
+import { statSync } from "node:fs";
+import { resolve } from "node:path";
 
-import { extractMessageText } from "../../memory/context.js";
+import { extractMessageText } from "../memory/message-content.js";
 
+import type { InboundEvent } from "../../contracts/inbound-event.js";
 import type {
   CronJobConfig,
-  InboundEvent,
   ResolvedSettings,
   VitoConfig,
-} from "../../types.js";
+} from "../../shared/contracts/vito-config.js";
 
-import {
-  PiSessionRuntime,
-  type PiSessionRuntimeConfig,
-} from "./PiSessionRuntime.js";
+import { PiRuntimeRegistry } from "./PiRuntimeRegistry.js";
 import { buildSystemPrompt, buildUserMessage } from "./system-prompt.js";
-
-/**
- * Vito session IDs are "channel:target" (e.g., "dashboard:default",
- * "telegram:123456:78"). Percent-encode chars that aren't safe in path
- * components so the encoding is reversible — the dashboard decodes back to
- * the original session id when listing pi-sessions.
- */
-function encodeSessionDirName(sessionId: string): string {
-  return encodeURIComponent(sessionId);
-}
 
 function normalizeSlashCommand(content?: string): string {
   return (content || "").trim().replace(/^\/([A-Za-z0-9_]+)@[^\s]+(?=\s|$)/, "/$1");
@@ -54,7 +39,6 @@ function normalizeSlashCommand(content?: string): string {
 export class PiOrchestratorService implements OrchestratorService {
   private initialized = false;
   private x!: Context;
-  private sessionManager!: SessionManager;
   private config!: VitoConfig;
 
   /** Per-session message queues and processing locks. */
@@ -69,7 +53,7 @@ export class PiOrchestratorService implements OrchestratorService {
    * reused across turns — that's what enables Anthropic prompt caching to
    * hit on every turn.
    */
-  private runtimes = new Map<string, PiSessionRuntime>();
+  private readonly runtimeRegistry = new PiRuntimeRegistry();
 
   /**
    * Vito session ids whose runtime has produced at least one completed turn.
@@ -88,7 +72,6 @@ export class PiOrchestratorService implements OrchestratorService {
     if (this.initialized) return;
 
     this.x = x;
-    this.sessionManager = new SessionManager(x);
     this.config = xVitoService(x).getConfig(x);
     this.configMtimeMs = this.getConfigMtimeMs();
 
@@ -120,7 +103,7 @@ export class PiOrchestratorService implements OrchestratorService {
     this.config = config;
     this.configMtimeMs = this.getConfigMtimeMs();
     console.log(`[PiOrchestratorService] Config reloaded`);
-    // No push-sync to live runtimes — getOrCreateRuntime reconciles lazily
+    // No push-sync to live runtimes — PiRuntimeRegistry reconciles lazily
     // on the next message for each session that drifted.
   }
 
@@ -253,11 +236,7 @@ export class PiOrchestratorService implements OrchestratorService {
     for (const { channel, x } of xChannelRegistryService(this.x).list(this.x)) {
       await channel.stop(x);
     }
-    // Tear down all long-lived runtime sessions
-    for (const [, runtime] of this.runtimes) {
-      try { await runtime.dispose(); } catch { /* ignore */ }
-    }
-    this.runtimes.clear();
+    await this.runtimeRegistry.disposeAll();
     this.firstTurnDone.clear();
   }
 
@@ -345,8 +324,8 @@ export class PiOrchestratorService implements OrchestratorService {
       return;
     }
 
-    const vitoSession = this.sessionManager.resolveSession(event.sessionKey);
-    await this.downloadAttachments(event);
+    const vitoSession = xSessionService(this.x).resolve(this.x, event.sessionKey);
+    await xInboundAttachmentService(this.x).prepare(this.x, event);
 
     const userContent = event.attachments?.length
       ? {
@@ -405,7 +384,7 @@ export class PiOrchestratorService implements OrchestratorService {
       }
 
       // Get or create the long-lived runtime for this Vito session.
-      const innerRuntime = await this.getOrCreateRuntime(vitoSession.id, event, effectiveSettings, channel);
+      const innerRuntime = await this.runtimeRegistry.getOrCreate(this.x, vitoSession.id, effectiveSettings);
       const actualModelString = innerRuntime.getModel();
 
       // Per-turn decorator chain wraps the long-lived inner runtime.
@@ -464,8 +443,10 @@ export class PiOrchestratorService implements OrchestratorService {
 
       // System prompt is captured by the runtime ON FIRST RUN ONLY. We pass
       // it on every call (cheap), but the runtime ignores it on subsequent runs.
+      const vitoService = xVitoService(this.x);
       const systemPrompt = buildSystemPrompt({
-        soul: xVitoService(this.x).getSoul(this.x),
+        soul: vitoService.getSoul(this.x),
+        systemInstructions: vitoService.getSystemPrompt(this.x),
         channelPrompt: rawMetadata.channelPrompt || channel?.getCustomPrompt?.(this.x) || "",
         customInstructions: effectiveSettings.customInstructions || "",
         botName: this.config.bot?.name,
@@ -523,58 +504,6 @@ export class PiOrchestratorService implements OrchestratorService {
     }
   }
 
-  // ────────────────────────────────────────────────────────────────────────
-  // PI SESSION LIFECYCLE
-  // ────────────────────────────────────────────────────────────────────────
-
-  /**
-   * Reconciles the configured Pi model with the long-lived session. Model
-   * drift is hot-swapped while unchanged sessions keep their prompt cache.
-   */
-  private async getOrCreateRuntime(
-    vitoSessionId: string,
-    _event: InboundEvent,
-    settings: ResolvedSettings,
-    _channel: ChannelService | null
-  ): Promise<PiSessionRuntime> {
-    const globalPiConfig = this.config.harnesses?.["pi-coding-agent"];
-    const piOverrides = settings["pi-coding-agent"] || {};
-    const model = piOverrides.model || globalPiConfig?.model
-      || { provider: "anthropic", name: "claude-sonnet-4-20250514" };
-    const openRouterProvider = piOverrides.openRouterProvider
-      || globalPiConfig?.openRouterProvider;
-
-    const existing = this.runtimes.get(vitoSessionId);
-    if (existing) {
-      const desiredString = `${model.provider}/${model.name}${openRouterProvider ? `@${openRouterProvider}` : ""}`;
-      if (existing.getModel() !== desiredString) {
-        try {
-          await existing.setModel({ ...model, openRouterProvider });
-          console.log(`[Orchestrator] Hot-swapped model for ${vitoSessionId} → ${desiredString}`);
-        } catch (err) {
-          console.error(`[Orchestrator] Failed to hot-swap model for ${vitoSessionId}:`, err);
-        }
-      }
-      return existing;
-    }
-
-    const sessionDir = this.getSessionDir(vitoSessionId);
-    const runtime = new PiSessionRuntime({
-      sessionDir,
-      model,
-      openRouterProvider,
-      thinkingLevel: piOverrides.thinkingLevel || globalPiConfig?.thinkingLevel,
-      skills: xSkillStore(this.x).list(this.x, {}),
-    } satisfies PiSessionRuntimeConfig);
-    this.runtimes.set(vitoSessionId, runtime);
-    console.log(`[Orchestrator] 🎭 Created long-lived Pi session for ${vitoSessionId} (${model.provider}/${model.name}${openRouterProvider ? `@${openRouterProvider}` : ""}) → ${sessionDir}`);
-    return runtime;
-  }
-
-  private getSessionDir(vitoSessionId: string): string {
-    return resolve(process.cwd(), "user", "pi-sessions", encodeSessionDirName(vitoSessionId));
-  }
-
   /**
    * Format the last N messages from a Vito session as a <history> block,
    * to be prepended to the first user message of a fresh pi session.
@@ -624,8 +553,7 @@ export class PiOrchestratorService implements OrchestratorService {
   }
 
   private getModelString(settings: ResolvedSettings): string {
-    const model = settings["pi-coding-agent"]?.model
-      || this.config.harnesses?.["pi-coding-agent"]?.model;
+    const model = settings["pi-coding-agent"]?.model;
     const fallback = { provider: "anthropic", name: "claude-sonnet-4-20250514" };
     const m = model ?? fallback;
     return `${m.provider}/${m.name}`;
@@ -682,18 +610,12 @@ export class PiOrchestratorService implements OrchestratorService {
   }
 
   private async handleRestartCommand(event: InboundEvent, channel: ChannelService): Promise<void> {
-    const { spawn } = await import("child_process");
     const handler = channel.createOutputHandler(this.x, event);
     await handler.relay("🔄 Rebuilding dashboard and restarting...");
     await handler.stopTyping?.();
-    // Mirror the dashboard restart button: rebuild the React bundle, then
-    // pm2 restart. `;` (not `&&`) so a failed build still restarts the
-    // backend — matches the dashboard endpoint's try/catch behavior.
-    const child = spawn("bash", ["-c", "sleep 2; npm run build:dashboard; pm2 restart vito-server"], {
-      detached: true,
-      stdio: "ignore",
+    xServerLifecycleService(this.x).requestRestart(this.x, {
+      userAgent: `slash-command/${event.channel}`,
     });
-    child.unref();
   }
 
   /**
@@ -706,10 +628,10 @@ export class PiOrchestratorService implements OrchestratorService {
    * sessions in the Pi Sessions dashboard page.
    */
   private async handleNewCommand(event: InboundEvent, channel: ChannelService): Promise<void> {
-    const vitoSession = this.sessionManager.resolveSession(event.sessionKey);
+    const vitoSession = xSessionService(this.x).resolve(this.x, event.sessionKey);
     const handler = channel.createOutputHandler(this.x, event);
 
-    const existing = this.runtimes.get(vitoSession.id);
+    const existing = this.runtimeRegistry.get(vitoSession.id);
     const recentMessages = xMessageStore(this.x).list(this.x, {
       sessionIds: [vitoSession.id],
       archived: false,
@@ -741,14 +663,13 @@ export class PiOrchestratorService implements OrchestratorService {
       // a server restart, before any message rehydrated the runtime). We
       // construct a transient runtime to call reset() — its constructor is
       // cheap and reset() handles the "no live session yet" path.
-      const runtimeForReset = existing ?? await this.getOrCreateRuntime(
+      const runtimeForReset = existing ?? await this.runtimeRegistry.getOrCreate(
+        this.x,
         vitoSession.id,
-        event,
         getEffectiveSettings(this.config, event.channel, event.sessionKey),
-        channel
       );
       await runtimeForReset.reset();
-      this.runtimes.delete(vitoSession.id);
+      this.runtimeRegistry.delete(vitoSession.id);
       this.firstTurnDone.delete(vitoSession.id);
 
       await handler.relay(
@@ -787,12 +708,12 @@ export class PiOrchestratorService implements OrchestratorService {
    * the runtime config is updated so the next turn starts on that model.
    */
   private async handleModelCommand(event: InboundEvent, channel: ChannelService): Promise<void> {
-    const vitoSession = this.sessionManager.resolveSession(event.sessionKey);
+    const vitoSession = xSessionService(this.x).resolve(this.x, event.sessionKey);
     const handler = channel.createOutputHandler(this.x, event);
     const raw = event.content?.trim() || "";
     const spec = raw.replace(/^\/model\b/i, "").trim();
     const effectiveSettings = getEffectiveSettings(this.config, event.channel, event.sessionKey);
-    const currentModel = this.runtimes.get(vitoSession.id)?.getModel() || this.getModelString(effectiveSettings);
+    const currentModel = this.runtimeRegistry.get(vitoSession.id)?.getModel() || this.getModelString(effectiveSettings);
 
     if (!spec) {
       await handler.relay(
@@ -812,7 +733,7 @@ export class PiOrchestratorService implements OrchestratorService {
 
     await handler.startTyping?.();
     try {
-      const innerRuntime = await this.getOrCreateRuntime(vitoSession.id, event, effectiveSettings, channel);
+      const innerRuntime = await this.runtimeRegistry.getOrCreate(this.x, vitoSession.id, effectiveSettings);
       await innerRuntime.setModel(model);
       await handler.relay(
         `✅ Switched live model: \`${currentModel}\` → \`${model.provider}/${model.name}\`\n\nNo /new needed. This is a runtime session change; config stays untouched.`
@@ -833,10 +754,10 @@ export class PiOrchestratorService implements OrchestratorService {
    * routine case; this is the on-demand trigger.
    */
   private async handleCompactCommand(event: InboundEvent, channel: ChannelService): Promise<void> {
-    const vitoSession = this.sessionManager.resolveSession(event.sessionKey);
+    const vitoSession = xSessionService(this.x).resolve(this.x, event.sessionKey);
     const handler = channel.createOutputHandler(this.x, event);
 
-    const existing = this.runtimes.get(vitoSession.id);
+    const existing = this.runtimeRegistry.get(vitoSession.id);
     if (!existing || !this.firstTurnDone.has(vitoSession.id)) {
       await handler.relay("✅ Nothing to compact — no active session yet.");
       await handler.stopTyping?.();
@@ -888,46 +809,4 @@ export class PiOrchestratorService implements OrchestratorService {
     }
   }
 
-  private async downloadAttachments(event: InboundEvent): Promise<void> {
-    if (!event.attachments?.length) return;
-    const imagesDir = resolve(process.cwd(), "user/drive/images");
-    mkdirSync(imagesDir, { recursive: true });
-
-    for (const attachment of event.attachments) {
-      if (attachment.path) continue;
-      if (!attachment.url) continue;
-      try {
-        const response = await fetch(attachment.url);
-        if (!response.ok) continue;
-        const buffer = Buffer.from(await response.arrayBuffer());
-        const ext = this.getExtensionForMime(attachment.mimeType || "application/octet-stream");
-        const filename = `${Date.now()}_${randomBytes(4).toString("hex")}${ext}`;
-        const localPath = join(imagesDir, filename);
-        writeFileSync(localPath, buffer);
-        attachment.path = localPath;
-        attachment.buffer = buffer;
-      } catch (err) {
-        console.error(`[Orchestrator] Error downloading attachment:`, err);
-      }
-    }
-  }
-
-  private getExtensionForMime(mimeType: string): string {
-    const map: Record<string, string> = {
-      "image/jpeg": ".jpg",
-      "image/jpg": ".jpg",
-      "image/png": ".png",
-      "image/gif": ".gif",
-      "image/webp": ".webp",
-      "image/svg+xml": ".svg",
-      "audio/mpeg": ".mp3",
-      "audio/ogg": ".ogg",
-      "audio/wav": ".wav",
-      "video/mp4": ".mp4",
-      "video/webm": ".webm",
-      "application/pdf": ".pdf",
-      "text/plain": ".txt",
-    };
-    return map[mimeType] || "";
-  }
 }

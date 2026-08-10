@@ -5,7 +5,7 @@ import express from "express";
 import { dashboardRouterContext } from "../support/dashboard-router-context.js";
 import { DashboardChatRouterService } from "../../src/routers/DashboardChatRouterService.js";
 import { DefaultDashboardChatService } from "../../src/services/chat/DefaultDashboardChatService.js";
-import type { InboundEvent } from "../../src/types.js";
+import type { InboundEvent } from "../../src/contracts/inbound-event.js";
 
 const chatService = new DefaultDashboardChatService();
 const x = dashboardRouterContext({ dashboardChatService: () => chatService });

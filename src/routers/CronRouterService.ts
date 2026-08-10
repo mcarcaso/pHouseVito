@@ -1,6 +1,5 @@
 import express from "express";
 import type { Router } from "express";
-import { Cron } from "croner";
 import { z } from "zod";
 import type { Context } from "../context/Context.js";
 import type { RouterService } from "./RouterService.js";
@@ -10,7 +9,6 @@ import {
   type CronJobConfig,
 } from "../shared/contracts/vito-config.js";
 import { xCronService, xSessionStore, xVitoService } from "../lib/x.js";
-import { DEFAULT_TIMEZONE } from "../system-instructions.js";
 import {
   emptyRouteSchema,
   unknownRouteSchema,
@@ -20,28 +18,6 @@ import {
 const jobParamsSchema = z.object({
   name: z.string().min(1),
 });
-
-function getScheduleError(
-  job: CronJobConfig,
-  globalTimezone?: string,
-): string | null {
-  const timezone = job.timezone || globalTimezone || DEFAULT_TIMEZONE;
-  if (/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}/.test(job.schedule)) {
-    const date = new Date(job.schedule);
-    if (Number.isNaN(date.getTime())) return "Invalid ISO date schedule";
-    if (date.getTime() <= Date.now())
-      return "One-time schedule must be in the future";
-    return null;
-  }
-
-  try {
-    const cron = new Cron(job.schedule, { paused: true, timezone }, () => {});
-    cron.stop();
-    return null;
-  } catch (error) {
-    return error instanceof Error ? error.message : "Invalid cron schedule";
-  }
-}
 
 function cleanJob(job: CronJobConfig): CronJobConfig {
   if (job.sendCondition === "" || job.sendCondition === undefined) {
@@ -115,7 +91,7 @@ export class CronRouterService implements RouterService {
           }
 
           const job = cleanJob(body);
-          const scheduleError = getScheduleError(job, config.settings.timezone);
+          const scheduleError = xCronService(routeX).getScheduleError(routeX, job, config.settings.timezone);
           if (scheduleError) {
             res.status(400).json({
               error: "Invalid request",
@@ -189,7 +165,8 @@ export class CronRouterService implements RouterService {
             return;
           }
 
-          const scheduleError = getScheduleError(
+          const scheduleError = xCronService(routeX).getScheduleError(
+            routeX,
             candidate,
             config.settings.timezone,
           );

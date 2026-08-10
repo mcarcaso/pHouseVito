@@ -74,8 +74,11 @@ export class DefaultServerLifecycleService implements ServerLifecycleService {
         args: ["run", "build:dashboard"],
         timeout: 120_000,
       });
-    } catch {
-      // If the dashboard build fails, still attempt the server restart.
+    } catch (error: unknown) {
+      console.error(
+        "[Dashboard] Dashboard build failed; restarting with the existing bundle:",
+        error,
+      );
     }
 
     try {
@@ -83,15 +86,15 @@ export class DefaultServerLifecycleService implements ServerLifecycleService {
         file: "npx",
         args: ["pm2", "restart", "vito-server"],
       });
-    } catch {
-      // The process may already be terminating at this point.
+    } catch (error: unknown) {
+      console.error("[Dashboard] PM2 restart failed:", error);
     }
   }
 }
 
 async function runLifecycleCommand(command: LifecycleCommand): Promise<void> {
   await execa(command.file, command.args, {
-    stdio: "ignore",
+    stdio: "pipe",
     timeout: command.timeout,
     env: {
       ...process.env,

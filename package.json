@@ -19,6 +19,9 @@
     "vito": "tsx src/cli/vito.ts",
     "validate:config": "tsx src/cli/validate-config.ts",
     "check": "npm run typecheck && npm run typecheck:dashboard && npm test && npm run validate:config -- user.example/vito.config.json",
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
+    "prepare": "git config core.hooksPath .githooks || true",
     "dev": "tsx watch src/index.ts",
     "build:dashboard": "cd dashboard && npm run build",
     "dev:dashboard": "cd dashboard && npm run dev"
@@ -52,6 +55,7 @@
     "@types/express": "^5.0.6",
     "@types/node": "^22.0.0",
     "@types/ws": "^8.18.1",
+    "prettier": "^3.9.6",
     "typescript": "^5.7.3"
   }
 }

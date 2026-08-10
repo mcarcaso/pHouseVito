@@ -1,21 +1,10 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { z } from "zod";
+import {
+  providerModelsSchema,
+  providerOverviewSchema,
+} from "../../../src/shared/schemas/provider-api";
 import { jsonRequest, requestJson } from "../lib/api-client";
-
-const providerOverviewSchema = z.object({
-  providers: z.array(z.string()),
-  keyStatus: z.record(z.boolean()),
-  authStatus: z.record(
-    z.object({
-      hasAuth: z.boolean(),
-      authType: z.string().optional(),
-      expiresAt: z.number().optional(),
-    }),
-  ),
-  keyInfo: z.record(z.object({ envVar: z.string(), description: z.string() })),
-  oauthProviders: z.array(z.object({ id: z.string(), name: z.string() })),
-});
-const modelsSchema = z.array(z.object({ id: z.string() }).passthrough());
 const loginStartSchema = z.discriminatedUnion("status", [
   z.object({ status: z.literal("already_authenticated") }),
   z.object({
@@ -49,7 +38,7 @@ export function useProviders() {
 export function useModels(provider: string) {
   return useQuery({
     queryKey: ["models", provider],
-    queryFn: () => requestJson(`/api/models/${encodeURIComponent(provider)}`, modelsSchema),
+    queryFn: () => requestJson(`/api/models/${encodeURIComponent(provider)}`, providerModelsSchema),
     enabled: provider.length > 0,
   });
 }

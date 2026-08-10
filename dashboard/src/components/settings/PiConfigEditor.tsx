@@ -278,7 +278,11 @@ export default function PiConfigEditor({ config, onSave }: PiConfigEditorProps) 
           <div className="space-y-4">
             <div className="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-4">
               <label className="text-sm text-neutral-400 sm:w-24 shrink-0">Provider</label>
-              {sortedProviders.length === 0 ? (
+              {providersQuery.isError ? (
+                <span className="text-xs text-red-400">
+                  {errorMessage(providersQuery.error, "Failed to load providers")}
+                </span>
+              ) : sortedProviders.length === 0 ? (
                 <span className="text-xs text-red-400">
                   No API keys configured. Add keys in{" "}
                   <a href="/secrets" className="text-blue-400 underline">

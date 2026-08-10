@@ -1,5 +1,6 @@
 import type { PiRuntimeConfig } from "../../../../src/shared/schemas/vito-config";
 import { useModels, useProviders } from "../../hooks/useProviders";
+import { errorMessage } from "../../lib/api-client";
 import type { InheritSource } from "../../utils/settingsResolution";
 import SettingRow, { renderSelect } from "./SettingRow";
 import {
@@ -63,7 +64,13 @@ export default function PiSettingsOverrideFields({
         }
         onReset={() => onReset("pi-coding-agent.model")}
         renderInput={(value, onChange) =>
-          renderSelect(value, onChange, [{ value: "", label: "Select..." }, ...providerOptions])
+          providersQuery.isError ? (
+            <span className="text-xs text-red-400">
+              {errorMessage(providersQuery.error, "Failed to load providers")}
+            </span>
+          ) : (
+            renderSelect(value, onChange, [{ value: "", label: "Select..." }, ...providerOptions])
+          )
         }
         formatValue={(value) => value || "(not set)"}
       />

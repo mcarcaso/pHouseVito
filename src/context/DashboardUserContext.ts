@@ -50,8 +50,7 @@ const dashboardDependencyKeys = [
  */
 export function DashboardUserContext(rootX: Context): Context {
   const factories: Record<string, (x: Context) => unknown> = {
-    dashboardUser: () =>
-      ({ kind: "dashboard-user", id: "owner" }) satisfies DashboardUser,
+    dashboardUser: () => ({ kind: "dashboard-user", id: "owner" }) satisfies DashboardUser,
   };
   for (const key of dashboardDependencyKeys) {
     factories[key] = () => rootX.get(key);

@@ -46,6 +46,7 @@ Without `pm2 save`, the app family may not come back properly after a reboot.
 ## When to Use
 
 Use this skill when you need to:
+
 - Create a new website or web app
 - Deploy anything from a simple page to a full-stack app
 - List or manage existing deployed apps
@@ -54,12 +55,14 @@ Use this skill when you need to:
 ## Guidelines for Creating Apps
 
 **Choose the right technology for the job:**
+
 - Simple landing page → plain HTML/CSS/JS (no build step needed)
 - Interactive SPA → include a `server.js` that serves built files (bundle everything, don't rely on build steps)
 - API/backend needed → Node.js `server.js` or Python `server.py`
 - Complex app → Node.js with Express, include all dependencies inline or use a `package.json`
 
 **Server conventions:**
+
 - **Node.js apps**: Include a `server.js` that accepts `--port <port>` flag
 - **Python apps**: Include a `server.py` that accepts `--port <port>` flag
 - **Static sites**: Just HTML/CSS/JS files — a static file server is used automatically
@@ -67,6 +70,7 @@ Use this skill when you need to:
 - If the app has a `requirements.txt`, `pip install` is run automatically before starting
 
 **Important:**
+
 - Don't rely on build steps (no `npm run build` during deploy) — ship ready-to-run code
 - For React-style apps, use self-contained approaches (CDN imports, single-file bundles)
 - The server MUST listen on the port passed via `--port` flag
@@ -77,21 +81,25 @@ Use this skill when you need to:
 Use Vito's project CLI. It delegates to the existing app deployment workflow while keeping the agent-facing command stable for future gateway changes.
 
 ### Create/update an app
+
 ```bash
 ./vito apps create \
   --name "my-app" \
   --description "My cool app" \
   --files '[{"path":"index.html","content":"<h1>Hello</h1>"},{"path":"style.css","content":"body{margin:0}"}]'
 ```
+
 - If the app already exists, files are overwritten and the server is restarted.
 - The `--files` flag takes a JSON array of `{path, content}` objects.
 
 ### List all apps
+
 ```bash
 ./vito apps list
 ```
 
 ### Delete an app
+
 ```bash
 ./vito apps delete --name "my-app"
 ```

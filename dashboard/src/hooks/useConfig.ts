@@ -1,9 +1,9 @@
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { useState, useEffect, useCallback, useRef } from "react";
 import {
   vitoConfigSchema,
   type VitoConfig,
   type VitoConfigPatch,
-} from '../../../src/shared/schemas/vito-config';
+} from "../../../src/shared/schemas/vito-config";
 
 interface UseConfigReturn {
   config: VitoConfig | null;
@@ -27,12 +27,12 @@ export function useConfig(): UseConfigReturn {
 
   const load = useCallback(async () => {
     try {
-      const res = await fetch('/api/config');
+      const res = await fetch("/api/config");
       const data = vitoConfigSchema.parse(await res.json());
       setConfig(data);
       setError(null);
     } catch (error: unknown) {
-      setError(error instanceof Error ? error.message : 'Failed to load config');
+      setError(error instanceof Error ? error.message : "Failed to load config");
     } finally {
       setLoading(false);
     }
@@ -48,9 +48,9 @@ export function useConfig(): UseConfigReturn {
   const updateConfig = useCallback(async (updates: VitoConfigPatch) => {
     setSaving(true);
     try {
-      const res = await fetch('/api/config', {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
+      const res = await fetch("/api/config", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify(updates),
       });
       const updated = vitoConfigSchema.parse(await res.json());
@@ -59,8 +59,8 @@ export function useConfig(): UseConfigReturn {
       if (savedTimer.current) clearTimeout(savedTimer.current);
       savedTimer.current = window.setTimeout(() => setSaved(false), 2000);
     } catch (error: unknown) {
-      console.error('Failed to save config:', error);
-      setError(error instanceof Error ? error.message : 'Failed to save');
+      console.error("Failed to save config:", error);
+      setError(error instanceof Error ? error.message : "Failed to save");
     } finally {
       setSaving(false);
     }

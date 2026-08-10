@@ -46,7 +46,11 @@ function resolveAttachment(rootInput: string, id: string): string | undefined {
   return stats.isFile() && !stats.isSymbolicLink() ? path : undefined;
 }
 
-function recordFromPath(root: string, id: string, mimeType = "application/octet-stream"): AttachmentRecord | undefined {
+function recordFromPath(
+  root: string,
+  id: string,
+  mimeType = "application/octet-stream",
+): AttachmentRecord | undefined {
   const path = resolveAttachment(root, id);
   if (!path) return undefined;
   return {

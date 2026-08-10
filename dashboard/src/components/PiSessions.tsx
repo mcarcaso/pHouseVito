@@ -1,10 +1,10 @@
-import { useCallback, useEffect, useState } from 'react';
-import { useSearchParams } from 'react-router-dom';
+import { useCallback, useEffect, useState } from "react";
+import { useSearchParams } from "react-router-dom";
 
 // ── Types mirroring pi's session-manager.d.ts ───────────────────────────────
 
 interface SessionHeader {
-  type: 'session';
+  type: "session";
   id: string;
   timestamp: string;
   cwd: string;
@@ -20,54 +20,54 @@ interface SessionEntryBase {
 }
 
 interface SessionMessageEntry extends SessionEntryBase {
-  type: 'message';
+  type: "message";
   message: AgentMessage;
 }
 
 interface ModelChangeEntry extends SessionEntryBase {
-  type: 'model_change';
+  type: "model_change";
   provider: string;
   modelId: string;
 }
 
 interface ThinkingLevelChangeEntry extends SessionEntryBase {
-  type: 'thinking_level_change';
+  type: "thinking_level_change";
   thinkingLevel: string;
 }
 
 interface CompactionEntry extends SessionEntryBase {
-  type: 'compaction';
+  type: "compaction";
   summary: string;
   firstKeptEntryId: string;
   tokensBefore: number;
 }
 
 interface BranchSummaryEntry extends SessionEntryBase {
-  type: 'branch_summary';
+  type: "branch_summary";
   fromId: string;
   summary: string;
 }
 
 interface CustomEntry extends SessionEntryBase {
-  type: 'custom';
+  type: "custom";
   customType: string;
   data?: unknown;
 }
 
 interface CustomMessageEntry extends SessionEntryBase {
-  type: 'custom_message';
+  type: "custom_message";
   customType: string;
   content: unknown;
   display: boolean;
 }
 
 interface SessionInfoEntry extends SessionEntryBase {
-  type: 'session_info';
+  type: "session_info";
   name?: string;
 }
 
 interface LabelEntry extends SessionEntryBase {
-  type: 'label';
+  type: "label";
   targetId: string;
   label: string | undefined;
 }
@@ -83,12 +83,12 @@ type SessionLine =
   | CustomMessageEntry
   | SessionInfoEntry
   | LabelEntry
-  | { type: 'parse_error'; raw: string }
+  | { type: "parse_error"; raw: string }
   | (SessionEntryBase & { type: string });
 
 // Pi messages roughly follow OpenAI/Anthropic shape.
 interface AgentMessage {
-  role: 'user' | 'assistant' | 'tool' | string;
+  role: "user" | "assistant" | "tool" | string;
   content?: unknown;
   usage?: {
     input?: number;
@@ -117,7 +117,7 @@ interface PiSessionListItem {
 
 interface PiSessionDetail {
   rel: string;
-  format: 'jsonl';
+  format: "jsonl";
   lines: SessionLine[];
 }
 
@@ -132,42 +132,50 @@ const formatSize = (bytes: number) => {
 
 /** Best-effort plain-text extraction from a pi message's content field. */
 function extractMessageText(content: unknown): string {
-  if (typeof content === 'string') return content;
+  if (typeof content === "string") return content;
   if (Array.isArray(content)) {
     const parts: string[] = [];
     for (const block of content) {
-      if (!block || typeof block !== 'object') continue;
+      if (!block || typeof block !== "object") continue;
       const b = block as Record<string, unknown>;
-      if (typeof b.text === 'string') parts.push(b.text);
-      else if (typeof b.thinking === 'string') parts.push(b.thinking);
-      else if (b.type === 'tool_use' && typeof b.name === 'string') {
+      if (typeof b.text === "string") parts.push(b.text);
+      else if (typeof b.thinking === "string") parts.push(b.thinking);
+      else if (b.type === "tool_use" && typeof b.name === "string") {
         parts.push(`[tool_use: ${b.name}]`);
-      } else if (b.type === 'tool_result') {
+      } else if (b.type === "tool_result") {
         const result = b.content;
-        if (typeof result === 'string') parts.push(`[tool_result] ${result}`);
-        else parts.push('[tool_result]');
+        if (typeof result === "string") parts.push(`[tool_result] ${result}`);
+        else parts.push("[tool_result]");
       }
     }
-    return parts.join('\n\n');
+    return parts.join("\n\n");
   }
-  return '';
+  return "";
 }
 
 function roleColor(role: string): string {
   switch (role) {
-    case 'user': return 'bg-blue-950/30 border-blue-900/50 text-blue-100';
-    case 'assistant': return 'bg-violet-950/30 border-violet-900/50 text-violet-100';
-    case 'tool': return 'bg-emerald-950/20 border-emerald-900/40 text-emerald-100';
-    default: return 'bg-neutral-900 border-neutral-800 text-neutral-200';
+    case "user":
+      return "bg-blue-950/30 border-blue-900/50 text-blue-100";
+    case "assistant":
+      return "bg-violet-950/30 border-violet-900/50 text-violet-100";
+    case "tool":
+      return "bg-emerald-950/20 border-emerald-900/40 text-emerald-100";
+    default:
+      return "bg-neutral-900 border-neutral-800 text-neutral-200";
   }
 }
 
 function roleBadgeColor(role: string): string {
   switch (role) {
-    case 'user': return 'bg-blue-500/20 text-blue-300';
-    case 'assistant': return 'bg-violet-500/20 text-violet-300';
-    case 'tool': return 'bg-emerald-500/20 text-emerald-300';
-    default: return 'bg-neutral-700 text-neutral-300';
+    case "user":
+      return "bg-blue-500/20 text-blue-300";
+    case "assistant":
+      return "bg-violet-500/20 text-violet-300";
+    case "tool":
+      return "bg-emerald-500/20 text-emerald-300";
+    default:
+      return "bg-neutral-700 text-neutral-300";
   }
 }
 
@@ -175,7 +183,7 @@ function roleBadgeColor(role: string): string {
 
 function PiSessions() {
   const [searchParams, setSearchParams] = useSearchParams();
-  const selectedRel = searchParams.get('file');
+  const selectedRel = searchParams.get("file");
 
   const [list, setList] = useState<PiSessionListItem[]>([]);
   const [detail, setDetail] = useState<PiSessionDetail | null>(null);
@@ -205,11 +213,11 @@ function PiSessions() {
 
   const fetchList = useCallback(async () => {
     try {
-      const res = await fetch('/api/pi-sessions');
+      const res = await fetch("/api/pi-sessions");
       const data = await res.json();
       setList(Array.isArray(data) ? data : data.files || []);
     } catch (err) {
-      console.error('Failed to fetch pi sessions:', err);
+      console.error("Failed to fetch pi sessions:", err);
     } finally {
       setLoading(false);
     }
@@ -220,37 +228,40 @@ function PiSessions() {
       // rel is a path-like "encoded-vito/<pi-session>.jsonl". Each segment
       // needs to be encoded for the URL but the slashes between them must
       // remain literal so Express's wildcard matches.
-      const path = rel.split('/').map(encodeURIComponent).join('/');
+      const path = rel.split("/").map(encodeURIComponent).join("/");
       const res = await fetch(`/api/pi-sessions/${path}`);
       const data = await res.json();
       setDetail(data);
     } catch (err) {
-      console.error('Failed to fetch pi session:', err);
+      console.error("Failed to fetch pi session:", err);
     }
   }, []);
 
-  const deleteFile = useCallback(async (rel: string) => {
-    if (!confirm(`Delete pi session "${rel}"?`)) return;
-    try {
-      const path = rel.split('/').map(encodeURIComponent).join('/');
-      await fetch(`/api/pi-sessions/${path}`, { method: 'DELETE' });
-      if (selectedRel === rel) {
-        setSearchParams({});
-        setDetail(null);
+  const deleteFile = useCallback(
+    async (rel: string) => {
+      if (!confirm(`Delete pi session "${rel}"?`)) return;
+      try {
+        const path = rel.split("/").map(encodeURIComponent).join("/");
+        await fetch(`/api/pi-sessions/${path}`, { method: "DELETE" });
+        if (selectedRel === rel) {
+          setSearchParams({});
+          setDetail(null);
+        }
+        fetchList();
+      } catch (err) {
+        console.error("Failed to delete pi session:", err);
       }
-      fetchList();
-    } catch (err) {
-      console.error('Failed to delete pi session:', err);
-    }
-  }, [selectedRel, setSearchParams, fetchList]);
+    },
+    [selectedRel, setSearchParams, fetchList],
+  );
 
   const deleteAll = useCallback(async () => {
     if (!confirm(`Delete ALL ${list.length} pi sessions? This cannot be undone.`)) return;
     try {
-      await fetch('/api/pi-sessions', { method: 'DELETE' });
+      await fetch("/api/pi-sessions", { method: "DELETE" });
       fetchList();
     } catch (err) {
-      console.error('Failed to delete pi sessions:', err);
+      console.error("Failed to delete pi sessions:", err);
     }
   }, [list.length, fetchList]);
 
@@ -283,7 +294,7 @@ function PiSessions() {
   // ── Detail view ──────────────────────────────────────────────────────────
 
   const renderDetail = (d: PiSessionDetail) => {
-    const header = d.lines.find((l) => l.type === 'session') as SessionHeader | undefined;
+    const header = d.lines.find((l) => l.type === "session") as SessionHeader | undefined;
 
     // Categorize entries
     const messages: SessionMessageEntry[] = [];
@@ -299,26 +310,49 @@ function PiSessions() {
 
     for (const line of d.lines) {
       switch (line.type) {
-        case 'session': break;
-        case 'message': messages.push(line as SessionMessageEntry); break;
-        case 'model_change': modelChanges.push(line as ModelChangeEntry); break;
-        case 'thinking_level_change': thinkingChanges.push(line as ThinkingLevelChangeEntry); break;
-        case 'compaction': compactions.push(line as CompactionEntry); break;
-        case 'branch_summary': branchSummaries.push(line as BranchSummaryEntry); break;
-        case 'custom': customEntries.push(line as CustomEntry); break;
-        case 'custom_message': customMessages.push(line as CustomMessageEntry); break;
-        case 'session_info': sessionInfos.push(line as SessionInfoEntry); break;
-        case 'label': labels.push(line as LabelEntry); break;
+        case "session":
+          break;
+        case "message":
+          messages.push(line as SessionMessageEntry);
+          break;
+        case "model_change":
+          modelChanges.push(line as ModelChangeEntry);
+          break;
+        case "thinking_level_change":
+          thinkingChanges.push(line as ThinkingLevelChangeEntry);
+          break;
+        case "compaction":
+          compactions.push(line as CompactionEntry);
+          break;
+        case "branch_summary":
+          branchSummaries.push(line as BranchSummaryEntry);
+          break;
+        case "custom":
+          customEntries.push(line as CustomEntry);
+          break;
+        case "custom_message":
+          customMessages.push(line as CustomMessageEntry);
+          break;
+        case "session_info":
+          sessionInfos.push(line as SessionInfoEntry);
+          break;
+        case "label":
+          labels.push(line as LabelEntry);
+          break;
         default:
-          if (line.type !== 'parse_error') others.push(line);
+          if (line.type !== "parse_error") others.push(line);
       }
     }
 
     // Aggregate usage from assistant messages
-    let totalIn = 0, totalOut = 0, totalCacheRead = 0, totalCacheWrite = 0, totalCost = 0;
+    let totalIn = 0,
+      totalOut = 0,
+      totalCacheRead = 0,
+      totalCacheWrite = 0,
+      totalCost = 0;
     let assistantCount = 0;
     for (const m of messages) {
-      if (m.message?.role === 'assistant') assistantCount++;
+      if (m.message?.role === "assistant") assistantCount++;
       const u = m.message?.usage;
       if (u) {
         totalIn += u.input || 0;
@@ -329,10 +363,12 @@ function PiSessions() {
       }
     }
 
-    const sessionName = sessionInfos.length > 0 ? sessionInfos[sessionInfos.length - 1].name : undefined;
-    const currentModel = modelChanges.length > 0
-      ? `${modelChanges[modelChanges.length - 1].provider}/${modelChanges[modelChanges.length - 1].modelId}`
-      : '';
+    const sessionName =
+      sessionInfos.length > 0 ? sessionInfos[sessionInfos.length - 1].name : undefined;
+    const currentModel =
+      modelChanges.length > 0
+        ? `${modelChanges[modelChanges.length - 1].provider}/${modelChanges[modelChanges.length - 1].modelId}`
+        : "";
 
     return (
       <div className="p-4 space-y-4">
@@ -341,7 +377,7 @@ function PiSessions() {
           <div className="bg-neutral-900 border border-neutral-800 rounded-lg p-4">
             <div className="flex items-center gap-3 flex-wrap">
               <span className="text-neutral-500 bg-neutral-800 px-2 py-0.5 rounded text-xs font-mono">
-                pi v{header.version ?? '?'}
+                pi v{header.version ?? "?"}
               </span>
               {currentModel && (
                 <span className="text-violet-400 bg-violet-500/10 px-2 py-0.5 rounded text-xs font-mono">
@@ -357,27 +393,45 @@ function PiSessions() {
                 {new Date(header.timestamp).toLocaleString()}
               </span>
             </div>
-            <div className="text-neutral-300 font-mono text-sm mt-2 break-all">
-              {header.id}
-            </div>
+            <div className="text-neutral-300 font-mono text-sm mt-2 break-all">{header.id}</div>
             <div className="text-neutral-500 text-xs font-mono mt-1 break-all">
               cwd: {header.cwd}
             </div>
             <div className="flex items-center gap-4 mt-3 text-xs text-neutral-500 flex-wrap">
-              <span>Messages: <span className="text-neutral-300">{messages.length}</span></span>
-              <span>Assistant turns: <span className="text-neutral-300">{assistantCount}</span></span>
-              <span>Model changes: <span className="text-neutral-300">{modelChanges.length}</span></span>
-              <span>Compactions: <span className="text-neutral-300">{compactions.length}</span></span>
+              <span>
+                Messages: <span className="text-neutral-300">{messages.length}</span>
+              </span>
+              <span>
+                Assistant turns: <span className="text-neutral-300">{assistantCount}</span>
+              </span>
+              <span>
+                Model changes: <span className="text-neutral-300">{modelChanges.length}</span>
+              </span>
+              <span>
+                Compactions: <span className="text-neutral-300">{compactions.length}</span>
+              </span>
               {totalIn + totalOut > 0 && (
                 <>
-                  <span>In: <span className="text-neutral-300">{totalIn.toLocaleString()}</span></span>
-                  <span>Out: <span className="text-neutral-300">{totalOut.toLocaleString()}</span></span>
-                  <span>CacheR: <span className="text-emerald-300">{totalCacheRead.toLocaleString()}</span></span>
-                  <span>CacheW: <span className="text-amber-300">{totalCacheWrite.toLocaleString()}</span></span>
+                  <span>
+                    In: <span className="text-neutral-300">{totalIn.toLocaleString()}</span>
+                  </span>
+                  <span>
+                    Out: <span className="text-neutral-300">{totalOut.toLocaleString()}</span>
+                  </span>
+                  <span>
+                    CacheR:{" "}
+                    <span className="text-emerald-300">{totalCacheRead.toLocaleString()}</span>
+                  </span>
+                  <span>
+                    CacheW:{" "}
+                    <span className="text-amber-300">{totalCacheWrite.toLocaleString()}</span>
+                  </span>
                 </>
               )}
               {totalCost > 0 && (
-                <span>Cost: <span className="text-neutral-300">${totalCost.toFixed(4)}</span></span>
+                <span>
+                  Cost: <span className="text-neutral-300">${totalCost.toFixed(4)}</span>
+                </span>
               )}
             </div>
           </div>
@@ -388,11 +442,11 @@ function PiSessions() {
             last LAST_N message entries render eagerly; the gap is hidden
             behind an expandable placeholder. Non-message entries (model_change,
             compaction, etc.) always render. */}
-        <div className="space-y-3">
-          {renderTimeline(d)}
-        </div>
+        <div className="space-y-3">{renderTimeline(d)}</div>
 
-        {showRaw && others.length === 0 && customEntries.length === 0 && labels.length === 0 ? null : null}
+        {showRaw && others.length === 0 && customEntries.length === 0 && labels.length === 0
+          ? null
+          : null}
       </div>
     );
   };
@@ -408,7 +462,7 @@ function PiSessions() {
     const messageOrdinalByLineIndex = new Map<number, number>();
     let messageCount = 0;
     d.lines.forEach((line, i) => {
-      if (line.type === 'message') {
+      if (line.type === "message") {
         messageOrdinalByLineIndex.set(i, messageCount);
         messageCount++;
       }
@@ -425,9 +479,9 @@ function PiSessions() {
     let placeholderInserted = false;
 
     d.lines.forEach((line, i) => {
-      if (line.type === 'session') return;
+      if (line.type === "session") return;
 
-      if (line.type === 'message' && !showAll) {
+      if (line.type === "message" && !showAll) {
         const ord = messageOrdinalByLineIndex.get(i)!;
         const inHiddenMiddle = ord >= hiddenStart && ord < hiddenEnd;
         if (inHiddenMiddle) {
@@ -450,7 +504,9 @@ function PiSessions() {
       key="hidden-placeholder"
       className="rounded-lg border border-neutral-800 bg-neutral-900/40 p-3 text-xs flex items-center gap-2 flex-wrap"
     >
-      <span className="text-neutral-500">📦 {hiddenCount} message{hiddenCount === 1 ? '' : 's'} hidden</span>
+      <span className="text-neutral-500">
+        📦 {hiddenCount} message{hiddenCount === 1 ? "" : "s"} hidden
+      </span>
       <div className="flex items-center gap-2 ml-auto">
         <button
           className="px-2 py-1 rounded border border-neutral-700 bg-neutral-800/50 text-neutral-300 hover:bg-neutral-800 hover:text-white text-xs cursor-pointer transition-colors"
@@ -481,14 +537,14 @@ function PiSessions() {
     const key = `${line.type}-${i}`;
 
     switch (line.type) {
-      case 'message': {
+      case "message": {
         const entry = line as SessionMessageEntry;
-        const role = entry.message?.role || 'unknown';
+        const role = entry.message?.role || "unknown";
         const text = extractMessageText(entry.message?.content);
         const usage = entry.message?.usage;
         const isExpanded = expandedMessages.has(i);
-        const previewText = (text || '').replace(/\s+/g, ' ').trim();
-        const preview = previewText.length > 120 ? previewText.slice(0, 120) + '…' : previewText;
+        const previewText = (text || "").replace(/\s+/g, " ").trim();
+        const preview = previewText.length > 120 ? previewText.slice(0, 120) + "…" : previewText;
 
         if (!isExpanded) {
           // Collapsed: single-line summary. Click to expand.
@@ -528,8 +584,20 @@ function PiSessions() {
               </span>
               {usage && (usage.cacheRead || usage.cacheWrite) ? (
                 <span className="text-xs text-neutral-500">
-                  {usage.cacheRead ? <>cacheR: <span className="text-emerald-300">{usage.cacheRead.toLocaleString()}</span> </> : null}
-                  {usage.cacheWrite ? <>cacheW: <span className="text-amber-300">{usage.cacheWrite.toLocaleString()}</span></> : null}
+                  {usage.cacheRead ? (
+                    <>
+                      cacheR:{" "}
+                      <span className="text-emerald-300">
+                        {usage.cacheRead.toLocaleString()}
+                      </span>{" "}
+                    </>
+                  ) : null}
+                  {usage.cacheWrite ? (
+                    <>
+                      cacheW:{" "}
+                      <span className="text-amber-300">{usage.cacheWrite.toLocaleString()}</span>
+                    </>
+                  ) : null}
                 </span>
               ) : null}
               <span className="text-neutral-500 ml-auto text-xs">▼</span>
@@ -546,33 +614,49 @@ function PiSessions() {
         );
       }
 
-      case 'model_change': {
+      case "model_change": {
         const entry = line as ModelChangeEntry;
         return (
-          <div key={key} className="rounded-lg border border-violet-900/30 bg-violet-950/10 px-3 py-2 text-xs flex items-center gap-2 flex-wrap">
-            <span className="bg-violet-500/20 text-violet-300 px-2 py-0.5 rounded font-mono">model_change</span>
-            <span className="text-violet-200 font-mono">{entry.provider}/{entry.modelId}</span>
-            <span className="text-neutral-500 ml-auto">{new Date(entry.timestamp).toLocaleTimeString()}</span>
+          <div
+            key={key}
+            className="rounded-lg border border-violet-900/30 bg-violet-950/10 px-3 py-2 text-xs flex items-center gap-2 flex-wrap"
+          >
+            <span className="bg-violet-500/20 text-violet-300 px-2 py-0.5 rounded font-mono">
+              model_change
+            </span>
+            <span className="text-violet-200 font-mono">
+              {entry.provider}/{entry.modelId}
+            </span>
+            <span className="text-neutral-500 ml-auto">
+              {new Date(entry.timestamp).toLocaleTimeString()}
+            </span>
           </div>
         );
       }
 
-      case 'thinking_level_change': {
+      case "thinking_level_change": {
         const entry = line as ThinkingLevelChangeEntry;
         return (
-          <div key={key} className="rounded-lg border border-amber-900/30 bg-amber-950/10 px-3 py-2 text-xs flex items-center gap-2 flex-wrap">
-            <span className="bg-amber-500/20 text-amber-300 px-2 py-0.5 rounded font-mono">thinking</span>
+          <div
+            key={key}
+            className="rounded-lg border border-amber-900/30 bg-amber-950/10 px-3 py-2 text-xs flex items-center gap-2 flex-wrap"
+          >
+            <span className="bg-amber-500/20 text-amber-300 px-2 py-0.5 rounded font-mono">
+              thinking
+            </span>
             <span className="text-amber-200 font-mono">{entry.thinkingLevel}</span>
-            <span className="text-neutral-500 ml-auto">{new Date(entry.timestamp).toLocaleTimeString()}</span>
+            <span className="text-neutral-500 ml-auto">
+              {new Date(entry.timestamp).toLocaleTimeString()}
+            </span>
           </div>
         );
       }
 
-      case 'compaction': {
+      case "compaction": {
         const entry = line as CompactionEntry;
         const isExpanded = expandedMessages.has(i);
-        const summary = (entry.summary || '').replace(/\s+/g, ' ').trim();
-        const preview = summary.length > 120 ? summary.slice(0, 120) + '…' : summary;
+        const summary = (entry.summary || "").replace(/\s+/g, " ").trim();
+        const preview = summary.length > 120 ? summary.slice(0, 120) + "…" : summary;
 
         if (!isExpanded) {
           return (
@@ -582,10 +666,18 @@ function PiSessions() {
               onClick={() => toggleMessageExpanded(i)}
             >
               <div className="flex items-center gap-2 text-xs">
-                <span className="bg-cyan-500/20 text-cyan-300 px-2 py-0.5 rounded font-mono shrink-0">compaction</span>
-                <span className="text-neutral-500 shrink-0">tokensBefore: {entry.tokensBefore.toLocaleString()}</span>
-                <span className="text-cyan-100/70 truncate flex-1">{preview || <span className="text-neutral-600 italic">(empty)</span>}</span>
-                <span className="text-neutral-500 shrink-0">{new Date(entry.timestamp).toLocaleTimeString()}</span>
+                <span className="bg-cyan-500/20 text-cyan-300 px-2 py-0.5 rounded font-mono shrink-0">
+                  compaction
+                </span>
+                <span className="text-neutral-500 shrink-0">
+                  tokensBefore: {entry.tokensBefore.toLocaleString()}
+                </span>
+                <span className="text-cyan-100/70 truncate flex-1">
+                  {preview || <span className="text-neutral-600 italic">(empty)</span>}
+                </span>
+                <span className="text-neutral-500 shrink-0">
+                  {new Date(entry.timestamp).toLocaleTimeString()}
+                </span>
                 <span className="text-neutral-500 shrink-0">▶</span>
               </div>
             </div>
@@ -593,14 +685,23 @@ function PiSessions() {
         }
 
         return (
-          <div key={key} className="rounded-lg border border-cyan-900/40 bg-cyan-950/10 p-3 text-sm">
+          <div
+            key={key}
+            className="rounded-lg border border-cyan-900/40 bg-cyan-950/10 p-3 text-sm"
+          >
             <div
               className="flex items-center gap-2 flex-wrap mb-2 cursor-pointer"
               onClick={() => toggleMessageExpanded(i)}
             >
-              <span className="bg-cyan-500/20 text-cyan-300 px-2 py-0.5 rounded text-xs font-mono">compaction</span>
-              <span className="text-xs text-neutral-500">tokensBefore: {entry.tokensBefore.toLocaleString()}</span>
-              <span className="text-xs text-neutral-500 ml-auto">{new Date(entry.timestamp).toLocaleTimeString()}</span>
+              <span className="bg-cyan-500/20 text-cyan-300 px-2 py-0.5 rounded text-xs font-mono">
+                compaction
+              </span>
+              <span className="text-xs text-neutral-500">
+                tokensBefore: {entry.tokensBefore.toLocaleString()}
+              </span>
+              <span className="text-xs text-neutral-500 ml-auto">
+                {new Date(entry.timestamp).toLocaleTimeString()}
+              </span>
               <span className="text-xs text-neutral-500">▼</span>
             </div>
             <div className="text-cyan-100/80 whitespace-pre-wrap text-xs">{entry.summary}</div>
@@ -608,11 +709,11 @@ function PiSessions() {
         );
       }
 
-      case 'branch_summary': {
+      case "branch_summary": {
         const entry = line as BranchSummaryEntry;
         const isExpanded = expandedMessages.has(i);
-        const summary = (entry.summary || '').replace(/\s+/g, ' ').trim();
-        const preview = summary.length > 120 ? summary.slice(0, 120) + '…' : summary;
+        const summary = (entry.summary || "").replace(/\s+/g, " ").trim();
+        const preview = summary.length > 120 ? summary.slice(0, 120) + "…" : summary;
 
         if (!isExpanded) {
           return (
@@ -622,10 +723,18 @@ function PiSessions() {
               onClick={() => toggleMessageExpanded(i)}
             >
               <div className="flex items-center gap-2 text-xs">
-                <span className="bg-orange-500/20 text-orange-300 px-2 py-0.5 rounded font-mono shrink-0">branch_summary</span>
-                <span className="text-neutral-500 font-mono shrink-0">from {entry.fromId.slice(0, 8)}…</span>
-                <span className="text-orange-100/70 truncate flex-1">{preview || <span className="text-neutral-600 italic">(empty)</span>}</span>
-                <span className="text-neutral-500 shrink-0">{new Date(entry.timestamp).toLocaleTimeString()}</span>
+                <span className="bg-orange-500/20 text-orange-300 px-2 py-0.5 rounded font-mono shrink-0">
+                  branch_summary
+                </span>
+                <span className="text-neutral-500 font-mono shrink-0">
+                  from {entry.fromId.slice(0, 8)}…
+                </span>
+                <span className="text-orange-100/70 truncate flex-1">
+                  {preview || <span className="text-neutral-600 italic">(empty)</span>}
+                </span>
+                <span className="text-neutral-500 shrink-0">
+                  {new Date(entry.timestamp).toLocaleTimeString()}
+                </span>
                 <span className="text-neutral-500 shrink-0">▶</span>
               </div>
             </div>
@@ -633,14 +742,23 @@ function PiSessions() {
         }
 
         return (
-          <div key={key} className="rounded-lg border border-orange-900/40 bg-orange-950/10 p-3 text-sm">
+          <div
+            key={key}
+            className="rounded-lg border border-orange-900/40 bg-orange-950/10 p-3 text-sm"
+          >
             <div
               className="flex items-center gap-2 flex-wrap mb-2 cursor-pointer"
               onClick={() => toggleMessageExpanded(i)}
             >
-              <span className="bg-orange-500/20 text-orange-300 px-2 py-0.5 rounded text-xs font-mono">branch_summary</span>
-              <span className="text-xs text-neutral-500 font-mono break-all">from {entry.fromId}</span>
-              <span className="text-xs text-neutral-500 ml-auto">{new Date(entry.timestamp).toLocaleTimeString()}</span>
+              <span className="bg-orange-500/20 text-orange-300 px-2 py-0.5 rounded text-xs font-mono">
+                branch_summary
+              </span>
+              <span className="text-xs text-neutral-500 font-mono break-all">
+                from {entry.fromId}
+              </span>
+              <span className="text-xs text-neutral-500 ml-auto">
+                {new Date(entry.timestamp).toLocaleTimeString()}
+              </span>
               <span className="text-xs text-neutral-500">▼</span>
             </div>
             <div className="text-orange-100/80 whitespace-pre-wrap text-xs">{entry.summary}</div>
@@ -648,26 +766,40 @@ function PiSessions() {
         );
       }
 
-      case 'session_info': {
+      case "session_info": {
         const entry = line as SessionInfoEntry;
         return (
-          <div key={key} className="rounded-lg border border-neutral-800 bg-neutral-900/60 px-3 py-2 text-xs flex items-center gap-2 flex-wrap">
-            <span className="bg-neutral-700 text-neutral-300 px-2 py-0.5 rounded font-mono">session_info</span>
-            <span className="text-neutral-300">{entry.name || '(unnamed)'}</span>
-            <span className="text-neutral-500 ml-auto">{new Date(entry.timestamp).toLocaleTimeString()}</span>
+          <div
+            key={key}
+            className="rounded-lg border border-neutral-800 bg-neutral-900/60 px-3 py-2 text-xs flex items-center gap-2 flex-wrap"
+          >
+            <span className="bg-neutral-700 text-neutral-300 px-2 py-0.5 rounded font-mono">
+              session_info
+            </span>
+            <span className="text-neutral-300">{entry.name || "(unnamed)"}</span>
+            <span className="text-neutral-500 ml-auto">
+              {new Date(entry.timestamp).toLocaleTimeString()}
+            </span>
           </div>
         );
       }
 
-      case 'label':
-      case 'custom':
-      case 'custom_message': {
+      case "label":
+      case "custom":
+      case "custom_message": {
         if (!showRaw) return null;
         return (
-          <div key={key} className="rounded-lg border border-neutral-800 bg-neutral-900/40 px-3 py-2 text-xs">
+          <div
+            key={key}
+            className="rounded-lg border border-neutral-800 bg-neutral-900/40 px-3 py-2 text-xs"
+          >
             <div className="flex items-center gap-2 mb-1">
-              <span className="bg-neutral-700 text-neutral-300 px-2 py-0.5 rounded font-mono">{line.type}</span>
-              <span className="text-neutral-500 ml-auto">{new Date((line as SessionEntryBase).timestamp).toLocaleTimeString()}</span>
+              <span className="bg-neutral-700 text-neutral-300 px-2 py-0.5 rounded font-mono">
+                {line.type}
+              </span>
+              <span className="text-neutral-500 ml-auto">
+                {new Date((line as SessionEntryBase).timestamp).toLocaleTimeString()}
+              </span>
             </div>
             <pre className="text-neutral-400 font-mono overflow-x-auto whitespace-pre-wrap break-all max-h-60">
               {JSON.stringify(line, null, 2)}
@@ -676,11 +808,16 @@ function PiSessions() {
         );
       }
 
-      case 'parse_error': {
-        const entry = line as { type: 'parse_error'; raw: string };
+      case "parse_error": {
+        const entry = line as { type: "parse_error"; raw: string };
         return (
-          <div key={key} className="rounded-lg border border-red-900/40 bg-red-950/10 px-3 py-2 text-xs">
-            <span className="bg-red-500/20 text-red-300 px-2 py-0.5 rounded font-mono mr-2">parse_error</span>
+          <div
+            key={key}
+            className="rounded-lg border border-red-900/40 bg-red-950/10 px-3 py-2 text-xs"
+          >
+            <span className="bg-red-500/20 text-red-300 px-2 py-0.5 rounded font-mono mr-2">
+              parse_error
+            </span>
             <span className="text-red-300/70 font-mono break-all">{entry.raw.slice(0, 200)}</span>
           </div>
         );
@@ -689,9 +826,14 @@ function PiSessions() {
       default: {
         if (!showRaw) return null;
         return (
-          <div key={key} className="rounded-lg border border-neutral-800 bg-neutral-900/40 px-3 py-2 text-xs">
+          <div
+            key={key}
+            className="rounded-lg border border-neutral-800 bg-neutral-900/40 px-3 py-2 text-xs"
+          >
             <div className="flex items-center gap-2 mb-1">
-              <span className="bg-neutral-700 text-neutral-300 px-2 py-0.5 rounded font-mono">{line.type}</span>
+              <span className="bg-neutral-700 text-neutral-300 px-2 py-0.5 rounded font-mono">
+                {line.type}
+              </span>
             </div>
             <pre className="text-neutral-400 font-mono overflow-x-auto whitespace-pre-wrap break-all max-h-60">
               {JSON.stringify(line, null, 2)}
@@ -710,11 +852,16 @@ function PiSessions() {
         <div className="flex items-center gap-3 px-4 py-3 border-b border-neutral-800 sticky top-0 bg-black/95 backdrop-blur z-10">
           <button
             className="bg-transparent border-none text-blue-500 text-2xl cursor-pointer px-2 py-1 leading-none hover:text-blue-400"
-            onClick={() => { setSearchParams({}); setDetail(null); }}
+            onClick={() => {
+              setSearchParams({});
+              setDetail(null);
+            }}
           >
             ‹
           </button>
-          <h2 className="text-lg font-semibold text-white truncate flex-1 font-mono">{detail.rel}</h2>
+          <h2 className="text-lg font-semibold text-white truncate flex-1 font-mono">
+            {detail.rel}
+          </h2>
           <label className="flex items-center gap-1.5 text-sm text-neutral-500 cursor-pointer select-none">
             <input
               type="checkbox"
@@ -757,9 +904,7 @@ function PiSessions() {
   return (
     <div className="flex flex-col pb-8">
       <div className="flex items-center gap-3 px-4 py-3 border-b border-neutral-800 sticky top-0 bg-black/95 backdrop-blur z-10">
-        <h2 className="text-lg font-semibold text-white flex-1">
-          Pi Sessions ({list.length})
-        </h2>
+        <h2 className="text-lg font-semibold text-white flex-1">Pi Sessions ({list.length})</h2>
         <div className="flex items-center gap-2">
           <label className="flex items-center gap-1.5 text-sm text-neutral-500 cursor-pointer select-none">
             <input
@@ -812,7 +957,10 @@ function PiSessions() {
               <span className="text-neutral-600 ml-auto text-xs">{formatDate(item.mtime)}</span>
               <button
                 className="w-6 h-6 flex items-center justify-center rounded border bg-neutral-900 border-neutral-700 text-red-400 hover:bg-red-950 hover:border-red-800 text-xs cursor-pointer transition-all opacity-0 group-hover:opacity-100"
-                onClick={(e) => { e.stopPropagation(); deleteFile(item.rel); }}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  deleteFile(item.rel);
+                }}
                 title="Delete pi session"
               >
                 ✕

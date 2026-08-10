@@ -71,8 +71,7 @@ before(async () => {
     server = app.listen(0, "127.0.0.1", resolve);
   });
   const address = server.address();
-  if (!address || typeof address === "string")
-    throw new Error("Missing test server address");
+  if (!address || typeof address === "string") throw new Error("Missing test server address");
   baseUrl = `http://127.0.0.1:${address.port}`;
 });
 
@@ -89,10 +88,7 @@ describe("dashboard authentication routes", () => {
     assert.equal((await fetch(`${baseUrl}/api/server/status`)).status, 403);
     assert.equal((await fetch(`${baseUrl}/attachments/test`)).status, 403);
     assert.equal((await fetch(`${baseUrl}/api/health`)).status, 200);
-    assert.equal(
-      (await fetch(`${baseUrl}/api/auth/provider/test`)).status,
-      200,
-    );
+    assert.equal((await fetch(`${baseUrl}/api/auth/provider/test`)).status, 200);
 
     const setup = await fetch(`${baseUrl}/api/auth/setup`, { method: "POST" });
     assert.equal(setup.status, 200);
@@ -113,10 +109,7 @@ describe("dashboard authentication routes", () => {
     });
     assert.equal((await fetch(`${baseUrl}/api/protected`)).status, 401);
     assert.equal((await fetch(`${baseUrl}/api/server/status`)).status, 401);
-    assert.equal(
-      (await fetch(`${baseUrl}/api/auth/provider/test`)).status,
-      200,
-    );
+    assert.equal((await fetch(`${baseUrl}/api/auth/provider/test`)).status, 200);
     assert.equal(
       (
         await fetch(`${baseUrl}/api/protected`, {

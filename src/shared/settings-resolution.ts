@@ -1,8 +1,4 @@
-import type {
-  ResolvedSettings,
-  Settings,
-  VitoConfig,
-} from "./schemas/vito-config.js";
+import type { ResolvedSettings, Settings, VitoConfig } from "./schemas/vito-config.js";
 
 function mergeSettings(base: Settings, override: Settings): Settings {
   const result: Settings = { ...base, ...override };

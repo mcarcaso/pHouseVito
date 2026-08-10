@@ -1,4 +1,4 @@
-import type { ResolvedSettings } from './settingsResolution';
+import type { ResolvedSettings } from "./settingsResolution";
 
 let cached: ResolvedSettings | null = null;
 let inflight: Promise<ResolvedSettings> | null = null;
@@ -6,7 +6,7 @@ let inflight: Promise<ResolvedSettings> | null = null;
 export async function loadDefaults(): Promise<ResolvedSettings> {
   if (cached) return cached;
   if (inflight) return inflight;
-  inflight = fetch('/api/settings/defaults')
+  inflight = fetch("/api/settings/defaults")
     .then((r) => {
       if (!r.ok) throw new Error(`defaults endpoint returned ${r.status}`);
       return r.json();
@@ -25,7 +25,9 @@ export async function loadDefaults(): Promise<ResolvedSettings> {
 
 export function getDefaults(): ResolvedSettings {
   if (!cached) {
-    throw new Error('Settings defaults not loaded — call loadDefaults() before any sync getDefaults() consumer renders');
+    throw new Error(
+      "Settings defaults not loaded — call loadDefaults() before any sync getDefaults() consumer renders",
+    );
   }
   return cached;
 }

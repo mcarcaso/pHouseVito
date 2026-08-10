@@ -48,7 +48,12 @@ export class PersistencePiRuntime extends ProxyPiRuntime {
     this.author = opts.author ?? null;
   }
 
-  private insertMsg(type: MsgType, content: unknown, timestamp = Date.now(), author: string | null = null): number {
+  private insertMsg(
+    type: MsgType,
+    content: unknown,
+    timestamp = Date.now(),
+    author: string | null = null,
+  ): number {
     return xMessageStore(this.x).create(this.x, {
       session_id: this.sessionId,
       channel: this.channel,
@@ -65,7 +70,7 @@ export class PersistencePiRuntime extends ProxyPiRuntime {
     systemPrompt: string,
     userMessage: string,
     callbacks: PiRuntimeCallbacks,
-    signal?: AbortSignal
+    signal?: AbortSignal,
   ): Promise<void> {
     this.assistantMessageIds = [];
 
@@ -122,6 +127,9 @@ export class PersistencePiRuntime extends ProxyPiRuntime {
   }
 }
 
-export function withPersistence(runtime: PiRuntime, opts: PersistenceOptions): PersistencePiRuntime {
+export function withPersistence(
+  runtime: PiRuntime,
+  opts: PersistenceOptions,
+): PersistencePiRuntime {
   return new PersistencePiRuntime(runtime, opts);
 }

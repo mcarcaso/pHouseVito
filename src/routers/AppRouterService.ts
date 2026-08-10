@@ -11,11 +11,7 @@ import {
 } from "../shared/schemas/app.js";
 import { xAppProcessService, xAppStore } from "../lib/x.js";
 import { AppFileTooLargeError } from "../stores/apps/FileAppStore.js";
-import {
-  emptyRouteSchema,
-  unknownRouteSchema,
-  createRawRoute,
-} from "./createRoute.js";
+import { emptyRouteSchema, unknownRouteSchema, createRawRoute } from "./createRoute.js";
 
 const appParamsSchema = z.object({ name: appNameSchema }).strict();
 const appFileParamsSchema = z
@@ -38,8 +34,7 @@ function appErrorMiddleware(
     res.status(413).json({ error: error.message });
     return;
   }
-  const message =
-    error instanceof Error ? error.message : "App operation failed";
+  const message = error instanceof Error ? error.message : "App operation failed";
   res.status(500).json({ error: message });
 }
 
@@ -96,8 +91,7 @@ export class AppRouterService implements RouterService {
           body: unknownRouteSchema,
         },
         handler: async (routeX, { params }, req, res) => {
-          const clientIp =
-            req.headers["x-forwarded-for"] ?? req.socket.remoteAddress;
+          const clientIp = req.headers["x-forwarded-for"] ?? req.socket.remoteAddress;
           console.log(
             `[Dashboard] App ${params.action} requested: ${params.name} from ${String(clientIp ?? "unknown")} ua=${req.headers["user-agent"] ?? "unknown"}`,
           );

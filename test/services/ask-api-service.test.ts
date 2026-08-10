@@ -9,10 +9,7 @@ describe("DefaultAskApiService", () => {
     const x = new ObjectContext({});
     const service = new DefaultAskApiService();
     assert.equal(service.isConfigured(x), false);
-    await assert.rejects(
-      () => service.ask(x, { question: "Hello" }),
-      AskHandlerNotConfiguredError
-    );
+    await assert.rejects(() => service.ask(x, { question: "Hello" }), AskHandlerNotConfiguredError);
   });
 
   it("forwards validated Ask API options to the configured handler", async () => {

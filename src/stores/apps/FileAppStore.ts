@@ -1,11 +1,4 @@
-import {
-  existsSync,
-  lstatSync,
-  readFileSync,
-  readdirSync,
-  rmSync,
-  statSync,
-} from "node:fs";
+import { existsSync, lstatSync, readFileSync, readdirSync, rmSync, statSync } from "node:fs";
 import { join, relative, resolve, sep } from "node:path";
 import type { Context } from "../../context/Context.js";
 import {
@@ -15,14 +8,7 @@ import {
 } from "../../shared/schemas/app.js";
 import { xAppsDir } from "../../lib/x.js";
 import { UnsupportedStoreOperationError } from "../Store.js";
-import type {
-  App,
-  AppFile,
-  AppFilter,
-  AppListArgs,
-  AppStore,
-  DeleteAppArgs,
-} from "./AppStore.js";
+import type { App, AppFile, AppFilter, AppListArgs, AppStore, DeleteAppArgs } from "./AppStore.js";
 
 const APP_METADATA_FILE = ".vito-app.json";
 

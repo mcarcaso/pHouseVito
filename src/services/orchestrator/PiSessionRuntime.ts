@@ -24,7 +24,12 @@ import {
 } from "@earendil-works/pi-coding-agent";
 import { existsSync, mkdirSync, readdirSync, unlinkSync, writeFileSync } from "fs";
 import { join } from "path";
-import type { NormalizedEvent, PiRuntime, PiRuntimeCallbacks, PiRuntimeUsage } from "./runtime/PiRuntime.js";
+import type {
+  NormalizedEvent,
+  PiRuntime,
+  PiRuntimeCallbacks,
+  PiRuntimeUsage,
+} from "./runtime/PiRuntime.js";
 import type { Skill } from "../../stores/skills/SkillStore.js";
 
 /** Filename written into a sessionDir to request "fresh on next create". */
@@ -57,7 +62,10 @@ const DEFAULT_CONFIG: PiSessionRuntimeConfig = {
   thinkingLevel: "off",
 };
 
-function resolvePiModel(modelConfig: { provider: string; name: string }, openRouterProvider?: string) {
+function resolvePiModel(
+  modelConfig: { provider: string; name: string },
+  openRouterProvider?: string,
+) {
   const model = getModel(modelConfig.provider as any, modelConfig.name as any);
   if (modelConfig.provider !== "openrouter" || !openRouterProvider) return model;
 
@@ -76,14 +84,19 @@ function resolvePiModel(modelConfig: { provider: string; name: string }, openRou
 function toUsage(value: unknown): PiRuntimeUsage | undefined {
   if (!value || typeof value !== "object") return undefined;
   const usage = value as Record<string, unknown>;
-  const cost = (usage.cost && typeof usage.cost === "object") ? usage.cost as Record<string, unknown> : {};
+  const cost =
+    usage.cost && typeof usage.cost === "object" ? (usage.cost as Record<string, unknown>) : {};
   const input = Number(usage.input ?? 0);
   const output = Number(usage.output ?? 0);
   const cacheRead = Number(usage.cacheRead ?? 0);
   const cacheWrite = Number(usage.cacheWrite ?? 0);
-  const totalTokens = Number(usage.totalTokens ?? (input + output + cacheRead + cacheWrite));
+  const totalTokens = Number(usage.totalTokens ?? input + output + cacheRead + cacheWrite);
   return {
-    input, output, cacheRead, cacheWrite, totalTokens,
+    input,
+    output,
+    cacheRead,
+    cacheWrite,
+    totalTokens,
     cost: {
       input: Number(cost.input ?? 0),
       output: Number(cost.output ?? 0),
@@ -94,7 +107,10 @@ function toUsage(value: unknown): PiRuntimeUsage | undefined {
   };
 }
 
-function addUsage(a: PiRuntimeUsage | undefined, b: PiRuntimeUsage | undefined): PiRuntimeUsage | undefined {
+function addUsage(
+  a: PiRuntimeUsage | undefined,
+  b: PiRuntimeUsage | undefined,
+): PiRuntimeUsage | undefined {
   if (!a) return b;
   if (!b) return a;
   return {
@@ -124,7 +140,10 @@ function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
-async function waitForPiSessionSettled(piSession: AgentSession, getLastEventAt: () => number): Promise<void> {
+async function waitForPiSessionSettled(
+  piSession: AgentSession,
+  getLastEventAt: () => number,
+): Promise<void> {
   const startedAt = Date.now();
   const maxWaitMs = 30 * 60 * 1000;
   const quietMs = 500;
@@ -132,14 +151,17 @@ async function waitForPiSessionSettled(piSession: AgentSession, getLastEventAt: 
   while (Date.now() - startedAt < maxWaitMs) {
     await piSession.agent.waitForIdle();
 
-    const active = piSession.isStreaming || piSession.isCompacting || piSession.agent.hasQueuedMessages();
+    const active =
+      piSession.isStreaming || piSession.isCompacting || piSession.agent.hasQueuedMessages();
     const quiet = Date.now() - getLastEventAt() >= quietMs;
 
     if (!active && quiet) return;
     await sleep(100);
   }
 
-  console.warn("[PiSessionRuntime] Timed out waiting for pi session to settle after prompt; continuing to avoid a stuck relay.");
+  console.warn(
+    "[PiSessionRuntime] Timed out waiting for pi session to settle after prompt; continuing to avoid a stuck relay.",
+  );
 }
 
 export class PiSessionRuntime implements PiRuntime {
@@ -182,9 +204,10 @@ export class PiSessionRuntime implements PiRuntime {
 
   getModel(): string {
     const modelConfig = this.config.model || DEFAULT_CONFIG.model!;
-    const route = modelConfig.provider === "openrouter" && this.config.openRouterProvider
-      ? `@${this.config.openRouterProvider}`
-      : "";
+    const route =
+      modelConfig.provider === "openrouter" && this.config.openRouterProvider
+        ? `@${this.config.openRouterProvider}`
+        : "";
     return `${modelConfig.provider}/${modelConfig.name}${route}`;
   }
 
@@ -193,7 +216,11 @@ export class PiSessionRuntime implements PiRuntime {
    * If the underlying AgentSession hasn't been created yet, this only updates
    * the runtime config so first run starts on the requested model.
    */
-  async setModel(modelConfig: { provider: string; name: string; openRouterProvider?: string }): Promise<void> {
+  async setModel(modelConfig: {
+    provider: string;
+    name: string;
+    openRouterProvider?: string;
+  }): Promise<void> {
     this.config.model = { provider: modelConfig.provider, name: modelConfig.name };
     this.config.openRouterProvider = modelConfig.openRouterProvider || undefined;
     if (!this.piSession) return;
@@ -246,9 +273,19 @@ export class PiSessionRuntime implements PiRuntime {
       // session is effectively orphaned and we don't care if it's already
       // halfway disposed.
       (async () => {
-        try { await stale.abort(); } catch { /* ignore */ }
-        try { stale.dispose(); } catch { /* ignore */ }
-      })().catch(() => { /* ignore */ });
+        try {
+          await stale.abort();
+        } catch {
+          /* ignore */
+        }
+        try {
+          stale.dispose();
+        } catch {
+          /* ignore */
+        }
+      })().catch(() => {
+        /* ignore */
+      });
     }
   }
 
@@ -277,7 +314,7 @@ export class PiSessionRuntime implements PiRuntime {
     systemPrompt: string,
     userMessage: string,
     callbacks: PiRuntimeCallbacks,
-    signal?: AbortSignal
+    signal?: AbortSignal,
   ): Promise<void> {
     this.aborted = false;
 
@@ -315,7 +352,11 @@ export class PiSessionRuntime implements PiRuntime {
       if (this.config.sessionDir) {
         const markerPath = join(this.config.sessionDir, FRESH_MARKER_FILE);
         if (existsSync(markerPath)) {
-          try { unlinkSync(markerPath); } catch { /* ignore */ }
+          try {
+            unlinkSync(markerPath);
+          } catch {
+            /* ignore */
+          }
           sessionManager = PiSessionManager.create(process.cwd(), this.config.sessionDir);
         } else {
           sessionManager = PiSessionManager.continueRecent(process.cwd(), this.config.sessionDir);
@@ -395,15 +436,28 @@ export class PiSessionRuntime implements PiRuntime {
           if (event.message.role === "assistant") {
             const messageAny = event.message as any;
             if (messageAny?.stopReason === "error" || messageAny?.errorMessage) {
-              turnErrorMessage = messageAny?.errorMessage || "The model returned an error before producing a response.";
+              turnErrorMessage =
+                messageAny?.errorMessage ||
+                "The model returned an error before producing a response.";
             }
 
-            if ((!currentThinkingText || !currentMessageText) && Array.isArray((event.message as any)?.content)) {
+            if (
+              (!currentThinkingText || !currentMessageText) &&
+              Array.isArray((event.message as any)?.content)
+            ) {
               for (const block of (event.message as any).content) {
-                if (!currentThinkingText && block?.type === "thinking" && typeof block.thinking === "string") {
+                if (
+                  !currentThinkingText &&
+                  block?.type === "thinking" &&
+                  typeof block.thinking === "string"
+                ) {
                   currentThinkingText = block.thinking;
                 }
-                if (!currentMessageText && block?.type === "text" && typeof block.text === "string") {
+                if (
+                  !currentMessageText &&
+                  block?.type === "text" &&
+                  typeof block.text === "string"
+                ) {
                   currentMessageText = block.text;
                 }
               }
@@ -426,7 +480,10 @@ export class PiSessionRuntime implements PiRuntime {
           break;
 
         case "turn_end":
-          accumulatedUsage = addUsage(accumulatedUsage, getAssistantUsageFromMessage(event.message));
+          accumulatedUsage = addUsage(
+            accumulatedUsage,
+            getAssistantUsageFromMessage(event.message),
+          );
           break;
 
         case "agent_end":

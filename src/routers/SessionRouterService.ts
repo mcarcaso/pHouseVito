@@ -8,16 +8,9 @@ import {
   sessionIdSchema,
   sessionMessagesQuerySchema,
 } from "../shared/schemas/session-api.js";
-import {
-  settingsPatchSchema,
-  settingsSchema,
-} from "../shared/schemas/vito-config.js";
+import { settingsPatchSchema, settingsSchema } from "../shared/schemas/vito-config.js";
 import { xMessageStore, xSessionStore, xVitoService } from "../lib/x.js";
-import {
-  emptyRouteSchema,
-  unknownRouteSchema,
-  createRawRoute,
-} from "./createRoute.js";
+import { emptyRouteSchema, unknownRouteSchema, createRawRoute } from "./createRoute.js";
 
 const sessionParamsSchema = z.object({ id: sessionIdSchema });
 
@@ -53,9 +46,7 @@ export class SessionRouterService implements RouterService {
           const messageStore = xMessageStore(routeX);
           const excludeTypes = [
             ...(query.hideThoughts ? ["thought" as const] : []),
-            ...(query.hideTools
-              ? ["tool_start" as const, "tool_end" as const]
-              : []),
+            ...(query.hideTools ? ["tool_start" as const, "tool_end" as const] : []),
           ];
           const filter = {
             sessionIds: [params.id],

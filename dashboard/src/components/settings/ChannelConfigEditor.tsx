@@ -1,8 +1,8 @@
-import { useState } from 'react';
-import type { ChannelConfig, VitoConfig, Settings } from '../../utils/settingsResolution';
-import { countActiveSettingOverrides, getEffectiveSettings } from '../../utils/settingsResolution';
-import SettingRow, { renderSegmented, renderToggle, renderTextarea } from './SettingRow';
-import { channelConfigComponents, CHANNEL_ICONS } from './channels';
+import { useState } from "react";
+import type { ChannelConfig, VitoConfig, Settings } from "../../utils/settingsResolution";
+import { countActiveSettingOverrides, getEffectiveSettings } from "../../utils/settingsResolution";
+import SettingRow, { renderSegmented, renderToggle, renderTextarea } from "./SettingRow";
+import { channelConfigComponents, CHANNEL_ICONS } from "./channels";
 
 interface ChannelConfigEditorProps {
   name: string;
@@ -12,13 +12,13 @@ interface ChannelConfigEditorProps {
 }
 
 const STREAM_MODES = [
-  { value: 'stream', label: 'Stream' },
-  { value: 'bundled', label: 'Bundled' },
-  { value: 'final', label: 'Final' },
+  { value: "stream", label: "Stream" },
+  { value: "bundled", label: "Bundled" },
+  { value: "final", label: "Final" },
 ];
 
 function setNestedValue(target: Record<string, any>, path: string, value: any) {
-  const parts = path.split('.');
+  const parts = path.split(".");
   let cursor: Record<string, any> = target;
   for (let i = 0; i < parts.length - 1; i++) {
     const key = parts[i];
@@ -29,13 +29,13 @@ function setNestedValue(target: Record<string, any>, path: string, value: any) {
 }
 
 function deleteNestedValue(target: Record<string, any>, path: string) {
-  const parts = path.split('.');
+  const parts = path.split(".");
   const stack: Array<{ parent: Record<string, any>; key: string }> = [];
   let cursor: Record<string, any> | undefined = target;
 
   for (let i = 0; i < parts.length - 1; i++) {
     const key = parts[i];
-    if (!cursor?.[key] || typeof cursor[key] !== 'object') return;
+    if (!cursor?.[key] || typeof cursor[key] !== "object") return;
     stack.push({ parent: cursor, key });
     cursor = cursor[key];
   }
@@ -45,13 +45,18 @@ function deleteNestedValue(target: Record<string, any>, path: string) {
 
   for (let i = stack.length - 1; i >= 0; i--) {
     const { parent, key } = stack[i];
-    if (parent[key] && typeof parent[key] === 'object' && Object.keys(parent[key]).length === 0) {
+    if (parent[key] && typeof parent[key] === "object" && Object.keys(parent[key]).length === 0) {
       delete parent[key];
     }
   }
 }
 
-export default function ChannelConfigEditor({ name, channelConfig, config, onSave }: ChannelConfigEditorProps) {
+export default function ChannelConfigEditor({
+  name,
+  channelConfig,
+  config,
+  onSave,
+}: ChannelConfigEditorProps) {
   const [expanded, setExpanded] = useState(false);
   const [newId, setNewId] = useState<Record<string, string>>({});
   const [needsRestart, setNeedsRestart] = useState(false);
@@ -67,7 +72,7 @@ export default function ChannelConfigEditor({ name, channelConfig, config, onSav
   const updateChannelField = async (key: string, value: any) => {
     const updatedChannel = { ...channelConfig, [key]: value };
     await onSave({ channels: { ...config.channels, [name]: updatedChannel } });
-    if (key === 'enabled') setNeedsRestart(true);
+    if (key === "enabled") setNeedsRestart(true);
   };
 
   const saveChannelSettings = async (newSettings: Settings) => {
@@ -101,12 +106,15 @@ export default function ChannelConfigEditor({ name, channelConfig, config, onSav
     const current: string[] = (channelConfig as any)[field] || [];
     if (current.includes(val)) return;
     updateChannelField(field, [...current, val]);
-    setNewId({ ...newId, [inputKey]: '' });
+    setNewId({ ...newId, [inputKey]: "" });
   };
 
   const removeId = (field: string, id: string) => {
     const current: string[] = (channelConfig as any)[field] || [];
-    updateChannelField(field, current.filter((c: string) => c !== id));
+    updateChannelField(
+      field,
+      current.filter((c: string) => c !== id),
+    );
   };
 
   // Shared ID list renderer — passed to channel-specific components
@@ -119,9 +127,15 @@ export default function ChannelConfigEditor({ name, channelConfig, config, onSav
         <div className="flex flex-wrap gap-1.5 mb-2 min-h-[28px]">
           {ids.length === 0 && <span className="text-xs text-neutral-600 italic">{emptyText}</span>}
           {ids.map((id: string) => (
-            <span key={id} className="inline-flex items-center gap-1.5 bg-blue-950/40 border border-blue-800/40 text-blue-400 rounded px-2 py-1 text-sm font-mono">
+            <span
+              key={id}
+              className="inline-flex items-center gap-1.5 bg-blue-950/40 border border-blue-800/40 text-blue-400 rounded px-2 py-1 text-sm font-mono"
+            >
               {id}
-              <button className="text-neutral-600 hover:text-red-500 text-base leading-none p-0 ml-1" onClick={() => removeId(field, id)}>
+              <button
+                className="text-neutral-600 hover:text-red-500 text-base leading-none p-0 ml-1"
+                onClick={() => removeId(field, id)}
+              >
                 ×
               </button>
             </span>
@@ -130,16 +144,16 @@ export default function ChannelConfigEditor({ name, channelConfig, config, onSav
         <div className="flex gap-2">
           <input
             type="text"
-            value={newId[inputKey] || ''}
+            value={newId[inputKey] || ""}
             onChange={(e) => setNewId({ ...newId, [inputKey]: e.target.value })}
-            onKeyDown={(e) => e.key === 'Enter' && addId(field)}
+            onKeyDown={(e) => e.key === "Enter" && addId(field)}
             placeholder={placeholder}
             className="bg-neutral-950 border border-neutral-700 rounded-md px-2.5 py-1.5 text-neutral-200 text-sm font-mono w-40 focus:outline-none focus:border-blue-600 transition-colors"
           />
           <button
             className="bg-blue-950 text-blue-400 border border-blue-800/40 rounded-md px-3 py-1.5 text-sm cursor-pointer transition-all hover:bg-blue-900 disabled:opacity-40"
             onClick={() => addId(field)}
-            disabled={!(newId[`${name}-${field}`] || '').trim()}
+            disabled={!(newId[`${name}-${field}`] || "").trim()}
           >
             Add
           </button>
@@ -156,20 +170,26 @@ export default function ChannelConfigEditor({ name, channelConfig, config, onSav
         onClick={() => setExpanded(!expanded)}
       >
         <div className="flex items-center gap-3">
-          <span className="text-xl">{CHANNEL_ICONS[name] || '📡'}</span>
-          <h4 className="text-base font-semibold text-white">{name.charAt(0).toUpperCase() + name.slice(1).replace('-', ' ')}</h4>
+          <span className="text-xl">{CHANNEL_ICONS[name] || "📡"}</span>
+          <h4 className="text-base font-semibold text-white">
+            {name.charAt(0).toUpperCase() + name.slice(1).replace("-", " ")}
+          </h4>
           {channelConfig.enabled ? (
-            <span className="text-xs bg-green-900/40 text-green-400 px-2 py-0.5 rounded-full">enabled</span>
+            <span className="text-xs bg-green-900/40 text-green-400 px-2 py-0.5 rounded-full">
+              enabled
+            </span>
           ) : (
-            <span className="text-xs bg-red-900/40 text-red-400 px-2 py-0.5 rounded-full">disabled</span>
+            <span className="text-xs bg-red-900/40 text-red-400 px-2 py-0.5 rounded-full">
+              disabled
+            </span>
           )}
           {activeOverrideCount > 0 && (
             <span className="text-xs bg-blue-900/40 text-blue-400 px-2 py-0.5 rounded-full">
-              {activeOverrideCount} override{activeOverrideCount !== 1 ? 's' : ''}
+              {activeOverrideCount} override{activeOverrideCount !== 1 ? "s" : ""}
             </span>
           )}
         </div>
-        <span className={`text-neutral-500 transition-transform ${expanded ? 'rotate-180' : ''}`}>
+        <span className={`text-neutral-500 transition-transform ${expanded ? "rotate-180" : ""}`}>
           ▼
         </span>
       </button>
@@ -185,7 +205,9 @@ export default function ChannelConfigEditor({ name, channelConfig, config, onSav
 
           {/* ── Channel-Specific Config ── */}
           <div className="mt-4">
-            <h5 className="text-xs font-semibold text-neutral-500 uppercase tracking-wider mb-3">Channel Config</h5>
+            <h5 className="text-xs font-semibold text-neutral-500 uppercase tracking-wider mb-3">
+              Channel Config
+            </h5>
 
             {/* Enabled toggle — always present for all channels */}
             <div className="flex items-center justify-between py-2.5 border-b border-neutral-800/50">
@@ -194,7 +216,7 @@ export default function ChannelConfigEditor({ name, channelConfig, config, onSav
                 <input
                   type="checkbox"
                   checked={channelConfig.enabled}
-                  onChange={(e) => updateChannelField('enabled', e.target.checked)}
+                  onChange={(e) => updateChannelField("enabled", e.target.checked)}
                   className="opacity-0 w-0 h-0 peer"
                 />
                 <span className="absolute inset-0 bg-neutral-700 rounded-full transition-colors peer-checked:bg-blue-800" />
@@ -215,16 +237,20 @@ export default function ChannelConfigEditor({ name, channelConfig, config, onSav
 
           {/* ── Setting Overrides (cascading) — ALWAYS shown for all channels ── */}
           <div className="mt-6">
-            <h5 className="text-xs font-semibold text-neutral-500 uppercase tracking-wider mb-3">Setting Overrides</h5>
-            <p className="text-xs text-neutral-600 mb-3">Override global defaults for this channel. Unset values inherit from Global.</p>
+            <h5 className="text-xs font-semibold text-neutral-500 uppercase tracking-wider mb-3">
+              Setting Overrides
+            </h5>
+            <p className="text-xs text-neutral-600 mb-3">
+              Override global defaults for this channel. Unset values inherit from Global.
+            </p>
 
             <SettingRow
               label="Stream Mode"
               inheritedValue={globalResolved.streamMode}
               inheritedFrom="global"
               overrideValue={channelSettings.streamMode}
-              onOverride={(val) => updateChannelSetting('streamMode', val)}
-              onReset={() => resetChannelSetting('streamMode')}
+              onOverride={(val) => updateChannelSetting("streamMode", val)}
+              onReset={() => resetChannelSetting("streamMode")}
               renderInput={(val, onChange) => renderSegmented(val, onChange, STREAM_MODES)}
             />
 
@@ -233,10 +259,10 @@ export default function ChannelConfigEditor({ name, channelConfig, config, onSav
               inheritedValue={globalResolved.requireMention !== false}
               inheritedFrom="global"
               overrideValue={channelSettings.requireMention}
-              onOverride={(val) => updateChannelSetting('requireMention', val)}
-              onReset={() => resetChannelSetting('requireMention')}
+              onOverride={(val) => updateChannelSetting("requireMention", val)}
+              onReset={() => resetChannelSetting("requireMention")}
               renderInput={(val, onChange) => renderToggle(val, onChange)}
-              formatValue={(v) => v ? 'On' : 'Off'}
+              formatValue={(v) => (v ? "On" : "Off")}
             />
 
             <SettingRow
@@ -245,27 +271,31 @@ export default function ChannelConfigEditor({ name, channelConfig, config, onSav
               inheritedValue={globalResolved.traceMessageUpdates ?? false}
               inheritedFrom="global"
               overrideValue={channelSettings.traceMessageUpdates}
-              onOverride={(val) => updateChannelSetting('traceMessageUpdates', val)}
-              onReset={() => resetChannelSetting('traceMessageUpdates')}
+              onOverride={(val) => updateChannelSetting("traceMessageUpdates", val)}
+              onReset={() => resetChannelSetting("traceMessageUpdates")}
               renderInput={(val, onChange) => renderToggle(val, onChange)}
-              formatValue={(v) => v ? 'On' : 'Off'}
+              formatValue={(v) => (v ? "On" : "Off")}
             />
 
             <SettingRow
               label="Custom Instructions"
               hint="Additional system prompt instructions for this channel"
-              inheritedValue={globalResolved.customInstructions || ''}
+              inheritedValue={globalResolved.customInstructions || ""}
               inheritedFrom="global"
               overrideValue={channelSettings.customInstructions}
-              onOverride={(val) => updateChannelSetting('customInstructions', val)}
-              onReset={() => resetChannelSetting('customInstructions')}
-              renderInput={(val, onChange) => renderTextarea(val, onChange, { placeholder: 'Custom instructions for this channel...' })}
-              formatValue={(v) => v ? `"${(v as string).slice(0, 50)}${(v as string).length > 50 ? '...' : ''}"` : '(none)'}
+              onOverride={(val) => updateChannelSetting("customInstructions", val)}
+              onReset={() => resetChannelSetting("customInstructions")}
+              renderInput={(val, onChange) =>
+                renderTextarea(val, onChange, {
+                  placeholder: "Custom instructions for this channel...",
+                })
+              }
+              formatValue={(v) =>
+                v
+                  ? `"${(v as string).slice(0, 50)}${(v as string).length > 50 ? "..." : ""}"`
+                  : "(none)"
+              }
             />
-
-
-
-
           </div>
         </div>
       )}

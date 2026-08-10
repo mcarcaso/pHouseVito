@@ -23,11 +23,13 @@ describe("DriveInboundAttachmentService", () => {
       timestamp: Date.now(),
       content: "photo",
       raw: {},
-      attachments: [{
-        type: "image",
-        url: "https://cdn.example.test/photo",
-        mimeType: "image/png",
-      }],
+      attachments: [
+        {
+          type: "image",
+          url: "https://cdn.example.test/photo",
+          mimeType: "image/png",
+        },
+      ],
     };
     const originalFetch = globalThis.fetch;
     globalThis.fetch = async () => new Response(Buffer.from("image"), { status: 200 });

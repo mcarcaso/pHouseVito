@@ -61,22 +61,22 @@ function printResults(results: SearchResult[], options: SearchOptions): void {
   }
   console.log(`Found ${results.length} results:\n`);
   for (const [index, result] of results.entries()) {
-    const score = options.mode === "hybrid"
-      ? `RRF: ${result.rrfScore.toFixed(6)} | Emb: ${result.embeddingScore.toFixed(4)} | BM25: ${result.bm25Score.toFixed(4)}`
-      : options.mode === "embedding"
-        ? `Similarity: ${result.embeddingScore.toFixed(4)}`
-        : `BM25: ${result.bm25Score.toFixed(4)}`;
+    const score =
+      options.mode === "hybrid"
+        ? `RRF: ${result.rrfScore.toFixed(6)} | Emb: ${result.embeddingScore.toFixed(4)} | BM25: ${result.bm25Score.toFixed(4)}`
+        : options.mode === "embedding"
+          ? `Similarity: ${result.embeddingScore.toFixed(4)}`
+          : `BM25: ${result.bm25Score.toFixed(4)}`;
     console.log(`━━━ #${index + 1} — ${score} ━━━`);
     console.log(`Session: ${result.sessionId} | Day: ${result.day} | Messages: ${result.msgCount}`);
     if (result.context) console.log(`Context: ${result.context}`);
-    console.log(`\n${result.text.slice(0, 500)}${result.text.length > 500 ? "\n... (truncated)" : ""}\n`);
+    console.log(
+      `\n${result.text.slice(0, 500)}${result.text.length > 500 ? "\n... (truncated)" : ""}\n`,
+    );
   }
 }
 
-export async function runMemoryCommand(
-  args: string[],
-  projectRoot: string,
-): Promise<number> {
+export async function runMemoryCommand(args: string[], projectRoot: string): Promise<number> {
   const [command, ...commandArgs] = args;
   if (!command || command === "help" || command === "--help" || command === "-h") {
     process.stdout.write(help);
@@ -111,7 +111,9 @@ export async function runMemoryCommand(
     printResults(results, options);
     return 0;
   } catch (error) {
-    console.error(`Memory search failed: ${error instanceof Error ? error.message : String(error)}`);
+    console.error(
+      `Memory search failed: ${error instanceof Error ? error.message : String(error)}`,
+    );
     return 1;
   } finally {
     xEmbeddingDb(x).close();

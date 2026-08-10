@@ -30,7 +30,7 @@ export class ProxyPiRuntime implements PiRuntime {
     systemPrompt: string,
     userMessage: string,
     callbacks: PiRuntimeCallbacks,
-    signal?: AbortSignal
+    signal?: AbortSignal,
   ): Promise<void> {
     return this.delegate.run(systemPrompt, userMessage, callbacks, signal);
   }

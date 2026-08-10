@@ -30,7 +30,7 @@ function applyRecencyBias(score: number, dayString: string): RecencyBiasResult {
   const today = new Date();
   const daysAgo = Math.max(
     0,
-    Math.floor((today.getTime() - chunkDate.getTime()) / (1000 * 60 * 60 * 24))
+    Math.floor((today.getTime() - chunkDate.getTime()) / (1000 * 60 * 60 * 24)),
   );
   const recencyFactor = 1 / (1 + daysAgo * 0.01);
   return {
@@ -40,17 +40,14 @@ function applyRecencyBias(score: number, dayString: string): RecencyBiasResult {
   };
 }
 
-export function getLastEmbeddedMessageId(
-  x: Context,
-  sessionId: string
-): number {
+export function getLastEmbeddedMessageId(x: Context, sessionId: string): number {
   return xEmbeddingStore(x).getLastEmbeddedMessageId(x, sessionId);
 }
 
 export async function searchMemory(
   x: Context,
   query: string,
-  options: SearchOptions = {}
+  options: SearchOptions = {},
 ): Promise<SearchResult[]> {
   const { limit = 5, sessionFilter, mode = "hybrid" } = options;
   const store = xEmbeddingStore(x);
@@ -102,14 +99,17 @@ export async function searchMemory(
     }
   }
 
-  const merged = new Map<number, {
-    embeddingScore: number;
-    rawEmbeddingScore: number;
-    recencyFactor: number;
-    daysAgo: number;
-    bm25Score: number;
-    rrfScore: number;
-  }>();
+  const merged = new Map<
+    number,
+    {
+      embeddingScore: number;
+      rawEmbeddingScore: number;
+      recencyFactor: number;
+      daysAgo: number;
+      bm25Score: number;
+      rrfScore: number;
+    }
+  >();
   for (let rank = 0; rank < embeddingResults.length; rank++) {
     const result = embeddingResults[rank];
     merged.set(result.id, {

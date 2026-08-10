@@ -9,22 +9,22 @@
  *   node index.js delete --name "my-app"
  */
 
-import { existsSync, mkdirSync, writeFileSync, readFileSync, readdirSync, rmSync } from 'fs';
-import { join } from 'path';
-import { execSync } from 'child_process';
+import { existsSync, mkdirSync, writeFileSync, readFileSync, readdirSync, rmSync } from "fs";
+import { join } from "path";
+import { execSync } from "child_process";
 
-const USER_DIR = join(process.cwd(), 'user');
+const USER_DIR = join(process.cwd(), "user");
 const PORT_START = 3100;
 
 function getAppsDir() {
-  return join(USER_DIR, 'apps');
+  return join(USER_DIR, "apps");
 }
 
 function getConfig() {
   try {
-    const configPath = join(USER_DIR, 'vito.config.json');
+    const configPath = join(USER_DIR, "vito.config.json");
     if (existsSync(configPath)) {
-      return JSON.parse(readFileSync(configPath, 'utf-8'));
+      return JSON.parse(readFileSync(configPath, "utf-8"));
     }
   } catch {
     // Fall back to defaults
@@ -55,8 +55,8 @@ function getUsedPorts() {
 
   const ports = [];
   const dirs = readdirSync(appsDir, { withFileTypes: true })
-    .filter(d => d.isDirectory())
-    .map(d => d.name);
+    .filter((d) => d.isDirectory())
+    .map((d) => d.name);
 
   for (const name of dirs) {
     const meta = getAppMeta(name);
@@ -77,13 +77,13 @@ function findAvailablePort() {
 }
 
 function getAppMeta(appName) {
-  const metaPath = join(getAppsDir(), appName, '.vito-app.json');
+  const metaPath = join(getAppsDir(), appName, ".vito-app.json");
   if (!existsSync(metaPath)) return null;
-  return JSON.parse(readFileSync(metaPath, 'utf-8'));
+  return JSON.parse(readFileSync(metaPath, "utf-8"));
 }
 
 function saveAppMeta(appName, meta) {
-  const metaPath = join(getAppsDir(), appName, '.vito-app.json');
+  const metaPath = join(getAppsDir(), appName, ".vito-app.json");
   writeFileSync(metaPath, JSON.stringify(meta, null, 2));
 }
 
@@ -97,28 +97,28 @@ function getAppUrl(appName, port) {
 
 function cleanPm2Env(extra = {}) {
   return {
-    PATH: process.env.PATH || '/usr/local/bin:/usr/bin:/bin',
-    HOME: process.env.HOME || '',
-    USER: process.env.USER || '',
-    NODE_ENV: process.env.NODE_ENV || 'production',
+    PATH: process.env.PATH || "/usr/local/bin:/usr/bin:/bin",
+    HOME: process.env.HOME || "",
+    USER: process.env.USER || "",
+    NODE_ENV: process.env.NODE_ENV || "production",
     ...extra,
   };
 }
 
 function runPm2(command, options = {}) {
-  return execSync(command, { stdio: 'pipe', env: cleanPm2Env(), ...options });
+  return execSync(command, { stdio: "pipe", env: cleanPm2Env(), ...options });
 }
 
 function startAppServer(appName, port, appDir) {
   const pm2Name = `app-${appName}`;
-  const hasNodeServer = existsSync(join(appDir, 'server.js'));
-  const hasPythonServer = existsSync(join(appDir, 'server.py'));
-  const hasPackageJson = existsSync(join(appDir, 'package.json'));
-  const hasRequirementsTxt = existsSync(join(appDir, 'requirements.txt'));
+  const hasNodeServer = existsSync(join(appDir, "server.js"));
+  const hasPythonServer = existsSync(join(appDir, "server.py"));
+  const hasPackageJson = existsSync(join(appDir, "package.json"));
+  const hasRequirementsTxt = existsSync(join(appDir, "requirements.txt"));
 
   if (hasPackageJson) {
     try {
-      execSync('npm install', { cwd: appDir, stdio: 'pipe', timeout: 120000, env: cleanPm2Env() });
+      execSync("npm install", { cwd: appDir, stdio: "pipe", timeout: 120000, env: cleanPm2Env() });
     } catch (e) {
       throw new Error(`npm install failed: ${e.stderr?.toString() || e.message}`);
     }
@@ -126,7 +126,12 @@ function startAppServer(appName, port, appDir) {
 
   if (hasRequirementsTxt) {
     try {
-      execSync('pip3 install -r requirements.txt', { cwd: appDir, stdio: 'pipe', timeout: 120000, env: cleanPm2Env() });
+      execSync("pip3 install -r requirements.txt", {
+        cwd: appDir,
+        stdio: "pipe",
+        timeout: 120000,
+        env: cleanPm2Env(),
+      });
     } catch (e) {
       throw new Error(`pip install failed: ${e.stderr?.toString() || e.message}`);
     }
@@ -135,19 +140,21 @@ function startAppServer(appName, port, appDir) {
   if (hasNodeServer) {
     runPm2(`pm2 start server.js --name "${pm2Name}" --cwd "${appDir}" -- --port ${port}`);
   } else if (hasPythonServer) {
-    runPm2(`pm2 start server.py --name "${pm2Name}" --interpreter python3 --cwd "${appDir}" -- --port ${port}`);
+    runPm2(
+      `pm2 start server.py --name "${pm2Name}" --interpreter python3 --cwd "${appDir}" -- --port ${port}`,
+    );
   } else {
     runPm2(`pm2 start npx --name "${pm2Name}" -- serve "${appDir}" -l ${port} --no-clipboard`);
   }
 
-  runPm2('pm2 save');
+  runPm2("pm2 save");
 }
 
 function stopAppServer(appName) {
   const pm2Name = `app-${appName}`;
   try {
     runPm2(`pm2 delete "${pm2Name}"`);
-    runPm2('pm2 save');
+    runPm2("pm2 save");
   } catch {
     // App might not be running
   }
@@ -162,7 +169,7 @@ function createApp(name, description, files) {
   if (isUpdate) {
     for (const file of files) {
       const filePath = join(appDir, file.path);
-      const fileDir = join(filePath, '..');
+      const fileDir = join(filePath, "..");
       if (!existsSync(fileDir)) mkdirSync(fileDir, { recursive: true });
       writeFileSync(filePath, file.content);
     }
@@ -180,7 +187,7 @@ function createApp(name, description, files) {
 
   for (const file of files) {
     const filePath = join(appDir, file.path);
-    const fileDir = join(filePath, '..');
+    const fileDir = join(filePath, "..");
     if (!existsSync(fileDir)) mkdirSync(fileDir, { recursive: true });
     writeFileSync(filePath, file.content);
   }
@@ -197,22 +204,24 @@ function createApp(name, description, files) {
   });
 
   startAppServer(name, port, appDir);
-  console.log(`App "${name}" deployed!\nURL: ${url}\nPort: ${port}\nFiles: ${files.map(f => f.path).join(', ')}`);
+  console.log(
+    `App "${name}" deployed!\nURL: ${url}\nPort: ${port}\nFiles: ${files.map((f) => f.path).join(", ")}`,
+  );
 }
 
 function listApps() {
   ensureAppsDir();
 
   const dirs = readdirSync(getAppsDir(), { withFileTypes: true })
-    .filter(d => d.isDirectory())
-    .map(d => d.name);
+    .filter((d) => d.isDirectory())
+    .map((d) => d.name);
 
   if (dirs.length === 0) {
-    console.log('No apps deployed.');
+    console.log("No apps deployed.");
     return;
   }
 
-  console.log('Deployed Apps:');
+  console.log("Deployed Apps:");
   for (const name of dirs) {
     const meta = getAppMeta(name);
     if (!meta) {
@@ -220,14 +229,14 @@ function listApps() {
       continue;
     }
 
-    let status = 'unknown';
+    let status = "unknown";
     try {
-      const result = execSync('pm2 jlist', { stdio: ['pipe', 'pipe', 'pipe'] }).toString();
+      const result = execSync("pm2 jlist", { stdio: ["pipe", "pipe", "pipe"] }).toString();
       const processes = JSON.parse(result);
-      const proc = processes.find(p => p.name === `app-${name}`);
-      status = proc ? proc.pm2_env.status : 'stopped';
+      const proc = processes.find((p) => p.name === `app-${name}`);
+      status = proc ? proc.pm2_env.status : "stopped";
     } catch {
-      status = 'unknown';
+      status = "unknown";
     }
 
     console.log(`${name} | ${meta.url} | Port ${meta.port} | ${status} | ${meta.description}`);
@@ -248,12 +257,12 @@ function deleteApp(name) {
 }
 
 // --- CLI ---
-const [,, command, ...rest] = process.argv;
+const [, , command, ...rest] = process.argv;
 
 function parseArgs(args) {
   const result = {};
   for (let i = 0; i < args.length; i++) {
-    if (args[i].startsWith('--')) {
+    if (args[i].startsWith("--")) {
       const key = args[i].slice(2);
       const val = args[i + 1];
       result[key] = val;
@@ -265,10 +274,10 @@ function parseArgs(args) {
 
 try {
   switch (command) {
-    case 'create': {
+    case "create": {
       const args = parseArgs(rest);
       if (!args.name || !args.description || !args.files) {
-        console.error('Required: --name, --description, --files (JSON array)');
+        console.error("Required: --name, --description, --files (JSON array)");
         process.exit(1);
       }
       const files = JSON.parse(args.files);
@@ -276,14 +285,14 @@ try {
       break;
     }
 
-    case 'list':
+    case "list":
       listApps();
       break;
 
-    case 'delete': {
+    case "delete": {
       const args = parseArgs(rest);
       if (!args.name) {
-        console.error('Required: --name');
+        console.error("Required: --name");
         process.exit(1);
       }
       deleteApp(args.name);
@@ -292,7 +301,7 @@ try {
 
     default:
       console.error(`Unknown command: ${command}`);
-      console.error('Usage: node index.js <create|list|delete> [options]');
+      console.error("Usage: node index.js <create|list|delete> [options]");
       process.exit(1);
   }
 } catch (error) {

@@ -13,7 +13,7 @@ export class TelegramOutputHandler implements OutputHandler {
 
   constructor(
     private bot: Bot,
-    private event: InboundEvent
+    private event: InboundEvent,
   ) {
     this.chatId = event.target;
     // Extract threadId from session key: "telegram:chatId:threadId" or "telegram:chatId"
@@ -28,7 +28,9 @@ export class TelegramOutputHandler implements OutputHandler {
   }
 
   async startTyping(): Promise<void> {
-    console.log(`[Telegram] startTyping() called for chat ${this.chatId}${this.threadId ? ` thread ${this.threadId}` : ''}`);
+    console.log(
+      `[Telegram] startTyping() called for chat ${this.chatId}${this.threadId ? ` thread ${this.threadId}` : ""}`,
+    );
     // Idempotent: clear any existing interval before starting a new one so that
     // double-call (e.g., early start in orchestrator + typing runtime) doesn't leak.
     if (this.typingInterval) {
@@ -60,14 +62,22 @@ export class TelegramOutputHandler implements OutputHandler {
       this.bot.api
         .sendChatAction(this.chatId, "typing", { message_thread_id: this.threadId })
         .then(() => console.log(`[Telegram] ✅ Typing indicator sent to thread ${this.threadId}`))
-        .catch((err) => console.log(`[Telegram] ❌ Typing failed for thread ${this.threadId}: ${err.message || err}`));
+        .catch((err) =>
+          console.log(
+            `[Telegram] ❌ Typing failed for thread ${this.threadId}: ${err.message || err}`,
+          ),
+        );
     } else {
       // No thread ID = General topic or DM - just send to the chat directly
-      console.log(`[Telegram] sendTypingAction() to chat ${this.chatId} (no thread - General/DM mode)`);
+      console.log(
+        `[Telegram] sendTypingAction() to chat ${this.chatId} (no thread - General/DM mode)`,
+      );
       this.bot.api
         .sendChatAction(this.chatId, "typing")
         .then(() => console.log(`[Telegram] ✅ Typing indicator sent (General/DM mode)`))
-        .catch((err) => console.log(`[Telegram] ❌ Typing failed (General/DM mode): ${err.message || err}`));
+        .catch((err) =>
+          console.log(`[Telegram] ❌ Typing failed (General/DM mode): ${err.message || err}`),
+        );
     }
   }
 
@@ -112,7 +122,9 @@ export class TelegramOutputHandler implements OutputHandler {
     // If no media found, just send as text
     if (parts.length === 0) {
       const chunks = splitMessage(text, TELEGRAM_MAX_LENGTH);
-      console.log(`[Telegram] Sending ${chunks.length} chunk(s) to chat ${this.chatId}${this.threadId ? ` thread ${this.threadId}` : ''}`);
+      console.log(
+        `[Telegram] Sending ${chunks.length} chunk(s) to chat ${this.chatId}${this.threadId ? ` thread ${this.threadId}` : ""}`,
+      );
       for (const chunk of chunks) {
         await this.bot.api.sendMessage(this.chatId, chunk, msgOptions);
         console.log(`[Telegram] ✅ Sent chunk of ${chunk.length} chars`);
@@ -146,7 +158,11 @@ export class TelegramOutputHandler implements OutputHandler {
           }
         } catch (error) {
           console.error(`[Telegram] ❌ Failed to send media: ${error}`);
-          await this.bot.api.sendMessage(this.chatId, `Error sending media: ${filePath}`, msgOptions);
+          await this.bot.api.sendMessage(
+            this.chatId,
+            `Error sending media: ${filePath}`,
+            msgOptions,
+          );
         }
       }
     }

@@ -14,14 +14,14 @@ import { SessionRouterService } from "../../src/routers/SessionRouterService.js"
 
 const userDir = mkdtempSync(join(tmpdir(), "vito-session-router-"));
 const exampleConfigPath = join(process.cwd(), "user.example", "vito.config.json");
-writeFileSync(
-  join(userDir, "vito.config.json"),
-  readFileSync(exampleConfigPath, "utf-8")
-);
+writeFileSync(join(userDir, "vito.config.json"), readFileSync(exampleConfigPath, "utf-8"));
 writeFileSync(join(userDir, "SOUL.md"), "test soul\n");
 
 const db = createDatabase(":memory:");
-const x = dashboardRouterContext({}, RootContext({ db, userDir, skillsDir: join(userDir, "skills") }));
+const x = dashboardRouterContext(
+  {},
+  RootContext({ db, userDir, skillsDir: join(userDir, "skills") }),
+);
 const sessionId = "dashboard:test";
 const sessionStore = xSessionStore(x);
 sessionStore.create(x, {
@@ -73,7 +73,7 @@ before(async () => {
 
 after(async () => {
   await new Promise<void>((resolve, reject) => {
-    server.close((error) => error ? reject(error) : resolve());
+    server.close((error) => (error ? reject(error) : resolve()));
   });
   db.close();
   rmSync(userDir, { recursive: true, force: true });
@@ -87,7 +87,7 @@ describe("session router", () => {
     assert.equal(sessions.length, 1);
 
     const messagesResponse = await fetch(
-      `${baseUrl}/api/sessions/${encodeURIComponent(sessionId)}/messages?limit=10`
+      `${baseUrl}/api/sessions/${encodeURIComponent(sessionId)}/messages?limit=10`,
     );
     assert.equal(messagesResponse.status, 200);
     const messages = messagesResponseSchema.parse(await messagesResponse.json());
@@ -97,7 +97,7 @@ describe("session router", () => {
 
   it("returns structured validation errors", async () => {
     const response = await fetch(
-      `${baseUrl}/api/sessions/${encodeURIComponent(sessionId)}/messages?hideTools=yes`
+      `${baseUrl}/api/sessions/${encodeURIComponent(sessionId)}/messages?hideTools=yes`,
     );
     assert.equal(response.status, 400);
     const result = validationResponseSchema.parse(await response.json());
@@ -112,23 +112,17 @@ describe("session router", () => {
         method: "PUT",
         headers: { "content-type": "application/json" },
         body: JSON.stringify({ alias: 42 }),
-      }
+      },
     );
     assert.equal(invalidResponse.status, 400);
 
-    const response = await fetch(
-      `${baseUrl}/api/sessions/${encodeURIComponent(sessionId)}/alias`,
-      {
-        method: "PUT",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({ alias: "  Test Session  " }),
-      }
-    );
+    const response = await fetch(`${baseUrl}/api/sessions/${encodeURIComponent(sessionId)}/alias`, {
+      method: "PUT",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ alias: "  Test Session  " }),
+    });
     assert.equal(response.status, 200);
-    assert.equal(
-      sessionStore.list(x, { ids: [sessionId], limit: 1 })[0]?.alias,
-      "Test Session"
-    );
+    assert.equal(sessionStore.list(x, { ids: [sessionId], limit: 1 })[0]?.alias, "Test Session");
   });
 
   it("validates, saves, and removes session settings", async () => {

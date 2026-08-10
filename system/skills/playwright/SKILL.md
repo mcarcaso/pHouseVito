@@ -38,6 +38,7 @@ mcp:
 Primary browser automation now runs through **Playwright MCP** via the generic MCP client.
 
 Use this skill when you need to:
+
 - Read JavaScript-rendered pages
 - Take screenshots
 - Interact with pages/forms

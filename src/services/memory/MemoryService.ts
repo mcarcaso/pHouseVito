@@ -30,7 +30,7 @@ export interface MemoryService {
   maybeEmbedNewChunks(
     x: Context,
     sessionId: string,
-    options?: EmbedOptions
+    options?: EmbedOptions,
   ): Promise<EmbeddingResult>;
   getStats(x: Context): EmbeddingStats;
 }

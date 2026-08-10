@@ -1,7 +1,7 @@
-import { useState, useEffect, useRef, useCallback } from 'react';
-import { useSearchParams, useNavigate } from 'react-router-dom';
-import ChatView, { parseDbMessage, type ParsedMessage, type FilterState } from './ChatView';
-import FilterButton from './FilterButton';
+import { useState, useEffect, useRef, useCallback } from "react";
+import { useSearchParams, useNavigate } from "react-router-dom";
+import ChatView, { parseDbMessage, type ParsedMessage, type FilterState } from "./ChatView";
+import FilterButton from "./FilterButton";
 
 interface Session {
   id: string;
@@ -19,7 +19,7 @@ interface SessionConfig {
     provider: string;
     name: string;
   };
-  'pi-coding-agent'?: {
+  "pi-coding-agent"?: {
     model?: { provider: string; name: string };
   };
 }
@@ -38,7 +38,7 @@ const MESSAGES_PER_PAGE = 50;
 function Sessions() {
   const [searchParams, setSearchParams] = useSearchParams();
   const navigate = useNavigate();
-  const selectedSession = searchParams.get('id');
+  const selectedSession = searchParams.get("id");
 
   const [sessions, setSessions] = useState<Session[]>([]);
   const [allMessages, setAllMessages] = useState<Message[]>([]);
@@ -49,25 +49,28 @@ function Sessions() {
   const [autoRefresh, setAutoRefresh] = useState(true);
   const autoRefreshRef = useRef(autoRefresh);
   autoRefreshRef.current = autoRefresh;
-  
+
   // Queue new messages while the user is scrolled away from the bottom.
   const [pendingCount, setPendingCount] = useState(0);
   const pendingMessagesRef = useRef<Message[]>([]);
 
-  const [filterState, setFilterState] = useState<FilterState>({ showThoughts: true, showTools: true });
+  const [filterState, setFilterState] = useState<FilterState>({
+    showThoughts: true,
+    showTools: true,
+  });
 
   // Alias editing state
   const [editingAlias, setEditingAlias] = useState<string | null>(null);
-  const [aliasInput, setAliasInput] = useState('');
+  const [aliasInput, setAliasInput] = useState("");
   const aliasInputRef = useRef<HTMLInputElement>(null);
 
   const fetchSessionsSilent = useCallback(async () => {
     try {
-      const res = await fetch('/api/sessions');
+      const res = await fetch("/api/sessions");
       const data = await res.json();
       setSessions(data);
     } catch (err) {
-      console.error('Failed to fetch sessions:', err);
+      console.error("Failed to fetch sessions:", err);
     }
   }, []);
 
@@ -78,24 +81,24 @@ function Sessions() {
   // Detect if user has scrolled away from bottom
   useEffect(() => {
     if (!selectedSession) return;
-    
+
     const handleScroll = () => {
       const scrollTop = window.scrollY;
       const windowHeight = window.innerHeight;
       const docHeight = document.documentElement.scrollHeight;
       // Consider "at bottom" if within 150px of the bottom
       const isAtBottom = scrollTop + windowHeight >= docHeight - 150;
-      
+
       // If user scrolled back to bottom and we have pending messages, apply them
       if (isAtBottom && pendingMessagesRef.current.length > 0) {
-        setAllMessages(prev => [...prev, ...pendingMessagesRef.current]);
+        setAllMessages((prev) => [...prev, ...pendingMessagesRef.current]);
         pendingMessagesRef.current = [];
         setPendingCount(0);
       }
     };
-    
-    window.addEventListener('scroll', handleScroll, { passive: true });
-    return () => window.removeEventListener('scroll', handleScroll);
+
+    window.addEventListener("scroll", handleScroll, { passive: true });
+    return () => window.removeEventListener("scroll", handleScroll);
   }, [selectedSession]);
 
   useEffect(() => {
@@ -119,43 +122,49 @@ function Sessions() {
 
   const fetchSessions = async () => {
     try {
-      const res = await fetch('/api/sessions');
+      const res = await fetch("/api/sessions");
       const data = await res.json();
       setSessions(data);
     } catch (err) {
-      console.error('Failed to fetch sessions:', err);
+      console.error("Failed to fetch sessions:", err);
     } finally {
       setLoading(false);
     }
   };
 
-  const fetchMessages = async (sessionId: string, loadMore = false, filter?: FilterState, isPolling = false) => {
+  const fetchMessages = async (
+    sessionId: string,
+    loadMore = false,
+    filter?: FilterState,
+    isPolling = false,
+  ) => {
     try {
       if (loadMore) {
         setLoadingMore(true);
       }
 
       const beforeId = loadMore && allMessages.length > 0 ? allMessages[0].id : undefined;
-      
+
       // For polling: only fetch messages AFTER the last one we have
-      const afterId = isPolling && allMessages.length > 0 ? allMessages[allMessages.length - 1].id : undefined;
+      const afterId =
+        isPolling && allMessages.length > 0 ? allMessages[allMessages.length - 1].id : undefined;
 
       const params = new URLSearchParams();
       if (beforeId) {
         // Loading earlier messages
-        params.set('before', String(beforeId));
-        params.set('limit', String(MESSAGES_PER_PAGE));
+        params.set("before", String(beforeId));
+        params.set("limit", String(MESSAGES_PER_PAGE));
       } else if (afterId) {
         // Polling for new messages - just get what's new
-        params.set('after', String(afterId));
+        params.set("after", String(afterId));
       } else {
         // Initial load
-        params.set('limit', String(MESSAGES_PER_PAGE));
+        params.set("limit", String(MESSAGES_PER_PAGE));
       }
-      
+
       if (filter) {
-        if (!filter.showThoughts) params.set('hideThoughts', 'true');
-        if (!filter.showTools) params.set('hideTools', 'true');
+        if (!filter.showThoughts) params.set("hideThoughts", "true");
+        if (!filter.showTools) params.set("hideTools", "true");
       }
 
       const res = await fetch(`/api/sessions/${encodeURIComponent(sessionId)}/messages?${params}`);
@@ -163,7 +172,7 @@ function Sessions() {
 
       if (loadMore) {
         // Prepend older messages
-        setAllMessages(prev => [...data.messages, ...prev]);
+        setAllMessages((prev) => [...data.messages, ...prev]);
       } else if (isPolling && afterId) {
         // Append only NEW messages from polling
         if (data.messages.length > 0) {
@@ -173,9 +182,9 @@ function Sessions() {
           const windowHeight = window.innerHeight;
           const docHeight = document.documentElement.scrollHeight;
           const isAtBottom = scrollTop + windowHeight >= docHeight - 150;
-          
+
           if (isAtBottom) {
-            setAllMessages(prev => [...prev, ...data.messages]);
+            setAllMessages((prev) => [...prev, ...data.messages]);
           } else {
             // Queue messages for later - they'll be applied when user scrolls back to bottom
             pendingMessagesRef.current = [...pendingMessagesRef.current, ...data.messages];
@@ -195,9 +204,8 @@ function Sessions() {
         // Only update hasMore on initial load, not polling
         setHasMoreMessages(data.messages.length < data.total);
       }
-
     } catch (err) {
-      console.error('Failed to fetch messages:', err);
+      console.error("Failed to fetch messages:", err);
     } finally {
       setLoadingMore(false);
     }
@@ -215,40 +223,44 @@ function Sessions() {
     const diff = now.getTime() - date.getTime();
     const days = Math.floor(diff / (1000 * 60 * 60 * 24));
     if (days === 0) return date.toLocaleTimeString();
-    if (days === 1) return 'Yesterday';
+    if (days === 1) return "Yesterday";
     if (days < 7) return `${days} days ago`;
     return date.toLocaleDateString();
   };
 
   // ── Alias management ──
 
-  const startEditingAlias = (sessionId: string, currentAlias: string | null, e?: React.MouseEvent) => {
+  const startEditingAlias = (
+    sessionId: string,
+    currentAlias: string | null,
+    e?: React.MouseEvent,
+  ) => {
     if (e) e.stopPropagation();
     setEditingAlias(sessionId);
-    setAliasInput(currentAlias || '');
+    setAliasInput(currentAlias || "");
     setTimeout(() => aliasInputRef.current?.focus(), 50);
   };
 
   const saveAlias = async (sessionId: string) => {
     try {
       await fetch(`/api/sessions/${encodeURIComponent(sessionId)}/alias`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ alias: aliasInput.trim() || null }),
       });
       // Update local state
-      setSessions(prev => prev.map(s =>
-        s.id === sessionId ? { ...s, alias: aliasInput.trim() || null } : s
-      ));
+      setSessions((prev) =>
+        prev.map((s) => (s.id === sessionId ? { ...s, alias: aliasInput.trim() || null } : s)),
+      );
     } catch (err) {
-      console.error('Failed to save alias:', err);
+      console.error("Failed to save alias:", err);
     }
     setEditingAlias(null);
   };
 
   const cancelEditingAlias = () => {
     setEditingAlias(null);
-    setAliasInput('');
+    setAliasInput("");
   };
 
   const getSessionDisplayName = (session: Session): string => {
@@ -256,7 +268,7 @@ function Sessions() {
   };
 
   const getSelectedSessionObj = (): Session | undefined =>
-    sessions.find(s => s.id === selectedSession);
+    sessions.find((s) => s.id === selectedSession);
 
   // Load session config to check for overrides (for indicator badge)
   const [sessionConfig, setSessionConfig] = useState<SessionConfig>({});
@@ -264,17 +276,23 @@ function Sessions() {
   useEffect(() => {
     if (selectedSession) {
       fetch(`/api/sessions/${encodeURIComponent(selectedSession)}/config`)
-        .then(r => r.json())
+        .then((r) => r.json())
         .then(setSessionConfig)
-        .catch(err => console.error('Failed to load session config:', err));
+        .catch((err) => console.error("Failed to load session config:", err));
     }
   }, [selectedSession]);
 
   // Check if session has any overrides configured
-  const hasOverrides = sessionConfig.streamMode || sessionConfig.model || sessionConfig['pi-coding-agent'];
+  const hasOverrides =
+    sessionConfig.streamMode || sessionConfig.model || sessionConfig["pi-coding-agent"];
 
   const parsedMessages: ParsedMessage[] = allMessages.map((msg) =>
-    parseDbMessage({ type: msg.type, content: msg.content, timestamp: msg.timestamp, author: msg.author })
+    parseDbMessage({
+      type: msg.type,
+      content: msg.content,
+      timestamp: msg.timestamp,
+      author: msg.author,
+    }),
   );
 
   const hasScrolledRef = useRef(false);
@@ -317,15 +335,15 @@ function Sessions() {
             </button>
             <div className="flex-1 min-w-0">
               {editingAlias === selectedSession ? (
-                <div className="flex items-center gap-2" onClick={e => e.stopPropagation()}>
+                <div className="flex items-center gap-2" onClick={(e) => e.stopPropagation()}>
                   <input
                     ref={aliasInputRef}
                     type="text"
                     value={aliasInput}
-                    onChange={e => setAliasInput(e.target.value)}
-                    onKeyDown={e => {
-                      if (e.key === 'Enter') saveAlias(selectedSession);
-                      if (e.key === 'Escape') cancelEditingAlias();
+                    onChange={(e) => setAliasInput(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter") saveAlias(selectedSession);
+                      if (e.key === "Escape") cancelEditingAlias();
                     }}
                     onBlur={() => saveAlias(selectedSession)}
                     placeholder="Session alias..."
@@ -337,13 +355,17 @@ function Sessions() {
                   <span className="text-sm font-medium text-white truncate">{displayName}</span>
                   <button
                     className="text-neutral-600 hover:text-neutral-400 text-xs transition-colors shrink-0"
-                    onClick={(e) => startEditingAlias(selectedSession, currentSession?.alias || null, e)}
+                    onClick={(e) =>
+                      startEditingAlias(selectedSession, currentSession?.alias || null, e)
+                    }
                     title="Rename session"
                   >
                     ✏️
                   </button>
                   {currentSession?.alias && (
-                    <span className="text-xs text-neutral-600 font-mono truncate hidden sm:inline">{selectedSession}</span>
+                    <span className="text-xs text-neutral-600 font-mono truncate hidden sm:inline">
+                      {selectedSession}
+                    </span>
                   )}
                 </div>
               )}
@@ -352,14 +374,16 @@ function Sessions() {
             <div className="flex items-center gap-2">
               <FilterButton
                 active={!filterState.showThoughts}
-                onClick={() => setFilterState(prev => ({ ...prev, showThoughts: !prev.showThoughts }))}
-                title={filterState.showThoughts ? 'Hide thoughts' : 'Show thoughts'}
+                onClick={() =>
+                  setFilterState((prev) => ({ ...prev, showThoughts: !prev.showThoughts }))
+                }
+                title={filterState.showThoughts ? "Hide thoughts" : "Show thoughts"}
                 emoji="💭"
               />
               <FilterButton
                 active={!filterState.showTools}
-                onClick={() => setFilterState(prev => ({ ...prev, showTools: !prev.showTools }))}
-                title={filterState.showTools ? 'Hide tools' : 'Show tools'}
+                onClick={() => setFilterState((prev) => ({ ...prev, showTools: !prev.showTools }))}
+                title={filterState.showTools ? "Hide tools" : "Show tools"}
                 emoji="🔧"
               />
               <button
@@ -372,10 +396,12 @@ function Sessions() {
               <button
                 className={`relative w-9 h-9 flex items-center justify-center rounded-md border text-base cursor-pointer transition-all ${
                   hasOverrides
-                    ? 'bg-blue-950 border-blue-600 text-blue-400'
-                    : 'bg-neutral-900 border-neutral-800 text-neutral-500 hover:bg-neutral-800 hover:border-neutral-700 hover:text-neutral-300'
+                    ? "bg-blue-950 border-blue-600 text-blue-400"
+                    : "bg-neutral-900 border-neutral-800 text-neutral-500 hover:bg-neutral-800 hover:border-neutral-700 hover:text-neutral-300"
                 }`}
-                onClick={() => navigate(`/settings?tab=sessions&session=${encodeURIComponent(selectedSession!)}`)}
+                onClick={() =>
+                  navigate(`/settings?tab=sessions&session=${encodeURIComponent(selectedSession!)}`)
+                }
                 title="Session Settings"
               >
                 ⚙️
@@ -395,16 +421,16 @@ function Sessions() {
               onClick={() => {
                 // Apply pending messages and scroll to bottom
                 if (pendingMessagesRef.current.length > 0) {
-                  setAllMessages(prev => [...prev, ...pendingMessagesRef.current]);
+                  setAllMessages((prev) => [...prev, ...pendingMessagesRef.current]);
                   pendingMessagesRef.current = [];
                   setPendingCount(0);
                 }
                 setTimeout(() => {
-                  window.scrollTo({ top: document.body.scrollHeight, behavior: 'smooth' });
+                  window.scrollTo({ top: document.body.scrollHeight, behavior: "smooth" });
                 }, 50);
               }}
             >
-              ↓ {pendingCount} new message{pendingCount > 1 ? 's' : ''}
+              ↓ {pendingCount} new message{pendingCount > 1 ? "s" : ""}
             </button>
           )}
           {allMessages.length > 0 ? (
@@ -456,14 +482,15 @@ function Sessions() {
 
       <div className="px-4 pt-4 space-y-3">
         {sessions.map((session) => {
-          const config: SessionConfig = JSON.parse(session.config || '{}');
-          const hasConfig = config.streamMode || config.model || config['pi-coding-agent'];
+          const config: SessionConfig = JSON.parse(session.config || "{}");
+          const hasConfig = config.streamMode || config.model || config["pi-coding-agent"];
           const isEditingThis = editingAlias === session.id;
 
           // Truncate long session IDs in the middle
-          const displayId = session.id.length > 30 
-            ? `${session.id.slice(0, 14)}...${session.id.slice(-12)}`
-            : session.id;
+          const displayId =
+            session.id.length > 30
+              ? `${session.id.slice(0, 14)}...${session.id.slice(-12)}`
+              : session.id;
 
           return (
             <div
@@ -473,14 +500,18 @@ function Sessions() {
             >
               {/* Top row: Channel badge + timestamp + settings */}
               <div className="flex items-center justify-between mb-2">
-                <span className="font-semibold text-blue-500 capitalize text-sm">{session.channel}</span>
+                <span className="font-semibold text-blue-500 capitalize text-sm">
+                  {session.channel}
+                </span>
                 <div className="flex items-center gap-2">
-                  <span className="text-xs text-neutral-500">{formatRelativeTime(session.last_active_at)}</span>
+                  <span className="text-xs text-neutral-500">
+                    {formatRelativeTime(session.last_active_at)}
+                  </span>
                   <button
                     className={`relative w-7 h-7 flex items-center justify-center rounded-md text-sm transition-all ${
                       hasConfig
-                        ? 'text-blue-400 hover:bg-blue-950'
-                        : 'text-neutral-600 hover:text-neutral-400 hover:bg-neutral-800'
+                        ? "text-blue-400 hover:bg-blue-950"
+                        : "text-neutral-600 hover:text-neutral-400 hover:bg-neutral-800"
                     }`}
                     onClick={(e) => {
                       e.stopPropagation();
@@ -503,13 +534,13 @@ function Sessions() {
                     ref={aliasInputRef}
                     type="text"
                     value={aliasInput}
-                    onChange={e => setAliasInput(e.target.value)}
-                    onKeyDown={e => {
-                      if (e.key === 'Enter') saveAlias(session.id);
-                      if (e.key === 'Escape') cancelEditingAlias();
+                    onChange={(e) => setAliasInput(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter") saveAlias(session.id);
+                      if (e.key === "Escape") cancelEditingAlias();
                     }}
                     onBlur={() => saveAlias(session.id)}
-                    onClick={e => e.stopPropagation()}
+                    onClick={(e) => e.stopPropagation()}
                     placeholder="Session alias..."
                     className="bg-neutral-950 border border-neutral-700 rounded-md px-3 py-1.5 text-base text-neutral-200 focus:outline-none focus:border-blue-600 transition-colors w-full"
                     autoFocus
@@ -532,9 +563,7 @@ function Sessions() {
 
               {/* Session ID - shown when there's an alias */}
               {session.alias && (
-                <div className="text-xs text-neutral-500 font-mono">
-                  {displayId}
-                </div>
+                <div className="text-xs text-neutral-500 font-mono">{displayId}</div>
               )}
             </div>
           );

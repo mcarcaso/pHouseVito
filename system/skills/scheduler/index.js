@@ -13,14 +13,14 @@
  *   node index.js list
  */
 
-import axios from 'axios';
-import { readFileSync, existsSync } from 'fs';
-import { resolve, dirname } from 'path';
-import { fileURLToPath } from 'url';
+import axios from "axios";
+import { readFileSync, existsSync } from "fs";
+import { resolve, dirname } from "path";
+import { fileURLToPath } from "url";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
-const API_URL = 'http://localhost:3030/api/cron/jobs';
-const DEFAULT_TIMEZONE = 'America/Toronto';
+const API_URL = "http://localhost:3030/api/cron/jobs";
+const DEFAULT_TIMEZONE = "America/Toronto";
 
 /**
  * Get the configured timezone from vito.config.json
@@ -28,9 +28,9 @@ const DEFAULT_TIMEZONE = 'America/Toronto';
 function getGlobalTimezone() {
   try {
     // Navigate from system/skills/scheduler to project root
-    const configPath = resolve(__dirname, '../../../user/vito.config.json');
+    const configPath = resolve(__dirname, "../../../user/vito.config.json");
     if (existsSync(configPath)) {
-      const config = JSON.parse(readFileSync(configPath, 'utf-8'));
+      const config = JSON.parse(readFileSync(configPath, "utf-8"));
       return config.settings?.timezone || DEFAULT_TIMEZONE;
     }
   } catch {
@@ -39,16 +39,16 @@ function getGlobalTimezone() {
   return DEFAULT_TIMEZONE;
 }
 
-const [,, command, ...rest] = process.argv;
+const [, , command, ...rest] = process.argv;
 
 function parseArgs(args) {
   const result = {};
   for (let i = 0; i < args.length; i++) {
-    if (args[i].startsWith('--')) {
+    if (args[i].startsWith("--")) {
       const key = args[i].slice(2);
       const val = args[i + 1];
-      if (val === 'true') result[key] = true;
-      else if (val === 'false') result[key] = false;
+      if (val === "true") result[key] = true;
+      else if (val === "false") result[key] = false;
       else result[key] = val;
       i++;
     }
@@ -59,27 +59,29 @@ function parseArgs(args) {
 async function main() {
   try {
     switch (command) {
-      case 'schedule': {
+      case "schedule": {
         const args = parseArgs(rest);
         if (!args.name || !args.schedule || !args.prompt) {
-          console.error('Required: --name, --schedule, --prompt');
-          console.error('Optional: --session, --oneTime, --timezone, --sendCondition, --precheckCommand');
+          console.error("Required: --name, --schedule, --prompt");
+          console.error(
+            "Optional: --session, --oneTime, --timezone, --sendCondition, --precheckCommand",
+          );
           process.exit(1);
         }
-        
+
         const jobData = {
           name: args.name,
           schedule: args.schedule,
           prompt: args.prompt,
-          session: args.session || 'dashboard:default',
+          session: args.session || "dashboard:default",
           oneTime: args.oneTime || false,
         };
-        
+
         // Per-job timezone support
         if (args.timezone) {
           jobData.timezone = args.timezone;
         }
-        
+
         if (args.sendCondition) {
           jobData.sendCondition = args.sendCondition;
         }
@@ -90,24 +92,26 @@ async function main() {
 
         const response = await axios.post(API_URL, jobData);
         const job = response.data;
-        
-        const jobType = jobData.oneTime ? 'one-time job' : 'recurring job';
+
+        const jobType = jobData.oneTime ? "one-time job" : "recurring job";
         const effectiveTz = args.timezone || getGlobalTimezone();
-        
+
         console.log(`✅ Scheduled ${jobType} "${args.name}" (timezone: ${effectiveTz})`);
         console.log(`  → schedule: ${args.schedule}`);
         console.log(`  → session: ${jobData.session}`);
         console.log(`  → will execute: "${args.prompt}"`);
         if (job.nextRun) {
-          console.log(`  → next run: ${new Date(job.nextRun).toLocaleString('en-US', { timeZone: effectiveTz })}`);
+          console.log(
+            `  → next run: ${new Date(job.nextRun).toLocaleString("en-US", { timeZone: effectiveTz })}`,
+          );
         }
         break;
       }
 
-      case 'cancel': {
+      case "cancel": {
         const args = parseArgs(rest);
         if (!args.name) {
-          console.error('Required: --name');
+          console.error("Required: --name");
           process.exit(1);
         }
         await axios.delete(`${API_URL}/${args.name}`);
@@ -115,24 +119,26 @@ async function main() {
         break;
       }
 
-      case 'list': {
+      case "list": {
         const response = await axios.get(API_URL);
         const jobs = response.data;
         if (jobs.length === 0) {
-          console.log('No scheduled jobs');
+          console.log("No scheduled jobs");
         } else {
           const globalTz = getGlobalTimezone();
           console.log(`Global timezone: ${globalTz}\n`);
           for (const job of jobs) {
-            const type = job.oneTime ? '[ONE-TIME]' : '[RECURRING]';
+            const type = job.oneTime ? "[ONE-TIME]" : "[RECURRING]";
             const jobTz = job.timezone || globalTz;
-            const tzNote = job.timezone ? ` [tz: ${job.timezone}]` : '';
+            const tzNote = job.timezone ? ` [tz: ${job.timezone}]` : "";
             console.log(`${type} ${job.name}${tzNote}`);
             console.log(`  schedule: ${job.schedule}`);
             console.log(`  session: ${job.session}`);
             console.log(`  prompt: "${job.prompt}"`);
             if (job.nextRun) {
-              console.log(`  next run: ${new Date(job.nextRun).toLocaleString('en-US', { timeZone: jobTz })}`);
+              console.log(
+                `  next run: ${new Date(job.nextRun).toLocaleString("en-US", { timeZone: jobTz })}`,
+              );
             }
             if (job.sendCondition) {
               console.log(`  condition: ${job.sendCondition}`);
@@ -140,7 +146,7 @@ async function main() {
             if (job.precheckCommand) {
               console.log(`  precheck: ${job.precheckCommand}`);
             }
-            console.log('');
+            console.log("");
           }
         }
         break;
@@ -148,7 +154,7 @@ async function main() {
 
       default:
         console.error(`Unknown command: ${command}`);
-        console.error('Usage: node index.js <schedule|cancel|list> [options]');
+        console.error("Usage: node index.js <schedule|cancel|list> [options]");
         process.exit(1);
     }
   } catch (error) {

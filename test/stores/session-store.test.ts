@@ -13,10 +13,7 @@ function createHarness() {
   return { db, x, store };
 }
 
-function session(
-  id: string,
-  overrides: Partial<SessionRow> = {}
-): SessionRow {
+function session(id: string, overrides: Partial<SessionRow> = {}): SessionRow {
   return {
     id,
     channel: "dashboard",
@@ -33,24 +30,33 @@ describe("SqliteSessionStore", () => {
   it("returns created records and supports consistent list/count filters", () => {
     const { db, x, store } = createHarness();
     try {
-      const created = store.create(x, session("a", {
-        channel: "discord",
-        alias: "Alpha",
-        last_active_at: 2,
-      }));
-      store.create(x, session("b", {
-        channel: "discord",
-        last_active_at: 3,
-      }));
+      const created = store.create(
+        x,
+        session("a", {
+          channel: "discord",
+          alias: "Alpha",
+          last_active_at: 2,
+        }),
+      );
+      store.create(
+        x,
+        session("b", {
+          channel: "discord",
+          last_active_at: 3,
+        }),
+      );
       store.create(x, session("c", { channel: "telegram" }));
 
       assert.equal(created.alias, "Alpha");
       const filter = { channels: ["discord"], hasAlias: true };
-      assert.deepEqual(store.list(x, filter).map((row) => row.id), ["a"]);
+      assert.deepEqual(
+        store.list(x, filter).map((row) => row.id),
+        ["a"],
+      );
       assert.equal(store.count(x, filter), 1);
       assert.deepEqual(
         store.list(x, { channels: ["discord"], order: "recent" }).map((row) => row.id),
-        ["b", "a"]
+        ["b", "a"],
       );
     } finally {
       db.close();
@@ -74,7 +80,7 @@ describe("SqliteSessionStore", () => {
       assert.equal(updated.last_active_at, 10);
       assert.throws(
         () => store.update(x, { id: "missing", changes: { alias: "nope" } }),
-        StoreRecordNotFoundError
+        StoreRecordNotFoundError,
       );
     } finally {
       db.close();

@@ -77,14 +77,15 @@ export class InMemoryDashboardAuthService implements DashboardAuthService {
     };
   }
 
-  login(
-    x: Context,
-    args: { password: unknown; ip: string; host?: string }
-  ): DashboardLoginResult {
+  login(x: Context, args: { password: unknown; ip: string; host?: string }): DashboardLoginResult {
     if (!this.checkLoginRateLimit(args.ip)) return { status: "rate_limited" };
     const hash = xSecretService(x).get(x, "DASHBOARD_PASSWORD_HASH");
     if (!hash) return { status: "password_not_set" };
-    if (typeof args.password !== "string" || !args.password || !verifyPassword(args.password, hash)) {
+    if (
+      typeof args.password !== "string" ||
+      !args.password ||
+      !verifyPassword(args.password, hash)
+    ) {
       return { status: "invalid_password" };
     }
     this.loginAttempts.delete(args.ip);

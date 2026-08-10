@@ -16,16 +16,19 @@ import { ConfigRouterService } from "../../src/routers/ConfigRouterService.js";
 const userDir = mkdtempSync(join(tmpdir(), "vito-config-router-"));
 writeFileSync(
   join(userDir, "vito.config.json"),
-  readFileSync(join(process.cwd(), "user.example", "vito.config.json"), "utf-8")
+  readFileSync(join(process.cwd(), "user.example", "vito.config.json"), "utf-8"),
 );
 writeFileSync(join(userDir, "SOUL.md"), "test soul\n");
 
 const db = createDatabase(":memory:");
-const x = dashboardRouterContext({}, RootContext({
-  db,
-  userDir,
-  skillsDir: join(userDir, "skills"),
-}));
+const x = dashboardRouterContext(
+  {},
+  RootContext({
+    db,
+    userDir,
+    skillsDir: join(userDir, "skills"),
+  }),
+);
 const app = express();
 app.use(express.json());
 app.use("/api", await new ConfigRouterService().createRouter(x));
@@ -37,9 +40,11 @@ const validationResponseSchema = z.object({
 const streamModeResponseSchema = z.object({
   streamMode: z.enum(["stream", "bundled", "final"]),
 });
-const defaultsResponseSchema = z.object({
-  streamMode: z.enum(["stream", "bundled", "final"]),
-}).passthrough();
+const defaultsResponseSchema = z
+  .object({
+    streamMode: z.enum(["stream", "bundled", "final"]),
+  })
+  .passthrough();
 
 let server: Server;
 let baseUrl: string;
@@ -55,7 +60,7 @@ before(async () => {
 
 after(async () => {
   await new Promise<void>((resolve, reject) => {
-    server.close((error) => error ? reject(error) : resolve());
+    server.close((error) => (error ? reject(error) : resolve()));
   });
   db.close();
   rmSync(userDir, { recursive: true, force: true });
@@ -117,20 +122,13 @@ describe("config router", () => {
       body: JSON.stringify({ streamMode: "final" }),
     });
     assert.equal(response.status, 200);
-    assert.deepEqual(
-      streamModeResponseSchema.parse(await response.json()),
-      { streamMode: "final" }
-    );
+    assert.deepEqual(streamModeResponseSchema.parse(await response.json()), {
+      streamMode: "final",
+    });
 
     const getResponse = await fetch(`${baseUrl}/api/channels/dashboard/stream-mode`);
     assert.equal(getResponse.status, 200);
-    assert.equal(
-      streamModeResponseSchema.parse(await getResponse.json()).streamMode,
-      "final"
-    );
-    assert.equal(
-      xVitoService(x).getConfig(x).channels.dashboard?.streamMode,
-      "final"
-    );
+    assert.equal(streamModeResponseSchema.parse(await getResponse.json()).streamMode, "final");
+    assert.equal(xVitoService(x).getConfig(x).channels.dashboard?.streamMode, "final");
   });
 });

@@ -63,10 +63,7 @@ export class DashboardChannelService implements ChannelService {
     app.use("/d", await new PublicDriveRouterService().createRouter(x));
 
     app.use("/api/auth", await new DashboardAuthRouterService().createRouter(x));
-    app.use(
-      "/attachments",
-      await new AttachmentFileRouterService().createRouter(x)
-    );
+    app.use("/attachments", await new AttachmentFileRouterService().createRouter(x));
 
     // API endpoints
     app.use("/api", await new ServerLifecycleRouterService().createRouter(x));
@@ -82,14 +79,8 @@ export class DashboardChannelService implements ChannelService {
 
     app.use("/api/cron", await new CronRouterService().createRouter(x));
 
-    app.use(
-      "/api/discord",
-      await new ChannelManagementRouterService("discord").createRouter(x)
-    );
-    app.use(
-      "/api/telegram",
-      await new ChannelManagementRouterService("telegram").createRouter(x)
-    );
+    app.use("/api/discord", await new ChannelManagementRouterService("discord").createRouter(x));
+    app.use("/api/telegram", await new ChannelManagementRouterService("telegram").createRouter(x));
 
     app.use("/api/secrets", await new SecretRouterService().createRouter(x));
 
@@ -139,10 +130,7 @@ export class DashboardChannelService implements ChannelService {
     this.server = undefined;
   }
 
-  async listen(
-    x: Context,
-    onEvent: (event: InboundEvent) => void
-  ): Promise<() => void> {
+  async listen(x: Context, onEvent: (event: InboundEvent) => void): Promise<() => void> {
     xDashboardChatService(x).configure(x, onEvent);
     return () => {
       xDashboardChatService(x).configure(x, undefined);
@@ -152,7 +140,6 @@ export class DashboardChannelService implements ChannelService {
   createOutputHandler(_x: Context, _event: InboundEvent): OutputHandler {
     return new DashboardOutputHandler();
   }
-
 }
 
 class DashboardOutputHandler implements OutputHandler {

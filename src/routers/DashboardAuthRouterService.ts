@@ -4,11 +4,7 @@ import type { Context } from "../context/Context.js";
 import { dashboardLoginRequestSchema } from "../shared/schemas/dashboard-auth.js";
 import type { RouterService } from "./RouterService.js";
 import { xDashboardAuthService } from "../lib/x.js";
-import {
-  emptyRouteSchema,
-  unknownRouteSchema,
-  createRawRoute,
-} from "./createRoute.js";
+import { emptyRouteSchema, unknownRouteSchema, createRawRoute } from "./createRoute.js";
 
 export class DashboardAuthRouterService implements RouterService {
   async createRouter(x: Context): Promise<Router> {
@@ -24,9 +20,7 @@ export class DashboardAuthRouterService implements RouterService {
           body: unknownRouteSchema,
         },
         handler: (routeX, _input, req, res) => {
-          res.json(
-            xDashboardAuthService(routeX).getStatus(routeX, req.headers.cookie),
-          );
+          res.json(xDashboardAuthService(routeX).getStatus(routeX, req.headers.cookie));
         },
       }),
     );
@@ -45,9 +39,7 @@ export class DashboardAuthRouterService implements RouterService {
             host: req.headers.host,
           });
           if (result.status === "password_already_set") {
-            res
-              .status(400)
-              .json({ error: "Password already set. Use login instead." });
+            res.status(400).json({ error: "Password already set. Use login instead." });
             return;
           }
           res.setHeader("Set-Cookie", result.cookie);
@@ -72,17 +64,13 @@ export class DashboardAuthRouterService implements RouterService {
             host: req.headers.host,
           });
           if (result.status === "rate_limited") {
-            res
-              .status(429)
-              .json({
-                error: "Too many login attempts. Try again in 15 minutes.",
-              });
+            res.status(429).json({
+              error: "Too many login attempts. Try again in 15 minutes.",
+            });
             return;
           }
           if (result.status === "password_not_set") {
-            res
-              .status(400)
-              .json({ error: "No password set. Use setup first." });
+            res.status(400).json({ error: "No password set. Use setup first." });
             return;
           }
           if (result.status === "invalid_password") {

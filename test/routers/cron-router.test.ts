@@ -13,7 +13,11 @@ import type { CronJobConfig } from "../../src/shared/schemas/vito-config.js";
 import { createDatabase } from "../../src/lib/sqlite/database.js";
 import { xSessionStore, xVitoService } from "../../src/lib/x.js";
 import { CronRouterService } from "../../src/routers/CronRouterService.js";
-import type { CronHealth, CronService, StartCronArgs } from "../../src/services/cron/CronService.js";
+import type {
+  CronHealth,
+  CronService,
+  StartCronArgs,
+} from "../../src/services/cron/CronService.js";
 
 class FakeCronService implements CronService {
   private jobs = new Map<string, CronJobConfig>();
@@ -65,7 +69,7 @@ class FakeCronService implements CronService {
 const userDir = mkdtempSync(join(tmpdir(), "vito-cron-router-"));
 writeFileSync(
   join(userDir, "vito.config.json"),
-  readFileSync(join(process.cwd(), "user.example", "vito.config.json"), "utf-8")
+  readFileSync(join(process.cwd(), "user.example", "vito.config.json"), "utf-8"),
 );
 writeFileSync(join(userDir, "SOUL.md"), "test soul\n");
 
@@ -82,25 +86,32 @@ xSessionStore(rootX).create(rootX, {
 });
 
 const cronService = new FakeCronService();
-const x = dashboardRouterContext({
-  cronService: () => cronService,
-}, rootX);
+const x = dashboardRouterContext(
+  {
+    cronService: () => cronService,
+  },
+  rootX,
+);
 const app = express();
 app.use(express.json());
 app.use("/api/cron", await new CronRouterService().createRouter(x));
 
 const errorResponseSchema = z.object({ error: z.string() }).passthrough();
-const jobResponseSchema = z.object({
-  name: z.string(),
-  schedule: z.string(),
-  session: z.string(),
-  prompt: z.string(),
-  sendCondition: z.string().optional(),
-}).passthrough();
-const jobsResponseSchema = z.array(jobResponseSchema.extend({
-  nextRun: z.string().nullable(),
-  isActive: z.boolean(),
-}));
+const jobResponseSchema = z
+  .object({
+    name: z.string(),
+    schedule: z.string(),
+    session: z.string(),
+    prompt: z.string(),
+    sendCondition: z.string().optional(),
+  })
+  .passthrough();
+const jobsResponseSchema = z.array(
+  jobResponseSchema.extend({
+    nextRun: z.string().nullable(),
+    isActive: z.boolean(),
+  }),
+);
 const healthResponseSchema = z.object({
   summary: z.object({ total: z.number(), active: z.number() }),
   jobs: z.array(z.unknown()),
@@ -120,7 +131,7 @@ before(async () => {
 
 after(async () => {
   await new Promise<void>((resolve, reject) => {
-    server.close((error) => error ? reject(error) : resolve());
+    server.close((error) => (error ? reject(error) : resolve()));
   });
   db.close();
   rmSync(userDir, { recursive: true, force: true });

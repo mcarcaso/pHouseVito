@@ -26,9 +26,7 @@ describe("FileSecretService", () => {
     try {
       process.env.BLAND_WEBHOOK_SECRET = "from-environment";
       service.load(x);
-      const saved = z.record(z.string()).parse(
-        JSON.parse(readFileSync(secretsPath, "utf-8"))
-      );
+      const saved = z.record(z.string()).parse(JSON.parse(readFileSync(secretsPath, "utf-8")));
       assert.equal(saved.BLAND_WEBHOOK_SECRET, "from-environment");
 
       service.set(x, { key: "BLAND_WEBHOOK_SECRET", value: "" });
@@ -51,7 +49,7 @@ describe("FileSecretService", () => {
       assert.equal(process.env.TEST_VITO_SECRET, undefined);
       assert.throws(
         () => service.delete(x, { key: "DISCORD_BOT_TOKEN" }),
-        SystemSecretDeletionError
+        SystemSecretDeletionError,
       );
     } finally {
       if (previous === undefined) delete process.env.TEST_VITO_SECRET;
@@ -65,13 +63,16 @@ describe("FileSecretService", () => {
     const previous = process.env.ANTHROPIC_API_KEY;
     try {
       service.set(x, { key: "ANTHROPIC_API_KEY", value: "test-key" });
-      writeFileSync(piAuthPath, JSON.stringify({
-        "openai-codex": {
-          type: "oauth",
-          access: "token",
-          expires: 123,
-        },
-      }));
+      writeFileSync(
+        piAuthPath,
+        JSON.stringify({
+          "openai-codex": {
+            type: "oauth",
+            access: "token",
+            expires: 123,
+          },
+        }),
+      );
 
       const status = service.getProviderAuthStatus(x);
       assert.deepEqual(status.anthropic, { hasAuth: true, authType: "api_key" });
@@ -94,7 +95,10 @@ describe("FileSecretService", () => {
       writeFileSync(secretsPath, JSON.stringify({ INVALID: 42 }));
       const entries = service.list(x);
       assert.ok(entries.some((entry) => entry.key === "TELEGRAM_BOT_TOKEN"));
-      assert.equal(entries.some((entry) => entry.key === "INVALID"), false);
+      assert.equal(
+        entries.some((entry) => entry.key === "INVALID"),
+        false,
+      );
       assert.throws(() => service.set(x, { key: "NEW_SECRET", value: "value" }));
       assert.equal(readFileSync(secretsPath, "utf-8"), JSON.stringify({ INVALID: 42 }));
     } finally {

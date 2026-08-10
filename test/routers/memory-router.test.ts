@@ -15,7 +15,10 @@ import { MemoryRouterService } from "../../src/routers/MemoryRouterService.js";
 const userDir = mkdtempSync(join(tmpdir(), "vito-memory-router-"));
 writeFileSync(join(userDir, "profile.md"), "# Test Profile\n");
 const db = createDatabase(":memory:");
-const x = dashboardRouterContext({}, RootContext({ db, userDir, skillsDir: join(userDir, "skills") }));
+const x = dashboardRouterContext(
+  {},
+  RootContext({ db, userDir, skillsDir: join(userDir, "skills") }),
+);
 const sessionStore = xSessionStore(x);
 sessionStore.create(x, {
   id: "session:a",
@@ -44,24 +47,34 @@ app.use(express.json());
 app.use("/api/memory", await new MemoryRouterService().createRouter(x));
 
 const profileSchema = z.object({ content: z.string().nullable() });
-const statsSchema = z.object({
-  totalChunks: z.number(),
-  totalSessions: z.number(),
-  totalDays: z.number(),
-  sessions: z.array(z.object({
-    session_id: z.string(),
-    alias: z.string().nullable(),
-  }).passthrough()),
-}).passthrough();
+const statsSchema = z
+  .object({
+    totalChunks: z.number(),
+    totalSessions: z.number(),
+    totalDays: z.number(),
+    sessions: z.array(
+      z
+        .object({
+          session_id: z.string(),
+          alias: z.string().nullable(),
+        })
+        .passthrough(),
+    ),
+  })
+  .passthrough();
 const searchSchema = z.object({
   query: z.string(),
   mode: z.string(),
   duration_ms: z.number(),
-  results: z.array(z.object({
-    session_id: z.string(),
-    chunk_index: z.number(),
-    text: z.string(),
-  }).passthrough()),
+  results: z.array(
+    z
+      .object({
+        session_id: z.string(),
+        chunk_index: z.number(),
+        text: z.string(),
+      })
+      .passthrough(),
+  ),
 });
 
 let server: Server;
@@ -78,7 +91,7 @@ before(async () => {
 
 after(async () => {
   await new Promise<void>((resolve, reject) => {
-    server.close((error) => error ? reject(error) : resolve());
+    server.close((error) => (error ? reject(error) : resolve()));
   });
   xEmbeddingDb(x).close();
   db.close();
@@ -89,10 +102,7 @@ describe("memory router", () => {
   it("returns profile and embedding statistics with session aliases", async () => {
     const profileResponse = await fetch(`${baseUrl}/api/memory/profile`);
     assert.equal(profileResponse.status, 200);
-    assert.equal(
-      profileSchema.parse(await profileResponse.json()).content,
-      "# Test Profile\n"
-    );
+    assert.equal(profileSchema.parse(await profileResponse.json()).content, "# Test Profile\n");
 
     const statsResponse = await fetch(`${baseUrl}/api/memory/embeddings/stats`);
     assert.equal(statsResponse.status, 200);
@@ -104,7 +114,7 @@ describe("memory router", () => {
 
   it("runs BM25 search through MemoryService and preserves chunk metadata", async () => {
     const response = await fetch(
-      `${baseUrl}/api/memory/embeddings/search?q=alpha&mode=bm25&session=session%3Aa`
+      `${baseUrl}/api/memory/embeddings/search?q=alpha&mode=bm25&session=session%3Aa`,
     );
     assert.equal(response.status, 200);
     const result = searchSchema.parse(await response.json());
@@ -114,9 +124,7 @@ describe("memory router", () => {
   });
 
   it("returns structured errors for invalid search inputs", async () => {
-    const response = await fetch(
-      `${baseUrl}/api/memory/embeddings/search?q=alpha&limit=0`
-    );
+    const response = await fetch(`${baseUrl}/api/memory/embeddings/search?q=alpha&limit=0`);
     assert.equal(response.status, 400);
   });
 });

@@ -1,7 +1,12 @@
-import { useState, useEffect } from 'react';
-import type { VitoConfig, Settings } from '../../utils/settingsResolution';
-import { countActiveSettingOverrides, getEffectiveSettings } from '../../utils/settingsResolution';
-import SettingRow, { renderSelect, renderSegmented, renderToggle, renderTextarea } from './SettingRow';
+import { useState, useEffect } from "react";
+import type { VitoConfig, Settings } from "../../utils/settingsResolution";
+import { countActiveSettingOverrides, getEffectiveSettings } from "../../utils/settingsResolution";
+import SettingRow, {
+  renderSelect,
+  renderSegmented,
+  renderToggle,
+  renderTextarea,
+} from "./SettingRow";
 
 interface SessionSettingsPanelProps {
   config: VitoConfig;
@@ -24,36 +29,36 @@ interface ModelOption {
 
 interface AuthStatus {
   hasAuth: boolean;
-  authType?: 'apiKey' | 'oauth';
+  authType?: "apiKey" | "oauth";
 }
 
 const STREAM_MODES = [
-  { value: 'stream', label: 'Stream' },
-  { value: 'bundled', label: 'Bundled' },
-  { value: 'final', label: 'Final' },
+  { value: "stream", label: "Stream" },
+  { value: "bundled", label: "Bundled" },
+  { value: "final", label: "Final" },
 ];
 
 const THINKING_LEVELS = [
-  { value: 'off', label: 'Off' },
-  { value: 'low', label: 'Low' },
-  { value: 'medium', label: 'Medium' },
-  { value: 'high', label: 'High' },
+  { value: "off", label: "Off" },
+  { value: "low", label: "Low" },
+  { value: "medium", label: "Medium" },
+  { value: "high", label: "High" },
 ];
 
 const OPENROUTER_PROVIDER_ROUTES = [
-  { value: '', label: 'Auto' },
-  { value: 'deepinfra', label: 'DeepInfra' },
-  { value: 'groq', label: 'Groq' },
-  { value: 'fireworks', label: 'Fireworks' },
-  { value: 'together', label: 'Together' },
-  { value: 'novita', label: 'Novita' },
-  { value: 'siliconflow', label: 'SiliconFlow' },
-  { value: 'hyperbolic', label: 'Hyperbolic' },
-  { value: 'lambda', label: 'Lambda' },
+  { value: "", label: "Auto" },
+  { value: "deepinfra", label: "DeepInfra" },
+  { value: "groq", label: "Groq" },
+  { value: "fireworks", label: "Fireworks" },
+  { value: "together", label: "Together" },
+  { value: "novita", label: "Novita" },
+  { value: "siliconflow", label: "SiliconFlow" },
+  { value: "hyperbolic", label: "Hyperbolic" },
+  { value: "lambda", label: "Lambda" },
 ];
 
 function setNestedValue(target: Record<string, any>, path: string, value: any) {
-  const parts = path.split('.');
+  const parts = path.split(".");
   let cursor: Record<string, any> = target;
   for (let i = 0; i < parts.length - 1; i++) {
     const key = parts[i];
@@ -64,13 +69,13 @@ function setNestedValue(target: Record<string, any>, path: string, value: any) {
 }
 
 function deleteNestedValue(target: Record<string, any>, path: string) {
-  const parts = path.split('.');
+  const parts = path.split(".");
   const stack: Array<{ parent: Record<string, any>; key: string }> = [];
   let cursor: Record<string, any> | undefined = target;
 
   for (let i = 0; i < parts.length - 1; i++) {
     const key = parts[i];
-    if (!cursor?.[key] || typeof cursor[key] !== 'object') return;
+    if (!cursor?.[key] || typeof cursor[key] !== "object") return;
     stack.push({ parent: cursor, key });
     cursor = cursor[key];
   }
@@ -80,13 +85,17 @@ function deleteNestedValue(target: Record<string, any>, path: string) {
 
   for (let i = stack.length - 1; i >= 0; i--) {
     const { parent, key } = stack[i];
-    if (parent[key] && typeof parent[key] === 'object' && Object.keys(parent[key]).length === 0) {
+    if (parent[key] && typeof parent[key] === "object" && Object.keys(parent[key]).length === 0) {
       delete parent[key];
     }
   }
 }
 
-export default function SessionSettingsPanel({ config, onSave, initialSessionId }: SessionSettingsPanelProps) {
+export default function SessionSettingsPanel({
+  config,
+  onSave,
+  initialSessionId,
+}: SessionSettingsPanelProps) {
   const [sessions, setSessions] = useState<SessionInfo[]>([]);
   const [loading, setLoading] = useState(true);
   const [expandedSession, setExpandedSession] = useState<string | null>(initialSessionId || null);
@@ -99,7 +108,7 @@ export default function SessionSettingsPanel({ config, onSave, initialSessionId 
   const [loadingModels, setLoadingModels] = useState<string | null>(null);
 
   useEffect(() => {
-    fetch('/api/sessions')
+    fetch("/api/sessions")
       .then((r) => r.json())
       .then((data) => {
         setSessions(data);
@@ -108,7 +117,7 @@ export default function SessionSettingsPanel({ config, onSave, initialSessionId 
       .catch(() => setLoading(false));
 
     // Fetch providers for pi-coding-agent overrides
-    fetch('/api/models/providers')
+    fetch("/api/models/providers")
       .then((r) => r.json())
       .then((data) => {
         setProviders(data.providers || []);
@@ -123,15 +132,24 @@ export default function SessionSettingsPanel({ config, onSave, initialSessionId 
     try {
       const res = await fetch(`/api/models/${provider}`);
       const data = await res.json();
-      setModels(prev => ({ ...prev, [provider]: data }));
+      setModels((prev) => ({ ...prev, [provider]: data }));
     } catch {
-      setModels(prev => ({ ...prev, [provider]: [] }));
+      setModels((prev) => ({ ...prev, [provider]: [] }));
     }
     setLoadingModels(null);
   };
 
   const availableProviders = providers.filter((p) => authStatus[p]?.hasAuth === true);
-  const popularProviders = ['anthropic', 'openai', 'openai-codex', 'google', 'xai', 'groq', 'mistral', 'openrouter'];
+  const popularProviders = [
+    "anthropic",
+    "openai",
+    "openai-codex",
+    "google",
+    "xai",
+    "groq",
+    "mistral",
+    "openrouter",
+  ];
   const sortedProviders = [
     ...popularProviders.filter((p) => availableProviders.includes(p)),
     ...availableProviders.filter((p) => !popularProviders.includes(p)).sort(),
@@ -140,7 +158,7 @@ export default function SessionSettingsPanel({ config, onSave, initialSessionId 
   const sessionOverrides = config.sessions || {};
   const sessionIds = Object.keys(sessionOverrides);
 
-  const getChannelFromSessionId = (sessionId: string) => sessionId.split(':')[0];
+  const getChannelFromSessionId = (sessionId: string) => sessionId.split(":")[0];
 
   // Get what the session would inherit if it had no overrides
   const getInheritedForSession = (sessionId: string) => {
@@ -198,7 +216,7 @@ export default function SessionSettingsPanel({ config, onSave, initialSessionId 
   const formatRelativeTime = (timestamp: number) => {
     const diff = Date.now() - timestamp;
     const mins = Math.floor(diff / 60000);
-    if (mins < 1) return 'just now';
+    if (mins < 1) return "just now";
     if (mins < 60) return `${mins}m ago`;
     const hours = Math.floor(mins / 60);
     if (hours < 24) return `${hours}h ago`;
@@ -207,25 +225,26 @@ export default function SessionSettingsPanel({ config, onSave, initialSessionId 
   };
 
   // Get the global Pi config as the inherited value for session overrides.
-  const getGlobalPiConfig = () => config.settings?.['pi-coding-agent'] || { model: { provider: '', name: '' } };
+  const getGlobalPiConfig = () =>
+    config.settings?.["pi-coding-agent"] || { model: { provider: "", name: "" } };
 
   const renderPiCodingAgentOverrides = (
     sessionId: string,
     overrides: Settings,
     inherited: ReturnType<typeof getEffectiveSettings>,
-    inheritFrom: 'global' | 'channel'
+    inheritFrom: "global" | "channel",
   ) => {
     const globalPi = getGlobalPiConfig();
-    const piOverrides = overrides['pi-coding-agent'] || {};
+    const piOverrides = overrides["pi-coding-agent"] || {};
     // inherited['pi-coding-agent'] might be empty object, so check for model property
-    const rawInherited = inherited['pi-coding-agent'];
-    const piInherited = (rawInherited && rawInherited.model) ? rawInherited : globalPi;
+    const rawInherited = inherited["pi-coding-agent"];
+    const piInherited = rawInherited && rawInherited.model ? rawInherited : globalPi;
 
     // Provider from override or inherited
-    const currentProvider = piOverrides.model?.provider || piInherited.model?.provider || '';
+    const currentProvider = piOverrides.model?.provider || piInherited.model?.provider || "";
 
-    const providerOptions = sortedProviders.map(p => ({ value: p, label: p }));
-    const modelOptions = (models[currentProvider] || []).map(m => ({ value: m.id, label: m.id }));
+    const providerOptions = sortedProviders.map((p) => ({ value: p, label: p }));
+    const modelOptions = (models[currentProvider] || []).map((m) => ({ value: m.id, label: m.id }));
 
     // Side effect: load models if needed (schedule for after render)
     if (currentProvider && !models[currentProvider] && loadingModels !== currentProvider) {
@@ -236,65 +255,74 @@ export default function SessionSettingsPanel({ config, onSave, initialSessionId 
       <>
         <SettingRow
           label="Provider"
-          inheritedValue={piInherited.model?.provider || '(not set)'}
+          inheritedValue={piInherited.model?.provider || "(not set)"}
           inheritedFrom={inheritFrom}
           overrideValue={piOverrides.model?.provider}
           onOverride={(val) => {
             loadModelsForProvider(val);
-            updateSessionSetting(sessionId, 'pi-coding-agent.model', { provider: val, name: '' });
+            updateSessionSetting(sessionId, "pi-coding-agent.model", { provider: val, name: "" });
           }}
-          onReset={() => resetSessionSetting(sessionId, 'pi-coding-agent.model')}
-          renderInput={(val, onChange) => renderSelect(val, onChange, [{ value: '', label: 'Select...' }, ...providerOptions])}
+          onReset={() => resetSessionSetting(sessionId, "pi-coding-agent.model")}
+          renderInput={(val, onChange) =>
+            renderSelect(val, onChange, [{ value: "", label: "Select..." }, ...providerOptions])
+          }
         />
 
         <SettingRow
           label="Model"
-          inheritedValue={piInherited.model?.name || '(not set)'}
+          inheritedValue={piInherited.model?.name || "(not set)"}
           inheritedFrom={inheritFrom}
           overrideValue={piOverrides.model?.name}
           onOverride={(val) => {
-            const provider = piOverrides.model?.provider || piInherited.model?.provider || '';
-            updateSessionSetting(sessionId, 'pi-coding-agent.model', { provider, name: val });
+            const provider = piOverrides.model?.provider || piInherited.model?.provider || "";
+            updateSessionSetting(sessionId, "pi-coding-agent.model", { provider, name: val });
           }}
           onReset={() => {
             // Keep provider if set, just reset model name
             if (piOverrides.model?.provider) {
-              updateSessionSetting(sessionId, 'pi-coding-agent.model', { provider: piOverrides.model.provider, name: '' });
+              updateSessionSetting(sessionId, "pi-coding-agent.model", {
+                provider: piOverrides.model.provider,
+                name: "",
+              });
             } else {
-              resetSessionSetting(sessionId, 'pi-coding-agent.model');
+              resetSessionSetting(sessionId, "pi-coding-agent.model");
             }
           }}
-          renderInput={(val, onChange) => (
+          renderInput={(val, onChange) =>
             loadingModels === currentProvider ? (
               <span className="text-xs text-neutral-500">Loading...</span>
             ) : (
-              renderSelect(val, onChange, [{ value: '', label: 'Select...' }, ...modelOptions])
+              renderSelect(val, onChange, [{ value: "", label: "Select..." }, ...modelOptions])
             )
-          )}
+          }
         />
 
-        {currentProvider === 'openrouter' && (
+        {currentProvider === "openrouter" && (
           <SettingRow
             label="OR Route"
-            inheritedValue={piInherited.openRouterProvider || 'Auto'}
+            inheritedValue={piInherited.openRouterProvider || "Auto"}
             inheritedFrom={inheritFrom}
             overrideValue={piOverrides.openRouterProvider}
             onOverride={(val) => {
-              if (val) updateSessionSetting(sessionId, 'pi-coding-agent.openRouterProvider', val);
-              else resetSessionSetting(sessionId, 'pi-coding-agent.openRouterProvider');
+              if (val) updateSessionSetting(sessionId, "pi-coding-agent.openRouterProvider", val);
+              else resetSessionSetting(sessionId, "pi-coding-agent.openRouterProvider");
             }}
-            onReset={() => resetSessionSetting(sessionId, 'pi-coding-agent.openRouterProvider')}
-            renderInput={(val, onChange) => renderSelect(val || '', onChange, OPENROUTER_PROVIDER_ROUTES)}
+            onReset={() => resetSessionSetting(sessionId, "pi-coding-agent.openRouterProvider")}
+            renderInput={(val, onChange) =>
+              renderSelect(val || "", onChange, OPENROUTER_PROVIDER_ROUTES)
+            }
           />
         )}
 
         <SettingRow
           label="Thinking Level"
-          inheritedValue={piInherited.thinkingLevel || 'off'}
+          inheritedValue={piInherited.thinkingLevel || "off"}
           inheritedFrom={inheritFrom}
           overrideValue={piOverrides.thinkingLevel}
-          onOverride={(val) => updateSessionSetting(sessionId, 'pi-coding-agent.thinkingLevel', val)}
-          onReset={() => resetSessionSetting(sessionId, 'pi-coding-agent.thinkingLevel')}
+          onOverride={(val) =>
+            updateSessionSetting(sessionId, "pi-coding-agent.thinkingLevel", val)
+          }
+          onReset={() => resetSessionSetting(sessionId, "pi-coding-agent.thinkingLevel")}
           renderInput={(val, onChange) => renderSelect(val, onChange, THINKING_LEVELS)}
         />
       </>
@@ -305,12 +333,16 @@ export default function SessionSettingsPanel({ config, onSave, initialSessionId 
     const overrides = sessionOverrides[sessionId] || {};
     const inherited = getInheritedForSession(sessionId);
     const channel = getChannelFromSessionId(sessionId);
-    const inheritFrom = config.channels?.[channel]?.settings ? 'channel' as const : 'global' as const;
+    const inheritFrom = config.channels?.[channel]?.settings
+      ? ("channel" as const)
+      : ("global" as const);
 
     return (
       <div className="px-5 pb-5 border-t border-neutral-800/50">
         <div className="mt-3 flex items-center justify-between">
-          <p className="text-xs text-neutral-600">Overrides inherit from {inheritFrom === 'channel' ? `Channel (${channel})` : 'Global'}.</p>
+          <p className="text-xs text-neutral-600">
+            Overrides inherit from {inheritFrom === "channel" ? `Channel (${channel})` : "Global"}.
+          </p>
           <button
             onClick={() => removeAllOverrides(sessionId)}
             className="text-xs text-red-400 hover:text-red-300 transition-colors"
@@ -325,8 +357,8 @@ export default function SessionSettingsPanel({ config, onSave, initialSessionId 
             inheritedValue={inherited.streamMode}
             inheritedFrom={inheritFrom}
             overrideValue={overrides.streamMode}
-            onOverride={(val) => updateSessionSetting(sessionId, 'streamMode', val)}
-            onReset={() => resetSessionSetting(sessionId, 'streamMode')}
+            onOverride={(val) => updateSessionSetting(sessionId, "streamMode", val)}
+            onReset={() => resetSessionSetting(sessionId, "streamMode")}
             renderInput={(val, onChange) => renderSegmented(val, onChange, STREAM_MODES)}
           />
 
@@ -335,10 +367,10 @@ export default function SessionSettingsPanel({ config, onSave, initialSessionId 
             inheritedValue={inherited.requireMention !== false}
             inheritedFrom={inheritFrom}
             overrideValue={overrides.requireMention}
-            onOverride={(val) => updateSessionSetting(sessionId, 'requireMention', val)}
-            onReset={() => resetSessionSetting(sessionId, 'requireMention')}
+            onOverride={(val) => updateSessionSetting(sessionId, "requireMention", val)}
+            onReset={() => resetSessionSetting(sessionId, "requireMention")}
             renderInput={(val, onChange) => renderToggle(val, onChange)}
-            formatValue={(v) => v ? 'On' : 'Off'}
+            formatValue={(v) => (v ? "On" : "Off")}
           />
 
           <SettingRow
@@ -347,32 +379,38 @@ export default function SessionSettingsPanel({ config, onSave, initialSessionId 
             inheritedValue={inherited.traceMessageUpdates ?? false}
             inheritedFrom={inheritFrom}
             overrideValue={overrides.traceMessageUpdates}
-            onOverride={(val) => updateSessionSetting(sessionId, 'traceMessageUpdates', val)}
-            onReset={() => resetSessionSetting(sessionId, 'traceMessageUpdates')}
+            onOverride={(val) => updateSessionSetting(sessionId, "traceMessageUpdates", val)}
+            onReset={() => resetSessionSetting(sessionId, "traceMessageUpdates")}
             renderInput={(val, onChange) => renderToggle(val, onChange)}
-            formatValue={(v) => v ? 'On' : 'Off'}
+            formatValue={(v) => (v ? "On" : "Off")}
           />
 
           <SettingRow
             label="Custom Instructions"
             hint="Additional system prompt instructions for this session"
-            inheritedValue={inherited.customInstructions || ''}
+            inheritedValue={inherited.customInstructions || ""}
             inheritedFrom={inheritFrom}
             overrideValue={overrides.customInstructions}
-            onOverride={(val) => updateSessionSetting(sessionId, 'customInstructions', val)}
-            onReset={() => resetSessionSetting(sessionId, 'customInstructions')}
-            renderInput={(val, onChange) => renderTextarea(val, onChange, { placeholder: 'Custom instructions for this session...' })}
-            formatValue={(v) => v ? `"${(v as string).slice(0, 50)}${(v as string).length > 50 ? '...' : ''}"` : '(none)'}
+            onOverride={(val) => updateSessionSetting(sessionId, "customInstructions", val)}
+            onReset={() => resetSessionSetting(sessionId, "customInstructions")}
+            renderInput={(val, onChange) =>
+              renderTextarea(val, onChange, {
+                placeholder: "Custom instructions for this session...",
+              })
+            }
+            formatValue={(v) =>
+              v
+                ? `"${(v as string).slice(0, 50)}${(v as string).length > 50 ? "..." : ""}"`
+                : "(none)"
+            }
           />
-
-
-
-
 
           {/* Pi Coding Agent Overrides */}
           <div className="mt-5 mb-2">
             <div className="flex items-center justify-between">
-              <span className="text-xs font-semibold text-neutral-500 uppercase tracking-wide">Pi Coding Agent Config</span>
+              <span className="text-xs font-semibold text-neutral-500 uppercase tracking-wide">
+                Pi Coding Agent Config
+              </span>
               <span className="text-xs text-neutral-600">Per-session Pi overrides</span>
             </div>
           </div>
@@ -383,14 +421,16 @@ export default function SessionSettingsPanel({ config, onSave, initialSessionId 
     );
   };
 
-  const regularSessionIds = sessionIds.filter(id => !id.startsWith('system:'));
+  const regularSessionIds = sessionIds.filter((id) => !id.startsWith("system:"));
 
   return (
     <div className="space-y-6">
       <div>
         <div className="flex items-center justify-between mb-3">
           <div className="flex items-center gap-2">
-            <span className="text-xs font-semibold text-neutral-500 uppercase tracking-wide">User Sessions</span>
+            <span className="text-xs font-semibold text-neutral-500 uppercase tracking-wide">
+              User Sessions
+            </span>
             <span className="text-xs text-neutral-600">— per-conversation overrides</span>
           </div>
           <button
@@ -410,7 +450,7 @@ export default function SessionSettingsPanel({ config, onSave, initialSessionId 
             ) : (
               <div className="max-h-64 overflow-y-auto space-y-2">
                 {sessions
-                  .filter((s) => !sessionIds.includes(s.id) && !s.id.startsWith('system:'))
+                  .filter((s) => !sessionIds.includes(s.id) && !s.id.startsWith("system:"))
                   .map((s) => (
                     <button
                       key={s.id}
@@ -418,19 +458,26 @@ export default function SessionSettingsPanel({ config, onSave, initialSessionId 
                       className="w-full text-left px-3 py-3 rounded-lg hover:bg-neutral-800 transition-colors border border-transparent hover:border-neutral-700"
                     >
                       <div className="flex items-center justify-between mb-1">
-                        <span className="text-blue-400 text-xs font-medium uppercase tracking-wide">{s.channel}</span>
-                        <span className="text-xs text-neutral-600">{formatRelativeTime(s.last_active_at)}</span>
+                        <span className="text-blue-400 text-xs font-medium uppercase tracking-wide">
+                          {s.channel}
+                        </span>
+                        <span className="text-xs text-neutral-600">
+                          {formatRelativeTime(s.last_active_at)}
+                        </span>
                       </div>
                       <div className="text-neutral-200 text-sm font-medium">
-                        {s.alias || s.id.split(':')[1] || s.id}
+                        {s.alias || s.id.split(":")[1] || s.id}
                       </div>
                       {s.alias && (
                         <div className="text-neutral-500 text-xs font-mono mt-0.5">{s.id}</div>
                       )}
                     </button>
                   ))}
-                {sessions.filter((s) => !sessionIds.includes(s.id) && !s.id.startsWith('system:')).length === 0 && (
-                  <span className="text-xs text-neutral-500">All sessions already have overrides configured.</span>
+                {sessions.filter((s) => !sessionIds.includes(s.id) && !s.id.startsWith("system:"))
+                  .length === 0 && (
+                  <span className="text-xs text-neutral-500">
+                    All sessions already have overrides configured.
+                  </span>
                 )}
               </div>
             )}
@@ -448,7 +495,9 @@ export default function SessionSettingsPanel({ config, onSave, initialSessionId 
           {regularSessionIds.length === 0 && !showPicker && (
             <div className="bg-neutral-900 border border-neutral-800 rounded-xl p-8 text-center">
               <p className="text-sm text-neutral-500">No user session overrides configured.</p>
-              <p className="text-xs text-neutral-600 mt-1">Click "+ Add Override" to configure settings for a specific session.</p>
+              <p className="text-xs text-neutral-600 mt-1">
+                Click "+ Add Override" to configure settings for a specific session.
+              </p>
             </div>
           )}
 
@@ -458,7 +507,10 @@ export default function SessionSettingsPanel({ config, onSave, initialSessionId 
             const isExpanded = expandedSession === sessionId;
 
             return (
-              <div key={sessionId} className="bg-[#151515] border border-neutral-800 rounded-xl overflow-hidden">
+              <div
+                key={sessionId}
+                className="bg-[#151515] border border-neutral-800 rounded-xl overflow-hidden"
+              >
                 <button
                   className="w-full p-4 text-left hover:bg-neutral-800/30 transition-colors"
                   onClick={() => setExpandedSession(isExpanded ? null : sessionId)}
@@ -471,13 +523,17 @@ export default function SessionSettingsPanel({ config, onSave, initialSessionId 
                     <div className="flex items-center gap-3">
                       {overrideCount > 0 && (
                         <span className="text-xs bg-blue-900/40 text-blue-400 px-2 py-0.5 rounded-full">
-                          {overrideCount} override{overrideCount !== 1 ? 's' : ''}
+                          {overrideCount} override{overrideCount !== 1 ? "s" : ""}
                         </span>
                       )}
                       {session && (
-                        <span className="text-xs text-neutral-600">{formatRelativeTime(session.last_active_at)}</span>
+                        <span className="text-xs text-neutral-600">
+                          {formatRelativeTime(session.last_active_at)}
+                        </span>
                       )}
-                      <span className={`text-neutral-500 transition-transform ${isExpanded ? 'rotate-180' : ''}`}>
+                      <span
+                        className={`text-neutral-500 transition-transform ${isExpanded ? "rotate-180" : ""}`}
+                      >
                         ▼
                       </span>
                     </div>
@@ -485,14 +541,12 @@ export default function SessionSettingsPanel({ config, onSave, initialSessionId 
 
                   {/* Main content: alias name prominently displayed */}
                   <div className="text-neutral-200 text-base font-medium">
-                    {session?.alias || sessionId.split(':')[1] || sessionId}
+                    {session?.alias || sessionId.split(":")[1] || sessionId}
                   </div>
 
                   {/* Bottom row: full session ID (only if alias exists) */}
                   {session?.alias && (
-                    <div className="text-neutral-500 text-xs font-mono mt-1">
-                      {sessionId}
-                    </div>
+                    <div className="text-neutral-500 text-xs font-mono mt-1">{sessionId}</div>
                   )}
                 </button>
 

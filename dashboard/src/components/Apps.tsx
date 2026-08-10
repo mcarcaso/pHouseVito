@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect } from "react";
 
 interface App {
   name: string;
@@ -38,21 +38,21 @@ function formatBytes(bytes: number): string {
 
 function formatDate(iso: string): string {
   const d = new Date(iso);
-  return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+  return d.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
 }
 
 const statusDotClass: Record<string, string> = {
-  online: 'bg-green-400 shadow-[0_0_6px_rgba(74,222,128,0.4)]',
-  stopped: 'bg-neutral-500',
-  errored: 'bg-red-400',
-  unknown: 'bg-yellow-400',
+  online: "bg-green-400 shadow-[0_0_6px_rgba(74,222,128,0.4)]",
+  stopped: "bg-neutral-500",
+  errored: "bg-red-400",
+  unknown: "bg-yellow-400",
 };
 
 const statusBadgeClass: Record<string, string> = {
-  online: 'text-green-400 bg-green-400/10',
-  stopped: 'text-neutral-500 bg-neutral-500/10',
-  errored: 'text-red-400 bg-red-400/10',
-  unknown: 'text-yellow-400 bg-yellow-400/10',
+  online: "text-green-400 bg-green-400/10",
+  stopped: "text-neutral-500 bg-neutral-500/10",
+  errored: "text-red-400 bg-red-400/10",
+  unknown: "text-yellow-400 bg-yellow-400/10",
 };
 
 export default function Apps() {
@@ -60,20 +60,24 @@ export default function Apps() {
   const [loading, setLoading] = useState(true);
   const [expandedApp, setExpandedApp] = useState<string | null>(null);
   const [appFiles, setAppFiles] = useState<Record<string, AppFile[]>>({});
-  const [selectedFile, setSelectedFile] = useState<{ app: string; path: string; content: string } | null>(null);
+  const [selectedFile, setSelectedFile] = useState<{
+    app: string;
+    path: string;
+    content: string;
+  } | null>(null);
   const [actionLoading, setActionLoading] = useState<string | null>(null);
   const [deleteConfirm, setDeleteConfirm] = useState<string | null>(null);
-  const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' } | null>(null);
+  const [toast, setToast] = useState<{ message: string; type: "success" | "error" } | null>(null);
 
-  const showToast = (message: string, type: 'success' | 'error') => {
+  const showToast = (message: string, type: "success" | "error") => {
     setToast({ message, type });
     setTimeout(() => setToast(null), 3000);
   };
 
   const fetchApps = () => {
-    fetch('/api/apps')
-      .then(r => r.json())
-      .then(data => {
+    fetch("/api/apps")
+      .then((r) => r.json())
+      .then((data) => {
         setApps(data);
         setLoading(false);
       })
@@ -91,9 +95,9 @@ export default function Apps() {
     try {
       const res = await fetch(`/api/apps/${appName}/files`);
       const files = await res.json();
-      setAppFiles(prev => ({ ...prev, [appName]: files }));
+      setAppFiles((prev) => ({ ...prev, [appName]: files }));
     } catch (e) {
-      console.error('Failed to fetch files:', e);
+      console.error("Failed to fetch files:", e);
     }
   };
 
@@ -103,33 +107,31 @@ export default function Apps() {
       const data = await res.json();
       setSelectedFile({ app: appName, path: filePath, content: data.content });
     } catch (e) {
-      console.error('Failed to fetch file:', e);
+      console.error("Failed to fetch file:", e);
     }
   };
 
-  const handleAction = async (appName: string, action: 'restart' | 'stop' | 'start' | 'delete') => {
+  const handleAction = async (appName: string, action: "restart" | "stop" | "start" | "delete") => {
     setActionLoading(`${appName}-${action}`);
     try {
-      const method = action === 'delete' ? 'DELETE' : 'POST';
-      const url = action === 'delete' 
-        ? `/api/apps/${appName}` 
-        : `/api/apps/${appName}/${action}`;
-      
+      const method = action === "delete" ? "DELETE" : "POST";
+      const url = action === "delete" ? `/api/apps/${appName}` : `/api/apps/${appName}/${action}`;
+
       const res = await fetch(url, { method });
       const data = await res.json();
-      
+
       if (res.ok) {
-        showToast(data.message || `${action} successful`, 'success');
-        if (action === 'delete') {
+        showToast(data.message || `${action} successful`, "success");
+        if (action === "delete") {
           setExpandedApp(null);
           setDeleteConfirm(null);
         }
         fetchApps();
       } else {
-        showToast(data.error || `${action} failed`, 'error');
+        showToast(data.error || `${action} failed`, "error");
       }
     } catch (e: any) {
-      showToast(e.message || `${action} failed`, 'error');
+      showToast(e.message || `${action} failed`, "error");
     } finally {
       setActionLoading(null);
     }
@@ -150,9 +152,11 @@ export default function Apps() {
     <div className="flex flex-col pb-8">
       {/* Toast notification */}
       {toast && (
-        <div className={`fixed top-4 right-4 z-50 px-4 py-2 rounded-lg shadow-lg text-sm font-medium animate-[slideIn_0.2s_ease-out] ${
-          toast.type === 'success' ? 'bg-green-600 text-white' : 'bg-red-600 text-white'
-        }`}>
+        <div
+          className={`fixed top-4 right-4 z-50 px-4 py-2 rounded-lg shadow-lg text-sm font-medium animate-[slideIn_0.2s_ease-out] ${
+            toast.type === "success" ? "bg-green-600 text-white" : "bg-red-600 text-white"
+          }`}
+        >
           {toast.message}
         </div>
       )}
@@ -169,30 +173,37 @@ export default function Apps() {
           <div className="text-center text-neutral-500 py-12">No apps deployed yet</div>
         ) : (
           <div className="flex flex-col gap-3">
-            {apps.map(app => (
+            {apps.map((app) => (
               <div
                 key={app.name}
                 className="bg-neutral-900 border border-neutral-800 rounded-xl overflow-hidden hover:border-neutral-700 transition-colors"
               >
                 {/* Main card - clickable */}
-                <div 
-                  className="p-4 sm:p-5 cursor-pointer"
-                  onClick={() => toggleExpand(app.name)}
-                >
+                <div className="p-4 sm:p-5 cursor-pointer" onClick={() => toggleExpand(app.name)}>
                   {/* Header row */}
                   <div className="flex justify-between items-center mb-2">
                     <div className="flex items-center gap-2">
-                      <span className={`w-2 h-2 rounded-full shrink-0 ${statusDotClass[app.status] || statusDotClass.unknown}`} />
+                      <span
+                        className={`w-2 h-2 rounded-full shrink-0 ${statusDotClass[app.status] || statusDotClass.unknown}`}
+                      />
                       <span className="text-base font-semibold text-white">{app.name}</span>
-                      <span className={`ml-1 text-lg transition-transform ${expandedApp === app.name ? 'rotate-180' : ''}`}>▼</span>
+                      <span
+                        className={`ml-1 text-lg transition-transform ${expandedApp === app.name ? "rotate-180" : ""}`}
+                      >
+                        ▼
+                      </span>
                     </div>
-                    <span className={`text-[11px] font-semibold uppercase tracking-wide px-2 py-0.5 rounded-md ${statusBadgeClass[app.status] || statusBadgeClass.unknown}`}>
+                    <span
+                      className={`text-[11px] font-semibold uppercase tracking-wide px-2 py-0.5 rounded-md ${statusBadgeClass[app.status] || statusBadgeClass.unknown}`}
+                    >
                       {app.status}
                     </span>
                   </div>
 
                   {app.description && (
-                    <p className="text-sm text-neutral-500 mb-2 leading-relaxed">{app.description}</p>
+                    <p className="text-sm text-neutral-500 mb-2 leading-relaxed">
+                      {app.description}
+                    </p>
                   )}
 
                   <a
@@ -200,9 +211,9 @@ export default function Apps() {
                     target="_blank"
                     rel="noopener noreferrer"
                     className="inline-block text-sm text-blue-400 hover:underline mb-3"
-                    onClick={e => e.stopPropagation()}
+                    onClick={(e) => e.stopPropagation()}
                   >
-                    {app.url.replace('https://', '')} ↗
+                    {app.url.replace("https://", "")} ↗
                   </a>
 
                   <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs text-neutral-600">
@@ -219,42 +230,42 @@ export default function Apps() {
                   <div className="border-t border-neutral-800 bg-neutral-950">
                     {/* Action buttons */}
                     <div className="p-4 flex flex-wrap gap-2 border-b border-neutral-800">
-                      {app.status === 'online' ? (
+                      {app.status === "online" ? (
                         <>
                           <button
-                            onClick={() => handleAction(app.name, 'restart')}
+                            onClick={() => handleAction(app.name, "restart")}
                             disabled={actionLoading === `${app.name}-restart`}
                             className="px-3 py-1.5 text-sm font-medium rounded-lg bg-blue-600 hover:bg-blue-500 text-white disabled:opacity-50 transition-colors"
                           >
-                            {actionLoading === `${app.name}-restart` ? '...' : '↻ Restart'}
+                            {actionLoading === `${app.name}-restart` ? "..." : "↻ Restart"}
                           </button>
                           <button
-                            onClick={() => handleAction(app.name, 'stop')}
+                            onClick={() => handleAction(app.name, "stop")}
                             disabled={actionLoading === `${app.name}-stop`}
                             className="px-3 py-1.5 text-sm font-medium rounded-lg bg-neutral-700 hover:bg-neutral-600 text-white disabled:opacity-50 transition-colors"
                           >
-                            {actionLoading === `${app.name}-stop` ? '...' : '⏹ Stop'}
+                            {actionLoading === `${app.name}-stop` ? "..." : "⏹ Stop"}
                           </button>
                         </>
                       ) : (
                         <button
-                          onClick={() => handleAction(app.name, 'start')}
+                          onClick={() => handleAction(app.name, "start")}
                           disabled={actionLoading === `${app.name}-start`}
                           className="px-3 py-1.5 text-sm font-medium rounded-lg bg-green-600 hover:bg-green-500 text-white disabled:opacity-50 transition-colors"
                         >
-                          {actionLoading === `${app.name}-start` ? '...' : '▶ Start'}
+                          {actionLoading === `${app.name}-start` ? "..." : "▶ Start"}
                         </button>
                       )}
-                      
+
                       {deleteConfirm === app.name ? (
                         <div className="flex gap-2 ml-auto">
                           <span className="text-sm text-red-400 self-center">Delete forever?</span>
                           <button
-                            onClick={() => handleAction(app.name, 'delete')}
+                            onClick={() => handleAction(app.name, "delete")}
                             disabled={actionLoading === `${app.name}-delete`}
                             className="px-3 py-1.5 text-sm font-medium rounded-lg bg-red-600 hover:bg-red-500 text-white disabled:opacity-50 transition-colors"
                           >
-                            {actionLoading === `${app.name}-delete` ? '...' : 'Yes, Delete'}
+                            {actionLoading === `${app.name}-delete` ? "..." : "Yes, Delete"}
                           </button>
                           <button
                             onClick={() => setDeleteConfirm(null)}
@@ -276,7 +287,7 @@ export default function Apps() {
                     {/* Files section */}
                     <div className="p-4">
                       <h4 className="text-sm font-semibold text-neutral-400 mb-3">Files</h4>
-                      
+
                       {!appFiles[app.name] ? (
                         <div className="text-sm text-neutral-600">Loading files...</div>
                       ) : (
@@ -285,20 +296,23 @@ export default function Apps() {
                           <div className="sm:w-56 shrink-0">
                             <div className="flex flex-col gap-1 max-h-64 overflow-y-auto">
                               {appFiles[app.name]
-                                .filter(f => !f.isDir)
-                                .map(file => (
+                                .filter((f) => !f.isDir)
+                                .map((file) => (
                                   <button
                                     key={file.path}
                                     onClick={() => fetchFileContent(app.name, file.path)}
                                     className={`text-left px-2 py-2 rounded text-sm transition-colors ${
-                                      selectedFile?.app === app.name && selectedFile?.path === file.path
-                                        ? 'bg-blue-600 text-white'
-                                        : 'text-neutral-300 hover:bg-neutral-800 hover:text-white'
+                                      selectedFile?.app === app.name &&
+                                      selectedFile?.path === file.path
+                                        ? "bg-blue-600 text-white"
+                                        : "text-neutral-300 hover:bg-neutral-800 hover:text-white"
                                     }`}
                                   >
-                                    <div className="font-medium">{file.path.split('/').pop()}</div>
-                                    {file.path.includes('/') && (
-                                      <div className="text-xs opacity-50">{file.path.split('/').slice(0, -1).join('/')}/</div>
+                                    <div className="font-medium">{file.path.split("/").pop()}</div>
+                                    {file.path.includes("/") && (
+                                      <div className="text-xs opacity-50">
+                                        {file.path.split("/").slice(0, -1).join("/")}/
+                                      </div>
                                     )}
                                   </button>
                                 ))}

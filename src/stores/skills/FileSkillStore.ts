@@ -30,14 +30,19 @@ import type {
   UpdateSkillArgs,
 } from "./SkillStore.js";
 
-const skillNameSchema = z.string().min(1).regex(
-  /^[A-Za-z0-9][A-Za-z0-9._-]*$/,
-  "Skill names may contain only letters, numbers, dots, underscores, and hyphens"
-);
-const frontmatterSchema = z.object({
-  name: z.string().min(1).optional(),
-  description: z.string().optional(),
-}).passthrough();
+const skillNameSchema = z
+  .string()
+  .min(1)
+  .regex(
+    /^[A-Za-z0-9][A-Za-z0-9._-]*$/,
+    "Skill names may contain only letters, numbers, dots, underscores, and hyphens",
+  );
+const frontmatterSchema = z
+  .object({
+    name: z.string().min(1).optional(),
+    description: z.string().optional(),
+  })
+  .passthrough();
 const frontmatterRecordSchema = z.record(z.unknown());
 
 function discoverFiles(skillDir: string): SkillFile[] {
@@ -63,16 +68,15 @@ function discoverFiles(skillDir: string): SkillFile[] {
 function parseSkill(
   skillDir: string,
   source: SkillSource,
-  includeFiles: boolean
+  includeFiles: boolean,
 ): Skill | undefined {
   const path = resolve(skillDir, "SKILL.md");
   if (!existsSync(path)) return undefined;
   try {
     const parsed = matter(readFileSync(path, "utf-8"));
     const metadata = frontmatterSchema.parse(parsed.data);
-    const fallbackDescription = parsed.content
-      .match(/\*\*Description:\*\*\s*(.+?)(?:\n|$)/)?.[1]
-      ?.trim() ?? "";
+    const fallbackDescription =
+      parsed.content.match(/\*\*Description:\*\*\s*(.+?)(?:\n|$)/)?.[1]?.trim() ?? "";
     return {
       name: metadata.name ?? basename(skillDir),
       description: metadata.description ?? fallbackDescription,
@@ -85,11 +89,7 @@ function parseSkill(
   }
 }
 
-function scanDirectory(
-  root: string,
-  source: SkillSource,
-  includeFiles: boolean
-): Skill[] {
+function scanDirectory(root: string, source: SkillSource, includeFiles: boolean): Skill[] {
   if (!existsSync(root)) return [];
   try {
     return readdirSync(root, { withFileTypes: true })
@@ -119,18 +119,10 @@ export class FileSkillStore implements SkillStore {
   list(x: Context, args: SkillListArgs): Skill[] {
     if (args.names?.length === 0 || args.sources?.length === 0) return [];
     const merged = new Map<string, Skill>();
-    for (const skill of scanDirectory(
-      xSystemSkillsDir(x),
-      "builtin",
-      args.includeFiles === true
-    )) {
+    for (const skill of scanDirectory(xSystemSkillsDir(x), "builtin", args.includeFiles === true)) {
       merged.set(skill.name, skill);
     }
-    for (const skill of scanDirectory(
-      xSkillsDir(x),
-      "user",
-      args.includeFiles === true
-    )) {
+    for (const skill of scanDirectory(xSkillsDir(x), "user", args.includeFiles === true)) {
       merged.set(skill.name, skill);
     }
     return [...merged.values()]
@@ -166,15 +158,11 @@ export class FileSkillStore implements SkillStore {
 
     const parsed = matter(readFileSync(existing.path, "utf-8"));
     const metadata = frontmatterRecordSchema.parse(parsed.data);
-    writeSkillFile(
-      existing.path,
-      args.changes.content ?? parsed.content,
-      {
-        ...metadata,
-        name: existing.name,
-        description: args.changes.description ?? existing.description,
-      }
-    );
+    writeSkillFile(existing.path, args.changes.content ?? parsed.content, {
+      ...metadata,
+      name: existing.name,
+      description: args.changes.description ?? existing.description,
+    });
     const updated = parseSkill(dirname(existing.path), "user", false);
     if (!updated) throw new Error(`Failed to update skill: ${args.name}`);
     return updated;

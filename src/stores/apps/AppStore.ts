@@ -31,14 +31,7 @@ export interface DeleteAppArgs {
   names: string[];
 }
 
-export interface AppStore extends Store<
-  App,
-  AppListArgs,
-  never,
-  never,
-  DeleteAppArgs,
-  unknown
-> {
+export interface AppStore extends Store<App, AppListArgs, never, never, DeleteAppArgs, unknown> {
   list(x: Context, args: AppListArgs): App[];
   count(x: Context, args: AppFilter): number;
   create(x: Context, args: never): never;

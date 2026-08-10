@@ -50,7 +50,7 @@ describe("TracingPiRuntime", () => {
         traceEventStore
           .list(x, { traceIds: [trace.id], order: "oldest" })
           .map((event) => event.data.type),
-        ["prompt", "user_message", "invocation", "raw_event", "normalized_event", "footer"]
+        ["prompt", "user_message", "invocation", "raw_event", "normalized_event", "footer"],
       );
     } finally {
       rmSync(logsDir, { recursive: true, force: true });

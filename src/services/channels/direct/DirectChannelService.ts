@@ -28,7 +28,7 @@ export class DirectChannelService implements ChannelService {
     typing: false,
     reactions: false,
     attachments: false,
-    streaming: false,  // We collect, don't stream
+    streaming: false, // We collect, don't stream
   };
 
   private pendingRequests = new Map<string, PendingRequest>();
@@ -59,7 +59,7 @@ export class DirectChannelService implements ChannelService {
    */
   async ask(options: {
     question: string;
-    session?: string;  // e.g., "api:bland-phone" — defaults to "api:default"
+    session?: string; // e.g., "api:bland-phone" — defaults to "api:default"
     author?: string;
     channelPrompt?: string;
     timeoutMs?: number | null; // 0/null disables timeout
@@ -100,7 +100,7 @@ Do NOT use markdown formatting unless specifically requested.`;
       author: options.author || "api",
       timestamp: Date.now(),
       content: options.question,
-      hasMention: true,  // Direct API calls always get a response
+      hasMention: true, // Direct API calls always get a response
       raw: {
         synthetic: true,
         source: "direct-channel",
@@ -134,7 +134,6 @@ Do NOT use markdown formatting unless specifically requested.`;
     }
   }
 
-
   createOutputHandler(_x: Context, event: InboundEvent): OutputHandler {
     const requestId = parseInboundEventMetadata(event.raw).requestId;
     if (!requestId) throw new Error("DirectChannel event is missing a request ID");
@@ -165,9 +164,10 @@ Do NOT use markdown formatting unless specifically requested.`;
         const pending = this.pendingRequests.get(requestId);
         if (pending) {
           // Get the last message (final response) or empty string if none
-          const response = pending.collectedMessages.length > 0
-            ? pending.collectedMessages[pending.collectedMessages.length - 1]
-            : "";
+          const response =
+            pending.collectedMessages.length > 0
+              ? pending.collectedMessages[pending.collectedMessages.length - 1]
+              : "";
           pending.resolve(response);
           this.pendingRequests.delete(requestId);
         }

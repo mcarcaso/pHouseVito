@@ -4,15 +4,9 @@ import { z } from "zod";
 import type { Context } from "../context/Context.js";
 import type { RouterService } from "./RouterService.js";
 import { xFileService } from "../lib/x.js";
-import {
-  emptyRouteSchema,
-  unknownRouteSchema,
-  createRawRoute,
-} from "./createRoute.js";
+import { emptyRouteSchema, unknownRouteSchema, createRawRoute } from "./createRoute.js";
 
-const fileQuerySchema = z
-  .object({ path: z.unknown().optional() })
-  .passthrough();
+const fileQuerySchema = z.object({ path: z.unknown().optional() }).passthrough();
 
 export class FileRouterService implements RouterService {
   async createRouter(x: Context): Promise<Router> {
@@ -39,10 +33,7 @@ export class FileRouterService implements RouterService {
           const safeName = file.name.replace(/["\r\n]/g, "_");
           res.setHeader("Content-Type", file.mimeType);
           res.setHeader("Content-Length", file.size);
-          res.setHeader(
-            "Content-Disposition",
-            `${file.disposition}; filename="${safeName}"`,
-          );
+          res.setHeader("Content-Disposition", `${file.disposition}; filename="${safeName}"`);
           file.stream.on("error", () => {
             if (!res.headersSent) res.status(500).end();
             else res.destroy();

@@ -1,5 +1,5 @@
-import type { VitoConfig } from '../../utils/settingsResolution';
-import ChannelConfigEditor from './ChannelConfigEditor';
+import type { VitoConfig } from "../../utils/settingsResolution";
+import ChannelConfigEditor from "./ChannelConfigEditor";
 
 interface ChannelSettingsProps {
   config: VitoConfig;
@@ -10,11 +10,7 @@ export default function ChannelSettings({ config, onSave }: ChannelSettingsProps
   const channelNames = Object.keys(config.channels || {});
 
   if (channelNames.length === 0) {
-    return (
-      <div className="text-neutral-500 text-sm p-4">
-        No channels configured.
-      </div>
-    );
+    return <div className="text-neutral-500 text-sm p-4">No channels configured.</div>;
   }
 
   return (

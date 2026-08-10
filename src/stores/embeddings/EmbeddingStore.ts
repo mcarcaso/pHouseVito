@@ -46,10 +46,13 @@ export interface EmbeddingStore {
   getPreviousChunkText(x: Context, sessionId: string): string | null;
   createChunk(x: Context, args: CreateEmbeddingChunkArgs): number;
   listChunksWithVectors(x: Context, sessionId?: string): EmbeddingChunkWithVector[];
-  searchFts(x: Context, args: {
-    query: string;
-    limit: number;
-    sessionId?: string;
-  }): Array<{ id: number; score: number }>;
+  searchFts(
+    x: Context,
+    args: {
+      query: string;
+      limit: number;
+      sessionId?: string;
+    },
+  ): Array<{ id: number; score: number }>;
   getStats(x: Context): EmbeddingStats;
 }

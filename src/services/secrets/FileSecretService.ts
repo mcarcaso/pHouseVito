@@ -1,11 +1,4 @@
-import {
-  chmodSync,
-  existsSync,
-  mkdirSync,
-  readFileSync,
-  renameSync,
-  writeFileSync,
-} from "node:fs";
+import { chmodSync, existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
 import { dirname } from "node:path";
 import { z } from "zod";
 import type { Context } from "../../context/Context.js";
@@ -21,13 +14,15 @@ import { SystemSecretDeletionError } from "./SecretService.js";
 
 const secretRecordSchema = z.record(z.string());
 const secretKeySchema = z.string().regex(/^[A-Za-z_][A-Za-z0-9_]*$/);
-const piAuthEntrySchema = z.object({
-  type: z.string(),
-  access: z.string().optional(),
-  refresh: z.string().optional(),
-  expires: z.number().optional(),
-  key: z.string().optional(),
-}).passthrough();
+const piAuthEntrySchema = z
+  .object({
+    type: z.string(),
+    access: z.string().optional(),
+    refresh: z.string().optional(),
+    expires: z.number().optional(),
+    key: z.string().optional(),
+  })
+  .passthrough();
 const piAuthSchema = z.record(piAuthEntrySchema);
 
 const PROVIDER_API_KEYS: Record<string, ProviderApiKeyInfo> = {
@@ -58,12 +53,14 @@ const PROVIDER_API_KEYS: Record<string, ProviderApiKeyInfo> = {
 };
 
 const SYSTEM_KEYS: Record<string, string> = {
-  TELEGRAM_BOT_TOKEN: "Telegram Bot API token — get from @BotFather (required for Telegram channel)",
-  DISCORD_BOT_TOKEN: "Discord Bot token — get from https://discord.com/developers/applications (required for Discord channel)",
+  TELEGRAM_BOT_TOKEN:
+    "Telegram Bot API token — get from @BotFather (required for Telegram channel)",
+  DISCORD_BOT_TOKEN:
+    "Discord Bot token — get from https://discord.com/developers/applications (required for Discord channel)",
   DASHBOARD_PASSWORD_HASH: "Dashboard password hash (managed automatically — do not edit manually)",
   BLAND_WEBHOOK_SECRET: "Bland AI webhook secret — add as ?secret=VALUE to your Bland webhook URL",
   ...Object.fromEntries(
-    Object.values(PROVIDER_API_KEYS).map((provider) => [provider.envVar, provider.description])
+    Object.values(PROVIDER_API_KEYS).map((provider) => [provider.envVar, provider.description]),
   ),
 };
 
@@ -211,9 +208,7 @@ export class FileSecretService implements SecretService {
       const apiKey = secrets[config.envVar] || process.env[config.envVar];
       const hasApiKey = Boolean(apiKey?.trim());
       const oauthEntry = piAuth[provider];
-      const hasOAuth = Boolean(
-        oauthEntry?.type === "oauth" && oauthEntry.access
-      );
+      const hasOAuth = Boolean(oauthEntry?.type === "oauth" && oauthEntry.access);
       if (hasApiKey) {
         status[provider] = { hasAuth: true, authType: "api_key" };
       } else if (hasOAuth) {
@@ -247,7 +242,7 @@ export class FileSecretService implements SecretService {
       Object.entries(this.getProviderAuthStatus(x)).map(([provider, status]) => [
         provider,
         status.hasAuth,
-      ])
+      ]),
     );
   }
 }

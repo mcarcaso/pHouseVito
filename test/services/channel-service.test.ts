@@ -23,7 +23,7 @@ describe("channel services", () => {
   it("preserves Discord guild and DM alias formats", () => {
     assert.equal(
       formatDiscordSessionAlias({ name: "general", guildName: "Server" }),
-      "Server / general"
+      "Server / general",
     );
     assert.equal(formatDiscordSessionAlias({ name: "DM: Mike" }), "DM: Mike");
   });
@@ -42,15 +42,15 @@ describe("channel services", () => {
   it("preserves Telegram DM, group, and topic alias formats", () => {
     assert.equal(
       formatTelegramSessionAlias("telegram:private", { name: "Mike", type: "private" }),
-      "telegram: DM: Mike"
+      "telegram: DM: Mike",
     );
     assert.equal(
       formatTelegramSessionAlias("telegram:group", { name: "Group", type: "group" }),
-      "telegram: Group"
+      "telegram: Group",
     );
     assert.equal(
       formatTelegramSessionAlias("telegram:forum:42", { name: "Forum", type: "supergroup" }),
-      "telegram: Forum / Topic"
+      "telegram: Forum / Topic",
     );
   });
 });

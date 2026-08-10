@@ -86,12 +86,13 @@ export class TracingPiRuntime extends ProxyPiRuntime {
     systemPrompt: string,
     userMessage: string,
     callbacks: PiRuntimeCallbacks,
-    signal?: AbortSignal
+    signal?: AbortSignal,
   ): Promise<void> {
     const timestamp = new Date().toISOString();
-    const traceType = this.options.tracePrefix === "classifier" || this.options.tracePrefix === "profile"
-      ? this.options.tracePrefix
-      : "main";
+    const traceType =
+      this.options.tracePrefix === "classifier" || this.options.tracePrefix === "profile"
+        ? this.options.tracePrefix
+        : "main";
     const trace = xTraceStore(this.options.x).create(this.options.x, {
       traceType,
       timestamp,

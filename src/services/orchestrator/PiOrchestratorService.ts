@@ -15,7 +15,18 @@ import type { ChannelService } from "../channels/ChannelService.js";
 import type { AskOptions, OrchestratorService } from "./OrchestratorService.js";
 
 import { getEffectiveSettings } from "../vito/settings.js";
-import { xChannelRegistryService, xCronService, xInboundAttachmentService, xMemoryService, xMessageStore, xServerLifecycleService, xSessionService, xSkillStore, xUserDir, xVitoService } from "../../lib/x.js";
+import {
+  xChannelRegistryService,
+  xCronService,
+  xInboundAttachmentService,
+  xMemoryService,
+  xMessageStore,
+  xServerLifecycleService,
+  xSessionService,
+  xSkillStore,
+  xUserDir,
+  xVitoService,
+} from "../../lib/x.js";
 
 import { statSync } from "node:fs";
 import { resolve } from "node:path";
@@ -42,7 +53,10 @@ export class PiOrchestratorService implements OrchestratorService {
   private config!: VitoConfig;
 
   /** Per-session message queues and processing locks. */
-  private sessionQueues = new Map<string, Array<{ event: InboundEvent; channel: ChannelService | null }>>();
+  private sessionQueues = new Map<
+    string,
+    Array<{ event: InboundEvent; channel: ChannelService | null }>
+  >();
   private sessionProcessing = new Set<string>();
 
   /** Track active requests so they can be aborted on /stop. */
@@ -78,7 +92,7 @@ export class PiOrchestratorService implements OrchestratorService {
     const skills = this.getSkills();
     if (skills.length > 0) {
       console.log(
-        `[Orchestrator] Found ${skills.length} skill(s): ${skills.map((s) => s.name).join(", ")}`
+        `[Orchestrator] Found ${skills.length} skill(s): ${skills.map((s) => s.name).join(", ")}`,
       );
     }
     this.initialized = true;
@@ -125,12 +139,18 @@ export class PiOrchestratorService implements OrchestratorService {
       }
       return answer;
     } catch (err) {
-      console.error(`[PiOrchestratorService.ask] Error: ${err instanceof Error ? err.message : err}`);
+      console.error(
+        `[PiOrchestratorService.ask] Error: ${err instanceof Error ? err.message : err}`,
+      );
       return "I hit a snag trying to think about that. Try asking again.";
     }
   }
 
-  private async relayDirectAnswerToSession(session: string, answer: string, author?: string): Promise<void> {
+  private async relayDirectAnswerToSession(
+    session: string,
+    answer: string,
+    author?: string,
+  ): Promise<void> {
     const sessionParts = session.split(":");
     const channelName = sessionParts[0] || "api";
     const target = sessionParts.slice(1).join(":") || "default";
@@ -167,7 +187,9 @@ export class PiOrchestratorService implements OrchestratorService {
       this.registerChannel(this.x, directChannel);
       this.directChannelReady = (async () => {
         await directChannel.start(this.x);
-        await directChannel.listen(this.x, (event) => this.handleInbound(this.x, event, directChannel));
+        await directChannel.listen(this.x, (event) =>
+          this.handleInbound(this.x, event, directChannel),
+        );
       })();
     }
     return this.directChannel;
@@ -220,7 +242,7 @@ export class PiOrchestratorService implements OrchestratorService {
       timezone: this.config.settings?.timezone,
       onJob: async (event, channelName) => {
         const channel = channelName
-          ? xChannelRegistryService(this.x).get(this.x, channelName)?.channel ?? null
+          ? (xChannelRegistryService(this.x).get(this.x, channelName)?.channel ?? null)
           : null;
         await this.handleInbound(this.x, event, channel);
       },
@@ -244,13 +266,18 @@ export class PiOrchestratorService implements OrchestratorService {
   // INBOUND ROUTING (mirrors v1)
   // ────────────────────────────────────────────────────────────────────────
 
-  async handleInbound(x: Context, event: InboundEvent, channel: ChannelService | null): Promise<void> {
+  async handleInbound(
+    x: Context,
+    event: InboundEvent,
+    channel: ChannelService | null,
+  ): Promise<void> {
     this.initialize(x);
     const sessionKey = event.sessionKey;
     console.log(`[Orchestrator] ⚡ from ${sessionKey}: "${event.content?.slice(0, 50)}"`);
 
     const commandText = normalizeSlashCommand(event.content);
-    const commandEvent = commandText !== (event.content || "").trim() ? { ...event, content: commandText } : event;
+    const commandEvent =
+      commandText !== (event.content || "").trim() ? { ...event, content: commandText } : event;
 
     if (channel && commandText === "/stop") {
       await this.handleStopCommand(commandEvent, channel);
@@ -305,7 +332,8 @@ export class PiOrchestratorService implements OrchestratorService {
     this.reloadConfigIfChanged();
 
     const commandText = normalizeSlashCommand(event.content);
-    const commandEvent = commandText !== (event.content || "").trim() ? { ...event, content: commandText } : event;
+    const commandEvent =
+      commandText !== (event.content || "").trim() ? { ...event, content: commandText } : event;
 
     if (channel && commandText === "/stop") {
       await this.handleStopCommand(commandEvent, channel);
@@ -359,7 +387,7 @@ export class PiOrchestratorService implements OrchestratorService {
     }
 
     console.log(
-      `[Orchestrator] ${event.sessionKey}: streamMode=${effectiveSettings.streamMode}, model=${this.getModelString(effectiveSettings)}`
+      `[Orchestrator] ${event.sessionKey}: streamMode=${effectiveSettings.streamMode}, model=${this.getModelString(effectiveSettings)}`,
     );
 
     // Start typing immediately so the user sees activity.
@@ -384,7 +412,11 @@ export class PiOrchestratorService implements OrchestratorService {
       }
 
       // Get or create the long-lived runtime for this Vito session.
-      const innerRuntime = await this.runtimeRegistry.getOrCreate(this.x, vitoSession.id, effectiveSettings);
+      const innerRuntime = await this.runtimeRegistry.getOrCreate(
+        this.x,
+        vitoSession.id,
+        effectiveSettings,
+      );
       const actualModelString = innerRuntime.getModel();
 
       // Per-turn decorator chain wraps the long-lived inner runtime.
@@ -431,13 +463,15 @@ export class PiOrchestratorService implements OrchestratorService {
       // regardless of which runtime is in use. The runtime reports whether
       // the next run() will start fresh; if it has resumable state we skip
       // seeding to avoid duplicating context the runtime already has.
-      const willCreateBrandNewSession = !this.firstTurnDone.has(vitoSession.id)
-        && innerRuntime.isFresh();
+      const willCreateBrandNewSession =
+        !this.firstTurnDone.has(vitoSession.id) && innerRuntime.isFresh();
       if (willCreateBrandNewSession) {
         const historyBlock = this.buildHistoryBlock(vitoSession.id, 10);
         if (historyBlock) {
           promptText = `${historyBlock}\n\n${promptText}`;
-          console.log(`[Orchestrator] Seeded new runtime session for ${vitoSession.id} with history (${historyBlock.length} chars)`);
+          console.log(
+            `[Orchestrator] Seeded new runtime session for ${vitoSession.id} with history (${historyBlock.length} chars)`,
+          );
         }
       }
 
@@ -467,38 +501,44 @@ export class PiOrchestratorService implements OrchestratorService {
           systemPrompt,
           promptText,
           { onRawEvent: () => {}, onNormalizedEvent: () => {} },
-          abortController.signal
+          abortController.signal,
         );
         this.firstTurnDone.add(vitoSession.id);
       } catch (err) {
-        console.error(`[Orchestrator] Error during LLM call: ${err instanceof Error ? err.message : err}`);
+        console.error(
+          `[Orchestrator] Error during LLM call: ${err instanceof Error ? err.message : err}`,
+        );
         return;
       } finally {
         this.activeRequests.delete(event.sessionKey);
       }
 
-
       // Background: chunk + embed; periodic profile update.
       const contextualizerModel = effectiveSettings.memory?.chunkContextualizerModel;
-      xMemoryService(this.x).maybeEmbedNewChunks(this.x, vitoSession.id, { contextualizerModel }).then((embResult) => {
-        if (embResult) {
-          tracedRuntime.writePostRunLine({
-            type: "embedding_result",
-            skipped: embResult.skipped,
-            chunks_created: embResult.chunks_created,
-            chunks: embResult.chunks,
-            unembedded_messages: embResult.unembedded_messages,
-            unembedded_chars: embResult.unembedded_chars,
-            duration_ms: embResult.duration_ms,
-          });
-        }
-      }).catch((err) => {
-        console.error(`[Embeddings] Background embedding failed:`, err);
-      });
+      xMemoryService(this.x)
+        .maybeEmbedNewChunks(this.x, vitoSession.id, { contextualizerModel })
+        .then((embResult) => {
+          if (embResult) {
+            tracedRuntime.writePostRunLine({
+              type: "embedding_result",
+              skipped: embResult.skipped,
+              chunks_created: embResult.chunks_created,
+              chunks: embResult.chunks,
+              unembedded_messages: embResult.unembedded_messages,
+              unembedded_chars: embResult.unembedded_chars,
+              duration_ms: embResult.duration_ms,
+            });
+          }
+        })
+        .catch((err) => {
+          console.error(`[Embeddings] Background embedding failed:`, err);
+        });
     } catch (err) {
       // Safety net: stop typing on any error before/during run setup.
       if (baseHandler) {
-        try { await baseHandler.stopTyping?.(); } catch {}
+        try {
+          await baseHandler.stopTyping?.();
+        } catch {}
       }
       throw err;
     }
@@ -515,15 +555,17 @@ export class PiOrchestratorService implements OrchestratorService {
    * turns are useful as context.
    */
   private buildHistoryBlock(vitoSessionId: string, limit: number): string | null {
-    const recent = xMessageStore(this.x).list(this.x, {
-      sessionIds: [vitoSessionId],
-      limit,
-      excludeTypes: ["thought", "tool_start", "tool_end"],
-      order: "newest",
-      orderBy: "timestamp",
-      // Include both archived and active messages: /new archives the history
-      // before the next fresh session is created.
-    }).reverse();
+    const recent = xMessageStore(this.x)
+      .list(this.x, {
+        sessionIds: [vitoSessionId],
+        limit,
+        excludeTypes: ["thought", "tool_start", "tool_end"],
+        order: "newest",
+        orderBy: "timestamp",
+        // Include both archived and active messages: /new archives the history
+        // before the next fresh session is created.
+      })
+      .reverse();
     if (recent.length === 0) return null;
 
     const lines: string[] = [];
@@ -535,9 +577,12 @@ export class PiOrchestratorService implements OrchestratorService {
         continue;
       }
       if (!text) continue;
-      const speaker = msg.type === "user"
-        ? (typeof msg.author === "string" && msg.author ? msg.author : "user")
-        : "assistant";
+      const speaker =
+        msg.type === "user"
+          ? typeof msg.author === "string" && msg.author
+            ? msg.author
+            : "user"
+          : "assistant";
       lines.push(`${speaker}: ${text}`);
     }
 
@@ -559,7 +604,10 @@ export class PiOrchestratorService implements OrchestratorService {
     return `${m.provider}/${m.name}`;
   }
 
-  private parseModelSpec(spec: string, fallbackProvider = "anthropic"): { provider: string; name: string } | null {
+  private parseModelSpec(
+    spec: string,
+    fallbackProvider = "anthropic",
+  ): { provider: string; name: string } | null {
     const trimmed = spec.trim();
     if (!trimmed) return null;
 
@@ -601,7 +649,8 @@ export class PiOrchestratorService implements OrchestratorService {
 
     const parts: string[] = [];
     if (aborted) parts.push("⛔ Stopped current request");
-    if (queuedCount > 0) parts.push(`🗑️ Cleared ${queuedCount} queued message${queuedCount > 1 ? "s" : ""}`);
+    if (queuedCount > 0)
+      parts.push(`🗑️ Cleared ${queuedCount} queued message${queuedCount > 1 ? "s" : ""}`);
     if (wasLocked && !aborted) parts.push("🔓 Released stuck session lock");
 
     const message = parts.length === 0 ? "✅ Nothing to stop — all clear, boss." : parts.join("\n");
@@ -663,17 +712,19 @@ export class PiOrchestratorService implements OrchestratorService {
       // a server restart, before any message rehydrated the runtime). We
       // construct a transient runtime to call reset() — its constructor is
       // cheap and reset() handles the "no live session yet" path.
-      const runtimeForReset = existing ?? await this.runtimeRegistry.getOrCreate(
-        this.x,
-        vitoSession.id,
-        getEffectiveSettings(this.config, event.channel, event.sessionKey),
-      );
+      const runtimeForReset =
+        existing ??
+        (await this.runtimeRegistry.getOrCreate(
+          this.x,
+          vitoSession.id,
+          getEffectiveSettings(this.config, event.channel, event.sessionKey),
+        ));
       await runtimeForReset.reset();
       this.runtimeRegistry.delete(vitoSession.id);
       this.firstTurnDone.delete(vitoSession.id);
 
       await handler.relay(
-        `✅ **Fresh start!**\n\nPi session reset, messages archived. Next message starts a new session with the current system prompt.\n\nForce-embedding archived messages in the background — they'll be searchable via memory skills once it finishes. 🚀`
+        `✅ **Fresh start!**\n\nPi session reset, messages archived. Next message starts a new session with the current system prompt.\n\nForce-embedding archived messages in the background — they'll be searchable via memory skills once it finishes. 🚀`,
       );
       // stopTyping AFTER relay so the buffer actually flushes (the Discord
       // handler buffers relay() and only flushes on stopTyping/endMessage).
@@ -684,12 +735,15 @@ export class PiOrchestratorService implements OrchestratorService {
       // Background force-embed. Errors logged, not surfaced to the user.
       const newSettings = getEffectiveSettings(this.config, event.channel, event.sessionKey);
       const contextualizerModel = newSettings.memory?.chunkContextualizerModel;
-      xMemoryService(this.x).maybeEmbedNewChunks(this.x, vitoSession.id, { force: true, contextualizerModel })
+      xMemoryService(this.x)
+        .maybeEmbedNewChunks(this.x, vitoSession.id, { force: true, contextualizerModel })
         .then((embResult) => {
           if (embResult?.skipped) {
             console.log(`[/new] background embed skipped: ${embResult.skipped}`);
           } else {
-            console.log(`[/new] background embed complete — ${embResult?.chunks_created ?? 0} chunk(s) for ${vitoSession.id}`);
+            console.log(
+              `[/new] background embed complete — ${embResult?.chunks_created ?? 0} chunk(s) for ${vitoSession.id}`,
+            );
           }
         })
         .catch((err) => {
@@ -713,17 +767,21 @@ export class PiOrchestratorService implements OrchestratorService {
     const raw = event.content?.trim() || "";
     const spec = raw.replace(/^\/model\b/i, "").trim();
     const effectiveSettings = getEffectiveSettings(this.config, event.channel, event.sessionKey);
-    const currentModel = this.runtimeRegistry.get(vitoSession.id)?.getModel() || this.getModelString(effectiveSettings);
+    const currentModel =
+      this.runtimeRegistry.get(vitoSession.id)?.getModel() ||
+      this.getModelString(effectiveSettings);
 
     if (!spec) {
       await handler.relay(
-        `Current model: \`${currentModel}\`\n\nUse \`/model provider/model-name\`, e.g. \`/model anthropic/claude-sonnet-4-20250514\` or \`/model openrouter/deepseek/deepseek-v4-pro\`.`
+        `Current model: \`${currentModel}\`\n\nUse \`/model provider/model-name\`, e.g. \`/model anthropic/claude-sonnet-4-20250514\` or \`/model openrouter/deepseek/deepseek-v4-pro\`.`,
       );
       await handler.stopTyping?.();
       return;
     }
 
-    const fallbackProvider = currentModel.includes("/") ? currentModel.slice(0, currentModel.indexOf("/")) : "anthropic";
+    const fallbackProvider = currentModel.includes("/")
+      ? currentModel.slice(0, currentModel.indexOf("/"))
+      : "anthropic";
     const model = this.parseModelSpec(spec, fallbackProvider);
     if (!model) {
       await handler.relay("Couldn't parse that model, boss. Use `/model provider/model-name`.");
@@ -733,10 +791,14 @@ export class PiOrchestratorService implements OrchestratorService {
 
     await handler.startTyping?.();
     try {
-      const innerRuntime = await this.runtimeRegistry.getOrCreate(this.x, vitoSession.id, effectiveSettings);
+      const innerRuntime = await this.runtimeRegistry.getOrCreate(
+        this.x,
+        vitoSession.id,
+        effectiveSettings,
+      );
       await innerRuntime.setModel(model);
       await handler.relay(
-        `✅ Switched live model: \`${currentModel}\` → \`${model.provider}/${model.name}\`\n\nNo /new needed. This is a runtime session change; config stays untouched.`
+        `✅ Switched live model: \`${currentModel}\` → \`${model.provider}/${model.name}\`\n\nNo /new needed. This is a runtime session change; config stays untouched.`,
       );
       await handler.stopTyping?.();
     } catch (err) {
@@ -780,7 +842,7 @@ export class PiOrchestratorService implements OrchestratorService {
       }
 
       await handler.relay(
-        `✅ **Compacted.**${info}\n\nOlder turns summarized; recent context kept. Conversation continues. 🧵`
+        `✅ **Compacted.**${info}\n\nOlder turns summarized; recent context kept. Conversation continues. 🧵`,
       );
       // stopTyping after relay so the buffer flushes (see /new for details).
       await handler.stopTyping?.();
@@ -808,5 +870,4 @@ export class PiOrchestratorService implements OrchestratorService {
       console.error(`[Config] Failed to remove job ${jobName}:`, err);
     }
   }
-
 }

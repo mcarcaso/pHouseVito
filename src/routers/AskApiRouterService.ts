@@ -20,14 +20,8 @@ export class AskApiRouterService implements RouterService {
           body: askApiRequestSchema,
         },
         handler: async (routeX, input, _req, res) => {
-          const {
-            question,
-            session,
-            author,
-            channelPrompt,
-            timeoutMs,
-            relayToSession,
-          } = input.body;
+          const { question, session, author, channelPrompt, timeoutMs, relayToSession } =
+            input.body;
           const start = Date.now();
           console.log(
             `[Dashboard] /api/ask request: session=${session || "api:default"} question="${question.slice(0, 80)}"`,
@@ -43,9 +37,7 @@ export class AskApiRouterService implements RouterService {
               relayToSession: relayToSession === true,
             });
             const elapsed = Date.now() - start;
-            console.log(
-              `[Dashboard] /api/ask response (${elapsed}ms): "${answer.slice(0, 100)}"`,
-            );
+            console.log(`[Dashboard] /api/ask response (${elapsed}ms): "${answer.slice(0, 100)}"`);
             res.json({ answer, elapsed });
           } catch (error) {
             console.error("[Dashboard] /api/ask error:", error);

@@ -40,9 +40,12 @@ describe("DefaultProviderService", () => {
     const { root, piAuthPath, x, service } = createHarness();
     try {
       assert.deepEqual(service.getLoginStatus(x, "test-provider"), { status: "none" });
-      writeFileSync(piAuthPath, JSON.stringify({
-        "test-provider": { type: "oauth", access: "token" },
-      }));
+      writeFileSync(
+        piAuthPath,
+        JSON.stringify({
+          "test-provider": { type: "oauth", access: "token" },
+        }),
+      );
       assert.deepEqual(service.getLoginStatus(x, "test-provider"), { status: "success" });
     } finally {
       rmSync(root, { recursive: true, force: true });

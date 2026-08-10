@@ -29,7 +29,7 @@ export class SqliteEmbeddingStore implements EmbeddingStore {
   getNextChunkIndices(x: Context, sessionId: string): Map<string, number> {
     const rows = xEmbeddingDb(x)
       .prepare(
-        "SELECT day, MAX(chunk_index) + 1 as next_idx FROM chunks WHERE session_id = ? GROUP BY day"
+        "SELECT day, MAX(chunk_index) + 1 as next_idx FROM chunks WHERE session_id = ? GROUP BY day",
       )
       .all(sessionId) as Array<{ day: string; next_idx: number }>;
     return new Map(rows.map((row) => [row.day, row.next_idx]));
@@ -41,7 +41,7 @@ export class SqliteEmbeddingStore implements EmbeddingStore {
         `SELECT text FROM chunks
          WHERE session_id = ?
          ORDER BY id DESC
-         LIMIT 1`
+         LIMIT 1`,
       )
       .get(sessionId) as { text: string } | undefined;
     return row?.text ?? null;
@@ -50,8 +50,9 @@ export class SqliteEmbeddingStore implements EmbeddingStore {
   createChunk(x: Context, args: CreateEmbeddingChunkArgs): number {
     const db = xEmbeddingDb(x);
     const create = db.transaction(() => {
-      const result = db.prepare(
-        `INSERT INTO chunks
+      const result = db
+        .prepare(
+          `INSERT INTO chunks
            (session_id, day, chunk_index, text, context, embedded_text,
             msg_id_start, msg_id_end, msg_count)
          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
@@ -62,27 +63,29 @@ export class SqliteEmbeddingStore implements EmbeddingStore {
            msg_id_start = excluded.msg_id_start,
            msg_id_end = excluded.msg_id_end,
            msg_count = excluded.msg_count
-         RETURNING id`
-      ).get(
-        args.sessionId,
-        args.day,
-        args.chunkIndex,
-        args.text,
-        args.context,
-        args.embeddedText,
-        args.messageIdStart,
-        args.messageIdEnd,
-        args.messageCount
-      ) as { id: number };
+         RETURNING id`,
+        )
+        .get(
+          args.sessionId,
+          args.day,
+          args.chunkIndex,
+          args.text,
+          args.context,
+          args.embeddedText,
+          args.messageIdStart,
+          args.messageIdEnd,
+          args.messageCount,
+        ) as { id: number };
       const chunkId = result.id;
       const vector = Buffer.from(
         args.vector.buffer,
         args.vector.byteOffset,
-        args.vector.byteLength
+        args.vector.byteLength,
       );
-      db.prepare(
-        "INSERT OR REPLACE INTO embeddings (chunk_id, vector) VALUES (?, ?)"
-      ).run(chunkId, vector);
+      db.prepare("INSERT OR REPLACE INTO embeddings (chunk_id, vector) VALUES (?, ?)").run(
+        chunkId,
+        vector,
+      );
       return chunkId;
     });
     return create();
@@ -116,7 +119,7 @@ export class SqliteEmbeddingStore implements EmbeddingStore {
 
   searchFts(
     x: Context,
-    args: { query: string; limit: number; sessionId?: string }
+    args: { query: string; limit: number; sessionId?: string },
   ): Array<{ id: number; score: number }> {
     const sessionClause = args.sessionId ? " AND c.session_id = ?" : "";
     const sql = `
@@ -130,7 +133,9 @@ export class SqliteEmbeddingStore implements EmbeddingStore {
     const params = args.sessionId
       ? [args.query, args.sessionId, args.limit]
       : [args.query, args.limit];
-    return xEmbeddingDb(x).prepare(sql).all(...params) as Array<{
+    return xEmbeddingDb(x)
+      .prepare(sql)
+      .all(...params) as Array<{
       id: number;
       score: number;
     }>;
@@ -138,20 +143,24 @@ export class SqliteEmbeddingStore implements EmbeddingStore {
 
   getStats(x: Context): EmbeddingStats {
     const db = xEmbeddingDb(x);
-    const totals = db.prepare(
-      `SELECT COUNT(*) as totalChunks,
+    const totals = db
+      .prepare(
+        `SELECT COUNT(*) as totalChunks,
               COUNT(DISTINCT session_id) as totalSessions,
               COUNT(DISTINCT day) as totalDays,
               MIN(day) as oldestDay,
               MAX(day) as newestDay
-       FROM chunks`
-    ).get() as Omit<EmbeddingStats, "sessions">;
-    const sessions = db.prepare(
-      `SELECT session_id, COUNT(*) as count, MIN(day) as first_day, MAX(day) as last_day
+       FROM chunks`,
+      )
+      .get() as Omit<EmbeddingStats, "sessions">;
+    const sessions = db
+      .prepare(
+        `SELECT session_id, COUNT(*) as count, MIN(day) as first_day, MAX(day) as last_day
        FROM chunks
        GROUP BY session_id
-       ORDER BY count DESC`
-    ).all() as Array<{
+       ORDER BY count DESC`,
+      )
+      .all() as Array<{
       session_id: string;
       count: number;
       first_day: string;

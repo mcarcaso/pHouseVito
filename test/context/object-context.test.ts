@@ -31,9 +31,12 @@ describe("ObjectContext", () => {
       userDir: () => "/root/user",
       scopeName: () => "root",
     });
-    const overlayX = new ObjectContext({
-      scopeName: () => "dashboard",
-    }, rootX);
+    const overlayX = new ObjectContext(
+      {
+        scopeName: () => "dashboard",
+      },
+      rootX,
+    );
 
     assert.equal(xUserDir(overlayX), "/root/user");
     assert.equal(overlayX.get("scopeName"), "dashboard");

@@ -10,6 +10,7 @@ Search all past conversations by **meaning**, not just exact words. Uses hybrid 
 ## When to Use
 
 Use this skill when:
+
 - You need to **recall what was discussed** about a topic — "what did we talk about regarding X?"
 - The user says "remember when we..." or "what did we decide about..."
 - Auto-recalled memories (`<recalled-memories>`) aren't enough and you need to **dig deeper**
@@ -25,6 +26,7 @@ Use this skill when:
 ```
 
 **Arguments:**
+
 - First arg: Search query (required) — natural language works best
 - `--limit N`: Number of results (optional, default: 5)
 - `--session id`: Filter to a specific session (e.g., `discord:general`, `telegram:5473044160`)
@@ -55,6 +57,7 @@ Use this skill when:
 ## Output
 
 Returns ranked results with:
+
 - **Scores** — RRF (combined), Embedding (semantic), BM25 (keyword)
 - **Session + Day** — where and when the conversation happened
 - **Context** — AI-generated summary of the chunk's topic

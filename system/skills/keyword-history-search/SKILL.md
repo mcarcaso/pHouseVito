@@ -10,6 +10,7 @@ Direct SQL queries against the messages database (`user/vito.db`). Use this for 
 ## When to Use
 
 Use this skill when:
+
 - You need messages from a **specific date or time range**
 - You need an **exact keyword or phrase** match
 - You need to **count** messages, sessions, or activity
@@ -22,31 +23,34 @@ Use this skill when:
 ## Database Schema
 
 ### messages table
-| Column | Type | Description |
-|--------|------|-------------|
-| id | INTEGER | Auto-increment primary key |
-| session_id | TEXT | e.g. `dashboard:default`, `telegram:123456789` |
-| channel | TEXT | `dashboard`, `telegram`, or `discord` |
-| channel_target | TEXT | `default`, telegram chat ID, or discord channel ID |
-| timestamp | INTEGER | Unix epoch in **milliseconds** |
-| type | TEXT | `user`, `thought`, `assistant`, `tool_start`, or `tool_end` |
-| content | JSON | Message content (JSON string — use `json_extract` or just cast) |
-| compacted | INTEGER | 1 = compacted (knowledge extracted to memory docs) |
-| archived | INTEGER | 1 = archived (old session, fully processed) |
+
+| Column         | Type    | Description                                                     |
+| -------------- | ------- | --------------------------------------------------------------- |
+| id             | INTEGER | Auto-increment primary key                                      |
+| session_id     | TEXT    | e.g. `dashboard:default`, `telegram:123456789`                  |
+| channel        | TEXT    | `dashboard`, `telegram`, or `discord`                           |
+| channel_target | TEXT    | `default`, telegram chat ID, or discord channel ID              |
+| timestamp      | INTEGER | Unix epoch in **milliseconds**                                  |
+| type           | TEXT    | `user`, `thought`, `assistant`, `tool_start`, or `tool_end`     |
+| content        | JSON    | Message content (JSON string — use `json_extract` or just cast) |
+| compacted      | INTEGER | 1 = compacted (knowledge extracted to memory docs)              |
+| archived       | INTEGER | 1 = archived (old session, fully processed)                     |
 
 ### sessions table
-| Column | Type | Description |
-|--------|------|-------------|
-| id | TEXT | Session ID (e.g. `dashboard:default`) |
-| channel | TEXT | `dashboard`, `telegram`, or `discord` |
-| channel_target | TEXT | Target identifier |
-| created_at | INTEGER | Unix epoch ms |
-| last_active_at | INTEGER | Unix epoch ms |
-| config | JSON | Session-specific config |
+
+| Column         | Type    | Description                           |
+| -------------- | ------- | ------------------------------------- |
+| id             | TEXT    | Session ID (e.g. `dashboard:default`) |
+| channel        | TEXT    | `dashboard`, `telegram`, or `discord` |
+| channel_target | TEXT    | Target identifier                     |
+| created_at     | INTEGER | Unix epoch ms                         |
+| last_active_at | INTEGER | Unix epoch ms                         |
+| config         | JSON    | Session-specific config               |
 
 ## Common Queries
 
 ### Search messages by keyword
+
 ```sql
 SELECT datetime(timestamp/1000, 'unixepoch', 'localtime') as time,
        type, substr(content, 1, 200) as preview
@@ -58,6 +62,7 @@ LIMIT 20;
 ```
 
 ### Get conversation from a specific date
+
 ```sql
 SELECT datetime(timestamp/1000, 'unixepoch', 'localtime') as time,
        type, content
@@ -68,6 +73,7 @@ ORDER BY timestamp ASC;
 ```
 
 ### Get conversation from a time range
+
 ```sql
 SELECT datetime(timestamp/1000, 'unixepoch', 'localtime') as time,
        type, content
@@ -79,6 +85,7 @@ ORDER BY timestamp ASC;
 ```
 
 ### Get messages from a specific channel
+
 ```sql
 SELECT datetime(timestamp/1000, 'unixepoch', 'localtime') as time,
        type, substr(content, 1, 200) as preview
@@ -90,6 +97,7 @@ LIMIT 30;
 ```
 
 ### Get a summary of activity by date
+
 ```sql
 SELECT date(timestamp/1000, 'unixepoch', 'localtime') as day,
        COUNT(*) as msg_count,
@@ -101,6 +109,7 @@ ORDER BY day DESC;
 ```
 
 ### Find conversations about a topic (with surrounding context)
+
 ```sql
 -- Step 1: Find matching messages
 SELECT id, session_id, timestamp
@@ -124,6 +133,7 @@ sqlite3 user/vito.db "YOUR QUERY HERE"
 ```
 
 For multi-line or complex queries:
+
 ```bash
 sqlite3 user/vito.db <<'EOF'
 SELECT ...

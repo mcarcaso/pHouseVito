@@ -21,12 +21,7 @@ Options:
 
 export function runConfigCommand(args: string[], projectRoot: string): number {
   const [command, ...commandArgs] = args;
-  if (
-    !command ||
-    command === "help" ||
-    command === "--help" ||
-    command === "-h"
-  ) {
+  if (!command || command === "help" || command === "--help" || command === "-h") {
     process.stdout.write(configHelp);
     return 0;
   }

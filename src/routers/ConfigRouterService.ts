@@ -11,20 +11,13 @@ import {
 } from "../shared/schemas/vito-config.js";
 import { xVitoService } from "../lib/x.js";
 import { getDefaultSettings } from "../services/vito/settings.js";
-import {
-  emptyRouteSchema,
-  unknownRouteSchema,
-  createRawRoute,
-} from "./createRoute.js";
+import { emptyRouteSchema, unknownRouteSchema, createRawRoute } from "./createRoute.js";
 
 const channelParamsSchema = z.object({
   name: z.string().min(1),
 });
 
-function applyConfigPatch(
-  config: VitoConfig,
-  patch: VitoConfigPatch,
-): VitoConfig {
+function applyConfigPatch(config: VitoConfig, patch: VitoConfigPatch): VitoConfig {
   return {
     ...config,
     bot: patch.bot
@@ -35,14 +28,9 @@ function applyConfigPatch(
         }
       : config.bot,
     apps: patch.apps ? { ...config.apps, ...patch.apps } : config.apps,
-    settings: patch.settings
-      ? { ...config.settings, ...patch.settings }
-      : config.settings,
-    channels: patch.channels
-      ? { ...config.channels, ...patch.channels }
-      : config.channels,
-    sessions:
-      patch.sessions !== undefined ? (patch.sessions ?? {}) : config.sessions,
+    settings: patch.settings ? { ...config.settings, ...patch.settings } : config.settings,
+    channels: patch.channels ? { ...config.channels, ...patch.channels } : config.channels,
+    sessions: patch.sessions !== undefined ? (patch.sessions ?? {}) : config.sessions,
     compaction: patch.compaction
       ? { ...config.compaction, ...patch.compaction }
       : config.compaction,
@@ -79,15 +67,10 @@ export class ConfigRouterService implements RouterService {
         },
         handler: (routeX, { body }, _req, res) => {
           const vitoService = xVitoService(routeX);
-          const candidate = applyConfigPatch(
-            vitoService.getConfig(routeX),
-            body,
-          );
+          const candidate = applyConfigPatch(vitoService.getConfig(routeX), body);
           const validation = vitoService.validateConfig(routeX, candidate);
           if (!validation.valid) {
-            res
-              .status(400)
-              .json({ error: "Invalid config", issues: validation.issues });
+            res.status(400).json({ error: "Invalid config", issues: validation.issues });
             return;
           }
 

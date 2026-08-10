@@ -16,13 +16,19 @@ const userDir = mkdtempSync(join(tmpdir(), "vito-pi-session-router-"));
 const piSessionsDir = join(userDir, "pi-sessions");
 const sessionDirectory = join(piSessionsDir, "dashboard%3Atest");
 mkdirSync(sessionDirectory, { recursive: true });
-writeFileSync(join(sessionDirectory, "pi-1.jsonl"), [
-  JSON.stringify({ type: "session", id: "pi-1", timestamp: "2026-01-01", cwd: "/app" }),
-  JSON.stringify({ type: "message", message: { role: "user", content: "hello" } }),
-].join("\n"));
+writeFileSync(
+  join(sessionDirectory, "pi-1.jsonl"),
+  [
+    JSON.stringify({ type: "session", id: "pi-1", timestamp: "2026-01-01", cwd: "/app" }),
+    JSON.stringify({ type: "message", message: { role: "user", content: "hello" } }),
+  ].join("\n"),
+);
 
 const db = createDatabase(":memory:");
-const x = dashboardRouterContext({}, RootContext({ db, userDir, skillsDir: join(userDir, "skills"), piSessionsDir }));
+const x = dashboardRouterContext(
+  {},
+  RootContext({ db, userDir, skillsDir: join(userDir, "skills"), piSessionsDir }),
+);
 xSessionStore(x).create(x, {
   id: "dashboard:test",
   channel: "dashboard",
@@ -51,7 +57,7 @@ before(async () => {
 
 after(async () => {
   await new Promise<void>((resolve, reject) => {
-    server.close((error) => error ? reject(error) : resolve());
+    server.close((error) => (error ? reject(error) : resolve()));
   });
   db.close();
   rmSync(userDir, { recursive: true, force: true });
@@ -61,48 +67,52 @@ describe("Pi session router", () => {
   it("lists session metadata with Vito aliases", async () => {
     const response = await fetch(`${baseUrl}/api/pi-sessions`);
     assert.equal(response.status, 200);
-    const result = z.object({
-      files: z.array(z.object({
-        rel: z.string(),
-        vitoSessionId: z.string(),
-        alias: z.string().nullable(),
-        messageCount: z.number(),
-      }).passthrough()),
-    }).parse(await response.json());
+    const result = z
+      .object({
+        files: z.array(
+          z
+            .object({
+              rel: z.string(),
+              vitoSessionId: z.string(),
+              alias: z.string().nullable(),
+              messageCount: z.number(),
+            })
+            .passthrough(),
+        ),
+      })
+      .parse(await response.json());
     assert.equal(result.files[0].rel, "dashboard%3Atest/pi-1.jsonl");
     assert.equal(result.files[0].alias, "Test Session");
     assert.equal(result.files[0].messageCount, 1);
   });
 
   it("reads validated JSONL and rejects traversal", async () => {
-    const response = await fetch(
-      `${baseUrl}/api/pi-sessions/dashboard%253Atest/pi-1.jsonl`
-    );
+    const response = await fetch(`${baseUrl}/api/pi-sessions/dashboard%253Atest/pi-1.jsonl`);
     assert.equal(response.status, 200);
-    const result = z.object({
-      rel: z.string(),
-      format: z.literal("jsonl"),
-      lines: z.array(z.record(z.unknown())),
-    }).parse(await response.json());
+    const result = z
+      .object({
+        rel: z.string(),
+        format: z.literal("jsonl"),
+        lines: z.array(z.record(z.unknown())),
+      })
+      .parse(await response.json());
     assert.equal(result.lines.length, 2);
 
     const traversal = await fetch(
-      `${baseUrl}/api/pi-sessions/dashboard%253Atest/..%5Coutside.jsonl`
+      `${baseUrl}/api/pi-sessions/dashboard%253Atest/..%5Coutside.jsonl`,
     );
     assert.equal(traversal.status, 400);
   });
 
   it("deletes individual and all sessions", async () => {
-    const missing = await fetch(
-      `${baseUrl}/api/pi-sessions/dashboard%253Atest/missing.jsonl`,
-      { method: "DELETE" }
-    );
+    const missing = await fetch(`${baseUrl}/api/pi-sessions/dashboard%253Atest/missing.jsonl`, {
+      method: "DELETE",
+    });
     assert.equal(missing.status, 404);
 
-    const response = await fetch(
-      `${baseUrl}/api/pi-sessions/dashboard%253Atest/pi-1.jsonl`,
-      { method: "DELETE" }
-    );
+    const response = await fetch(`${baseUrl}/api/pi-sessions/dashboard%253Atest/pi-1.jsonl`, {
+      method: "DELETE",
+    });
     assert.equal(response.status, 200);
 
     const all = await fetch(`${baseUrl}/api/pi-sessions`, { method: "DELETE" });

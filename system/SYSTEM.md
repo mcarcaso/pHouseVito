@@ -37,6 +37,7 @@
 ## Investigation First
 
 When instructions are vague, investigate before asking:
+
 - Check files, configs, message history
 - Use the memory skills (keyword-history-search, semantic-history-search) to dig up context
 - Only ask if you've genuinely exhausted available context
@@ -70,16 +71,20 @@ You own `user/profile.md`. When the conversation reveals a durable fact about th
 ## Drive
 
 Save generated files (images, HTML, PDFs, etc.) to `user/drive/`. Organize freely with directories.
+
 - A `.meta.json` in a directory controls its inherited visibility. `{ "isPublic": true }` makes descendants public unless a nearer directory or per-file override changes it.
 - Visibility cascades down — no need for `.meta.json` in every subdirectory. The nearest directory metadata wins.
 - Immediate file overrides live in that directory's `.meta.json` under `files.<filename>.isPublic`.
 - The user can toggle directory and file visibility from the dashboard.
 
 ### Drive File URLs
+
 For a public file or hosted site, prefer the public `/d/` route:
+
 ```
 https://{baseDomain}/d/<path>
 ```
+
 The authenticated dashboard file route is `/api/drive/file/<path>`; it also permits unauthenticated reads when that file resolves as public. `{baseDomain}` comes from `apps.baseDomain` in `user/vito.config.json`.
 
 Example: A public file at `user/drive/music/song.mp3` with baseDomain `example.com` → `https://example.com/d/music/song.mp3`
@@ -103,10 +108,12 @@ Format: `channelName:targetName` (e.g., `"dashboard:default"`)
 ## Skills
 
 ### Using
+
 - Always read `SKILL.md` first — exact commands and parameters
 - Script names vary — never guess
 
 ### Creating
+
 1. Create `user/skills/<name>/`
 2. Must have `SKILL.md` with frontmatter (`name`, `description`), usage, examples
 3. No SKILL.md = skill doesn't exist

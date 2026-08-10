@@ -48,9 +48,7 @@ export class ServerLifecycleRouterService implements RouterService {
         responseSchema: serverRestartResponseSchema,
         handler: (routeX, { req }) => {
           const forwardedFor = req.headers["x-forwarded-for"];
-          const clientIp = forwardedFor
-            ? String(forwardedFor)
-            : req.socket.remoteAddress;
+          const clientIp = forwardedFor ? String(forwardedFor) : req.socket.remoteAddress;
           const userAgent = String(req.headers["user-agent"] ?? "unknown");
           xServerLifecycleService(routeX).requestRestart(routeX, {
             clientIp,

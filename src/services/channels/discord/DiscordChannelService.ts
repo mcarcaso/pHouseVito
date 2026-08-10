@@ -1,4 +1,13 @@
-import { Client, GatewayIntentBits, Partials, Message as DiscordMessage, REST, Routes, SlashCommandBuilder, ChatInputCommandInteraction } from "discord.js";
+import {
+  Client,
+  GatewayIntentBits,
+  Partials,
+  Message as DiscordMessage,
+  REST,
+  Routes,
+  SlashCommandBuilder,
+  ChatInputCommandInteraction,
+} from "discord.js";
 import type { Context } from "../../../context/Context.js";
 import { xSecretService, xVitoService } from "../../../lib/x.js";
 import type { OutputHandler } from "../../../lib/output/OutputHandler.js";
@@ -7,10 +16,7 @@ import type { SessionRow } from "../../../stores/sessions/SessionStore.js";
 import type { ChannelManagement, ChannelService } from "../ChannelService.js";
 import { DiscordOutputHandler } from "./DiscordOutputHandler.js";
 
-export function formatDiscordSessionAlias(info: {
-  name: string;
-  guildName?: string;
-}): string {
+export function formatDiscordSessionAlias(info: { name: string; guildName?: string }): string {
   return info.guildName ? `${info.guildName} / ${info.name}` : info.name;
 }
 
@@ -39,7 +45,7 @@ export class DiscordChannelService implements ChannelService {
     const token = xSecretService(x).get(x, "DISCORD_BOT_TOKEN");
     if (!token) {
       throw new Error(
-        "DISCORD_BOT_TOKEN not set. Create a bot at https://discord.com/developers/applications"
+        "DISCORD_BOT_TOKEN not set. Create a bot at https://discord.com/developers/applications",
       );
     }
 
@@ -65,10 +71,7 @@ export class DiscordChannelService implements ChannelService {
     this.token = undefined;
   }
 
-  async listen(
-    x: Context,
-    onEvent: (event: InboundEvent) => void
-  ): Promise<() => void> {
+  async listen(x: Context, onEvent: (event: InboundEvent) => void): Promise<() => void> {
     const client = this.client;
     const botUser = client?.user;
     if (!client || !botUser) throw new Error("Client not initialized — call start() first");
@@ -113,7 +116,9 @@ export class DiscordChannelService implements ChannelService {
       // DMs are always considered "mentioned" since they're direct
       const hasMention = !msg.guild || isMentioned;
 
-      console.log(`[Discord] 📨 Received message from ${msg.author.tag} in ${msg.guild?.name || 'DM'}${hasMention ? '' : ' (no @mention)'}`);
+      console.log(
+        `[Discord] 📨 Received message from ${msg.author.tag} in ${msg.guild?.name || "DM"}${hasMention ? "" : " (no @mention)"}`,
+      );
 
       if (!isAllowed(msg)) {
         console.log(`[Discord] ❌ Message not allowed — guild/channel not whitelisted`);
@@ -144,7 +149,7 @@ export class DiscordChannelService implements ChannelService {
 
       // Replace channel mentions with channel names (e.g., <#123456> → #general)
       msg.mentions.channels.forEach((channel) => {
-        if ('name' in channel) {
+        if ("name" in channel) {
           content = content.replace(new RegExp(`<#${channel.id}>`, "g"), `#${channel.name}`);
         }
       });
@@ -159,15 +164,17 @@ export class DiscordChannelService implements ChannelService {
         timestamp: Date.now(),
         content,
         raw: msg,
-        hasMention,  // Channel reports whether bot was mentioned; orchestrator decides what to do
+        hasMention, // Channel reports whether bot was mentioned; orchestrator decides what to do
       };
 
       // Handle attachments
       if (msg.attachments.size > 0) {
         event.attachments = msg.attachments.map((attachment) => ({
-          type: attachment.contentType?.startsWith("image/") ? "image" as const :
-                attachment.contentType?.startsWith("audio/") ? "audio" as const :
-                "file" as const,
+          type: attachment.contentType?.startsWith("image/")
+            ? ("image" as const)
+            : attachment.contentType?.startsWith("audio/")
+              ? ("audio" as const)
+              : ("file" as const),
           url: attachment.url,
           mimeType: attachment.contentType || "application/octet-stream",
           filename: attachment.name || "attachment",
@@ -183,7 +190,10 @@ export class DiscordChannelService implements ChannelService {
       if (!interaction.isChatInputCommand()) return;
 
       if (!isInteractionAllowed(interaction)) {
-        await interaction.reply({ content: "Not allowed in this server/channel.", ephemeral: true });
+        await interaction.reply({
+          content: "Not allowed in this server/channel.",
+          ephemeral: true,
+        });
         return;
       }
 
@@ -295,7 +305,9 @@ export class DiscordChannelService implements ChannelService {
     return formatDiscordSessionAlias(info);
   }
 
-  private async getChannelInfo(channelId: string): Promise<{ name: string; guildName?: string } | null> {
+  private async getChannelInfo(
+    channelId: string,
+  ): Promise<{ name: string; guildName?: string } | null> {
     if (!this.client) return null;
     try {
       const channel = await this.client.channels.fetch(channelId);
@@ -303,17 +315,17 @@ export class DiscordChannelService implements ChannelService {
 
       if (channel.isDMBased()) {
         // For DMs, try to get the recipient's username
-        if ('recipient' in channel && channel.recipient) {
+        if ("recipient" in channel && channel.recipient) {
           return { name: `DM: ${channel.recipient.username}` };
         }
-        return { name: 'DM' };
+        return { name: "DM" };
       }
 
       // For guild channels
-      if ('name' in channel && 'guild' in channel) {
+      if ("name" in channel && "guild" in channel) {
         return {
           name: channel.name,
-          guildName: channel.guild?.name
+          guildName: channel.guild?.name,
         };
       }
 
@@ -328,7 +340,9 @@ export class DiscordChannelService implements ChannelService {
    * Register slash commands with the Discord API.
    * Call once (or when commands change). Commands persist until removed.
    */
-  async registerSlashCommands(x: Context): Promise<{ success: boolean; count: number; error?: string }> {
+  async registerSlashCommands(
+    x: Context,
+  ): Promise<{ success: boolean; count: number; error?: string }> {
     if (!this.client?.user) {
       return { success: false, count: 0, error: "Discord client not initialized" };
     }
@@ -341,7 +355,9 @@ export class DiscordChannelService implements ChannelService {
     const commands = [
       new SlashCommandBuilder()
         .setName("new")
-        .setDescription("Fresh start — new pi session, picks up system prompt changes, archives chat"),
+        .setDescription(
+          "Fresh start — new pi session, picks up system prompt changes, archives chat",
+        ),
       new SlashCommandBuilder()
         .setName("compact")
         .setDescription("Summarize older turns to free context — conversation continues"),
@@ -352,23 +368,20 @@ export class DiscordChannelService implements ChannelService {
           option
             .setName("model")
             .setDescription("provider/model-name, e.g. anthropic/claude-sonnet-4-20250514")
-            .setRequired(false)
+            .setRequired(false),
         ),
       new SlashCommandBuilder()
         .setName("stop")
         .setDescription("Stop current request and clear any queued messages"),
-      new SlashCommandBuilder()
-        .setName("restart")
-        .setDescription("Restart the Vito server (PM2)"),
+      new SlashCommandBuilder().setName("restart").setDescription("Restart the Vito server (PM2)"),
     ];
 
     const rest = new REST({ version: "10" }).setToken(token);
 
     try {
-      const data: unknown = await rest.put(
-        Routes.applicationCommands(this.client.user.id),
-        { body: commands.map((c) => c.toJSON()) }
-      );
+      const data: unknown = await rest.put(Routes.applicationCommands(this.client.user.id), {
+        body: commands.map((c) => c.toJSON()),
+      });
       if (!Array.isArray(data)) throw new Error("Discord returned an invalid command response");
 
       console.log(`[Discord] ✅ Registered ${data.length} slash command(s)`);
@@ -384,7 +397,6 @@ export class DiscordChannelService implements ChannelService {
     if (!this.client) throw new Error("Discord client not initialized");
     return new DiscordOutputHandler(this.client, event, this.token);
   }
-
 
   getCustomPrompt(_x: Context): string {
     return [

@@ -55,7 +55,9 @@ export class CronerCronService implements CronService {
     for (const job of args.jobs) {
       this.scheduleJob(x, job);
     }
-    console.log(`[Cron] Scheduler started with ${args.jobs.length} job(s) — croner (with timezone support)`);
+    console.log(
+      `[Cron] Scheduler started with ${args.jobs.length} job(s) — croner (with timezone support)`,
+    );
   }
 
   /** Stop all running jobs. */
@@ -89,10 +91,15 @@ export class CronerCronService implements CronService {
         console.log(`[Cron] Precheck passed job: ${jobConfig.name}${out ? ` (${out})` : ""}`);
         return true;
       }
-      console.log(`[Cron] Precheck output for ${jobConfig.name}: ${out.slice(0, 200)} — not an explicit pass, skipping`);
+      console.log(
+        `[Cron] Precheck output for ${jobConfig.name}: ${out.slice(0, 200)} — not an explicit pass, skipping`,
+      );
       return false;
     } catch (err: unknown) {
-      console.error(`[Cron] Precheck failed for ${jobConfig.name}; skipping job to avoid burning AI tokens:`, err);
+      console.error(
+        `[Cron] Precheck failed for ${jobConfig.name}; skipping job to avoid burning AI tokens:`,
+        err,
+      );
       return false;
     }
   }
@@ -152,7 +159,9 @@ export class CronerCronService implements CronService {
     if (this.isISODate(jobConfig.schedule)) {
       const targetTime = new Date(jobConfig.schedule);
       if (targetTime.getTime() <= Date.now()) {
-        console.warn(`[Cron] One-time job ${jobConfig.name} scheduled for the past (${jobConfig.schedule}), skipping`);
+        console.warn(
+          `[Cron] One-time job ${jobConfig.name} scheduled for the past (${jobConfig.schedule}), skipping`,
+        );
         return;
       }
       pattern = targetTime;
@@ -166,7 +175,9 @@ export class CronerCronService implements CronService {
           maxRuns: jobConfig.oneTime || this.isISODate(jobConfig.schedule) ? 1 : undefined,
         },
         async () => {
-          console.log(`[Cron] Triggering job: ${jobConfig.name}${jobConfig.oneTime ? " (one-time)" : ""}`);
+          console.log(
+            `[Cron] Triggering job: ${jobConfig.name}${jobConfig.oneTime ? " (one-time)" : ""}`,
+          );
           await this.executeJob(jobConfig);
 
           // If this is a one-time job, clean up and notify
@@ -180,7 +191,7 @@ export class CronerCronService implements CronService {
               await this.onJobComplete(jobConfig.name);
             }
           }
-        }
+        },
       );
 
       this.jobs.set(jobConfig.name, cronJob);
@@ -189,7 +200,7 @@ export class CronerCronService implements CronService {
       const nextRun = cronJob.nextRun();
       const nextRunStr = nextRun ? nextRun.toLocaleString("en-US", { timeZone: tz }) : "N/A";
       console.log(
-        `Scheduled cron job: ${jobConfig.name} (${jobConfig.schedule}) [${tz}]${jobConfig.oneTime ? " [ONE-TIME]" : ""}${jobConfig.precheckCommand ? " [PRECHECK]" : ""} — next run: ${nextRunStr}`
+        `Scheduled cron job: ${jobConfig.name} (${jobConfig.schedule}) [${tz}]${jobConfig.oneTime ? " [ONE-TIME]" : ""}${jobConfig.precheckCommand ? " [PRECHECK]" : ""} — next run: ${nextRunStr}`,
       );
       if (jobConfig.precheckCommand) {
         console.log(`[Cron] Precheck for ${jobConfig.name}: ${jobConfig.precheckCommand}`);

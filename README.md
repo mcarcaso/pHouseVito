@@ -5,27 +5,32 @@ A personal AI agent framework with persistent memory, extensible skills, and mul
 ## Features
 
 ### 🧠 Intelligent Memory System
+
 - **Short-term memory** - Recent conversation context per session
 - **Long-term memory** - LLM-managed semantic memories with embeddings
 - **Cross-session awareness** - Sessions can reference each other
 - **Automatic compaction** - LLM decides what to remember
 
 ### 📡 Multi-Channel Support
+
 - **CLI** - Terminal-based chat interface
 - **Dashboard** - Web-based UI with real-time updates
 - **Discord** - Bot integration with guild/channel filtering
 - **Telegram** - Bot integration with chat ID filtering
 
 ### 🔌 Pi Runtime
+
 - **pi-coding-agent** - In-process Pi sessions supporting OpenAI, Anthropic, Google, and OpenRouter
 - **Per-session overrides** - Use different models for different conversations
 
 ### 🎯 Skills System
+
 - Markdown-based skill definitions
 - Optional script execution
 - Auto-discovery from `skills/` directory
 
 ### 📊 Web Dashboard
+
 - 💬 Real-time chat interface
 - 📋 Browse all sessions and message history
 - 🧠 View and search long-term memories
@@ -36,7 +41,8 @@ A personal AI agent framework with persistent memory, extensible skills, and mul
 ## Quick Start
 
 ### Prerequisites
-- Node.js 18+ 
+
+- Node.js 18+
 - npm or pnpm
 - PM2 (`npm install -g pm2`)
 
@@ -184,9 +190,11 @@ description: What this skill does
 # Example Skill
 
 ## When to Use
+
 - Describe when the agent should use this skill
 
 ## How to Use
+
 - Provide instructions for the agent
 ```
 
@@ -228,6 +236,7 @@ npm run build:dashboard
 Vito uses the Pi Coding Agent SDK for all model interaction. Pi supports multiple providers (OpenAI, Anthropic, Google, OpenRouter) with thinking levels.
 
 Configure in `user/vito.config.json`:
+
 ```json
 {
   "settings": {
@@ -244,6 +253,7 @@ Override per-session via the Dashboard Settings page.
 ### Runtime Decorators
 
 Runtime behaviors are layered via decorators:
+
 - `withTracing()` — JSONL trace logging
 - `withPersistence()` — SQLite message storage
 - `withRelay()` — Streaming to channels
@@ -254,6 +264,7 @@ Conditional cron output is wrapped with `NoReplyOutputHandler`, which suppresses
 ### System Instructions
 
 Project-owned instructions live in `system/SYSTEM.md`. `VitoService` reads them and the orchestrator's pure prompt builder combines them with personality, commands, capabilities, and session context.
+
 - **Cardinal rules** (verify facts, investigate before assuming)
 - **Investigation-first behavior**
 
@@ -270,6 +281,7 @@ Project-owned instructions live in `system/SYSTEM.md`. `VitoService` reads them 
 ### Compaction System
 
 Compaction is implemented as a **skill** and runs via the `system:compaction` session:
+
 - Orchestrator triggers a synthetic message when threshold is exceeded or `/new` is used
 - The compaction skill reads SQLite + memory files, then rewrites memory docs
 - Orchestrator marks compaction session messages as compacted after completion
@@ -282,6 +294,7 @@ Compaction is implemented as a **skill** and runs via the `system:compaction` se
 ### Channel System
 
 Channels are adapters that convert between platform-specific formats and Vito's internal message format. Each channel implements:
+
 - `start()` / `stop()` - Lifecycle
 - `listen()` - Receive inbound messages
 - `createHandler()` - Send outbound messages
@@ -316,10 +329,12 @@ Channels are adapters that convert between platform-specific formats and Vito's 
 ## Lessons Learned
 
 ### File Operations
+
 - **Check file size before reading** (use `ls -la` or `wc -l`)
 - **Send .txt for iOS** — Mike can’t open `.ts`/`.js` on iOS
 
 ### Build & Deploy
+
 - **Always rebuild after source changes** — `npm run build` if changes aren’t working
 - **Dashboard needs devDeps** — use `NODE_ENV=development npm install` in dashboard dir
 - **Cloudflare caches 404s** — use cache-busting params or wait for expiry
@@ -328,34 +343,41 @@ Channels are adapters that convert between platform-specific formats and Vito's 
 - **Don’t use SPA mode** for static sites (`serve -s` breaks static files)
 
 ### PM2 & Processes
+
 - **Use `npx pm2`** — not bare `pm2`
 - **Service name is `vito-server`** — not `vito`
 - **Always use `--nostream`** for logs
 - **Watch for orphan processes** — avoid rogue `node server.js &`
 
 ### React
+
 - **Hooks must be before any returns**
 - **Number inputs need local string state**
 - **localStorage can corrupt** — wrap JSON.parse in try/catch
 - **Defensive object access** — handle empty objects in inherited configs
 
 ### API & Config Patterns
+
 - **PUT endpoints do shallow merge** — `{}` doesn’t delete keys
 - **Send `null` to remove config keys**
 - **Nested object replacement** — replace, don’t merge
 
 ### Unicode in JSX
+
 - `\u25BC` in JSX renders literally — use `▼` or `{"\u25BC"}`
 
 ### Hallucination Risk
+
 - **Don’t assume image content** — look first
 - **Verify personal details** — no sloppy memory recall
 
 ### Debugging & Investigation
+
 - **Never restart yourself** — tell the user “changes are ready”
 - **Search the message DB first** when something looks off
 
 ### Browser Cookie Extraction
+
 - **Safari cookies are binary** — use `browser_cookie3` or parse manually
 - **Playwright sessions are isolated** — must inject cookies
 - **Pattern**: login in browser → extract cookies → load into Playwright

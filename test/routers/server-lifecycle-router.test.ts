@@ -55,7 +55,7 @@ before(async () => {
 
 after(async () => {
   await new Promise<void>((resolve, reject) => {
-    server.close((error) => error ? reject(error) : resolve());
+    server.close((error) => (error ? reject(error) : resolve()));
   });
 });
 
@@ -91,9 +91,11 @@ describe("server lifecycle router", () => {
       ok: true,
       message: "Rebuilding dashboard and restarting server...",
     });
-    assert.deepEqual(service.restartRequests, [{
-      clientIp: "203.0.113.9",
-      userAgent: "test-agent",
-    }]);
+    assert.deepEqual(service.restartRequests, [
+      {
+        clientIp: "203.0.113.9",
+        userAgent: "test-agent",
+      },
+    ]);
   });
 });

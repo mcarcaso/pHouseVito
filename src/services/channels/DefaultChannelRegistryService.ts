@@ -26,18 +26,12 @@ export class DefaultChannelRegistryService implements ChannelRegistryService {
     return [...this.channels.values()];
   }
 
-  async registerCommands(
-    x: Context,
-    channelName: string
-  ): Promise<CommandRegistrationResult> {
+  async registerCommands(x: Context, channelName: string): Promise<CommandRegistrationResult> {
     const management = this.getManagement(x, channelName);
     return await management.registerCommands(x);
   }
 
-  async generateAliases(
-    x: Context,
-    channelName: string
-  ): Promise<AliasGenerationResult> {
+  async generateAliases(x: Context, channelName: string): Promise<AliasGenerationResult> {
     const management = this.getManagement(x, channelName);
     const sessions = xSessionStore(x).list(x, {
       channels: [channelName],
@@ -69,7 +63,7 @@ export class DefaultChannelRegistryService implements ChannelRegistryService {
 
   private getManagement(
     x: Context,
-    channelName: string
+    channelName: string,
   ): NonNullable<ChannelService["management"]> {
     const registration = this.get(x, channelName);
     if (!registration) throw new ChannelNotConfiguredError(channelName);

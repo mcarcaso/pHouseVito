@@ -27,7 +27,7 @@ function createHarness() {
 function createMessage(
   store: SqliteMessageStore,
   x: ObjectContext,
-  args: { sessionId: string; timestamp: number; type?: "user" | "thought" }
+  args: { sessionId: string; timestamp: number; type?: "user" | "thought" },
 ) {
   return store.create(x, {
     session_id: args.sessionId,
@@ -88,10 +88,7 @@ describe("SqliteMessageStore", () => {
 
       assert.equal(store.cmd(x, { type: "archive-sessions", sessionIds: [] }), undefined);
       assert.equal(store.count(x, { archived: true }), 0);
-      assert.equal(
-        store.cmd(x, { type: "archive-sessions", sessionIds: ["a"] }),
-        1
-      );
+      assert.equal(store.cmd(x, { type: "archive-sessions", sessionIds: ["a"] }), 1);
       assert.equal(store.count(x, { sessionIds: ["a"], archived: true }), 1);
       assert.equal(store.count(x, { sessionIds: ["b"], archived: false }), 1);
     } finally {

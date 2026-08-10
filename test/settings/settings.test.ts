@@ -7,11 +7,13 @@ import {
   type VitoConfig,
 } from "../../src/shared/schemas/vito-config.js";
 
-function createConfig(args: {
-  settings?: Settings;
-  channelSettings?: Settings;
-  sessionSettings?: Settings;
-} = {}): VitoConfig {
+function createConfig(
+  args: {
+    settings?: Settings;
+    channelSettings?: Settings;
+    sessionSettings?: Settings;
+  } = {},
+): VitoConfig {
   return {
     settings: args.settings ?? {},
     channels: {
@@ -20,9 +22,7 @@ function createConfig(args: {
         settings: args.channelSettings,
       },
     },
-    sessions: args.sessionSettings
-      ? { "discord:session": args.sessionSettings }
-      : {},
+    sessions: args.sessionSettings ? { "discord:session": args.sessionSettings } : {},
     cron: { jobs: [] },
   };
 }

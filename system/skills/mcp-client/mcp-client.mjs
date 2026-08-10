@@ -1,12 +1,12 @@
 #!/usr/bin/env node
-import fs from 'node:fs';
-import path from 'node:path';
-import process from 'node:process';
-import matter from 'gray-matter';
-import { Client } from '@modelcontextprotocol/sdk/client/index.js';
-import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/streamableHttp.js';
-import { StdioClientTransport } from '@modelcontextprotocol/sdk/client/stdio.js';
-import { CallToolResultSchema, ListToolsResultSchema } from '@modelcontextprotocol/sdk/types.js';
+import fs from "node:fs";
+import path from "node:path";
+import process from "node:process";
+import matter from "gray-matter";
+import { Client } from "@modelcontextprotocol/sdk/client/index.js";
+import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
+import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js";
+import { CallToolResultSchema, ListToolsResultSchema } from "@modelcontextprotocol/sdk/types.js";
 
 const ROOT = process.cwd();
 const DEFAULT_TIMEOUT_MS = 30_000;
@@ -29,19 +29,21 @@ Examples:
 }
 
 function readSecrets() {
-  const secretsPath = path.join(ROOT, 'user', 'secrets.json');
+  const secretsPath = path.join(ROOT, "user", "secrets.json");
   try {
-    return JSON.parse(fs.readFileSync(secretsPath, 'utf8'));
+    return JSON.parse(fs.readFileSync(secretsPath, "utf8"));
   } catch {
     return {};
   }
 }
 
 const secrets = readSecrets();
-const secretValues = new Set(Object.values(secrets).filter((v) => typeof v === 'string' && v.length >= 6));
+const secretValues = new Set(
+  Object.values(secrets).filter((v) => typeof v === "string" && v.length >= 6),
+);
 
 function resolveEnvTemplates(value) {
-  if (typeof value === 'string') {
+  if (typeof value === "string") {
     return value.replace(/\$\{([A-Z0-9_]+)\}/gi, (_m, name) => {
       const resolved = process.env[name] ?? secrets[name];
       if (resolved === undefined || resolved === null) {
@@ -51,15 +53,15 @@ function resolveEnvTemplates(value) {
     });
   }
   if (Array.isArray(value)) return value.map(resolveEnvTemplates);
-  if (value && typeof value === 'object') {
+  if (value && typeof value === "object") {
     return Object.fromEntries(Object.entries(value).map(([k, v]) => [k, resolveEnvTemplates(v)]));
   }
   return value;
 }
 
 function maskSecrets(text) {
-  let out = String(text ?? '');
-  for (const secret of secretValues) out = out.split(secret).join('[REDACTED]');
+  let out = String(text ?? "");
+  for (const secret of secretValues) out = out.split(secret).join("[REDACTED]");
   return out;
 }
 
@@ -67,18 +69,18 @@ function resolveTarget(target) {
   if (!target) usage();
 
   if (/^https?:\/\//i.test(target)) {
-    return { transport: 'http', url: target };
+    return { transport: "http", url: target };
   }
 
   let filePath = path.resolve(ROOT, target);
   if (fs.existsSync(filePath) && fs.statSync(filePath).isDirectory()) {
-    filePath = path.join(filePath, 'SKILL.md');
+    filePath = path.join(filePath, "SKILL.md");
   }
   if (!fs.existsSync(filePath)) throw new Error(`Target not found: ${target}`);
 
-  const parsed = matter(fs.readFileSync(filePath, 'utf8'));
+  const parsed = matter(fs.readFileSync(filePath, "utf8"));
   const mcp = parsed.data?.mcp;
-  if (!mcp || typeof mcp !== 'object') {
+  if (!mcp || typeof mcp !== "object") {
     throw new Error(`No mcp: block found in ${filePath}`);
   }
   return { ...mcp, skillPath: filePath };
@@ -86,7 +88,7 @@ function resolveTarget(target) {
 
 function normalizeConfig(rawConfig) {
   const config = resolveEnvTemplates(rawConfig);
-  config.transport = String(config.transport || (config.url ? 'http' : 'stdio')).toLowerCase();
+  config.transport = String(config.transport || (config.url ? "http" : "stdio")).toLowerCase();
   config.timeoutMs = Math.min(Number(config.timeoutMs || DEFAULT_TIMEOUT_MS), MAX_TIMEOUT_MS);
   config.maxOutputBytes = Number(config.maxOutputBytes || DEFAULT_MAX_OUTPUT_BYTES);
   return config;
@@ -105,14 +107,17 @@ async function withTimeout(promise, ms, label) {
 }
 
 async function connect(config) {
-  const client = new Client({ name: 'vito-mcp-client-skill', version: '1.0.0' }, { capabilities: {} });
+  const client = new Client(
+    { name: "vito-mcp-client-skill", version: "1.0.0" },
+    { capabilities: {} },
+  );
   let transport;
 
-  if (['http', 'streamable-http', 'remote-http'].includes(config.transport)) {
-    if (!config.url) throw new Error('HTTP MCP config requires url');
+  if (["http", "streamable-http", "remote-http"].includes(config.transport)) {
+    if (!config.url) throw new Error("HTTP MCP config requires url");
     transport = new StreamableHTTPClientTransport(new URL(config.url));
-  } else if (config.transport === 'stdio') {
-    if (!config.command) throw new Error('stdio MCP config requires command');
+  } else if (config.transport === "stdio") {
+    if (!config.command) throw new Error("stdio MCP config requires command");
     transport = new StdioClientTransport({
       command: config.command,
       args: Array.isArray(config.args) ? config.args : [],
@@ -123,37 +128,45 @@ async function connect(config) {
     throw new Error(`Unsupported MCP transport: ${config.transport}`);
   }
 
-  await withTimeout(client.connect(transport), config.timeoutMs, 'MCP connect');
+  await withTimeout(client.connect(transport), config.timeoutMs, "MCP connect");
   return { client, transport };
 }
 
 async function listTools(client, config) {
   const result = await withTimeout(
-    client.request({ method: 'tools/list', params: {} }, ListToolsResultSchema),
+    client.request({ method: "tools/list", params: {} }, ListToolsResultSchema),
     config.timeoutMs,
-    'tools/list',
+    "tools/list",
   );
   return result.tools || [];
 }
 
 function isToolAllowed(config, toolName) {
-  if (Array.isArray(config.allowTools) && config.allowTools.length > 0) return config.allowTools.includes(toolName);
+  if (Array.isArray(config.allowTools) && config.allowTools.length > 0)
+    return config.allowTools.includes(toolName);
   if (config.allowToolPrefix) return toolName.startsWith(String(config.allowToolPrefix));
   return true;
 }
 
 function capOutput(value, maxBytes) {
   const json = JSON.stringify(value, null, 2);
-  const bytes = Buffer.byteLength(json, 'utf8');
+  const bytes = Buffer.byteLength(json, "utf8");
   if (bytes <= maxBytes) return json;
-  const truncated = Buffer.from(json, 'utf8').subarray(0, maxBytes).toString('utf8');
+  const truncated = Buffer.from(json, "utf8").subarray(0, maxBytes).toString("utf8");
   return `${truncated}\n... [truncated: ${bytes} bytes total, cap ${maxBytes}]`;
 }
 
 async function main() {
-  const [rawCommand, target, toolNameOrSteps, jsonArgs = '{}'] = process.argv.slice(2);
-  const command = rawCommand === 'tools' ? 'list' : rawCommand === 'invoke' ? 'call' : rawCommand === 'sequence' ? 'batch' : rawCommand;
-  if (!command || !target || !['list', 'schema', 'call', 'batch'].includes(command)) usage();
+  const [rawCommand, target, toolNameOrSteps, jsonArgs = "{}"] = process.argv.slice(2);
+  const command =
+    rawCommand === "tools"
+      ? "list"
+      : rawCommand === "invoke"
+        ? "call"
+        : rawCommand === "sequence"
+          ? "batch"
+          : rawCommand;
+  if (!command || !target || !["list", "schema", "call", "batch"].includes(command)) usage();
 
   const config = normalizeConfig(resolveTarget(target));
   let client;
@@ -162,19 +175,19 @@ async function main() {
     ({ client, transport } = await connect(config));
     const tools = await listTools(client, config);
 
-    if (command === 'list') {
+    if (command === "list") {
       const output = tools
         .filter((tool) => isToolAllowed(config, tool.name))
         .map((tool) => ({
           name: tool.name,
-          description: tool.description || '',
+          description: tool.description || "",
           inputSchema: tool.inputSchema || null,
         }));
       console.log(capOutput(output, config.maxOutputBytes));
       return;
     }
 
-    if (command === 'batch') {
+    if (command === "batch") {
       if (!toolNameOrSteps) usage();
       let steps;
       try {
@@ -182,18 +195,28 @@ async function main() {
       } catch (err) {
         throw new Error(`Invalid JSON steps: ${err.message}`);
       }
-      if (!Array.isArray(steps) || steps.length === 0) throw new Error('Batch steps must be a non-empty JSON array');
+      if (!Array.isArray(steps) || steps.length === 0)
+        throw new Error("Batch steps must be a non-empty JSON array");
 
       const outputs = [];
       for (const [index, step] of steps.entries()) {
         const stepToolName = step?.tool || step?.name;
         if (!stepToolName) throw new Error(`Batch step ${index + 1} is missing tool/name`);
         const stepTool = tools.find((t) => t.name === stepToolName);
-        if (!stepTool) throw new Error(`Tool not found in batch step ${index + 1}: ${stepToolName}. Run list first.`);
-        if (!isToolAllowed(config, stepToolName)) throw new Error(`Tool blocked by skill MCP allowlist/prefix in batch step ${index + 1}: ${stepToolName}`);
+        if (!stepTool)
+          throw new Error(
+            `Tool not found in batch step ${index + 1}: ${stepToolName}. Run list first.`,
+          );
+        if (!isToolAllowed(config, stepToolName))
+          throw new Error(
+            `Tool blocked by skill MCP allowlist/prefix in batch step ${index + 1}: ${stepToolName}`,
+          );
         const stepArgs = step.args || step.arguments || {};
         const result = await withTimeout(
-          client.request({ method: 'tools/call', params: { name: stepToolName, arguments: stepArgs } }, CallToolResultSchema),
+          client.request(
+            { method: "tools/call", params: { name: stepToolName, arguments: stepArgs } },
+            CallToolResultSchema,
+          ),
           config.timeoutMs,
           `tools/call ${stepToolName}`,
         );
@@ -207,22 +230,35 @@ async function main() {
     if (!toolName) usage();
     const tool = tools.find((t) => t.name === toolName);
     if (!tool) throw new Error(`Tool not found: ${toolName}. Run list first.`);
-    if (!isToolAllowed(config, toolName)) throw new Error(`Tool blocked by skill MCP allowlist/prefix: ${toolName}`);
+    if (!isToolAllowed(config, toolName))
+      throw new Error(`Tool blocked by skill MCP allowlist/prefix: ${toolName}`);
 
-    if (command === 'schema') {
-      console.log(capOutput({ name: tool.name, description: tool.description || '', inputSchema: tool.inputSchema || null }, config.maxOutputBytes));
+    if (command === "schema") {
+      console.log(
+        capOutput(
+          {
+            name: tool.name,
+            description: tool.description || "",
+            inputSchema: tool.inputSchema || null,
+          },
+          config.maxOutputBytes,
+        ),
+      );
       return;
     }
 
     let args;
     try {
-      args = JSON.parse(jsonArgs || '{}');
+      args = JSON.parse(jsonArgs || "{}");
     } catch (err) {
       throw new Error(`Invalid JSON args: ${err.message}`);
     }
 
     const result = await withTimeout(
-      client.request({ method: 'tools/call', params: { name: toolName, arguments: args } }, CallToolResultSchema),
+      client.request(
+        { method: "tools/call", params: { name: toolName, arguments: args } },
+        CallToolResultSchema,
+      ),
       config.timeoutMs,
       `tools/call ${toolName}`,
     );
@@ -231,7 +267,9 @@ async function main() {
     console.error(maskSecrets(`mcp-client error: ${err?.message || err}`));
     process.exitCode = 1;
   } finally {
-    try { await transport?.close?.(); } catch {}
+    try {
+      await transport?.close?.();
+    } catch {}
   }
 }
 

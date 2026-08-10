@@ -1,10 +1,4 @@
-import {
-  existsSync,
-  readFileSync,
-  renameSync,
-  unlinkSync,
-  writeFileSync,
-} from "node:fs";
+import { existsSync, readFileSync, renameSync, unlinkSync, writeFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { validateVitoConfig } from "../shared/schemas/vito-config.js";
 
@@ -15,8 +9,7 @@ export interface ConfigValidationIssue {
 }
 
 export type ConfigValidationResult =
-  | { valid: true; path: string }
-  | { valid: false; path: string; issues: ConfigValidationIssue[] };
+  { valid: true; path: string } | { valid: false; path: string; issues: ConfigValidationIssue[] };
 
 export function validateConfigFile(path: string): ConfigValidationResult {
   const resolvedPath = resolve(path);
@@ -70,11 +63,13 @@ export function migrateConfigFile(path: string): ConfigMigrationResult {
     return {
       valid: false,
       path: resolvedPath,
-      issues: [{
-        path: "<root>",
-        message: error instanceof Error ? error.message : String(error),
-        code: "migration_error",
-      }],
+      issues: [
+        {
+          path: "<root>",
+          message: error instanceof Error ? error.message : String(error),
+          code: "migration_error",
+        },
+      ],
     };
   }
 }
@@ -92,9 +87,11 @@ export function printConfigValidation(result: ConfigValidationResult): void {
 
 export function printConfigMigration(result: ConfigMigrationResult): void {
   if (result.valid) {
-    console.log(result.changed
-      ? `Migrated Vito config: ${result.path}`
-      : `Vito config is already current: ${result.path}`);
+    console.log(
+      result.changed
+        ? `Migrated Vito config: ${result.path}`
+        : `Vito config is already current: ${result.path}`,
+    );
     return;
   }
   console.error(`Unable to migrate Vito config: ${result.path}`);

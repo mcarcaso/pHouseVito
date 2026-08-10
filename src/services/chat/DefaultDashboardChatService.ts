@@ -1,10 +1,7 @@
 import type { Context } from "../../context/Context.js";
 import type { DashboardChatRequest } from "../../shared/schemas/dashboard-chat.js";
 import type { InboundEvent } from "../../lib/types/inbound-event.js";
-import type {
-  DashboardChatService,
-  DashboardInboundHandler,
-} from "./DashboardChatService.js";
+import type { DashboardChatService, DashboardInboundHandler } from "./DashboardChatService.js";
 
 export class DefaultDashboardChatService implements DashboardChatService {
   private handler?: DashboardInboundHandler;

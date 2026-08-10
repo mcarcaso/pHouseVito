@@ -1,8 +1,5 @@
 import type { Context } from "../../context/Context.js";
-import type {
-  ProviderApiKeyInfo,
-  ProviderAuthStatus,
-} from "../secrets/SecretService.js";
+import type { ProviderApiKeyInfo, ProviderAuthStatus } from "../secrets/SecretService.js";
 
 export interface ProviderOverview {
   providers: unknown[];

@@ -73,6 +73,6 @@ export interface PiRuntime {
     systemPrompt: string,
     userMessage: string,
     callbacks: PiRuntimeCallbacks,
-    signal?: AbortSignal
+    signal?: AbortSignal,
   ): Promise<void>;
 }

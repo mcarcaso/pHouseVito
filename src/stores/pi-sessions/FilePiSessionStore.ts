@@ -1,10 +1,4 @@
-import {
-  existsSync,
-  lstatSync,
-  readFileSync,
-  readdirSync,
-  unlinkSync,
-} from "node:fs";
+import { existsSync, lstatSync, readFileSync, readdirSync, unlinkSync } from "node:fs";
 import { resolve, sep } from "node:path";
 import type { Context } from "../../context/Context.js";
 import {
@@ -173,9 +167,11 @@ export class FilePiSessionStore implements PiSessionStore {
     return this.listFiles(x)
       .filter((file) => matchesFile(file, args))
       .map((file) => buildSession(file, args.includeLines ?? false))
-      .sort((a, b) => order === "recent"
-        ? b.updatedAt - a.updatedAt || a.id.localeCompare(b.id)
-        : a.updatedAt - b.updatedAt || a.id.localeCompare(b.id))
+      .sort((a, b) =>
+        order === "recent"
+          ? b.updatedAt - a.updatedAt || a.id.localeCompare(b.id)
+          : a.updatedAt - b.updatedAt || a.id.localeCompare(b.id),
+      )
       .slice(offset, offset + limit);
   }
 

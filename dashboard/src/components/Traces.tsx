@@ -1,5 +1,5 @@
-import { useState, useEffect, useCallback } from 'react';
-import { useSearchParams } from 'react-router-dom';
+import { useState, useEffect, useCallback } from "react";
+import { useSearchParams } from "react-router-dom";
 
 // ══════════════════════════════════════════════════════════════════════════════
 // TRACE LINE TYPES — Matches src/traceTypes.ts
@@ -65,7 +65,7 @@ interface TraceMemorySearch {
     embedding_score: number;
     bm25_score: number;
     text_preview: string;
-    full_text?: string;  // Full chunk text (for expanded view)
+    full_text?: string; // Full chunk text (for expanded view)
   }[];
   skipped?: string;
 }
@@ -122,8 +122,8 @@ interface TraceProfileUpdate {
     value: unknown;
   }[];
   duration_ms: number;
-  traceFile?: string;  // Path to the dedicated profile update trace file
-  events?: NormalizedEvent[];  // Legacy: inline events (for old traces)
+  traceFile?: string; // Path to the dedicated profile update trace file
+  events?: NormalizedEvent[]; // Legacy: inline events (for old traces)
 }
 
 // Normalized event types from the Pi runtime
@@ -161,7 +161,19 @@ interface TraceFooter {
   };
 }
 
-type TraceLine = TraceHeader | TraceInvocation | TracePrompt | TraceUserMessage | TraceRawEvent | TraceNormalizedEvent | TraceMemorySearch | TraceCurrentContextFilter | TraceAutoClassifier | TraceEmbeddingResult | TraceProfileUpdate | TraceFooter;
+type TraceLine =
+  | TraceHeader
+  | TraceInvocation
+  | TracePrompt
+  | TraceUserMessage
+  | TraceRawEvent
+  | TraceNormalizedEvent
+  | TraceMemorySearch
+  | TraceCurrentContextFilter
+  | TraceAutoClassifier
+  | TraceEmbeddingResult
+  | TraceProfileUpdate
+  | TraceFooter;
 
 interface LogFile {
   filename: string;
@@ -185,12 +197,12 @@ interface LogDetailJsonl {
 
 type LogDetail = LogDetailJsonl;
 
-const TRACE_TYPE_FILTER_STORAGE_KEY = 'traces.traceTypeFilter';
-const SESSION_FILTER_STORAGE_KEY = 'traces.sessionFilter';
+const TRACE_TYPE_FILTER_STORAGE_KEY = "traces.traceTypeFilter";
+const SESSION_FILTER_STORAGE_KEY = "traces.sessionFilter";
 
 function Traces() {
   const [searchParams, setSearchParams] = useSearchParams();
-  const selectedLog = searchParams.get('file');
+  const selectedLog = searchParams.get("file");
 
   const [logs, setLogs] = useState<LogFile[]>([]);
   const [logDetail, setLogDetail] = useState<LogDetail | null>(null);
@@ -198,25 +210,25 @@ function Traces() {
   const [autoRefresh, setAutoRefresh] = useState(true);
   const [expandedSections, setExpandedSections] = useState<Set<string>>(new Set());
   const [showRaw, setShowRaw] = useState(false); // Hide raw events by default
-  
+
   // Filters
   const [traceTypeFilter, setTraceTypeFilter] = useState<string>(() => {
-    if (typeof window === 'undefined') return 'all';
-    return localStorage.getItem(TRACE_TYPE_FILTER_STORAGE_KEY) || 'all';
+    if (typeof window === "undefined") return "all";
+    return localStorage.getItem(TRACE_TYPE_FILTER_STORAGE_KEY) || "all";
   });
   const [sessionFilter, setSessionFilter] = useState<string>(() => {
-    if (typeof window === 'undefined') return 'all';
-    return localStorage.getItem(SESSION_FILTER_STORAGE_KEY) || 'all';
+    if (typeof window === "undefined") return "all";
+    return localStorage.getItem(SESSION_FILTER_STORAGE_KEY) || "all";
   });
 
   const fetchLogs = useCallback(async () => {
     try {
-      const res = await fetch('/api/logs?limit=100');
+      const res = await fetch("/api/logs?limit=100");
       const data = await res.json();
       // API returns { files, totalCount, offset, limit }
       setLogs(Array.isArray(data) ? data : data.files || []);
     } catch (err) {
-      console.error('Failed to fetch logs:', err);
+      console.error("Failed to fetch logs:", err);
     } finally {
       setLoading(false);
     }
@@ -228,38 +240,41 @@ function Traces() {
       const data = await res.json();
       setLogDetail(data);
     } catch (err) {
-      console.error('Failed to fetch log detail:', err);
+      console.error("Failed to fetch log detail:", err);
     }
   }, []);
 
-  const deleteLog = useCallback(async (filename: string) => {
-    if (!confirm(`Delete trace "${filename}"?`)) return;
-    try {
-      await fetch(`/api/logs/${encodeURIComponent(filename)}`, { method: 'DELETE' });
-      // If we're viewing this log, go back to list
-      if (selectedLog === filename) {
-        setSearchParams({});
-        setLogDetail(null);
+  const deleteLog = useCallback(
+    async (filename: string) => {
+      if (!confirm(`Delete trace "${filename}"?`)) return;
+      try {
+        await fetch(`/api/logs/${encodeURIComponent(filename)}`, { method: "DELETE" });
+        // If we're viewing this log, go back to list
+        if (selectedLog === filename) {
+          setSearchParams({});
+          setLogDetail(null);
+        }
+        fetchLogs();
+      } catch (err) {
+        console.error("Failed to delete log:", err);
       }
-      fetchLogs();
-    } catch (err) {
-      console.error('Failed to delete log:', err);
-    }
-  }, [selectedLog, setSearchParams, fetchLogs]);
+    },
+    [selectedLog, setSearchParams, fetchLogs],
+  );
 
   const deleteAllLogs = useCallback(async () => {
     if (!confirm(`Delete ALL ${logs.length} traces? This cannot be undone.`)) return;
     try {
-      await fetch('/api/logs', { method: 'DELETE' });
+      await fetch("/api/logs", { method: "DELETE" });
       fetchLogs();
     } catch (err) {
-      console.error('Failed to delete logs:', err);
+      console.error("Failed to delete logs:", err);
     }
   }, [logs.length, fetchLogs]);
 
   useEffect(() => {
     if (selectedLog) {
-      setLogDetail(null);  // Clear stale data while loading new trace
+      setLogDetail(null); // Clear stale data while loading new trace
       fetchLogDetail(selectedLog);
     } else {
       fetchLogs();
@@ -267,12 +282,12 @@ function Traces() {
   }, [selectedLog, fetchLogs, fetchLogDetail]);
 
   useEffect(() => {
-    if (typeof window === 'undefined') return;
+    if (typeof window === "undefined") return;
     localStorage.setItem(TRACE_TYPE_FILTER_STORAGE_KEY, traceTypeFilter);
   }, [traceTypeFilter]);
 
   useEffect(() => {
-    if (typeof window === 'undefined') return;
+    if (typeof window === "undefined") return;
     localStorage.setItem(SESSION_FILTER_STORAGE_KEY, sessionFilter);
   }, [sessionFilter]);
 
@@ -290,13 +305,17 @@ function Traces() {
   }, [autoRefresh, selectedLog, fetchLogs, fetchLogDetail]);
 
   useEffect(() => {
-    if (sessionFilter === 'all') return;
-    const availableSessions = new Set(logs.map((log) => {
-      const info = parsePreview(log.preview);
-      return log.sessionId || info.session || '';
-    }).filter(Boolean));
+    if (sessionFilter === "all") return;
+    const availableSessions = new Set(
+      logs
+        .map((log) => {
+          const info = parsePreview(log.preview);
+          return log.sessionId || info.session || "";
+        })
+        .filter(Boolean),
+    );
     if (!availableSessions.has(sessionFilter)) {
-      setSessionFilter('all');
+      setSessionFilter("all");
     }
   }, [logs, sessionFilter]);
 
@@ -313,12 +332,12 @@ function Traces() {
   };
 
   const formatCost = (cost: number) => {
-    if (cost < 0.0001) return '<$0.0001';
+    if (cost < 0.0001) return "<$0.0001";
     return `$${cost.toFixed(4)}`;
   };
 
   const toggleSection = (key: string) => {
-    setExpandedSections(prev => {
+    setExpandedSections((prev) => {
       const next = new Set(prev);
       if (next.has(key)) {
         next.delete(key);
@@ -331,35 +350,46 @@ function Traces() {
 
   // Parse preview to extract session info
   const parsePreview = (preview: string) => {
-    const lines = preview.split('\n');
-    let session = '', channel = '', model = '';
+    const lines = preview.split("\n");
+    let session = "",
+      channel = "",
+      model = "";
     for (const line of lines) {
-      if (line.startsWith('Session:')) session = line.replace('Session:', '').trim();
-      if (line.startsWith('Channel:')) channel = line.replace('Channel:', '').trim();
-      if (line.startsWith('Model:')) model = line.replace('Model:', '').trim();
+      if (line.startsWith("Session:")) session = line.replace("Session:", "").trim();
+      if (line.startsWith("Channel:")) channel = line.replace("Channel:", "").trim();
+      if (line.startsWith("Model:")) model = line.replace("Model:", "").trim();
     }
     return { session, channel, model };
   };
 
   // ── JSONL Detail View ──
   const renderJsonlDetail = (detail: LogDetailJsonl) => {
-    const header = detail.lines.find(l => l.type === "header") as TraceHeader | undefined;
-    const invocation = detail.lines.find(l => l.type === "invocation") as TraceInvocation | undefined;
-    const prompt = detail.lines.find(l => l.type === "prompt") as TracePrompt | undefined;
-    const userMessage = detail.lines.find(l => l.type === "user_message") as TraceUserMessage | undefined;
-    const memorySearch = detail.lines.find(l => l.type === "memory_search") as TraceMemorySearch | undefined;
-    const currentContextFilter = detail.lines.find(l => l.type === "current_context_filter") as TraceCurrentContextFilter | undefined;
-    const autoClassifier = detail.lines.find(l => l.type === "auto_classifier") as TraceAutoClassifier | undefined;
-    const embeddingResult = detail.lines.find(l => l.type === "embedding_result") as TraceEmbeddingResult | undefined;
-    const profileUpdate = detail.lines.find(l => l.type === "profile_update") as TraceProfileUpdate | undefined;
-    const footer = detail.lines.find(l => l.type === "footer") as TraceFooter | undefined;
-    
+    const header = detail.lines.find((l) => l.type === "header") as TraceHeader | undefined;
+    const invocation = detail.lines.find((l) => l.type === "invocation") as
+      TraceInvocation | undefined;
+    const prompt = detail.lines.find((l) => l.type === "prompt") as TracePrompt | undefined;
+    const userMessage = detail.lines.find((l) => l.type === "user_message") as
+      TraceUserMessage | undefined;
+    const memorySearch = detail.lines.find((l) => l.type === "memory_search") as
+      TraceMemorySearch | undefined;
+    const currentContextFilter = detail.lines.find((l) => l.type === "current_context_filter") as
+      TraceCurrentContextFilter | undefined;
+    const autoClassifier = detail.lines.find((l) => l.type === "auto_classifier") as
+      TraceAutoClassifier | undefined;
+    const embeddingResult = detail.lines.find((l) => l.type === "embedding_result") as
+      TraceEmbeddingResult | undefined;
+    const profileUpdate = detail.lines.find((l) => l.type === "profile_update") as
+      TraceProfileUpdate | undefined;
+    const footer = detail.lines.find((l) => l.type === "footer") as TraceFooter | undefined;
+
     // Get all events (raw + normalized) and filter based on toggle
     // Backward compat: old traces used "raw"/"normalized"/"harness_event" type names
     const rawTypes = new Set(["raw_event", "raw", "harness_event"]);
     const normTypes = new Set(["normalized_event", "normalized"]);
-    const allEvents = detail.lines.filter(l => rawTypes.has(l.type) || normTypes.has(l.type)) as (TraceRawEvent | TraceNormalizedEvent)[];
-    const filteredEvents = showRaw ? allEvents : allEvents.filter(e => normTypes.has(e.type));
+    const allEvents = detail.lines.filter((l) => rawTypes.has(l.type) || normTypes.has(l.type)) as (
+      TraceRawEvent | TraceNormalizedEvent
+    )[];
+    const filteredEvents = showRaw ? allEvents : allEvents.filter((e) => normTypes.has(e.type));
 
     return (
       <div className="p-4 space-y-4">
@@ -382,23 +412,39 @@ function Traces() {
                 {new Date(header.timestamp).toLocaleString()}
               </span>
               {footer && (
-                <span className={`ml-auto px-2 py-0.5 rounded text-xs ${footer.success ? 'bg-green-500/10 text-green-400' : 'bg-red-500/10 text-red-400'}`}>
-                  {footer.success ? '✓ Success' : '✗ Error'}
+                <span
+                  className={`ml-auto px-2 py-0.5 rounded text-xs ${footer.success ? "bg-green-500/10 text-green-400" : "bg-red-500/10 text-red-400"}`}
+                >
+                  {footer.success ? "✓ Success" : "✗ Error"}
                 </span>
               )}
             </div>
-            <div className="text-neutral-300 font-mono text-sm mt-2">
-              {header.session_id}
-            </div>
+            <div className="text-neutral-300 font-mono text-sm mt-2">{header.session_id}</div>
             {footer && (
               <div className="flex items-center gap-4 mt-3 text-xs text-neutral-500 flex-wrap">
-                <span>Duration: <span className="text-neutral-300">{formatMs(footer.duration_ms)}</span></span>
-                <span>Messages: <span className="text-neutral-300">{footer.message_count}</span></span>
-                <span>Tool calls: <span className="text-neutral-300">{footer.tool_calls}</span></span>
+                <span>
+                  Duration: <span className="text-neutral-300">{formatMs(footer.duration_ms)}</span>
+                </span>
+                <span>
+                  Messages: <span className="text-neutral-300">{footer.message_count}</span>
+                </span>
+                <span>
+                  Tool calls: <span className="text-neutral-300">{footer.tool_calls}</span>
+                </span>
                 {footer.usage && (
                   <>
-                    <span>Tokens: <span className="text-neutral-300">{footer.usage.totalTokens.toLocaleString()}</span></span>
-                    <span>Cost: <span className="text-neutral-300">${footer.usage.cost.total.toFixed(4)}</span></span>
+                    <span>
+                      Tokens:{" "}
+                      <span className="text-neutral-300">
+                        {footer.usage.totalTokens.toLocaleString()}
+                      </span>
+                    </span>
+                    <span>
+                      Cost:{" "}
+                      <span className="text-neutral-300">
+                        ${footer.usage.cost.total.toFixed(4)}
+                      </span>
+                    </span>
                   </>
                 )}
               </div>
@@ -411,12 +457,14 @@ function Traces() {
           <div className="bg-neutral-900 border border-neutral-800 rounded-lg overflow-hidden">
             <button
               className="w-full px-4 py-2 flex items-center justify-between text-left bg-neutral-800/50 hover:bg-neutral-800 transition-colors"
-              onClick={() => toggleSection('invocation')}
+              onClick={() => toggleSection("invocation")}
             >
               <span className="text-sm font-medium text-neutral-300">CLI Command</span>
-              <span className="text-neutral-500">{expandedSections.has('invocation') ? '−' : '+'}</span>
+              <span className="text-neutral-500">
+                {expandedSections.has("invocation") ? "−" : "+"}
+              </span>
             </button>
-            {expandedSections.has('invocation') && (
+            {expandedSections.has("invocation") && (
               <pre className="p-4 text-xs text-neutral-400 font-mono overflow-x-auto whitespace-pre-wrap break-all">
                 {invocation.command}
               </pre>
@@ -429,12 +477,15 @@ function Traces() {
           <div className="bg-blue-950/30 border border-blue-900/50 rounded-lg p-4">
             <div className="text-xs text-blue-400 mb-2 font-medium">User Message</div>
             <div className="text-neutral-200 whitespace-pre-wrap break-words">
-              {userMessage.content || '(empty)'}
+              {userMessage.content || "(empty)"}
             </div>
             {userMessage.attachments && userMessage.attachments.length > 0 && (
               <div className="mt-2 flex flex-wrap gap-2">
                 {userMessage.attachments.map((a, i) => (
-                  <span key={i} className="bg-blue-900/30 text-blue-300 px-2 py-0.5 rounded text-xs">
+                  <span
+                    key={i}
+                    className="bg-blue-900/30 text-blue-300 px-2 py-0.5 rounded text-xs"
+                  >
                     📎 {a.type}: {a.path}
                   </span>
                 ))}
@@ -448,11 +499,21 @@ function Traces() {
           <div className="bg-neutral-900 border border-neutral-800 rounded-lg p-4">
             <div className="text-xs text-neutral-500 mb-2 font-medium">Current Context Filter</div>
             <div className="flex flex-wrap gap-2 text-xs">
-              <span className="bg-neutral-800 text-neutral-300 px-2 py-1 rounded font-mono">excludeEmbedded: {String(currentContextFilter.excludeEmbedded)}</span>
-              <span className="bg-neutral-800 text-neutral-300 px-2 py-1 rounded font-mono">lastEmbeddedMsgId: {currentContextFilter.lastEmbeddedMsgId}</span>
-              <span className="bg-neutral-800 text-neutral-300 px-2 py-1 rounded font-mono">keepTail: {currentContextFilter.keepRecentEmbeddedMessages}</span>
-              <span className="bg-neutral-800 text-neutral-300 px-2 py-1 rounded font-mono">included: {currentContextFilter.rawMessagesIncluded}</span>
-              <span className="bg-neutral-800 text-neutral-300 px-2 py-1 rounded font-mono">excluded: {currentContextFilter.embeddedMessagesExcluded}</span>
+              <span className="bg-neutral-800 text-neutral-300 px-2 py-1 rounded font-mono">
+                excludeEmbedded: {String(currentContextFilter.excludeEmbedded)}
+              </span>
+              <span className="bg-neutral-800 text-neutral-300 px-2 py-1 rounded font-mono">
+                lastEmbeddedMsgId: {currentContextFilter.lastEmbeddedMsgId}
+              </span>
+              <span className="bg-neutral-800 text-neutral-300 px-2 py-1 rounded font-mono">
+                keepTail: {currentContextFilter.keepRecentEmbeddedMessages}
+              </span>
+              <span className="bg-neutral-800 text-neutral-300 px-2 py-1 rounded font-mono">
+                included: {currentContextFilter.rawMessagesIncluded}
+              </span>
+              <span className="bg-neutral-800 text-neutral-300 px-2 py-1 rounded font-mono">
+                excluded: {currentContextFilter.embeddedMessagesExcluded}
+              </span>
             </div>
           </div>
         )}
@@ -462,12 +523,14 @@ function Traces() {
           <div className="bg-neutral-900 border border-neutral-800 rounded-lg overflow-hidden">
             <button
               className="w-full px-4 py-2 flex items-center justify-between text-left bg-neutral-800/50 hover:bg-neutral-800 transition-colors"
-              onClick={() => toggleSection('memory-search')}
+              onClick={() => toggleSection("memory-search")}
             >
               <span className="text-sm font-medium text-neutral-300 flex items-center gap-2">
                 🧠 Memory Search
                 {memorySearch.skipped ? (
-                  <span className="text-neutral-500 font-normal text-xs">skipped — {memorySearch.skipped}</span>
+                  <span className="text-neutral-500 font-normal text-xs">
+                    skipped — {memorySearch.skipped}
+                  </span>
                 ) : (
                   <>
                     <span className="text-neutral-500 font-normal text-xs">
@@ -479,39 +542,82 @@ function Traces() {
                   </>
                 )}
               </span>
-              <span className="text-neutral-500">{expandedSections.has('memory-search') ? '−' : '+'}</span>
+              <span className="text-neutral-500">
+                {expandedSections.has("memory-search") ? "−" : "+"}
+              </span>
             </button>
-            {expandedSections.has('memory-search') && (
+            {expandedSections.has("memory-search") && (
               <div className="p-4 space-y-3">
                 <div className="text-xs text-neutral-500 space-y-2">
                   {memorySearch.original_query && (
-                    <div>Original: <span className="text-neutral-300 font-mono">"{memorySearch.original_query}"</span></div>
+                    <div>
+                      Original:{" "}
+                      <span className="text-neutral-300 font-mono">
+                        "{memorySearch.original_query}"
+                      </span>
+                    </div>
                   )}
                   {memorySearch.contextual_query && (
-                    <div>Contextual: <span className="text-violet-300 font-mono whitespace-pre-wrap">"{memorySearch.contextual_query}"</span></div>
+                    <div>
+                      Contextual:{" "}
+                      <span className="text-violet-300 font-mono whitespace-pre-wrap">
+                        "{memorySearch.contextual_query}"
+                      </span>
+                    </div>
                   )}
                   {memorySearch.contextualizer_duration_ms !== undefined && (
-                    <div>Contextualizer: <span className="text-neutral-300 font-mono">{formatMs(memorySearch.contextualizer_duration_ms)}</span>{memorySearch.contextualizer_skipped ? <span className="text-neutral-600"> — {memorySearch.contextualizer_skipped}</span> : null}</div>
+                    <div>
+                      Contextualizer:{" "}
+                      <span className="text-neutral-300 font-mono">
+                        {formatMs(memorySearch.contextualizer_duration_ms)}
+                      </span>
+                      {memorySearch.contextualizer_skipped ? (
+                        <span className="text-neutral-600">
+                          {" "}
+                          — {memorySearch.contextualizer_skipped}
+                        </span>
+                      ) : null}
+                    </div>
                   )}
-                  <div>Search text: <span className="text-neutral-300 font-mono whitespace-pre-wrap">"{memorySearch.query}"</span></div>
+                  <div>
+                    Search text:{" "}
+                    <span className="text-neutral-300 font-mono whitespace-pre-wrap">
+                      "{memorySearch.query}"
+                    </span>
+                  </div>
                 </div>
                 {memorySearch.results.length > 0 ? (
                   <div className="space-y-2">
                     {memorySearch.results.map((r, i) => (
                       <div
                         key={r.id}
-                        className={`rounded-lg p-3 border ${i < memorySearch.results_injected ? 'bg-emerald-950/20 border-emerald-900/40' : 'bg-neutral-800/30 border-neutral-700/30'}`}
+                        className={`rounded-lg p-3 border ${i < memorySearch.results_injected ? "bg-emerald-950/20 border-emerald-900/40" : "bg-neutral-800/30 border-neutral-700/30"}`}
                       >
                         <div className="flex items-center gap-2 flex-wrap mb-1.5">
-                          <span className={`text-xs px-1.5 py-0.5 rounded font-mono ${i < memorySearch.results_injected ? 'bg-emerald-900/40 text-emerald-400' : 'bg-neutral-700/50 text-neutral-500'}`}>
+                          <span
+                            className={`text-xs px-1.5 py-0.5 rounded font-mono ${i < memorySearch.results_injected ? "bg-emerald-900/40 text-emerald-400" : "bg-neutral-700/50 text-neutral-500"}`}
+                          >
                             #{i + 1}
                           </span>
                           <span className="text-xs text-neutral-400 font-mono">{r.day}</span>
-                          <span className="text-xs text-neutral-600 font-mono truncate">{r.session_id}</span>
+                          <span className="text-xs text-neutral-600 font-mono truncate">
+                            {r.session_id}
+                          </span>
                           <div className="ml-auto flex items-center gap-2">
-                            <span className="text-xs text-neutral-600" title="RRF Score">RRF: <span className="text-neutral-400">{r.rrf_score.toFixed(4)}</span></span>
-                            <span className="text-xs text-neutral-600" title="Embedding Score">EMB: <span className="text-neutral-400">{r.embedding_score.toFixed(3)}</span></span>
-                            <span className="text-xs text-neutral-600" title="BM25 Score">BM25: <span className="text-neutral-400">{r.bm25_score.toFixed(2)}</span></span>
+                            <span className="text-xs text-neutral-600" title="RRF Score">
+                              RRF:{" "}
+                              <span className="text-neutral-400">{r.rrf_score.toFixed(4)}</span>
+                            </span>
+                            <span className="text-xs text-neutral-600" title="Embedding Score">
+                              EMB:{" "}
+                              <span className="text-neutral-400">
+                                {r.embedding_score.toFixed(3)}
+                              </span>
+                            </span>
+                            <span className="text-xs text-neutral-600" title="BM25 Score">
+                              BM25:{" "}
+                              <span className="text-neutral-400">{r.bm25_score.toFixed(2)}</span>
+                            </span>
                           </div>
                         </div>
                         {r.context && (
@@ -546,7 +652,9 @@ function Traces() {
                   </>
                 ) : (
                   <>
-                    <span className="text-neutral-500 font-normal text-xs">skipped — {autoClassifier.skipped || 'not run'}</span>
+                    <span className="text-neutral-500 font-normal text-xs">
+                      skipped — {autoClassifier.skipped || "not run"}
+                    </span>
                     <span className="text-neutral-600 font-normal text-xs">
                       ({formatMs(autoClassifier.duration_ms)})
                     </span>
@@ -557,7 +665,8 @@ function Traces() {
                 <button
                   className="text-xs text-blue-400 hover:text-blue-300 font-mono bg-blue-500/10 hover:bg-blue-500/20 px-2 py-1 rounded transition-colors whitespace-nowrap"
                   onClick={() => {
-                    const filename = autoClassifier.traceFile!.split('/').pop() || autoClassifier.traceFile!;
+                    const filename =
+                      autoClassifier.traceFile!.split("/").pop() || autoClassifier.traceFile!;
                     setSearchParams({ file: filename });
                   }}
                 >
@@ -565,35 +674,58 @@ function Traces() {
                 </button>
               )}
             </div>
-            {(autoClassifier.explanation || autoClassifier.selectedModel || autoClassifier.currentContextLimit !== undefined || autoClassifier.currentContextIncludeWorkingContext !== undefined || autoClassifier.crossContextLimit !== undefined || autoClassifier.crossContextMaxSessions !== undefined || autoClassifier.crossContextIncludeWorkingContext !== undefined || autoClassifier.recalledMemoryLimit !== undefined) && (
+            {(autoClassifier.explanation ||
+              autoClassifier.selectedModel ||
+              autoClassifier.currentContextLimit !== undefined ||
+              autoClassifier.currentContextIncludeWorkingContext !== undefined ||
+              autoClassifier.crossContextLimit !== undefined ||
+              autoClassifier.crossContextMaxSessions !== undefined ||
+              autoClassifier.crossContextIncludeWorkingContext !== undefined ||
+              autoClassifier.recalledMemoryLimit !== undefined) && (
               <div className="p-4 space-y-3 border-t border-neutral-800">
                 {autoClassifier.explanation && (
                   <div>
                     <div className="text-xs text-neutral-500 mb-1">Reasoning</div>
-                    <div className="text-sm text-neutral-300 whitespace-pre-wrap break-words">{autoClassifier.explanation}</div>
+                    <div className="text-sm text-neutral-300 whitespace-pre-wrap break-words">
+                      {autoClassifier.explanation}
+                    </div>
                   </div>
                 )}
                 <div className="flex flex-wrap gap-2 text-xs">
                   {autoClassifier.selectedModel && (
-                    <span className="bg-amber-500/10 text-amber-300 px-2 py-1 rounded font-mono">model: {autoClassifier.selectedModel}</span>
+                    <span className="bg-amber-500/10 text-amber-300 px-2 py-1 rounded font-mono">
+                      model: {autoClassifier.selectedModel}
+                    </span>
                   )}
                   {autoClassifier.currentContextLimit !== undefined && (
-                    <span className="bg-neutral-800 text-neutral-300 px-2 py-1 rounded font-mono">context: {autoClassifier.currentContextLimit}</span>
+                    <span className="bg-neutral-800 text-neutral-300 px-2 py-1 rounded font-mono">
+                      context: {autoClassifier.currentContextLimit}
+                    </span>
                   )}
                   {autoClassifier.currentContextIncludeWorkingContext !== undefined && (
-                    <span className="bg-neutral-800 text-neutral-300 px-2 py-1 rounded font-mono">working: {String(autoClassifier.currentContextIncludeWorkingContext)}</span>
+                    <span className="bg-neutral-800 text-neutral-300 px-2 py-1 rounded font-mono">
+                      working: {String(autoClassifier.currentContextIncludeWorkingContext)}
+                    </span>
                   )}
                   {autoClassifier.crossContextLimit !== undefined && (
-                    <span className="bg-neutral-800 text-neutral-300 px-2 py-1 rounded font-mono">cross: {autoClassifier.crossContextLimit}</span>
+                    <span className="bg-neutral-800 text-neutral-300 px-2 py-1 rounded font-mono">
+                      cross: {autoClassifier.crossContextLimit}
+                    </span>
                   )}
                   {autoClassifier.crossContextMaxSessions !== undefined && (
-                    <span className="bg-neutral-800 text-neutral-300 px-2 py-1 rounded font-mono">crossSessions: {autoClassifier.crossContextMaxSessions}</span>
+                    <span className="bg-neutral-800 text-neutral-300 px-2 py-1 rounded font-mono">
+                      crossSessions: {autoClassifier.crossContextMaxSessions}
+                    </span>
                   )}
                   {autoClassifier.crossContextIncludeWorkingContext !== undefined && (
-                    <span className="bg-neutral-800 text-neutral-300 px-2 py-1 rounded font-mono">crossWorking: {String(autoClassifier.crossContextIncludeWorkingContext)}</span>
+                    <span className="bg-neutral-800 text-neutral-300 px-2 py-1 rounded font-mono">
+                      crossWorking: {String(autoClassifier.crossContextIncludeWorkingContext)}
+                    </span>
                   )}
                   {autoClassifier.recalledMemoryLimit !== undefined && (
-                    <span className="bg-neutral-800 text-neutral-300 px-2 py-1 rounded font-mono">memory: {autoClassifier.recalledMemoryLimit}</span>
+                    <span className="bg-neutral-800 text-neutral-300 px-2 py-1 rounded font-mono">
+                      memory: {autoClassifier.recalledMemoryLimit}
+                    </span>
                   )}
                 </div>
               </div>
@@ -606,16 +738,19 @@ function Traces() {
           <div className="bg-neutral-900 border border-neutral-800 rounded-lg overflow-hidden">
             <button
               className="w-full px-4 py-2 flex items-center justify-between text-left bg-neutral-800/50 hover:bg-neutral-800 transition-colors"
-              onClick={() => toggleSection('embedding-result')}
+              onClick={() => toggleSection("embedding-result")}
             >
               <span className="text-sm font-medium text-neutral-300 flex items-center gap-2">
                 🧬 Embedding Result
                 {embeddingResult.skipped ? (
-                  <span className="text-neutral-500 font-normal text-xs">skipped — {embeddingResult.skipped}</span>
+                  <span className="text-neutral-500 font-normal text-xs">
+                    skipped — {embeddingResult.skipped}
+                  </span>
                 ) : (
                   <>
                     <span className="text-neutral-500 font-normal text-xs">
-                      {embeddingResult.chunks_created} chunk{embeddingResult.chunks_created === 1 ? '' : 's'}
+                      {embeddingResult.chunks_created} chunk
+                      {embeddingResult.chunks_created === 1 ? "" : "s"}
                     </span>
                     <span className="text-neutral-600 font-normal text-xs">
                       ({formatMs(embeddingResult.duration_ms)})
@@ -623,27 +758,41 @@ function Traces() {
                   </>
                 )}
               </span>
-              <span className="text-neutral-500">{expandedSections.has('embedding-result') ? '−' : '+'}</span>
+              <span className="text-neutral-500">
+                {expandedSections.has("embedding-result") ? "−" : "+"}
+              </span>
             </button>
-            {expandedSections.has('embedding-result') && (
+            {expandedSections.has("embedding-result") && (
               <div className="p-4 space-y-3">
                 <div className="text-xs text-neutral-500">
-                  Unembedded buffer: <span className="text-neutral-300 font-mono">{embeddingResult.unembedded_messages} msgs</span>
+                  Unembedded buffer:{" "}
+                  <span className="text-neutral-300 font-mono">
+                    {embeddingResult.unembedded_messages} msgs
+                  </span>
                   <span className="text-neutral-600"> • </span>
-                  <span className="text-neutral-300 font-mono">{embeddingResult.unembedded_chars} chars</span>
+                  <span className="text-neutral-300 font-mono">
+                    {embeddingResult.unembedded_chars} chars
+                  </span>
                 </div>
                 {embeddingResult.chunks.length > 0 ? (
                   <div className="space-y-2">
                     {embeddingResult.chunks.map((c, i) => (
-                      <div key={`${c.day}-${c.chunk_index}-${i}`} className="rounded-lg p-3 border bg-neutral-800/30 border-neutral-700/30">
+                      <div
+                        key={`${c.day}-${c.chunk_index}-${i}`}
+                        className="rounded-lg p-3 border bg-neutral-800/30 border-neutral-700/30"
+                      >
                         <div className="flex items-center gap-2 flex-wrap mb-1.5">
                           <span className="text-xs px-1.5 py-0.5 rounded font-mono bg-neutral-700/50 text-neutral-300">
                             #{c.chunk_index}
                           </span>
                           <span className="text-xs text-neutral-400 font-mono">{c.day}</span>
                           <div className="ml-auto flex items-center gap-2">
-                            <span className="text-xs text-neutral-600">msgs: <span className="text-neutral-300">{c.msg_count}</span></span>
-                            <span className="text-xs text-neutral-600">chars: <span className="text-neutral-300">{c.char_count}</span></span>
+                            <span className="text-xs text-neutral-600">
+                              msgs: <span className="text-neutral-300">{c.msg_count}</span>
+                            </span>
+                            <span className="text-xs text-neutral-600">
+                              chars: <span className="text-neutral-300">{c.char_count}</span>
+                            </span>
                           </div>
                         </div>
                         <div className="text-xs text-violet-400/70 italic">{c.context}</div>
@@ -665,7 +814,9 @@ function Traces() {
               <span className="text-sm font-medium text-neutral-300 flex items-center gap-2">
                 👤 Profile Update
                 {profileUpdate.skipped ? (
-                  <span className="text-neutral-500 font-normal text-xs">skipped — {profileUpdate.skipped}</span>
+                  <span className="text-neutral-500 font-normal text-xs">
+                    skipped — {profileUpdate.skipped}
+                  </span>
                 ) : profileUpdate.updated ? (
                   <>
                     <span className="text-emerald-400 font-normal text-xs">✓ Updated</span>
@@ -688,7 +839,8 @@ function Traces() {
                   className="text-xs text-blue-400 hover:text-blue-300 font-mono bg-blue-500/10 hover:bg-blue-500/20 px-2 py-1 rounded transition-colors"
                   onClick={() => {
                     // Extract just the filename from the path (e.g., "logs/trace-profile-xxx.jsonl" -> "trace-profile-xxx.jsonl")
-                    const filename = profileUpdate.traceFile!.split('/').pop() || profileUpdate.traceFile!;
+                    const filename =
+                      profileUpdate.traceFile!.split("/").pop() || profileUpdate.traceFile!;
                     setSearchParams({ file: filename });
                   }}
                 >
@@ -696,57 +848,71 @@ function Traces() {
                 </button>
               )}
             </div>
-            
+
             {/* Legacy: inline events for old traces that don't have traceFile */}
-            {!profileUpdate.traceFile && profileUpdate.events && profileUpdate.events.length > 0 && (
-              <div className="p-4 space-y-3 border-t border-neutral-800">
-                <div className="text-xs font-medium text-neutral-400 mb-2">Event Stream ({profileUpdate.events.length} events)</div>
-                <div className="space-y-2">
-                  {profileUpdate.events.map((event, i) => (
-                    <div key={i} className="bg-neutral-800/50 rounded p-2">
-                      <div className="flex items-center gap-2 mb-1">
-                        <span className={`text-xs px-1.5 py-0.5 rounded font-mono ${
-                          event.kind === 'tool_start' ? 'bg-blue-500/20 text-blue-400' :
-                          event.kind === 'tool_end' ? (event.success ? 'bg-emerald-500/20 text-emerald-400' : 'bg-red-500/20 text-red-400') :
-                          event.kind === 'assistant' ? 'bg-violet-500/20 text-violet-400' :
-                          event.kind === 'error' ? 'bg-red-500/20 text-red-400' :
-                          'bg-neutral-700 text-neutral-400'
-                        }`}>
-                          {event.kind}
-                        </span>
-                        {event.tool && (
-                          <span className="text-xs text-neutral-500 font-mono">{event.tool}</span>
+            {!profileUpdate.traceFile &&
+              profileUpdate.events &&
+              profileUpdate.events.length > 0 && (
+                <div className="p-4 space-y-3 border-t border-neutral-800">
+                  <div className="text-xs font-medium text-neutral-400 mb-2">
+                    Event Stream ({profileUpdate.events.length} events)
+                  </div>
+                  <div className="space-y-2">
+                    {profileUpdate.events.map((event, i) => (
+                      <div key={i} className="bg-neutral-800/50 rounded p-2">
+                        <div className="flex items-center gap-2 mb-1">
+                          <span
+                            className={`text-xs px-1.5 py-0.5 rounded font-mono ${
+                              event.kind === "tool_start"
+                                ? "bg-blue-500/20 text-blue-400"
+                                : event.kind === "tool_end"
+                                  ? event.success
+                                    ? "bg-emerald-500/20 text-emerald-400"
+                                    : "bg-red-500/20 text-red-400"
+                                  : event.kind === "assistant"
+                                    ? "bg-violet-500/20 text-violet-400"
+                                    : event.kind === "error"
+                                      ? "bg-red-500/20 text-red-400"
+                                      : "bg-neutral-700 text-neutral-400"
+                            }`}
+                          >
+                            {event.kind}
+                          </span>
+                          {event.tool && (
+                            <span className="text-xs text-neutral-500 font-mono">{event.tool}</span>
+                          )}
+                        </div>
+
+                        {/* Tool Start — show args */}
+                        {event.kind === "tool_start" && event.args && (
+                          <pre className="text-xs text-neutral-400 bg-neutral-900 rounded p-2 overflow-x-auto whitespace-pre-wrap max-h-40">
+                            {JSON.stringify(event.args, null, 2)}
+                          </pre>
+                        )}
+
+                        {/* Tool End — show result (truncated) */}
+                        {event.kind === "tool_end" && event.result && (
+                          <pre className="text-xs text-neutral-400 bg-neutral-900 rounded p-2 overflow-x-auto whitespace-pre-wrap max-h-40">
+                            {event.result.length > 1000
+                              ? event.result.slice(0, 1000) + "\n... (truncated)"
+                              : event.result}
+                          </pre>
+                        )}
+
+                        {/* Assistant — show content */}
+                        {event.kind === "assistant" && event.content && (
+                          <div className="text-xs text-neutral-300 mt-1">{event.content}</div>
+                        )}
+
+                        {/* Error — show message */}
+                        {event.kind === "error" && event.message && (
+                          <div className="text-xs text-red-400 mt-1">{event.message}</div>
                         )}
                       </div>
-                      
-                      {/* Tool Start — show args */}
-                      {event.kind === 'tool_start' && event.args && (
-                        <pre className="text-xs text-neutral-400 bg-neutral-900 rounded p-2 overflow-x-auto whitespace-pre-wrap max-h-40">
-                          {JSON.stringify(event.args, null, 2)}
-                        </pre>
-                      )}
-                      
-                      {/* Tool End — show result (truncated) */}
-                      {event.kind === 'tool_end' && event.result && (
-                        <pre className="text-xs text-neutral-400 bg-neutral-900 rounded p-2 overflow-x-auto whitespace-pre-wrap max-h-40">
-                          {event.result.length > 1000 ? event.result.slice(0, 1000) + '\n... (truncated)' : event.result}
-                        </pre>
-                      )}
-                      
-                      {/* Assistant — show content */}
-                      {event.kind === 'assistant' && event.content && (
-                        <div className="text-xs text-neutral-300 mt-1">{event.content}</div>
-                      )}
-                      
-                      {/* Error — show message */}
-                      {event.kind === 'error' && event.message && (
-                        <div className="text-xs text-red-400 mt-1">{event.message}</div>
-                      )}
-                    </div>
-                  ))}
+                    ))}
+                  </div>
                 </div>
-              </div>
-            )}
+              )}
           </div>
         )}
 
@@ -755,14 +921,17 @@ function Traces() {
           <div className="bg-neutral-900 border border-neutral-800 rounded-lg overflow-hidden">
             <button
               className="w-full px-4 py-2 flex items-center justify-between text-left bg-neutral-800/50 hover:bg-neutral-800 transition-colors"
-              onClick={() => toggleSection('prompt')}
+              onClick={() => toggleSection("prompt")}
             >
               <span className="text-sm font-medium text-neutral-300">
-                System Prompt <span className="text-neutral-500 font-normal">({prompt.length.toLocaleString()} chars)</span>
+                System Prompt{" "}
+                <span className="text-neutral-500 font-normal">
+                  ({prompt.length.toLocaleString()} chars)
+                </span>
               </span>
-              <span className="text-neutral-500">{expandedSections.has('prompt') ? '−' : '+'}</span>
+              <span className="text-neutral-500">{expandedSections.has("prompt") ? "−" : "+"}</span>
             </button>
-            {expandedSections.has('prompt') && (
+            {expandedSections.has("prompt") && (
               <pre className="p-4 text-xs text-neutral-400 font-mono overflow-x-auto whitespace-pre-wrap break-words max-h-[500px] overflow-y-auto">
                 {prompt.content}
               </pre>
@@ -786,9 +955,7 @@ function Traces() {
               Show raw
             </label>
           </div>
-          <div className="divide-y divide-neutral-800">
-            {renderEvents(filteredEvents)}
-          </div>
+          <div className="divide-y divide-neutral-800">{renderEvents(filteredEvents)}</div>
         </div>
 
         {/* Error */}
@@ -807,29 +974,29 @@ function Traces() {
     return events.map((e, i) => {
       const key = `event-${i}`;
       const isExpanded = expandedSections.has(key);
-      
+
       const isRaw = e.type === "raw_event";
-      
+
       // Try to get an event label - don't assume anything about the structure
-      let eventLabel = '—';
-      let eventStr = '';
-      
+      let eventLabel = "—";
+      let eventStr = "";
+
       try {
         // Try to stringify it - might not be JSON
-        if (typeof e.event === 'string') {
+        if (typeof e.event === "string") {
           eventStr = e.event;
         } else if (e.event === null || e.event === undefined) {
           eventStr = String(e.event);
         } else {
           eventStr = JSON.stringify(e.event, null, 2);
         }
-        
+
         // Try to extract a type/kind label if it's an object with that property
-        if (e.event && typeof e.event === 'object' && !Array.isArray(e.event)) {
+        if (e.event && typeof e.event === "object" && !Array.isArray(e.event)) {
           const obj = e.event as Record<string, unknown>;
-          if (typeof obj.type === 'string') {
+          if (typeof obj.type === "string") {
             eventLabel = obj.type;
-          } else if (typeof obj.kind === 'string') {
+          } else if (typeof obj.kind === "string") {
             eventLabel = obj.kind;
           }
         }
@@ -837,29 +1004,28 @@ function Traces() {
         // If stringify fails, just show what we can
         eventStr = String(e.event);
       }
-      
-      const preview = eventStr.length > 100 ? eventStr.slice(0, 100) + '…' : eventStr;
+
+      const preview = eventStr.length > 100 ? eventStr.slice(0, 100) + "…" : eventStr;
 
       return (
-        <div 
-          key={key} 
-          className="px-4 py-2 hover:bg-neutral-800/30"
-        >
+        <div key={key} className="px-4 py-2 hover:bg-neutral-800/30">
           <div
             className="flex items-center gap-2 cursor-pointer select-none"
             onClick={() => toggleSection(key)}
           >
             <span className="text-xs text-neutral-600 font-mono w-16">{formatMs(e.ts)}</span>
-            <span className={`text-xs px-2 py-0.5 rounded font-mono ${isRaw ? 'bg-neutral-700 text-neutral-400' : 'bg-blue-900/50 text-blue-400'}`}>
-              {isRaw ? 'raw' : 'norm'}
+            <span
+              className={`text-xs px-2 py-0.5 rounded font-mono ${isRaw ? "bg-neutral-700 text-neutral-400" : "bg-blue-900/50 text-blue-400"}`}
+            >
+              {isRaw ? "raw" : "norm"}
             </span>
-            <span className="text-xs text-neutral-300 font-mono">
-              {eventLabel}
-            </span>
+            <span className="text-xs text-neutral-300 font-mono">{eventLabel}</span>
             {!isExpanded && (
-              <span className="text-xs text-neutral-600 font-mono truncate flex-1">{preview.replace(/\n/g, ' ')}</span>
+              <span className="text-xs text-neutral-600 font-mono truncate flex-1">
+                {preview.replace(/\n/g, " ")}
+              </span>
             )}
-            <span className="text-neutral-600 text-xs">{isExpanded ? '▼' : '▶'}</span>
+            <span className="text-neutral-600 text-xs">{isExpanded ? "▼" : "▶"}</span>
           </div>
           {isExpanded && (
             <pre className="mt-2 text-xs text-neutral-400 font-mono overflow-x-auto whitespace-pre-wrap break-words bg-neutral-800/50 p-2 rounded ml-16 max-h-[400px] overflow-y-auto">
@@ -879,7 +1045,11 @@ function Traces() {
         <div className="flex items-center gap-3 px-4 py-3 border-b border-neutral-800 sticky top-0 bg-black/95 backdrop-blur z-10">
           <button
             className="bg-transparent border-none text-blue-500 text-2xl cursor-pointer px-2 py-1 leading-none hover:text-blue-400"
-            onClick={() => { setSearchParams({}); setLogDetail(null); setExpandedSections(new Set()); }}
+            onClick={() => {
+              setSearchParams({});
+              setLogDetail(null);
+              setExpandedSections(new Set());
+            }}
           >
             ‹
           </button>
@@ -918,7 +1088,7 @@ function Traces() {
   }
 
   // Compute filtered logs
-  const filteredLogs = logs.filter(log => {
+  const filteredLogs = logs.filter((log) => {
     // Filter by trace type
     if (traceTypeFilter !== "all" && log.traceType !== traceTypeFilter) {
       return false;
@@ -935,17 +1105,24 @@ function Traces() {
   });
 
   // Get unique sessions for dropdown (from unfiltered logs)
-  const uniqueSessions = [...new Set(logs.map(log => {
-    const info = parsePreview(log.preview);
-    return log.sessionId || info.session || "";
-  }).filter(Boolean))].sort();
+  const uniqueSessions = [
+    ...new Set(
+      logs
+        .map((log) => {
+          const info = parsePreview(log.preview);
+          return log.sessionId || info.session || "";
+        })
+        .filter(Boolean),
+    ),
+  ].sort();
 
   return (
     <div className="flex flex-col pb-8">
       {/* Header */}
       <div className="flex items-center gap-3 px-4 py-3 border-b border-neutral-800 sticky top-0 bg-black/95 backdrop-blur z-10">
         <h2 className="text-lg font-semibold text-white flex-1">
-          Traces ({filteredLogs.length}{filteredLogs.length !== logs.length ? ` / ${logs.length}` : ''})
+          Traces ({filteredLogs.length}
+          {filteredLogs.length !== logs.length ? ` / ${logs.length}` : ""})
         </h2>
         <div className="flex items-center gap-2">
           <label className="flex items-center gap-1.5 text-sm text-neutral-500 cursor-pointer select-none">
@@ -999,8 +1176,10 @@ function Traces() {
             className="bg-neutral-900 border border-neutral-700 rounded px-2 py-1 text-xs text-neutral-300 cursor-pointer focus:outline-none focus:border-blue-600"
           >
             <option value="all">All</option>
-            {uniqueSessions.map(session => (
-              <option key={session} value={session}>{session}</option>
+            {uniqueSessions.map((session) => (
+              <option key={session} value={session}>
+                {session}
+              </option>
             ))}
           </select>
         </div>
@@ -1039,10 +1218,10 @@ function Traces() {
                   </span>
                 )}
                 <span className="text-neutral-500 bg-neutral-800 px-2 py-0.5 rounded text-xs">
-                  {info.channel || '—'}
+                  {info.channel || "—"}
                 </span>
                 <span className="text-violet-400 bg-violet-500/10 px-2 py-0.5 rounded text-xs font-mono">
-                  {info.model || '—'}
+                  {info.model || "—"}
                 </span>
                 <span className="text-blue-400 bg-blue-500/10 px-2 py-0.5 rounded text-xs">
                   JSONL
@@ -1052,10 +1231,8 @@ function Traces() {
                     Embedding
                   </span>
                 )}
-                <span className="text-neutral-600 text-xs">
-                  {formatSize(log.size)}
-                </span>
-                {typeof log.cost === 'number' && (
+                <span className="text-neutral-600 text-xs">{formatSize(log.size)}</span>
+                {typeof log.cost === "number" && (
                   <span className="text-emerald-400 bg-emerald-500/10 px-2 py-0.5 rounded text-xs font-mono">
                     {formatCost(log.cost)}
                   </span>
@@ -1065,7 +1242,10 @@ function Traces() {
                 </span>
                 <button
                   className="w-6 h-6 flex items-center justify-center rounded border bg-neutral-900 border-neutral-700 text-red-400 hover:bg-red-950 hover:border-red-800 text-xs cursor-pointer transition-all opacity-0 group-hover:opacity-100"
-                  onClick={(e) => { e.stopPropagation(); deleteLog(log.filename); }}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    deleteLog(log.filename);
+                  }}
                   title="Delete trace"
                 >
                   ✕
@@ -1080,17 +1260,13 @@ function Traces() {
                 </div>
               )}
               {displayMessage && (
-                <div className="text-neutral-400 text-sm mt-2 line-clamp-2">
-                  {displayMessage}
-                </div>
+                <div className="text-neutral-400 text-sm mt-2 line-clamp-2">{displayMessage}</div>
               )}
             </div>
           );
         })}
         {filteredLogs.length === 0 && logs.length > 0 && (
-          <div className="text-center text-neutral-500 py-12">
-            No traces match your filters.
-          </div>
+          <div className="text-center text-neutral-500 py-12">No traces match your filters.</div>
         )}
         {logs.length === 0 && (
           <div className="text-center text-neutral-500 py-12">

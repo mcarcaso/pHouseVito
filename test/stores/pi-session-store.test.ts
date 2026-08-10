@@ -1,12 +1,5 @@
 import assert from "node:assert/strict";
-import {
-  mkdirSync,
-  mkdtempSync,
-  rmSync,
-  symlinkSync,
-  utimesSync,
-  writeFileSync,
-} from "node:fs";
+import { mkdirSync, mkdtempSync, rmSync, symlinkSync, utimesSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, it } from "node:test";
@@ -19,7 +12,12 @@ function createHarness() {
   return { root, x, store: new FilePiSessionStore() };
 }
 
-function writeSession(root: string, vitoSessionId: string, filename: string, lines: string[]): string {
+function writeSession(
+  root: string,
+  vitoSessionId: string,
+  filename: string,
+  lines: string[],
+): string {
   const directory = join(root, encodeURIComponent(vitoSessionId));
   mkdirSync(directory, { recursive: true });
   const path = join(directory, filename);
@@ -33,7 +31,10 @@ describe("FilePiSessionStore", () => {
     try {
       writeSession(root, "dashboard:test", "pi-1.jsonl", [
         JSON.stringify({ type: "session", id: "pi-1", timestamp: "2026-01-01", cwd: "/app" }),
-        JSON.stringify({ type: "message", message: { role: "user", content: [{ type: "text", text: "hello" }] } }),
+        JSON.stringify({
+          type: "message",
+          message: { role: "user", content: [{ type: "text", text: "hello" }] },
+        }),
         "not-json",
         JSON.stringify({ type: "model_change", provider: "anthropic", modelId: "sonnet" }),
       ]);
@@ -62,7 +63,7 @@ describe("FilePiSessionStore", () => {
 
       assert.deepEqual(
         store.list(x, { order: "recent" }).map((session) => session.vitoSessionId),
-        ["dashboard:two", "dashboard:one"]
+        ["dashboard:two", "dashboard:one"],
       );
       assert.equal(store.count(x, { vitoSessionIds: ["dashboard:one"] }), 1);
       assert.equal(store.list(x, { vitoSessionIds: ["dashboard:one"] }).length, 1);
@@ -81,7 +82,10 @@ describe("FilePiSessionStore", () => {
       symlinkSync(outside, join(directory, "link.jsonl"));
       writeSession(root, "dashboard:test", "session.jsonl", []);
 
-      assert.equal(store.delete(x, { ids: ["../outside.jsonl", "dashboard%3Atest/link.jsonl"] }), 0);
+      assert.equal(
+        store.delete(x, { ids: ["../outside.jsonl", "dashboard%3Atest/link.jsonl"] }),
+        0,
+      );
       assert.equal(store.delete(x, { ids: ["dashboard%3Atest/session.jsonl"] }), 1);
       assert.equal(store.count(x, {}), 0);
     } finally {

@@ -4,11 +4,7 @@ import { z } from "zod";
 import type { Context } from "../context/Context.js";
 import type { RouterService } from "./RouterService.js";
 import { xSkillStore } from "../lib/x.js";
-import {
-  emptyRouteSchema,
-  unknownRouteSchema,
-  createRawRoute,
-} from "./createRoute.js";
+import { emptyRouteSchema, unknownRouteSchema, createRawRoute } from "./createRoute.js";
 
 const skillParamsSchema = z
   .object({

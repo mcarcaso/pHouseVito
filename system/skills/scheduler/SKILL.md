@@ -18,6 +18,7 @@ Jobs are scheduled using the **global timezone** from `settings.timezone` in `vi
 ### Setting the timezone
 
 In `vito.config.json`:
+
 ```json
 {
   "settings": {
@@ -27,6 +28,7 @@ In `vito.config.json`:
 ```
 
 Or per-job (when scheduling):
+
 ```bash
 node system/skills/scheduler/index.js schedule \
   --name "london-report" \
@@ -44,6 +46,7 @@ The older CLI script at `system/skills/scheduler/index.js` talks to the dashboar
 Legacy API CLI, only if explicitly needed in an unlocked/dev environment:
 
 ### Schedule a job
+
 ```bash
 node system/skills/scheduler/index.js schedule \
   --name "morning-standup" \
@@ -52,12 +55,14 @@ node system/skills/scheduler/index.js schedule \
 ```
 
 Optional flags:
+
 - `--session "dashboard:default"` — session to route the response to
 - `--oneTime true` — job runs once and is auto-deleted
 - `--timezone "America/New_York"` — override global timezone for this job
 - `--sendCondition "Only send if temperature is below 10°C"` — suppress response if condition not met
 
 ### One-time jobs with ISO dates
+
 ```bash
 node system/skills/scheduler/index.js schedule \
   --name "reminder" \
@@ -75,11 +80,13 @@ ISO dates are interpreted in the job's effective timezone (job > global > defaul
 ✅ **Right:** Using the actual session from your current conversation context (e.g., `discord:1466899925127266325` if that's where you're talking)
 
 ### Cancel a job
+
 ```bash
 node system/skills/scheduler/index.js cancel --name "morning-standup"
 ```
 
 ### List all jobs
+
 ```bash
 node system/skills/scheduler/index.js list
 ```
@@ -114,6 +121,7 @@ Add/update jobs directly in `user/vito.config.json`:
 ```
 
 Rules for direct edits:
+
 - Preserve existing jobs.
 - Replace/remove any existing job with the same `name` before adding a new version.
 - Use the current session if Mike doesn't specify another one.
@@ -126,11 +134,13 @@ Rules for direct edits:
 Expected in locked-down production. Do not keep retrying the API CLI; edit `user/vito.config.json` directly under `cron.jobs`.
 
 **Jobs firing at wrong time?**
+
 1. Check `settings.timezone` in `vito.config.json`
 2. Run `list` to see which timezone each job is using
 3. The output shows next run time in the job's timezone
 
 **Valid timezone strings:**
+
 - `America/Toronto`, `America/New_York`, `America/Los_Angeles`
 - `Europe/London`, `Europe/Paris`, `Asia/Tokyo`
 - Full list: https://en.wikipedia.org/wiki/List_of_tz_database_time_zones

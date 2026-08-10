@@ -15,7 +15,7 @@ export class ObjectContext implements Context {
 
   constructor(
     private readonly factories: ContextFactoryMap,
-    private readonly parent?: Context
+    private readonly parent?: Context,
   ) {}
 
   get(key: string): unknown {

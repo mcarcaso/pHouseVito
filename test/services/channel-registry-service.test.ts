@@ -17,7 +17,7 @@ import type { SessionRow } from "../../src/stores/sessions/SessionStore.js";
 
 function createManagedChannel(
   name: "discord" | "telegram",
-  resolveAlias: (session: SessionRow) => string | undefined
+  resolveAlias: (session: SessionRow) => string | undefined,
 ): ChannelService {
   return {
     name,
@@ -29,7 +29,9 @@ function createManagedChannel(
     start: async () => undefined,
     stop: async () => undefined,
     listen: async () => () => undefined,
-    createOutputHandler: (_x: Context, _event: InboundEvent): OutputHandler => ({ relay: async () => undefined }),
+    createOutputHandler: (_x: Context, _event: InboundEvent): OutputHandler => ({
+      relay: async () => undefined,
+    }),
   };
 }
 
@@ -46,7 +48,7 @@ function createHarness() {
 
 function createSession(
   x: ObjectContext,
-  args: { id: string; channel: string; target: string; alias?: string | null }
+  args: { id: string; channel: string; target: string; alias?: string | null },
 ): void {
   xSessionStore(x).create(x, {
     id: args.id,
@@ -77,7 +79,7 @@ describe("DefaultChannelRegistryService", () => {
       service.register(x, { ...channel, management: undefined });
       await assert.rejects(
         () => service.registerCommands(x, "discord"),
-        ChannelManagementNotSupportedError
+        ChannelManagementNotSupportedError,
       );
     } finally {
       db.close();
@@ -96,11 +98,14 @@ describe("DefaultChannelRegistryService", () => {
         target: "existing",
         alias: "Existing",
       });
-      service.register(x, createManagedChannel("discord", (session) => {
-        if (session.channel_target === "guild") return "Server / general";
-        if (session.channel_target === "dm") return "Direct Message";
-        return undefined;
-      }));
+      service.register(
+        x,
+        createManagedChannel("discord", (session) => {
+          if (session.channel_target === "guild") return "Server / general";
+          if (session.channel_target === "dm") return "Direct Message";
+          return undefined;
+        }),
+      );
 
       assert.deepEqual(await service.registerCommands(x, "discord"), { success: true, count: 5 });
       const result = await service.generateAliases(x, "discord");

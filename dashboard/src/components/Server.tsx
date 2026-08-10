@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect } from "react";
 
 interface ServerStatus {
   uptime: number;
@@ -21,7 +21,7 @@ function formatUptime(seconds: number): string {
   if (h > 0) parts.push(`${h}h`);
   if (m > 0) parts.push(`${m}m`);
   parts.push(`${s}s`);
-  return parts.join(' ');
+  return parts.join(" ");
 }
 
 function formatBytes(bytes: number): string {
@@ -35,8 +35,8 @@ export default function Server() {
   const [confirmRestart, setConfirmRestart] = useState(false);
 
   const fetchStatus = () => {
-    fetch('/api/server/status')
-      .then(r => r.json())
+    fetch("/api/server/status")
+      .then((r) => r.json())
       .then(setStatus)
       .catch(() => setStatus(null));
   };
@@ -58,7 +58,7 @@ export default function Server() {
     setConfirmRestart(false);
 
     try {
-      await fetch('/api/server/restart', { method: 'POST' });
+      await fetch("/api/server/restart", { method: "POST" });
     } catch {
       // Expected — server dies mid-request
     }
@@ -66,7 +66,7 @@ export default function Server() {
     // Poll until server comes back
     const poll = setInterval(async () => {
       try {
-        const res = await fetch('/api/server/status');
+        const res = await fetch("/api/server/status");
         if (res.ok) {
           clearInterval(poll);
           setRestarting(false);
@@ -103,7 +103,9 @@ export default function Server() {
               </div>
               <div className="flex justify-between items-center">
                 <span className="text-sm text-neutral-500">Uptime</span>
-                <span className="text-sm text-neutral-300 font-mono">{formatUptime(status.uptime)}</span>
+                <span className="text-sm text-neutral-300 font-mono">
+                  {formatUptime(status.uptime)}
+                </span>
               </div>
               <div className="flex justify-between items-center">
                 <span className="text-sm text-neutral-500">PID</span>
@@ -115,11 +117,16 @@ export default function Server() {
               </div>
               <div className="flex justify-between items-center">
                 <span className="text-sm text-neutral-500">Memory (RSS)</span>
-                <span className="text-sm text-neutral-300 font-mono">{formatBytes(status.memoryUsage.rss)}</span>
+                <span className="text-sm text-neutral-300 font-mono">
+                  {formatBytes(status.memoryUsage.rss)}
+                </span>
               </div>
               <div className="flex justify-between items-center">
                 <span className="text-sm text-neutral-500">Heap Used</span>
-                <span className="text-sm text-neutral-300 font-mono">{formatBytes(status.memoryUsage.heapUsed)} / {formatBytes(status.memoryUsage.heapTotal)}</span>
+                <span className="text-sm text-neutral-300 font-mono">
+                  {formatBytes(status.memoryUsage.heapUsed)} /{" "}
+                  {formatBytes(status.memoryUsage.heapTotal)}
+                </span>
               </div>
             </div>
           ) : (
@@ -136,7 +143,8 @@ export default function Server() {
         <div className="bg-neutral-900 border border-neutral-800 rounded-xl p-5 sm:p-6">
           <h3 className="text-base font-semibold text-white mb-2">Restart</h3>
           <p className="text-sm text-neutral-500 mb-4 leading-relaxed">
-            Rebuilds the dashboard and restarts the server via PM2. The server will be briefly unavailable.
+            Rebuilds the dashboard and restarts the server via PM2. The server will be briefly
+            unavailable.
           </p>
 
           {restarting ? (
@@ -148,12 +156,12 @@ export default function Server() {
             <button
               className={`w-full p-3.5 rounded-xl text-sm font-semibold cursor-pointer transition-all ${
                 confirmRestart
-                  ? 'bg-red-900 border border-red-400 text-white animate-pulse'
-                  : 'bg-neutral-800 border border-neutral-700 text-red-400 hover:bg-red-950/50 hover:border-red-400'
+                  ? "bg-red-900 border border-red-400 text-white animate-pulse"
+                  : "bg-neutral-800 border border-neutral-700 text-red-400 hover:bg-red-950/50 hover:border-red-400"
               }`}
               onClick={handleRestart}
             >
-              {confirmRestart ? 'Are you sure? Click again to confirm' : 'Restart Server'}
+              {confirmRestart ? "Are you sure? Click again to confirm" : "Restart Server"}
             </button>
           )}
         </div>

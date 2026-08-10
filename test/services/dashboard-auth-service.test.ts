@@ -43,16 +43,22 @@ describe("InMemoryDashboardAuthService", () => {
       const setup = service.setup(x, { host: "example.com" });
       if (setup.status !== "success") throw new Error("Setup failed");
       for (let attempt = 0; attempt < 5; attempt++) {
-        assert.deepEqual(service.login(x, {
-          password: "bad",
-          ip: "test-ip",
-          host: "example.com",
-        }), { status: "invalid_password" });
+        assert.deepEqual(
+          service.login(x, {
+            password: "bad",
+            ip: "test-ip",
+            host: "example.com",
+          }),
+          { status: "invalid_password" },
+        );
       }
-      assert.deepEqual(service.login(x, {
-        password: setup.password,
-        ip: "test-ip",
-      }), { status: "rate_limited" });
+      assert.deepEqual(
+        service.login(x, {
+          password: setup.password,
+          ip: "test-ip",
+        }),
+        { status: "rate_limited" },
+      );
 
       const success = service.login(x, {
         password: setup.password,

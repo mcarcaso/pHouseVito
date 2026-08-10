@@ -1,11 +1,5 @@
 import assert from "node:assert/strict";
-import {
-  mkdirSync,
-  mkdtempSync,
-  rmSync,
-  symlinkSync,
-  writeFileSync,
-} from "node:fs";
+import { mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, it } from "node:test";
@@ -22,12 +16,15 @@ function createHarness() {
 function createApp(root: string, name: string): string {
   const directory = join(root, name);
   mkdirSync(directory, { recursive: true });
-  writeFileSync(join(directory, ".vito-app.json"), JSON.stringify({
-    description: "Test app",
-    port: 4000,
-    url: `https://${name}.example.com`,
-    createdAt: "2026-01-01T00:00:00.000Z",
-  }));
+  writeFileSync(
+    join(directory, ".vito-app.json"),
+    JSON.stringify({
+      description: "Test app",
+      port: 4000,
+      url: `https://${name}.example.com`,
+      createdAt: "2026-01-01T00:00:00.000Z",
+    }),
+  );
   return directory;
 }
 
@@ -59,11 +56,10 @@ describe("FileAppStore", () => {
       writeFileSync(join(directory, ".secret"), "secret");
 
       const files = store.list(x, { names: ["alpha"], includeFiles: true })[0].files ?? [];
-      assert.deepEqual(files.map((file) => file.path), [
-        ".vito-app.json",
-        "src",
-        "src/index.ts",
-      ]);
+      assert.deepEqual(
+        files.map((file) => file.path),
+        [".vito-app.json", "src", "src/index.ts"],
+      );
     } finally {
       rmSync(root, { recursive: true, force: true });
     }
@@ -79,22 +75,34 @@ describe("FileAppStore", () => {
       writeFileSync(outside, "outside");
       symlinkSync(outside, join(directory, "link.txt"));
 
-      assert.deepEqual(appReadFileResultSchema.parse(store.cmd(x, {
-        type: "read-file",
-        appName: "alpha",
-        path: "small.txt",
-      })), { content: "hello", size: 5 });
-      assert.equal(store.cmd(x, {
-        type: "read-file",
-        appName: "alpha",
-        path: "link.txt",
-      }), undefined);
-      assert.throws(() => store.cmd(x, {
-        type: "read-file",
-        appName: "alpha",
-        path: "large.txt",
-        maxBytes: 2,
-      }), AppFileTooLargeError);
+      assert.deepEqual(
+        appReadFileResultSchema.parse(
+          store.cmd(x, {
+            type: "read-file",
+            appName: "alpha",
+            path: "small.txt",
+          }),
+        ),
+        { content: "hello", size: 5 },
+      );
+      assert.equal(
+        store.cmd(x, {
+          type: "read-file",
+          appName: "alpha",
+          path: "link.txt",
+        }),
+        undefined,
+      );
+      assert.throws(
+        () =>
+          store.cmd(x, {
+            type: "read-file",
+            appName: "alpha",
+            path: "large.txt",
+            maxBytes: 2,
+          }),
+        AppFileTooLargeError,
+      );
     } finally {
       rmSync(outside, { force: true });
       rmSync(root, { recursive: true, force: true });

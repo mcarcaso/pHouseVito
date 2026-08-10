@@ -4,11 +4,7 @@ import type { Context } from "../context/Context.js";
 import type { RouterService } from "./RouterService.js";
 import { systemContentUpdateSchema } from "../shared/schemas/system-content.js";
 import { xVitoService } from "../lib/x.js";
-import {
-  emptyRouteSchema,
-  unknownRouteSchema,
-  createRawRoute,
-} from "./createRoute.js";
+import { emptyRouteSchema, unknownRouteSchema, createRawRoute } from "./createRoute.js";
 
 export class SystemContentRouterService implements RouterService {
   async createRouter(x: Context): Promise<Router> {

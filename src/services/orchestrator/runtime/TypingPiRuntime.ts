@@ -10,7 +10,10 @@ import { ProxyPiRuntime } from "./ProxyPiRuntime.js";
 import type { PiRuntime, PiRuntimeCallbacks } from "./PiRuntime.js";
 
 export class TypingPiRuntime extends ProxyPiRuntime {
-  constructor(delegate: PiRuntime, private readonly handler: OutputHandler | null) {
+  constructor(
+    delegate: PiRuntime,
+    private readonly handler: OutputHandler | null,
+  ) {
     super(delegate);
   }
 
@@ -18,7 +21,7 @@ export class TypingPiRuntime extends ProxyPiRuntime {
     systemPrompt: string,
     userMessage: string,
     callbacks: PiRuntimeCallbacks,
-    signal?: AbortSignal
+    signal?: AbortSignal,
   ): Promise<void> {
     await this.handler?.startTyping?.();
     try {

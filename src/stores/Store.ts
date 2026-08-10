@@ -21,14 +21,7 @@ export class StoreRecordNotFoundError extends Error {
   }
 }
 
-export interface Store<
-  TRecord,
-  TListArgs,
-  TCreateArgs,
-  TUpdateArgs,
-  TDeleteArgs,
-  TCmd = never,
-> {
+export interface Store<TRecord, TListArgs, TCreateArgs, TUpdateArgs, TDeleteArgs, TCmd = never> {
   list(x: Context, args: TListArgs): Promise<TRecord[]> | TRecord[];
   count(x: Context, args: TListArgs): Promise<number> | number;
   create(x: Context, args: TCreateArgs): Promise<TRecord> | TRecord;
@@ -53,13 +46,25 @@ export class ProxyStore<
       TUpdateArgs,
       TDeleteArgs,
       TCmd
-    >
+    >,
   ) {}
 
-  list(x: Context, args: TListArgs) { return this.inner.list(x, args); }
-  count(x: Context, args: TListArgs) { return this.inner.count(x, args); }
-  create(x: Context, args: TCreateArgs) { return this.inner.create(x, args); }
-  update(x: Context, args: TUpdateArgs) { return this.inner.update(x, args); }
-  delete(x: Context, args: TDeleteArgs) { return this.inner.delete(x, args); }
-  cmd(x: Context, args: TCmd) { return this.inner.cmd(x, args); }
+  list(x: Context, args: TListArgs) {
+    return this.inner.list(x, args);
+  }
+  count(x: Context, args: TListArgs) {
+    return this.inner.count(x, args);
+  }
+  create(x: Context, args: TCreateArgs) {
+    return this.inner.create(x, args);
+  }
+  update(x: Context, args: TUpdateArgs) {
+    return this.inner.update(x, args);
+  }
+  delete(x: Context, args: TDeleteArgs) {
+    return this.inner.delete(x, args);
+  }
+  cmd(x: Context, args: TCmd) {
+    return this.inner.cmd(x, args);
+  }
 }

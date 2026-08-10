@@ -1,9 +1,14 @@
-import { useState, useEffect, useRef, useCallback, useLayoutEffect } from 'react';
-import ChatView, { parseDbMessage, type ParsedMessage, type Attachment, type FilterState } from './ChatView';
-import FilterButton from './FilterButton';
-import React from 'react';
-import { attachmentUploadResponseSchema } from '../../../src/shared/schemas/attachment-api';
-import { dashboardChatRequestSchema } from '../../../src/shared/schemas/dashboard-chat';
+import { useState, useEffect, useRef, useCallback, useLayoutEffect } from "react";
+import ChatView, {
+  parseDbMessage,
+  type ParsedMessage,
+  type Attachment,
+  type FilterState,
+} from "./ChatView";
+import FilterButton from "./FilterButton";
+import React from "react";
+import { attachmentUploadResponseSchema } from "../../../src/shared/schemas/attachment-api";
+import { dashboardChatRequestSchema } from "../../../src/shared/schemas/dashboard-chat";
 
 // Memoize ChatView to prevent re-renders when typing in the input
 const MemoizedChatView = React.memo(ChatView);
@@ -16,7 +21,7 @@ function playNotificationSound() {
     osc.connect(gain);
     gain.connect(ctx.destination);
     osc.frequency.value = 880;
-    osc.type = 'sine';
+    osc.type = "sine";
     gain.gain.setValueAtTime(0.3, ctx.currentTime);
     gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.3);
     osc.start(ctx.currentTime);
@@ -44,8 +49,8 @@ interface DashboardSession {
   alias?: string | null;
 }
 
-const DEFAULT_SESSION_ID = 'dashboard:default';
-const CHAT_SESSION_STORAGE_KEY = 'chat-selected-session-id';
+const DEFAULT_SESSION_ID = "dashboard:default";
+const CHAT_SESSION_STORAGE_KEY = "chat-selected-session-id";
 
 function Chat() {
   const [allMessages, setAllMessages] = useState<ParsedMessage[]>([]);
@@ -57,18 +62,20 @@ function Chat() {
       return DEFAULT_SESSION_ID;
     }
   });
-  const [input, setInput] = useState('');
+  const [input, setInput] = useState("");
   const [isTyping] = useState(false); // Unused but kept for ChatView prop
   const [attachments, setAttachments] = useState<Attachment[]>([]);
   const [filterState, setFilterState] = useState<FilterState>(() => {
     try {
-      const saved = localStorage.getItem('chat-filter');
+      const saved = localStorage.getItem("chat-filter");
       if (saved) return JSON.parse(saved);
     } catch {}
     return { showThoughts: true, showTools: true };
   });
   useEffect(() => {
-    try { localStorage.setItem('chat-filter', JSON.stringify(filterState)); } catch {}
+    try {
+      localStorage.setItem("chat-filter", JSON.stringify(filterState));
+    } catch {}
   }, [filterState]);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const lastAssistantTsRef = useRef<number | null>(null);
@@ -82,13 +89,13 @@ function Chat() {
   }, []);
 
   const fetchSessions = useCallback(() => {
-    fetch('/api/sessions')
+    fetch("/api/sessions")
       .then((res) => res.json())
       .then((data) => {
         if (!Array.isArray(data)) return;
         setSessions(data as DashboardSession[]);
       })
-      .catch((err) => console.error('Failed to load sessions:', err));
+      .catch((err) => console.error("Failed to load sessions:", err));
   }, []);
 
   useEffect(() => {
@@ -96,82 +103,94 @@ function Chat() {
   }, [fetchSessions]);
 
   useEffect(() => {
-    try { localStorage.setItem(CHAT_SESSION_STORAGE_KEY, selectedSessionId); } catch {}
+    try {
+      localStorage.setItem(CHAT_SESSION_STORAGE_KEY, selectedSessionId);
+    } catch {}
     initialLoadRef.current = true;
     lastAssistantTsRef.current = null;
     lastMessageIdRef.current = null;
     setAllMessages([]);
   }, [selectedSessionId]);
 
-  const applyMessages = useCallback((rawMessages: DashboardMessage[], mode: 'replace' | 'append') => {
-    if (!Array.isArray(rawMessages) || rawMessages.length === 0) return;
+  const applyMessages = useCallback(
+    (rawMessages: DashboardMessage[], mode: "replace" | "append") => {
+      if (!Array.isArray(rawMessages) || rawMessages.length === 0) return;
 
-    const messages = rawMessages.map((msg) => parseDbMessage({
-      type: msg.type,
-      content: msg.content,
-      timestamp: msg.timestamp,
-      author: msg.author,
-    }));
+      const messages = rawMessages.map((msg) =>
+        parseDbMessage({
+          type: msg.type,
+          content: msg.content,
+          timestamp: msg.timestamp,
+          author: msg.author,
+        }),
+      );
 
-    const latestAssistant = [...messages].reverse().find((msg) => msg.role === 'assistant') ?? null;
+      const latestAssistant =
+        [...messages].reverse().find((msg) => msg.role === "assistant") ?? null;
 
-    if (
-      !initialLoadRef.current &&
-      latestAssistant &&
-      latestAssistant.timestamp !== lastAssistantTsRef.current
-    ) {
-      playNotificationSound();
-    }
+      if (
+        !initialLoadRef.current &&
+        latestAssistant &&
+        latestAssistant.timestamp !== lastAssistantTsRef.current
+      ) {
+        playNotificationSound();
+      }
 
-    initialLoadRef.current = false;
-    if (latestAssistant) {
-      lastAssistantTsRef.current = latestAssistant.timestamp;
-    }
-    lastMessageIdRef.current = rawMessages[rawMessages.length - 1]?.id ?? lastMessageIdRef.current;
+      initialLoadRef.current = false;
+      if (latestAssistant) {
+        lastAssistantTsRef.current = latestAssistant.timestamp;
+      }
+      lastMessageIdRef.current =
+        rawMessages[rawMessages.length - 1]?.id ?? lastMessageIdRef.current;
 
-    setAllMessages((prev) => (mode === 'append' ? [...prev, ...messages] : messages));
-  }, []);
+      setAllMessages((prev) => (mode === "append" ? [...prev, ...messages] : messages));
+    },
+    [],
+  );
 
-  const fetchMessages = useCallback((filter?: FilterState, mode: 'replace' | 'append' = 'replace') => {
-    const params = new URLSearchParams();
-    if (filter) {
-      if (!filter.showThoughts) params.set('hideThoughts', 'true');
-      if (!filter.showTools) params.set('hideTools', 'true');
-    }
-    if (mode === 'append' && lastMessageIdRef.current) {
-      params.set('after', String(lastMessageIdRef.current));
-    }
-    const url = `/api/sessions/${encodeURIComponent(selectedSessionId)}/messages${params.toString() ? '?' + params.toString() : ''}`;
-    fetch(url)
-      .then((res) => res.json())
-      .then((data) => {
-        const rawMessages = Array.isArray(data) ? data : data.messages;
-        if (!Array.isArray(rawMessages)) return;
+  const fetchMessages = useCallback(
+    (filter?: FilterState, mode: "replace" | "append" = "replace") => {
+      const params = new URLSearchParams();
+      if (filter) {
+        if (!filter.showThoughts) params.set("hideThoughts", "true");
+        if (!filter.showTools) params.set("hideTools", "true");
+      }
+      if (mode === "append" && lastMessageIdRef.current) {
+        params.set("after", String(lastMessageIdRef.current));
+      }
+      const url = `/api/sessions/${encodeURIComponent(selectedSessionId)}/messages${params.toString() ? "?" + params.toString() : ""}`;
+      fetch(url)
+        .then((res) => res.json())
+        .then((data) => {
+          const rawMessages = Array.isArray(data) ? data : data.messages;
+          if (!Array.isArray(rawMessages)) return;
 
-        if (mode === 'append') {
-          applyMessages(rawMessages as DashboardMessage[], 'append');
-          return;
-        }
+          if (mode === "append") {
+            applyMessages(rawMessages as DashboardMessage[], "append");
+            return;
+          }
 
-        if (rawMessages.length === 0) {
-          initialLoadRef.current = false;
-          lastAssistantTsRef.current = null;
-          lastMessageIdRef.current = null;
-          setAllMessages([]);
-          return;
-        }
+          if (rawMessages.length === 0) {
+            initialLoadRef.current = false;
+            lastAssistantTsRef.current = null;
+            lastMessageIdRef.current = null;
+            setAllMessages([]);
+            return;
+          }
 
-        applyMessages(rawMessages as DashboardMessage[], 'replace');
-      })
-      .catch((err) => console.error('Failed to load messages:', err));
-  }, [applyMessages, selectedSessionId]);
+          applyMessages(rawMessages as DashboardMessage[], "replace");
+        })
+        .catch((err) => console.error("Failed to load messages:", err));
+    },
+    [applyMessages, selectedSessionId],
+  );
 
   // Polling — initial full load, then incremental append every 5s
   useEffect(() => {
-    fetchMessages(filterState, 'replace');
+    fetchMessages(filterState, "replace");
 
     pollTimerRef.current = setInterval(() => {
-      fetchMessages(filterState, 'append');
+      fetchMessages(filterState, "append");
     }, POLL_INTERVAL);
 
     return () => {
@@ -189,13 +208,13 @@ function Chat() {
     const newAttachments: Attachment[] = [];
     for (let i = 0; i < files.length; i++) {
       const file = files[i];
-      const isImageFile = file.type.startsWith('image/');
-      const isAudioFile = file.type.startsWith('audio/');
+      const isImageFile = file.type.startsWith("image/");
+      const isAudioFile = file.type.startsWith("audio/");
       const reader = new FileReader();
       await new Promise<void>((resolve) => {
         reader.onload = () => {
           newAttachments.push({
-            type: isImageFile ? 'image' : (isAudioFile ? 'audio' : 'file'),
+            type: isImageFile ? "image" : isAudioFile ? "audio" : "file",
             data: reader.result as string,
             filename: file.name,
             mimeType: file.type,
@@ -206,7 +225,7 @@ function Chat() {
       });
     }
     setAttachments((prev) => [...prev, ...newAttachments]);
-    if (fileInputRef.current) fileInputRef.current.value = '';
+    if (fileInputRef.current) fileInputRef.current.value = "";
   };
 
   const removeAttachment = (index: number) => {
@@ -218,16 +237,16 @@ function Chat() {
 
     const text = input;
     const currentAttachments = [...attachments];
-    setInput('');
+    setInput("");
     setAttachments([]);
 
     const uploaded: Attachment[] = [];
     for (const att of currentAttachments) {
       if (att.data) {
         try {
-          const res = await fetch('/api/attachments', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
+          const res = await fetch("/api/attachments", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
             body: JSON.stringify({ data: att.data, filename: att.filename }),
           });
           const result = attachmentUploadResponseSchema.parse(await res.json());
@@ -239,13 +258,13 @@ function Chat() {
             mimeType: result.mimeType || att.mimeType,
           });
         } catch (err) {
-          console.error('Failed to upload attachment:', err);
+          console.error("Failed to upload attachment:", err);
         }
       }
     }
 
     const payload = dashboardChatRequestSchema.parse({
-      type: 'chat' as const,
+      type: "chat" as const,
       content: text,
       attachments: uploaded.length > 0 ? uploaded : undefined,
       sessionId: selectedSessionId,
@@ -253,24 +272,24 @@ function Chat() {
 
     // Send via HTTP POST
     try {
-      await fetch('/api/chat', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+      await fetch("/api/chat", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify(payload),
       });
     } catch (err) {
-      console.error('Failed to send message:', err);
+      console.error("Failed to send message:", err);
     }
 
     // Fetch immediately to show our sent message, and refresh sessions in case this created/updated one
     setTimeout(() => {
-      fetchMessages(filterState, 'append');
+      fetchMessages(filterState, "append");
       fetchSessions();
     }, 200);
   };
 
   const handleKeyPress = (e: React.KeyboardEvent) => {
-    if (e.key === 'Enter' && !e.shiftKey) {
+    if (e.key === "Enter" && !e.shiftKey) {
       e.preventDefault();
       sendMessage();
     }
@@ -283,18 +302,18 @@ function Chat() {
     const newAttachments: Attachment[] = [];
     for (let i = 0; i < items.length; i++) {
       const item = items[i];
-      if (item.kind === 'file') {
+      if (item.kind === "file") {
         const file = item.getAsFile();
         if (!file) continue;
-        const isImageFile = file.type.startsWith('image/');
-        const isAudioFile = file.type.startsWith('audio/');
+        const isImageFile = file.type.startsWith("image/");
+        const isAudioFile = file.type.startsWith("audio/");
         const reader = new FileReader();
         await new Promise<void>((resolve) => {
           reader.onload = () => {
             newAttachments.push({
-              type: isImageFile ? 'image' : (isAudioFile ? 'audio' : 'file'),
+              type: isImageFile ? "image" : isAudioFile ? "audio" : "file",
               data: reader.result as string,
-              filename: file.name || `pasted-${Date.now()}.${file.type.split('/')[1] || 'bin'}`,
+              filename: file.name || `pasted-${Date.now()}.${file.type.split("/")[1] || "bin"}`,
               mimeType: file.type,
             });
             resolve();
@@ -312,7 +331,7 @@ function Chat() {
   // Auto-scroll to bottom on initial load
   useLayoutEffect(() => {
     if (allMessages.length > 0) {
-      window.scrollTo({ top: document.body.scrollHeight, behavior: 'instant' });
+      window.scrollTo({ top: document.body.scrollHeight, behavior: "instant" });
     }
   }, [allMessages.length === 0]); // Only on first load when messages arrive
 
@@ -345,27 +364,31 @@ function Chat() {
           <div className="flex gap-2 shrink-0">
             <FilterButton
               active={!filterState.showThoughts}
-              onClick={() => setFilterState(prev => ({ ...prev, showThoughts: !prev.showThoughts }))}
-              title={filterState.showThoughts ? 'Hide thoughts' : 'Show thoughts'}
+              onClick={() =>
+                setFilterState((prev) => ({ ...prev, showThoughts: !prev.showThoughts }))
+              }
+              title={filterState.showThoughts ? "Hide thoughts" : "Show thoughts"}
               emoji="💭"
             />
             <FilterButton
               active={!filterState.showTools}
-              onClick={() => setFilterState(prev => ({ ...prev, showTools: !prev.showTools }))}
-              title={filterState.showTools ? 'Hide tools' : 'Show tools'}
+              onClick={() => setFilterState((prev) => ({ ...prev, showTools: !prev.showTools }))}
+              title={filterState.showTools ? "Hide tools" : "Show tools"}
               emoji="🔧"
             />
             <button
               onClick={async () => {
-                if (!confirm('Clear all messages in this chat?')) return;
+                if (!confirm("Clear all messages in this chat?")) return;
                 try {
-                  await fetch(`/api/sessions/${encodeURIComponent(selectedSessionId)}/messages`, { method: 'DELETE' });
+                  await fetch(`/api/sessions/${encodeURIComponent(selectedSessionId)}/messages`, {
+                    method: "DELETE",
+                  });
                   initialLoadRef.current = false;
                   lastAssistantTsRef.current = null;
                   lastMessageIdRef.current = null;
                   setAllMessages([]);
                 } catch (err) {
-                  console.error('Failed to clear messages:', err);
+                  console.error("Failed to clear messages:", err);
                 }
               }}
               className="p-2 rounded-lg bg-neutral-800 hover:bg-neutral-700 text-neutral-400 hover:text-red-400 transition-colors"
@@ -398,16 +421,23 @@ function Chat() {
           ref={fileInputRef}
           onChange={handleFileSelect}
           multiple
-          style={{ display: 'none' }}
+          style={{ display: "none" }}
         />
 
         {attachments.length > 0 && (
           <div className="flex gap-2 mb-3 flex-wrap max-w-[1200px] mx-auto">
             {attachments.map((att, idx) => (
-              <div key={idx} className="relative bg-neutral-800 border border-neutral-700 rounded-md p-2 max-w-[150px]">
-                {att.type === 'image' ? (
-                  <img src={att.data || att.url} alt={att.filename || 'Preview'} className="w-full h-[100px] object-cover rounded block" />
-                ) : att.type === 'audio' ? (
+              <div
+                key={idx}
+                className="relative bg-neutral-800 border border-neutral-700 rounded-md p-2 max-w-[150px]"
+              >
+                {att.type === "image" ? (
+                  <img
+                    src={att.data || att.url}
+                    alt={att.filename || "Preview"}
+                    className="w-full h-[100px] object-cover rounded block"
+                  />
+                ) : att.type === "audio" ? (
                   <div className="p-2 text-sm text-center text-blue-400">🎵 {att.filename}</div>
                 ) : (
                   <div className="p-2 text-sm text-center text-neutral-400">{att.filename}</div>

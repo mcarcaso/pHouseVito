@@ -22,10 +22,7 @@ export interface CommandRegistrationResult {
 /** Optional administrative operations exposed by externally managed channels. */
 export interface ChannelManagement {
   registerCommands(x: Context): Promise<CommandRegistrationResult>;
-  resolveSessionAlias(
-    x: Context,
-    session: SessionRow
-  ): Promise<string | undefined>;
+  resolveSessionAlias(x: Context, session: SessionRow): Promise<string | undefined>;
 }
 
 /**

@@ -1,11 +1,4 @@
-import {
-  existsSync,
-  readFileSync,
-  renameSync,
-  statSync,
-  unlinkSync,
-  writeFileSync,
-} from "node:fs";
+import { existsSync, readFileSync, renameSync, statSync, unlinkSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import type { Context } from "../../context/Context.js";
 import {
@@ -21,12 +14,12 @@ import type { VitoService } from "./VitoService.js";
 export class VitoConfigValidationError extends Error {
   constructor(
     readonly configPath: string,
-    readonly issues: ConfigValidationIssue[]
+    readonly issues: ConfigValidationIssue[],
   ) {
     super(
       `Invalid Vito config at ${configPath}:\n${issues
         .map((issue) => `- ${issue.path}: ${issue.message}`)
-        .join("\n")}`
+        .join("\n")}`,
     );
     this.name = "VitoConfigValidationError";
   }
@@ -106,7 +99,7 @@ export class FileVitoService implements VitoService {
   private handleInvalidConfig(
     configPath: string,
     mtimeMs: number,
-    issues: ConfigValidationIssue[]
+    issues: ConfigValidationIssue[],
   ): VitoConfig {
     if (!this.cachedConfig) {
       throw new VitoConfigValidationError(configPath, issues);
@@ -116,7 +109,7 @@ export class FileVitoService implements VitoService {
       console.error(
         `[Config] Invalid update ignored; continuing with last known valid config:\n${issues
           .map((issue) => `- ${issue.path}: ${issue.message}`)
-          .join("\n")}`
+          .join("\n")}`,
       );
       this.reportedInvalidMtimeMs = mtimeMs;
     }

@@ -22,12 +22,14 @@ describe("DefaultDashboardChatService", () => {
       type: "chat" as const,
       content: "Hello",
       sessionId: "telegram:123:456",
-      attachments: [{
-        type: "image" as const,
-        path: "/tmp/image.png",
-        filename: "image.png",
-        clientMetadata: "preserved",
-      }],
+      attachments: [
+        {
+          type: "image" as const,
+          path: "/tmp/image.png",
+          filename: "image.png",
+          clientMetadata: "preserved",
+        },
+      ],
       clientMetadata: "preserved",
     };
     assert.equal(service.send(x, message), true);
@@ -52,10 +54,13 @@ describe("DefaultDashboardChatService", () => {
     const events: InboundEvent[] = [];
     service.configure(x, (event) => events.push(event));
 
-    assert.equal(service.send(x, {
-      type: "chat",
-      attachments: [{ type: "file", path: "/tmp/file.txt" }],
-    }), true);
+    assert.equal(
+      service.send(x, {
+        type: "chat",
+        attachments: [{ type: "file", path: "/tmp/file.txt" }],
+      }),
+      true,
+    );
     assert.equal(events[0]?.sessionKey, "dashboard:default");
     assert.equal(events[0]?.target, "default");
     assert.equal(events[0]?.content, "");

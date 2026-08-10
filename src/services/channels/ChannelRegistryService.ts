@@ -25,7 +25,9 @@ export class ChannelNotConfiguredError extends Error {
 
 export class ChannelManagementNotSupportedError extends Error {
   constructor(channel: string) {
-    super(`${channel.charAt(0).toUpperCase()}${channel.slice(1)} channel does not support management operations`);
+    super(
+      `${channel.charAt(0).toUpperCase()}${channel.slice(1)} channel does not support management operations`,
+    );
     this.name = "ChannelManagementNotSupportedError";
   }
 }
@@ -34,12 +36,6 @@ export interface ChannelRegistryService {
   register(x: Context, channel: ChannelService): void;
   get(x: Context, name: string): ChannelRegistration | undefined;
   list(x: Context): ChannelRegistration[];
-  registerCommands(
-    x: Context,
-    channel: string
-  ): Promise<CommandRegistrationResult>;
-  generateAliases(
-    x: Context,
-    channel: string
-  ): Promise<AliasGenerationResult>;
+  registerCommands(x: Context, channel: string): Promise<CommandRegistrationResult>;
+  generateAliases(x: Context, channel: string): Promise<AliasGenerationResult>;
 }

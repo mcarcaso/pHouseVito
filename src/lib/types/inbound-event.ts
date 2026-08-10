@@ -22,12 +22,14 @@ export interface InboundEvent {
   hasMention?: boolean;
 }
 
-const inboundEventMetadataSchema = z.object({
-  sendCondition: z.string().nullable().optional(),
-  source: z.string().optional(),
-  channelPrompt: z.string().optional(),
-  requestId: z.string().optional(),
-}).passthrough();
+const inboundEventMetadataSchema = z
+  .object({
+    sendCondition: z.string().nullable().optional(),
+    source: z.string().optional(),
+    channelPrompt: z.string().optional(),
+    requestId: z.string().optional(),
+  })
+  .passthrough();
 
 export type InboundEventMetadata = z.infer<typeof inboundEventMetadataSchema>;
 

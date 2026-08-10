@@ -2,22 +2,27 @@ import { execa } from "execa";
 import { z } from "zod";
 import type { Context } from "../../context/Context.js";
 import { appNameSchema } from "../../shared/schemas/app.js";
-import type {
-  AppProcessService,
-  AppProcessStatus,
-} from "./AppProcessService.js";
+import type { AppProcessService, AppProcessStatus } from "./AppProcessService.js";
 
-const pm2ProcessSchema = z.object({
-  name: z.string(),
-  pm2_env: z.object({
-    status: z.string().optional(),
-    pm_uptime: z.number().optional(),
-    restart_time: z.number().optional(),
-  }).passthrough().optional(),
-  monit: z.object({
-    memory: z.number().optional(),
-  }).passthrough().optional(),
-}).passthrough();
+const pm2ProcessSchema = z
+  .object({
+    name: z.string(),
+    pm2_env: z
+      .object({
+        status: z.string().optional(),
+        pm_uptime: z.number().optional(),
+        restart_time: z.number().optional(),
+      })
+      .passthrough()
+      .optional(),
+    monit: z
+      .object({
+        memory: z.number().optional(),
+      })
+      .passthrough()
+      .optional(),
+  })
+  .passthrough();
 
 interface CommandOptions {
   timeout: number;
@@ -27,7 +32,7 @@ interface CommandOptions {
 type CommandRunner = (
   file: string,
   args: string[],
-  options: CommandOptions
+  options: CommandOptions,
 ) => Promise<{ stdout: string }>;
 
 const defaultRunner: CommandRunner = async (file, args, options) => {
@@ -71,7 +76,7 @@ export class Pm2AppProcessService implements AppProcessService {
 
   async execute(
     _x: Context,
-    args: { action: "start" | "stop" | "restart" | "delete"; appName: string }
+    args: { action: "start" | "stop" | "restart" | "delete"; appName: string },
   ): Promise<void> {
     const appName = appNameSchema.parse(args.appName);
     await this.run("npx", ["pm2", args.action, `app-${appName}`], {

@@ -27,7 +27,7 @@ before(async () => {
 
 after(async () => {
   await new Promise<void>((resolve, reject) => {
-    server.close((error) => error ? reject(error) : resolve());
+    server.close((error) => (error ? reject(error) : resolve()));
   });
 });
 
@@ -72,12 +72,14 @@ describe("dashboard chat router", () => {
       type: "chat",
       content: "Dashboard message",
       sessionId: "dashboard:work",
-      attachments: [{
-        type: "file",
-        path: "/tmp/report.txt",
-        filename: "report.txt",
-        custom: "preserved",
-      }],
+      attachments: [
+        {
+          type: "file",
+          path: "/tmp/report.txt",
+          filename: "report.txt",
+          custom: "preserved",
+        },
+      ],
       custom: "preserved",
     });
 

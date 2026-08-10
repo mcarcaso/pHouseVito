@@ -5,11 +5,7 @@ import type { Context } from "../context/Context.js";
 import type { RouterService } from "./RouterService.js";
 import { piSessionRecordIdSchema } from "../shared/schemas/pi-session.js";
 import { xPiSessionStore, xSessionStore } from "../lib/x.js";
-import {
-  emptyRouteSchema,
-  unknownRouteSchema,
-  createRawRoute,
-} from "./createRoute.js";
+import { emptyRouteSchema, unknownRouteSchema, createRawRoute } from "./createRoute.js";
 
 const wildcardPathSchema = z
   .object({
@@ -37,9 +33,7 @@ export class PiSessionRouterService implements RouterService {
           const aliases = new Map(
             xSessionStore(routeX)
               .list(routeX, { hasAlias: true })
-              .flatMap((session) =>
-                session.alias ? [[session.id, session.alias]] : [],
-              ),
+              .flatMap((session) => (session.alias ? [[session.id, session.alias]] : [])),
           );
           const files = xPiSessionStore(routeX).list(routeX, {
             order: "recent",

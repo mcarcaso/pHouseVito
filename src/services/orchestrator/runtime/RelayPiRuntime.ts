@@ -34,7 +34,7 @@ export class RelayPiRuntime extends ProxyPiRuntime {
     systemPrompt: string,
     userMessage: string,
     callbacks: PiRuntimeCallbacks,
-    signal?: AbortSignal
+    signal?: AbortSignal,
   ): Promise<void> {
     this.completedMessages = [];
 
@@ -57,20 +57,24 @@ export class RelayPiRuntime extends ProxyPiRuntime {
         }
 
         if (event.kind === "tool_start") {
-          this.handler?.relayEvent?.({
-            kind: "tool_start",
-            toolName: event.tool,
-            toolCallId: event.callId,
-            args: event.args,
-          })?.catch(() => {});
+          this.handler
+            ?.relayEvent?.({
+              kind: "tool_start",
+              toolName: event.tool,
+              toolCallId: event.callId,
+              args: event.args,
+            })
+            ?.catch(() => {});
         } else if (event.kind === "tool_end") {
-          this.handler?.relayEvent?.({
-            kind: "tool_end",
-            toolName: event.tool,
-            toolCallId: event.callId,
-            result: event.result,
-            isError: !event.success,
-          })?.catch(() => {});
+          this.handler
+            ?.relayEvent?.({
+              kind: "tool_end",
+              toolName: event.tool,
+              toolCallId: event.callId,
+              result: event.result,
+              isError: !event.success,
+            })
+            ?.catch(() => {});
         }
 
         callbacks.onNormalizedEvent(event);

@@ -7,16 +7,9 @@ import {
   attachmentUploadResponseSchema,
 } from "../shared/schemas/attachment-api.js";
 import type { RouterService } from "./RouterService.js";
-import {
-  attachmentIdSchema,
-  attachmentReadResultSchema,
-} from "../lib/types/attachment.js";
+import { attachmentIdSchema, attachmentReadResultSchema } from "../lib/types/attachment.js";
 import { xAttachmentStore } from "../lib/x.js";
-import {
-  emptyRouteSchema,
-  unknownRouteSchema,
-  createRawRoute,
-} from "./createRoute.js";
+import { emptyRouteSchema, unknownRouteSchema, createRawRoute } from "./createRoute.js";
 
 const attachmentParamsSchema = z.object({ id: attachmentIdSchema }).strict();
 
@@ -40,12 +33,7 @@ function parseByteRange(
   }
   const start = Number(match[1]);
   const end = match[2] ? Number(match[2]) : size - 1;
-  if (
-    !Number.isSafeInteger(start) ||
-    !Number.isSafeInteger(end) ||
-    start >= size ||
-    end < start
-  ) {
+  if (!Number.isSafeInteger(start) || !Number.isSafeInteger(end) || start >= size || end < start) {
     return null;
   }
   return { start, end: Math.min(end, size - 1) };
@@ -130,10 +118,7 @@ function createAttachmentFileRouter(x: Context): Router {
         res.setHeader("Accept-Ranges", "bytes");
         if (range) {
           res.status(206);
-          res.setHeader(
-            "Content-Range",
-            `bytes ${range.start}-${range.end}/${result.data.size}`,
-          );
+          res.setHeader("Content-Range", `bytes ${range.start}-${range.end}/${result.data.size}`);
           res.setHeader("Content-Length", range.end - range.start + 1);
         } else {
           res.setHeader("Content-Length", result.data.size);

@@ -1,18 +1,10 @@
-import {
-  appendFileSync,
-  existsSync,
-  readFileSync,
-  statSync,
-} from "node:fs";
+import { appendFileSync, existsSync, readFileSync, statSync } from "node:fs";
 import type { Context } from "../../context/Context.js";
 import {
   traceEventDataSchema,
   writableTraceEventDataSchema,
 } from "../../shared/schemas/trace-event.js";
-import {
-  StoreRecordNotFoundError,
-  UnsupportedStoreOperationError,
-} from "../Store.js";
+import { StoreRecordNotFoundError, UnsupportedStoreOperationError } from "../Store.js";
 import type {
   CreateTraceEventArgs,
   TraceEvent,
@@ -31,11 +23,7 @@ export class TraceSizeLimitError extends Error {
   }
 }
 
-function parseEvent(
-  traceId: string,
-  line: string,
-  sequence: number
-): TraceEvent {
+function parseEvent(traceId: string, line: string, sequence: number): TraceEvent {
   try {
     return {
       traceId,
@@ -52,8 +40,8 @@ function parseEvent(
 }
 
 function matchesFilter(event: TraceEvent, filter: TraceEventFilter): boolean {
-  if (filter.afterSequence !== undefined &&
-      (event.sequence ?? -1) <= filter.afterSequence) return false;
+  if (filter.afterSequence !== undefined && (event.sequence ?? -1) <= filter.afterSequence)
+    return false;
   if (filter.types && !filter.types.includes(event.data.type)) return false;
   return true;
 }
@@ -97,10 +85,11 @@ export class FileTraceEventStore implements TraceEventStore {
     const line = `${JSON.stringify(data)}\n`;
     const currentSize = statSync(path).size;
     if (currentSize + Buffer.byteLength(line) > MAX_TRACE_SIZE_BYTES) {
-      const truncated = JSON.stringify({
-        type: "truncated",
-        reason: `Trace exceeded ${MAX_TRACE_SIZE_BYTES / 1024 / 1024}MB limit`,
-      }) + "\n";
+      const truncated =
+        JSON.stringify({
+          type: "truncated",
+          reason: `Trace exceeded ${MAX_TRACE_SIZE_BYTES / 1024 / 1024}MB limit`,
+        }) + "\n";
       if (currentSize + Buffer.byteLength(truncated) <= MAX_TRACE_SIZE_BYTES) {
         appendFileSync(path, truncated);
       }

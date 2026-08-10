@@ -1,8 +1,5 @@
 import { resolveSettings } from "../../shared/settings-resolution.js";
-import type {
-  ResolvedSettings,
-  VitoConfig,
-} from "../../shared/schemas/vito-config.js";
+import type { ResolvedSettings, VitoConfig } from "../../shared/schemas/vito-config.js";
 
 const DEFAULT_SETTINGS: ResolvedSettings = {
   streamMode: "stream",

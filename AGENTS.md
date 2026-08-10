@@ -14,6 +14,8 @@ npm run dev:dashboard    # Vite dev server (separate terminal)
 npm run build            # tsc → dist/
 npm run build:dashboard  # Vite build → dashboard/dist/
 npm run check            # backend/dashboard types + tests + example config validation
+npm run format           # Format the repository with Prettier
+npm run format:check     # Verify repository formatting
 npm test                 # Node test runner via tsx
 ./vito config validate   # Zod-validate user/vito.config.json
 ./scripts/migrate-vito.sh # Back up and canonicalize legacy configuration

@@ -67,7 +67,7 @@ export function createDatabase(dbPath: string): Database.Database {
     db.exec("ALTER TABLE messages ADD COLUMN archived INTEGER NOT NULL DEFAULT 0");
     db.exec("CREATE INDEX IF NOT EXISTS idx_messages_archived ON messages(archived)");
   }
-  
+
   // MIGRATION: Replace 'role' column with unified 'type' column
   // New type values: 'user', 'thought', 'assistant', 'tool_start', 'tool_end'
   const hasRoleColumn = messageColumns.some((c) => c.name === "role");
@@ -88,15 +88,23 @@ export function createDatabase(dbPath: string): Database.Database {
 
     // Migrate assistant messages (only where type is still NULL)
     if (hasMessageType) {
-      db.exec("UPDATE messages SET type = 'assistant' WHERE role = 'assistant' AND message_type = 'final' AND type IS NULL");
-      db.exec("UPDATE messages SET type = 'thought' WHERE role = 'assistant' AND (message_type = 'intermediate' OR message_type IS NULL) AND type IS NULL");
+      db.exec(
+        "UPDATE messages SET type = 'assistant' WHERE role = 'assistant' AND message_type = 'final' AND type IS NULL",
+      );
+      db.exec(
+        "UPDATE messages SET type = 'thought' WHERE role = 'assistant' AND (message_type = 'intermediate' OR message_type IS NULL) AND type IS NULL",
+      );
     } else {
       db.exec("UPDATE messages SET type = 'assistant' WHERE role = 'assistant' AND type IS NULL");
     }
 
     // Migrate tool messages (only where type is still NULL)
-    db.exec(`UPDATE messages SET type = 'tool_start' WHERE role = 'tool' AND json_extract(content, '$.phase') = 'start' AND type IS NULL`);
-    db.exec(`UPDATE messages SET type = 'tool_end' WHERE role = 'tool' AND json_extract(content, '$.phase') = 'end' AND type IS NULL`);
+    db.exec(
+      `UPDATE messages SET type = 'tool_start' WHERE role = 'tool' AND json_extract(content, '$.phase') = 'start' AND type IS NULL`,
+    );
+    db.exec(
+      `UPDATE messages SET type = 'tool_end' WHERE role = 'tool' AND json_extract(content, '$.phase') = 'end' AND type IS NULL`,
+    );
     db.exec("UPDATE messages SET type = 'tool_end' WHERE role = 'tool' AND type IS NULL");
 
     // Map any remaining (system, etc.)
@@ -149,10 +157,10 @@ export function createDatabase(dbPath: string): Database.Database {
     );
     CREATE INDEX IF NOT EXISTS idx_traces_timestamp ON traces(timestamp);
   `);
-  
+
   // Migration: Add model column if missing
   const traceColumns = db.pragma("table_info(traces)") as { name: string }[];
-  if (!traceColumns.some(c => c.name === "model")) {
+  if (!traceColumns.some((c) => c.name === "model")) {
     db.exec("ALTER TABLE traces ADD COLUMN model TEXT");
   }
 

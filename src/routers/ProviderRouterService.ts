@@ -9,11 +9,7 @@ import {
 import type { RouterService } from "./RouterService.js";
 import { xProviderService } from "../lib/x.js";
 import { ProviderLoginConflictError } from "../services/providers/ProviderService.js";
-import {
-  emptyRouteSchema,
-  unknownRouteSchema,
-  createRawRoute,
-} from "./createRoute.js";
+import { emptyRouteSchema, unknownRouteSchema, createRawRoute } from "./createRoute.js";
 
 const providerParamsSchema = z.object({ id: providerIdSchema }).strict();
 const modelParamsSchema = z.object({ provider: providerIdSchema }).strict();
@@ -61,13 +57,9 @@ function createModelRouter(x: Context): Router {
       },
       handler: (routeX, { params }, _req, res) => {
         try {
-          res.json(
-            xProviderService(routeX).listModels(routeX, params.provider),
-          );
+          res.json(xProviderService(routeX).listModels(routeX, params.provider));
         } catch {
-          res
-            .status(400)
-            .json({ error: `Unknown provider: ${params.provider}` });
+          res.status(400).json({ error: `Unknown provider: ${params.provider}` });
         }
       },
     }),

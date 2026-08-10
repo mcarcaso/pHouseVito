@@ -43,7 +43,7 @@ before(async () => {
 
 after(async () => {
   await new Promise<void>((resolve, reject) => {
-    server.close((error) => error ? reject(error) : resolve());
+    server.close((error) => (error ? reject(error) : resolve()));
   });
   rmSync(root, { recursive: true, force: true });
 });
@@ -53,7 +53,10 @@ describe("file and attachment routers", () => {
     const path = join(root, "document.pdf");
     writeFileSync(path, "pdf");
     assert.equal((await fetch(`${baseUrl}/api/file`)).status, 400);
-    assert.equal((await fetch(`${baseUrl}/api/file?path=${encodeURIComponent(join(root, "missing"))}`)).status, 404);
+    assert.equal(
+      (await fetch(`${baseUrl}/api/file?path=${encodeURIComponent(join(root, "missing"))}`)).status,
+      404,
+    );
 
     const response = await fetch(`${baseUrl}/api/file?path=${encodeURIComponent(path)}`);
     assert.equal(response.status, 200);
@@ -80,12 +83,14 @@ describe("file and attachment routers", () => {
       }),
     });
     assert.equal(upload.status, 200);
-    const result = z.object({
-      path: z.string(),
-      url: z.string(),
-      filename: z.string(),
-      mimeType: z.string(),
-    }).parse(await upload.json());
+    const result = z
+      .object({
+        path: z.string(),
+        url: z.string(),
+        filename: z.string(),
+        mimeType: z.string(),
+      })
+      .parse(await upload.json());
     assert.equal(result.filename, "note.txt");
     assert.equal(result.mimeType, "text/plain");
     attachmentUrl = result.url;

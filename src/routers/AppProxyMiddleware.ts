@@ -20,13 +20,15 @@ export function createAppProxyMiddleware(x: Context): RequestHandler {
     }
     if (!baseDomain || !isHostWithinDomain(host, baseDomain)) return next();
 
-    const app = xAppStore(x).list(x, {}).find((candidate) => {
-      try {
-        return new URL(candidate.url).hostname.toLowerCase() === host.toLowerCase();
-      } catch {
-        return false;
-      }
-    });
+    const app = xAppStore(x)
+      .list(x, {})
+      .find((candidate) => {
+        try {
+          return new URL(candidate.url).hostname.toLowerCase() === host.toLowerCase();
+        } catch {
+          return false;
+        }
+      });
     if (!app) return next();
 
     const proxyRequest = http.request(
@@ -40,7 +42,7 @@ export function createAppProxyMiddleware(x: Context): RequestHandler {
       (proxyResponse) => {
         res.writeHead(proxyResponse.statusCode ?? 502, proxyResponse.headers);
         proxyResponse.pipe(res);
-      }
+      },
     );
     proxyRequest.on("error", () => res.status(502).send("App not responding"));
     req.pipe(proxyRequest);

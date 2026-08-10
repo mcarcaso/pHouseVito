@@ -9,11 +9,7 @@ import {
   PublicDriveContext,
   PublicHttpContext,
 } from "../context/HttpContext.js";
-import {
-  xAskApiService,
-  xDashboardAuthService,
-  xSecretService,
-} from "../lib/x.js";
+import { xAskApiService, xDashboardAuthService, xSecretService } from "../lib/x.js";
 
 export interface RouteSchemas<
   TParams extends z.ZodTypeAny,
@@ -35,12 +31,7 @@ export interface ValidatedRouteInput<
   body: z.output<TBody>;
 }
 
-export type HttpAuthPolicy =
-  | "public"
-  | "public-drive"
-  | "provider-auth"
-  | "dashboard"
-  | "ask";
+export type HttpAuthPolicy = "public" | "public-drive" | "provider-auth" | "dashboard" | "ask";
 
 type RouteHandlerArgs<TInput> = {
   data: TInput;
@@ -97,11 +88,7 @@ export class HttpError extends Error {
 export const emptyRouteSchema = z.object({});
 export const unknownRouteSchema = z.unknown();
 
-function authenticationFailure(
-  res: Response,
-  status: number,
-  error: string,
-): null {
+function authenticationFailure(res: Response, status: number, error: string): null {
   res.status(status).json({ error });
   return null;
 }
@@ -127,15 +114,9 @@ function resolveRequestContext(
       );
     }
     const authHeader = req.headers.authorization ?? "";
-    const token = authHeader.startsWith("Bearer ")
-      ? authHeader.slice(7)
-      : authHeader;
+    const token = authHeader.startsWith("Bearer ") ? authHeader.slice(7) : authHeader;
     if (!token || token !== apiKey) {
-      return authenticationFailure(
-        res,
-        401,
-        "Unauthorized — invalid or missing API key",
-      );
+      return authenticationFailure(res, 401, "Unauthorized — invalid or missing API key");
     }
     if (!xAskApiService(authX).isConfigured(authX)) {
       return authenticationFailure(res, 503, "Ask handler not configured");
@@ -208,10 +189,7 @@ export function createRoute<
   TQuery extends z.ZodTypeAny,
   TBody extends z.ZodTypeAny,
   TResponse extends z.ZodTypeAny,
->(
-  rootX: Context,
-  args: CreateRouteArgs<TParams, TQuery, TBody, TResponse>,
-): RequestHandler {
+>(rootX: Context, args: CreateRouteArgs<TParams, TQuery, TBody, TResponse>): RequestHandler {
   return async (req, res) => {
     const requestX = resolveRequestContext(rootX, args.auth, req, res);
     if (!requestX) return;
@@ -230,10 +208,7 @@ export function createRawRoute<
   TParams extends z.ZodTypeAny,
   TQuery extends z.ZodTypeAny,
   TBody extends z.ZodTypeAny,
->(
-  rootX: Context,
-  args: CreateRawRouteArgs<TParams, TQuery, TBody>,
-): RequestHandler {
+>(rootX: Context, args: CreateRawRouteArgs<TParams, TQuery, TBody>): RequestHandler {
   return async (req, res, next) => {
     const requestX = resolveRequestContext(rootX, args.auth, req, res);
     if (!requestX) return;

@@ -4,11 +4,7 @@ import { z } from "zod";
 import type { Context } from "../context/Context.js";
 import type { RouterService } from "./RouterService.js";
 import { xSessionStore, xTraceEventStore, xTraceStore } from "../lib/x.js";
-import {
-  emptyRouteSchema,
-  unknownRouteSchema,
-  createRawRoute,
-} from "./createRoute.js";
+import { emptyRouteSchema, unknownRouteSchema, createRawRoute } from "./createRoute.js";
 
 const listQuerySchema = z
   .object({
@@ -41,9 +37,7 @@ export class TraceRouterService implements RouterService {
           const aliases = new Map(
             xSessionStore(routeX)
               .list(routeX, { hasAlias: true })
-              .flatMap((session) =>
-                session.alias ? [[session.id, session.alias]] : [],
-              ),
+              .flatMap((session) => (session.alias ? [[session.id, session.alias]] : [])),
           );
           const traces = store.list(routeX, {
             limit: query.limit,
@@ -58,9 +52,7 @@ export class TraceRouterService implements RouterService {
               preview: trace.preview,
               format: "jsonl",
               sessionId: trace.sessionId ?? "",
-              alias: trace.sessionId
-                ? (aliases.get(trace.sessionId) ?? null)
-                : null,
+              alias: trace.sessionId ? (aliases.get(trace.sessionId) ?? null) : null,
               hasEmbedding: trace.hasEmbedding,
               userMessage: trace.userMessage,
               traceType: trace.traceType,

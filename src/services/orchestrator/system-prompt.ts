@@ -28,13 +28,16 @@
 import { DEFAULT_TIMEZONE } from "../../shared/defaults.js";
 import { CAPABILITIES_MAP } from "./capabilities.js";
 
-const COMMANDS_SECTION = "Available commands: /new (full reset — start a fresh pi session, archives the current chat), /compact (summarize older turns to free context, conversation continues), /model [provider/model] (inspect or switch the live pi model for this session), /stop (abort current request + clear queue)";
+const COMMANDS_SECTION =
+  "Available commands: /new (full reset — start a fresh pi session, archives the current chat), /compact (summarize older turns to free context, conversation continues), /model [provider/model] (inspect or switch the live pi model for this session), /stop (abort current request + clear queue)";
 
 function buildSystemBlock(systemInstructions: string, botName?: string): string {
   const parts: string[] = [];
   if (botName) {
     parts.push(`Your name is ${botName}.`);
-    parts.push(`If the user message is only your name (e.g., "@${botName}"), interpret it as a follow-up to the previous user message.`);
+    parts.push(
+      `If the user message is only your name (e.g., "@${botName}"), interpret it as a follow-up to the previous user message.`,
+    );
   }
   parts.push(systemInstructions || "(SYSTEM.md not found — operating without system reference)");
   parts.push(COMMANDS_SECTION);
@@ -49,9 +52,9 @@ export interface BuildSystemPromptOptions {
   botName?: string;
   /** Stable identifiers for the Vito session this pi conversation lives inside. */
   session?: {
-    id: string;       // e.g., "dashboard:default" or "telegram:123:456"
-    channel: string;  // e.g., "dashboard"
-    target: string;   // e.g., "default"
+    id: string; // e.g., "dashboard:default" or "telegram:123:456"
+    channel: string; // e.g., "dashboard"
+    target: string; // e.g., "default"
     alias?: string | null;
   };
 }
@@ -92,7 +95,6 @@ export function buildSystemPrompt(opts: BuildSystemPromptOptions): string {
   if (opts.customInstructions) {
     parts.push(`<custom-instructions>\n${opts.customInstructions}\n</custom-instructions>`);
   }
-
 
   return parts.join("\n\n");
 }

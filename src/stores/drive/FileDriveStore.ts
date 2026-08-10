@@ -12,15 +12,7 @@ import {
   statSync,
   writeFileSync,
 } from "node:fs";
-import {
-  basename,
-  dirname,
-  join,
-  posix,
-  relative,
-  resolve,
-  sep,
-} from "node:path";
+import { basename, dirname, join, posix, relative, resolve, sep } from "node:path";
 import { z } from "zod";
 import type { Context } from "../../context/Context.js";
 import {
@@ -31,9 +23,7 @@ import {
   type DriveDirectoryMeta,
 } from "../../lib/types/drive.js";
 import { xDriveDir } from "../../lib/x.js";
-import {
-  StoreRecordNotFoundError,
-} from "../Store.js";
+import { StoreRecordNotFoundError } from "../Store.js";
 import type {
   CreateDriveEntryArgs,
   DeleteDriveEntryArgs,
@@ -45,11 +35,13 @@ import type {
 } from "./DriveStore.js";
 
 const MAX_EXTRACTED_SITE_BYTES = 500 * 1024 * 1024;
-const directoryMetaPatchSchema = z.object({
-  isPublic: z.boolean().optional(),
-  name: z.string().optional(),
-  description: z.string().optional(),
-}).strict();
+const directoryMetaPatchSchema = z
+  .object({
+    isPublic: z.boolean().optional(),
+    name: z.string().optional(),
+    description: z.string().optional(),
+  })
+  .strict();
 
 export class InvalidDrivePathError extends Error {
   constructor(message = "Invalid drive path") {
@@ -139,7 +131,8 @@ function resolveDrivePath(rootInput: string, pathInput: string, requireExisting:
       throw new InvalidDrivePathError("Symbolic links are not allowed in drive paths");
     }
   }
-  if (requireExisting && !existsSync(path)) throw new StoreRecordNotFoundError("Drive entry not found");
+  if (requireExisting && !existsSync(path))
+    throw new StoreRecordNotFoundError("Drive entry not found");
   return path;
 }
 
@@ -160,7 +153,12 @@ function entryFromPath(root: string, path: string, absolutePath: string): DriveE
   };
 }
 
-function walkEntries(root: string, directory: string, prefix: string, recursive: boolean): DriveEntry[] {
+function walkEntries(
+  root: string,
+  directory: string,
+  prefix: string,
+  recursive: boolean,
+): DriveEntry[] {
   const entries: DriveEntry[] = [];
   for (const child of readdirSync(directory, { withFileTypes: true })) {
     if (child.name === ".meta.json" || child.isSymbolicLink()) continue;
@@ -178,7 +176,10 @@ function walkEntries(root: string, directory: string, prefix: string, recursive:
 
 function matches(entry: DriveEntry, filter: DriveFilter): boolean {
   if (filter.paths && !filter.paths.includes(entry.path)) return false;
-  if (filter.parentPaths && (entry.parentPath === null || !filter.parentPaths.includes(entry.parentPath))) {
+  if (
+    filter.parentPaths &&
+    (entry.parentPath === null || !filter.parentPaths.includes(entry.parentPath))
+  ) {
     return false;
   }
   if (filter.kinds && !filter.kinds.includes(entry.kind)) return false;
@@ -225,7 +226,8 @@ function inspectExtractedSite(directory: string): void {
     for (const entry of readdirSync(path, { withFileTypes: true })) {
       const child = join(path, entry.name);
       const stats = lstatSync(child);
-      if (stats.isSymbolicLink()) throw new InvalidDriveArchiveError("Site archives cannot contain symbolic links");
+      if (stats.isSymbolicLink())
+        throw new InvalidDriveArchiveError("Site archives cannot contain symbolic links");
       if (stats.isDirectory()) walk(child);
       else if (stats.isFile()) totalBytes += stats.size;
       if (totalBytes > MAX_EXTRACTED_SITE_BYTES) {
@@ -281,9 +283,11 @@ export class FileDriveStore implements DriveStore {
     }
 
     entries = entries.filter((entry) => matches(entry, args));
-    return entries.sort((left, right) => args.order === "created"
-      ? left.createdAt.localeCompare(right.createdAt) || left.path.localeCompare(right.path)
-      : left.name.localeCompare(right.name) || left.path.localeCompare(right.path));
+    return entries.sort((left, right) =>
+      args.order === "created"
+        ? left.createdAt.localeCompare(right.createdAt) || left.path.localeCompare(right.path)
+        : left.name.localeCompare(right.name) || left.path.localeCompare(right.path),
+    );
   }
 
   count(x: Context, args: DriveFilter): number {
@@ -340,7 +344,8 @@ export class FileDriveStore implements DriveStore {
       renameSync(extractedDirectory, target);
       if (backupPath) rmSync(backupPath, { recursive: true, force: true });
     } catch (error) {
-      if (backupPath && existsSync(backupPath) && !existsSync(target)) renameSync(backupPath, target);
+      if (backupPath && existsSync(backupPath) && !existsSync(target))
+        renameSync(backupPath, target);
       if (error instanceof InvalidDriveArchiveError) throw error;
       throw new InvalidDriveArchiveError("Failed to extract zip file");
     } finally {

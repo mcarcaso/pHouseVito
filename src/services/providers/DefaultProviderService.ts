@@ -21,10 +21,14 @@ interface PendingLogin {
 
 const providerListSchema = z.array(z.unknown());
 const modelListSchema = z.array(z.object({ id: z.string() }).passthrough());
-const oauthProviderListSchema = z.array(z.object({
-  id: z.string(),
-  name: z.string(),
-}).passthrough());
+const oauthProviderListSchema = z.array(
+  z
+    .object({
+      id: z.string(),
+      name: z.string(),
+    })
+    .passthrough(),
+);
 
 export class DefaultProviderService implements ProviderService {
   private readonly pendingLogins = new Map<string, PendingLogin>();
@@ -36,7 +40,8 @@ export class DefaultProviderService implements ProviderService {
       keyStatus: secrets.getProviderKeyStatus(x),
       authStatus: secrets.getProviderAuthStatus(x),
       keyInfo: secrets.getProviderApiKeyInfo(x),
-      oauthProviders: oauthProviderListSchema.parse(getOAuthProviders())
+      oauthProviders: oauthProviderListSchema
+        .parse(getOAuthProviders())
         .map((provider) => ({ id: provider.id, name: provider.name })),
     };
   }
@@ -98,32 +103,34 @@ export class DefaultProviderService implements ProviderService {
         },
         onSelect: async (info: { options: Array<{ id: string; label: string }> }) => {
           const deviceOption = info.options.find((option) =>
-            /device|code/i.test(`${option.id} ${option.label}`)
+            /device|code/i.test(`${option.id} ${option.label}`),
           );
           return deviceOption?.id ?? info.options[0]?.id;
         },
-        onPrompt: async (info: { message: string }) => await this.waitForPrompt(
-          providerId,
-          info.message
-        ),
-        onManualCodeInput: async () => await this.waitForPrompt(
-          providerId,
-          "After the browser redirects to localhost, copy the full redirected URL and paste it here:"
-        ),
+        onPrompt: async (info: { message: string }) =>
+          await this.waitForPrompt(providerId, info.message),
+        onManualCodeInput: async () =>
+          await this.waitForPrompt(
+            providerId,
+            "After the browser redirects to localhost, copy the full redirected URL and paste it here:",
+          ),
         onProgress: (message: string) => {
           console.log(`[oauth/${providerId}] ${message}`);
         },
       };
 
-      authStorage.login(providerId, callbacks).then(() => {
-        this.pendingLogins.set(providerId, { status: "success" });
-        console.log(`[oauth/${providerId}] Login successful`);
-      }).catch((error: unknown) => {
-        const message = error instanceof Error ? error.message : String(error);
-        this.pendingLogins.set(providerId, { status: "error", error: message });
-        console.error(`[oauth/${providerId}] Login failed:`, message);
-        rejectOnce(error instanceof Error ? error : new Error(message));
-      });
+      authStorage
+        .login(providerId, callbacks)
+        .then(() => {
+          this.pendingLogins.set(providerId, { status: "success" });
+          console.log(`[oauth/${providerId}] Login successful`);
+        })
+        .catch((error: unknown) => {
+          const message = error instanceof Error ? error.message : String(error);
+          this.pendingLogins.set(providerId, { status: "error", error: message });
+          console.error(`[oauth/${providerId}] Login failed:`, message);
+          rejectOnce(error instanceof Error ? error : new Error(message));
+        });
     });
   }
 
@@ -131,16 +138,15 @@ export class DefaultProviderService implements ProviderService {
     const pending = this.pendingLogins.get(providerId);
     if (!pending) {
       const auth = xSecretService(x).getPiAuth(x)[providerId];
-      return auth?.type === "oauth" && auth.access
-        ? { status: "success" }
-        : { status: "none" };
+      return auth?.type === "oauth" && auth.access ? { status: "success" } : { status: "none" };
     }
 
-    const result: ProviderLoginStatus = pending.status === "prompt"
-      ? { status: "prompt", promptMessage: pending.promptMessage ?? "" }
-      : pending.status === "error"
-        ? { status: "error", error: pending.error ?? "Unknown login error" }
-        : { status: pending.status };
+    const result: ProviderLoginStatus =
+      pending.status === "prompt"
+        ? { status: "prompt", promptMessage: pending.promptMessage ?? "" }
+        : pending.status === "error"
+          ? { status: "error", error: pending.error ?? "Unknown login error" }
+          : { status: pending.status };
     if (pending.status !== "pending" && pending.status !== "prompt") {
       this.pendingLogins.delete(providerId);
     }

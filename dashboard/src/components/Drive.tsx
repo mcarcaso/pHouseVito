@@ -1,5 +1,5 @@
-import { useState, useEffect, useRef } from 'react';
-import { useNavigate, useLocation } from 'react-router-dom';
+import { useState, useEffect, useRef } from "react";
+import { useNavigate, useLocation } from "react-router-dom";
 
 interface DriveFile {
   name: string;
@@ -16,41 +16,67 @@ interface DirListing {
   files: DriveFile[];
 }
 
-type SortField = 'name' | 'createdAt' | 'type' | 'size';
-type SortDir = 'asc' | 'desc';
+type SortField = "name" | "createdAt" | "type" | "size";
+type SortDir = "asc" | "desc";
 
 function getFileType(name: string): string {
-  const ext = name.split('.').pop()?.toLowerCase() || '';
+  const ext = name.split(".").pop()?.toLowerCase() || "";
   const map: Record<string, string> = {
-    png: 'Image', jpg: 'Image', jpeg: 'Image', gif: 'Image', webp: 'Image', svg: 'Image', bmp: 'Image',
-    mp3: 'Audio', wav: 'Audio', ogg: 'Audio', m4a: 'Audio', aac: 'Audio', flac: 'Audio',
-    mp4: 'Video', webm: 'Video', mov: 'Video', avi: 'Video', mkv: 'Video',
-    pdf: 'PDF',
-    html: 'HTML', css: 'CSS', js: 'JS', ts: 'TS', json: 'JSON', txt: 'Text', md: 'Markdown',
-    xml: 'XML', csv: 'CSV', yml: 'YAML', yaml: 'YAML',
-    zip: 'Archive', gz: 'Archive', tar: 'Archive',
+    png: "Image",
+    jpg: "Image",
+    jpeg: "Image",
+    gif: "Image",
+    webp: "Image",
+    svg: "Image",
+    bmp: "Image",
+    mp3: "Audio",
+    wav: "Audio",
+    ogg: "Audio",
+    m4a: "Audio",
+    aac: "Audio",
+    flac: "Audio",
+    mp4: "Video",
+    webm: "Video",
+    mov: "Video",
+    avi: "Video",
+    mkv: "Video",
+    pdf: "PDF",
+    html: "HTML",
+    css: "CSS",
+    js: "JS",
+    ts: "TS",
+    json: "JSON",
+    txt: "Text",
+    md: "Markdown",
+    xml: "XML",
+    csv: "CSV",
+    yml: "YAML",
+    yaml: "YAML",
+    zip: "Archive",
+    gz: "Archive",
+    tar: "Archive",
   };
-  return map[ext] || ext.toUpperCase() || 'File';
+  return map[ext] || ext.toUpperCase() || "File";
 }
 
 function sortFiles(files: DriveFile[], field: SortField, dir: SortDir): DriveFile[] {
   return [...files].sort((a, b) => {
     let cmp = 0;
     switch (field) {
-      case 'name':
+      case "name":
         cmp = a.name.localeCompare(b.name);
         break;
-      case 'createdAt':
-        cmp = (a.createdAt || '').localeCompare(b.createdAt || '');
+      case "createdAt":
+        cmp = (a.createdAt || "").localeCompare(b.createdAt || "");
         break;
-      case 'type':
+      case "type":
         cmp = getFileType(a.name).localeCompare(getFileType(b.name));
         break;
-      case 'size':
+      case "size":
         cmp = a.size - b.size;
         break;
     }
-    return dir === 'asc' ? cmp : -cmp;
+    return dir === "asc" ? cmp : -cmp;
   });
 }
 
@@ -64,50 +90,50 @@ function formatBytes(bytes: number): string {
 export default function Drive() {
   const navigate = useNavigate();
   const location = useLocation();
-  
+
   // Extract path from URL: /drive/foo/bar -> foo/bar
   const getPathFromUrl = () => {
     const match = location.pathname.match(/^\/drive\/?(.*)$/);
-    return match?.[1] || '';
+    return match?.[1] || "";
   };
-  
+
   const [listing, setListing] = useState<DirListing | null>(null);
   const [loading, setLoading] = useState(true);
   const currentPath = getPathFromUrl();
   const [selectedFile, setSelectedFile] = useState<string | null>(null);
   const [deleteConfirm, setDeleteConfirm] = useState<string | null>(null);
   const [actionLoading, setActionLoading] = useState<string | null>(null);
-  const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' } | null>(null);
+  const [toast, setToast] = useState<{ message: string; type: "success" | "error" } | null>(null);
 
   // Sort
-  const [sortField, setSortField] = useState<SortField>('name');
-  const [sortDir, setSortDir] = useState<SortDir>('asc');
+  const [sortField, setSortField] = useState<SortField>("name");
+  const [sortDir, setSortDir] = useState<SortDir>("asc");
 
   const handleSort = (field: SortField) => {
     if (sortField === field) {
-      setSortDir(d => d === 'asc' ? 'desc' : 'asc');
+      setSortDir((d) => (d === "asc" ? "desc" : "asc"));
     } else {
       setSortField(field);
-      setSortDir('asc');
+      setSortDir("asc");
     }
   };
 
   const sortArrow = (field: SortField) =>
-    sortField === field ? (sortDir === 'asc' ? ' ▲' : ' ▼') : '';
+    sortField === field ? (sortDir === "asc" ? " ▲" : " ▼") : "";
 
   // Upload
   const [showUpload, setShowUpload] = useState(false);
-  const [uploadType, setUploadType] = useState<'file' | 'site'>('file');
+  const [uploadType, setUploadType] = useState<"file" | "site">("file");
   const [uploadFile, setUploadFile] = useState<File | null>(null);
   const [uploading, setUploading] = useState(false);
-  const [siteFolderName, setSiteFolderName] = useState('');
+  const [siteFolderName, setSiteFolderName] = useState("");
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   // New folder
   const [showNewFolder, setShowNewFolder] = useState(false);
-  const [newFolderName, setNewFolderName] = useState('');
+  const [newFolderName, setNewFolderName] = useState("");
 
-  const showToast = (message: string, type: 'success' | 'error') => {
+  const showToast = (message: string, type: "success" | "error") => {
     setToast({ message, type });
     setTimeout(() => setToast(null), 3000);
   };
@@ -115,24 +141,29 @@ export default function Drive() {
   const fetchListing = () => {
     setLoading(true);
     fetch(`/api/drive/ls?path=${encodeURIComponent(currentPath)}`)
-      .then(r => r.json())
-      .then(data => { setListing(data); setLoading(false); })
+      .then((r) => r.json())
+      .then((data) => {
+        setListing(data);
+        setLoading(false);
+      })
       .catch(() => setLoading(false));
   };
 
-  useEffect(() => { fetchListing(); }, [location.pathname]);
+  useEffect(() => {
+    fetchListing();
+  }, [location.pathname]);
 
   const navigateTo = (folder: string) => {
     setSelectedFile(null);
     setDeleteConfirm(null);
-    navigate(folder ? `/drive/${folder}` : '/drive');
+    navigate(folder ? `/drive/${folder}` : "/drive");
   };
 
   const navigateUp = () => {
     if (!currentPath) return;
-    const parts = currentPath.split('/');
+    const parts = currentPath.split("/");
     parts.pop();
-    navigateTo(parts.join('/'));
+    navigateTo(parts.join("/"));
   };
 
   const navigateInto = (dirName: string) => {
@@ -141,19 +172,19 @@ export default function Drive() {
 
   const togglePublic = async () => {
     if (!listing) return;
-    setActionLoading('toggle');
+    setActionLoading("toggle");
     try {
       const res = await fetch(`/api/drive/meta?path=${encodeURIComponent(currentPath)}`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ isPublic: !listing.isPublic }),
       });
       if (res.ok) {
-        showToast(listing.isPublic ? 'Made private' : 'Made public', 'success');
+        showToast(listing.isPublic ? "Made private" : "Made public", "success");
         fetchListing();
       }
     } catch (e: any) {
-      showToast(e.message || 'Failed', 'error');
+      showToast(e.message || "Failed", "error");
     } finally {
       setActionLoading(null);
     }
@@ -164,16 +195,19 @@ export default function Drive() {
     setActionLoading(`toggle-${fileName}`);
     try {
       const res = await fetch(`/api/drive/file-meta?path=${encodeURIComponent(filePath)}`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ isPublic: !currentlyPublic }),
       });
       if (res.ok) {
-        showToast(currentlyPublic ? `${fileName} made private` : `${fileName} made public`, 'success');
+        showToast(
+          currentlyPublic ? `${fileName} made private` : `${fileName} made public`,
+          "success",
+        );
         fetchListing();
       }
     } catch (e: any) {
-      showToast(e.message || 'Failed', 'error');
+      showToast(e.message || "Failed", "error");
     } finally {
       setActionLoading(null);
     }
@@ -183,18 +217,20 @@ export default function Drive() {
     const targetPath = currentPath ? `${currentPath}/${name}` : name;
     setActionLoading(`delete-${name}`);
     try {
-      const res = await fetch(`/api/drive?path=${encodeURIComponent(targetPath)}`, { method: 'DELETE' });
+      const res = await fetch(`/api/drive?path=${encodeURIComponent(targetPath)}`, {
+        method: "DELETE",
+      });
       if (res.ok) {
-        showToast(`Deleted ${name}`, 'success');
+        showToast(`Deleted ${name}`, "success");
         setDeleteConfirm(null);
         if (selectedFile === name) setSelectedFile(null);
         fetchListing();
       } else {
         const data = await res.json();
-        showToast(data.error || 'Delete failed', 'error');
+        showToast(data.error || "Delete failed", "error");
       }
     } catch (e: any) {
-      showToast(e.message || 'Delete failed', 'error');
+      showToast(e.message || "Delete failed", "error");
     } finally {
       setActionLoading(null);
     }
@@ -203,9 +239,15 @@ export default function Drive() {
   const handleUpload = async () => {
     if (!uploadFile) return;
 
-    if (uploadType === 'site') {
-      if (!uploadFile.name.endsWith('.zip')) { showToast('Sites require a .zip file', 'error'); return; }
-      if (!siteFolderName.trim()) { showToast('Enter a folder name for the site', 'error'); return; }
+    if (uploadType === "site") {
+      if (!uploadFile.name.endsWith(".zip")) {
+        showToast("Sites require a .zip file", "error");
+        return;
+      }
+      if (!siteFolderName.trim()) {
+        showToast("Enter a folder name for the site", "error");
+        return;
+      }
     }
 
     setUploading(true);
@@ -213,35 +255,41 @@ export default function Drive() {
       const dataUrl = await new Promise<string>((resolve, reject) => {
         const reader = new FileReader();
         reader.onload = () => resolve(reader.result as string);
-        reader.onerror = () => reject(new Error('Failed to read file'));
+        reader.onerror = () => reject(new Error("Failed to read file"));
         reader.readAsDataURL(uploadFile);
       });
 
-      const endpoint = uploadType === 'site' ? '/api/drive/upload-site' : '/api/drive/upload';
-      const body = uploadType === 'site'
-        ? { data: dataUrl, folder: currentPath ? `${currentPath}/${siteFolderName.trim()}` : siteFolderName.trim() }
-        : { data: dataUrl, filename: uploadFile.name, folder: currentPath || undefined };
+      const endpoint = uploadType === "site" ? "/api/drive/upload-site" : "/api/drive/upload";
+      const body =
+        uploadType === "site"
+          ? {
+              data: dataUrl,
+              folder: currentPath
+                ? `${currentPath}/${siteFolderName.trim()}`
+                : siteFolderName.trim(),
+            }
+          : { data: dataUrl, filename: uploadFile.name, folder: currentPath || undefined };
 
       const res = await fetch(endpoint, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify(body),
       });
 
       const data = await res.json();
       if (res.ok) {
-        showToast('Uploaded', 'success');
+        showToast("Uploaded", "success");
         setShowUpload(false);
         setUploadFile(null);
-        setUploadType('file');
-        setSiteFolderName('');
-        if (fileInputRef.current) fileInputRef.current.value = '';
+        setUploadType("file");
+        setSiteFolderName("");
+        if (fileInputRef.current) fileInputRef.current.value = "";
         fetchListing();
       } else {
-        showToast(data.error || 'Upload failed', 'error');
+        showToast(data.error || "Upload failed", "error");
       }
     } catch (e: any) {
-      showToast(e.message || 'Upload failed', 'error');
+      showToast(e.message || "Upload failed", "error");
     } finally {
       setUploading(false);
     }
@@ -249,24 +297,26 @@ export default function Drive() {
 
   const handleNewFolder = async () => {
     if (!newFolderName.trim()) return;
-    const folderPath = currentPath ? `${currentPath}/${newFolderName.trim()}` : newFolderName.trim();
+    const folderPath = currentPath
+      ? `${currentPath}/${newFolderName.trim()}`
+      : newFolderName.trim();
     // Creating a .meta.json in the folder will create the folder
     try {
       const res = await fetch(`/api/drive/meta?path=${encodeURIComponent(folderPath)}`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ isPublic: false }),
       });
       if (res.ok) {
-        showToast('Folder created', 'success');
+        showToast("Folder created", "success");
         setShowNewFolder(false);
-        setNewFolderName('');
+        setNewFolderName("");
         fetchListing();
       } else {
-        showToast('Failed to create folder', 'error');
+        showToast("Failed to create folder", "error");
       }
     } catch {
-      showToast('Failed to create folder', 'error');
+      showToast("Failed to create folder", "error");
     }
   };
 
@@ -274,7 +324,7 @@ export default function Drive() {
     const base = window.location.origin;
     const url = `${base}/d/${currentPath}/`;
     navigator.clipboard.writeText(url);
-    showToast('URL copied', 'success');
+    showToast("URL copied", "success");
   };
 
   const fileUrl = (name: string) => {
@@ -290,9 +340,11 @@ export default function Drive() {
   return (
     <div className="flex flex-col pb-8">
       {toast && (
-        <div className={`fixed top-4 right-4 z-50 px-4 py-2 rounded-lg shadow-lg text-sm font-medium animate-[slideIn_0.2s_ease-out] ${
-          toast.type === 'success' ? 'bg-green-600 text-white' : 'bg-red-600 text-white'
-        }`}>
+        <div
+          className={`fixed top-4 right-4 z-50 px-4 py-2 rounded-lg shadow-lg text-sm font-medium animate-[slideIn_0.2s_ease-out] ${
+            toast.type === "success" ? "bg-green-600 text-white" : "bg-red-600 text-white"
+          }`}
+        >
           {toast.message}
         </div>
       )}
@@ -302,16 +354,22 @@ export default function Drive() {
         <h2 className="text-lg font-semibold text-white">Drive</h2>
         <div className="ml-auto flex gap-2">
           <button
-            onClick={() => { setShowNewFolder(!showNewFolder); setShowUpload(false); }}
+            onClick={() => {
+              setShowNewFolder(!showNewFolder);
+              setShowUpload(false);
+            }}
             className="px-3 py-1.5 text-sm font-medium rounded-lg bg-neutral-700 hover:bg-neutral-600 text-white transition-colors"
           >
             + Folder
           </button>
           <button
-            onClick={() => { setShowUpload(!showUpload); setShowNewFolder(false); }}
+            onClick={() => {
+              setShowUpload(!showUpload);
+              setShowNewFolder(false);
+            }}
             className="px-3 py-1.5 text-sm font-medium rounded-lg bg-blue-600 hover:bg-blue-500 text-white transition-colors"
           >
-            {showUpload ? 'Cancel' : '+ Upload'}
+            {showUpload ? "Cancel" : "+ Upload"}
           </button>
         </div>
       </div>
@@ -320,43 +378,59 @@ export default function Drive() {
         {/* Breadcrumb */}
         <div className="flex items-center gap-1 mb-3 text-sm">
           <button
-            onClick={() => navigateTo('')}
-            className={currentPath ? 'text-blue-400 hover:underline' : 'text-white font-medium'}
+            onClick={() => navigateTo("")}
+            className={currentPath ? "text-blue-400 hover:underline" : "text-white font-medium"}
           >
             drive
           </button>
-          {currentPath && currentPath.split('/').map((part, i, arr) => {
-            const folderPath = arr.slice(0, i + 1).join('/');
-            const isLast = i === arr.length - 1;
-            return (
-              <span key={folderPath} className="flex items-center gap-1">
-                <span className="text-neutral-600">/</span>
-                {isLast ? (
-                  <span className="text-white font-medium">{part}</span>
-                ) : (
-                  <button onClick={() => navigateTo(folderPath)} className="text-blue-400 hover:underline">{part}</button>
-                )}
-              </span>
-            );
-          })}
+          {currentPath &&
+            currentPath.split("/").map((part, i, arr) => {
+              const folderPath = arr.slice(0, i + 1).join("/");
+              const isLast = i === arr.length - 1;
+              return (
+                <span key={folderPath} className="flex items-center gap-1">
+                  <span className="text-neutral-600">/</span>
+                  {isLast ? (
+                    <span className="text-white font-medium">{part}</span>
+                  ) : (
+                    <button
+                      onClick={() => navigateTo(folderPath)}
+                      className="text-blue-400 hover:underline"
+                    >
+                      {part}
+                    </button>
+                  )}
+                </span>
+              );
+            })}
 
           {/* Public indicator + toggle */}
           {listing && (
             <span className="ml-3 flex items-center gap-2">
-              <span className={`text-[11px] font-semibold uppercase tracking-wide px-2 py-0.5 rounded-md ${
-                listing.isPublic ? 'text-green-400 bg-green-400/10' : 'text-neutral-500 bg-neutral-500/10'
-              }`}>
-                {listing.isPublic ? 'Public' : 'Private'}
+              <span
+                className={`text-[11px] font-semibold uppercase tracking-wide px-2 py-0.5 rounded-md ${
+                  listing.isPublic
+                    ? "text-green-400 bg-green-400/10"
+                    : "text-neutral-500 bg-neutral-500/10"
+                }`}
+              >
+                {listing.isPublic ? "Public" : "Private"}
               </span>
               <button
                 onClick={togglePublic}
-                disabled={actionLoading === 'toggle'}
+                disabled={actionLoading === "toggle"}
                 className="text-xs text-neutral-500 hover:text-white transition-colors"
               >
-                {actionLoading === 'toggle' ? '...' : listing.isPublic ? 'make private' : 'make public'}
+                {actionLoading === "toggle"
+                  ? "..."
+                  : listing.isPublic
+                    ? "make private"
+                    : "make public"}
               </button>
               {listing.isPublic && currentPath && (
-                <button onClick={copyPublicUrl} className="text-xs text-blue-400 hover:underline">copy url</button>
+                <button onClick={copyPublicUrl} className="text-xs text-blue-400 hover:underline">
+                  copy url
+                </button>
               )}
             </span>
           )}
@@ -369,8 +443,8 @@ export default function Drive() {
               type="text"
               placeholder="Folder name"
               value={newFolderName}
-              onChange={e => setNewFolderName(e.target.value)}
-              onKeyDown={e => e.key === 'Enter' && handleNewFolder()}
+              onChange={(e) => setNewFolderName(e.target.value)}
+              onKeyDown={(e) => e.key === "Enter" && handleNewFolder()}
               className="flex-1 px-3 py-2 rounded-lg bg-neutral-800 border border-neutral-700 text-white text-sm placeholder:text-neutral-500 focus:outline-none focus:border-blue-500"
               autoFocus
             />
@@ -390,29 +464,33 @@ export default function Drive() {
             <div className="flex flex-col gap-3">
               <div className="flex gap-2">
                 <button
-                  onClick={() => setUploadType('file')}
+                  onClick={() => setUploadType("file")}
                   className={`px-3 py-1.5 text-sm font-medium rounded-lg transition-colors ${
-                    uploadType === 'file' ? 'bg-blue-600 text-white' : 'bg-neutral-800 text-neutral-400 hover:text-white'
+                    uploadType === "file"
+                      ? "bg-blue-600 text-white"
+                      : "bg-neutral-800 text-neutral-400 hover:text-white"
                   }`}
                 >
                   File
                 </button>
                 <button
-                  onClick={() => setUploadType('site')}
+                  onClick={() => setUploadType("site")}
                   className={`px-3 py-1.5 text-sm font-medium rounded-lg transition-colors ${
-                    uploadType === 'site' ? 'bg-blue-600 text-white' : 'bg-neutral-800 text-neutral-400 hover:text-white'
+                    uploadType === "site"
+                      ? "bg-blue-600 text-white"
+                      : "bg-neutral-800 text-neutral-400 hover:text-white"
                   }`}
                 >
                   Site (.zip)
                 </button>
               </div>
 
-              {uploadType === 'site' && (
+              {uploadType === "site" && (
                 <input
                   type="text"
                   placeholder="Folder name for site"
                   value={siteFolderName}
-                  onChange={e => setSiteFolderName(e.target.value)}
+                  onChange={(e) => setSiteFolderName(e.target.value)}
                   className="w-full px-3 py-2 rounded-lg bg-neutral-800 border border-neutral-700 text-white text-sm placeholder:text-neutral-500 focus:outline-none focus:border-blue-500"
                 />
               )}
@@ -420,17 +498,19 @@ export default function Drive() {
               <input
                 ref={fileInputRef}
                 type="file"
-                accept={uploadType === 'site' ? '.zip' : undefined}
-                onChange={e => setUploadFile(e.target.files?.[0] || null)}
+                accept={uploadType === "site" ? ".zip" : undefined}
+                onChange={(e) => setUploadFile(e.target.files?.[0] || null)}
                 className="w-full text-sm text-neutral-400 file:mr-3 file:px-3 file:py-1.5 file:rounded-lg file:border-0 file:bg-neutral-800 file:text-neutral-300 file:text-sm file:font-medium file:cursor-pointer hover:file:bg-neutral-700"
               />
 
               <button
                 onClick={handleUpload}
-                disabled={uploading || !uploadFile || (uploadType === 'site' && !siteFolderName.trim())}
+                disabled={
+                  uploading || !uploadFile || (uploadType === "site" && !siteFolderName.trim())
+                }
                 className="w-full px-3 py-2 text-sm font-medium rounded-lg bg-blue-600 hover:bg-blue-500 text-white disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
               >
-                {uploading ? 'Uploading...' : 'Upload'}
+                {uploading ? "Uploading..." : "Upload"}
               </button>
             </div>
           </div>
@@ -439,7 +519,9 @@ export default function Drive() {
         {/* Main content: file list + preview */}
         <div className="flex gap-4">
           {/* Directory listing - left side (hidden on mobile/tablet when file selected) */}
-          <div className={`${selectedFile ? 'hidden xl:block xl:w-1/2' : 'w-full max-w-[700px]'} transition-all`}>
+          <div
+            className={`${selectedFile ? "hidden xl:block xl:w-1/2" : "w-full max-w-[700px]"} transition-all`}
+          >
             {loading ? (
               <div className="text-center text-neutral-500 py-12">Loading...</div>
             ) : !listing ? (
@@ -457,8 +539,11 @@ export default function Drive() {
                 )}
 
                 {/* Folders */}
-                {listing.dirs.map(dir => (
-                  <div key={dir.name} className="group flex items-center rounded-lg hover:bg-neutral-800 transition-colors">
+                {listing.dirs.map((dir) => (
+                  <div
+                    key={dir.name}
+                    className="group flex items-center rounded-lg hover:bg-neutral-800 transition-colors"
+                  >
                     <button
                       onClick={() => navigateInto(dir.name)}
                       className="flex-1 flex items-center gap-3 px-3 py-2.5 text-left text-sm"
@@ -466,7 +551,9 @@ export default function Drive() {
                       <span className="w-5 text-center text-neutral-500">&#x1F4C1;</span>
                       <span className="text-white font-medium">{dir.name}</span>
                       {dir.meta?.isPublic && (
-                        <span className="text-[10px] font-semibold uppercase tracking-wide px-1.5 py-0.5 rounded text-green-400 bg-green-400/10">public</span>
+                        <span className="text-[10px] font-semibold uppercase tracking-wide px-1.5 py-0.5 rounded text-green-400 bg-green-400/10">
+                          public
+                        </span>
                       )}
                     </button>
                     {deleteConfirm === dir.name ? (
@@ -476,9 +563,14 @@ export default function Drive() {
                           disabled={actionLoading === `delete-${dir.name}`}
                           className="text-xs px-2 py-1 rounded bg-red-600 text-white hover:bg-red-500 disabled:opacity-50"
                         >
-                          {actionLoading === `delete-${dir.name}` ? '...' : 'Delete'}
+                          {actionLoading === `delete-${dir.name}` ? "..." : "Delete"}
                         </button>
-                        <button onClick={() => setDeleteConfirm(null)} className="text-xs px-2 py-1 rounded bg-neutral-700 text-white hover:bg-neutral-600">No</button>
+                        <button
+                          onClick={() => setDeleteConfirm(null)}
+                          className="text-xs px-2 py-1 rounded bg-neutral-700 text-white hover:bg-neutral-600"
+                        >
+                          No
+                        </button>
                       </div>
                     ) : (
                       <button
@@ -497,35 +589,64 @@ export default function Drive() {
                     {/* Column headers */}
                     <div className="flex items-center px-3 py-2 text-[11px] font-semibold uppercase tracking-wider text-neutral-500 border-b border-neutral-800 select-none">
                       <div className="w-5 shrink-0" />
-                      <button onClick={() => handleSort('name')} className="flex-1 text-left hover:text-white transition-colors ml-3">
-                        Name{sortArrow('name')}
+                      <button
+                        onClick={() => handleSort("name")}
+                        className="flex-1 text-left hover:text-white transition-colors ml-3"
+                      >
+                        Name{sortArrow("name")}
                       </button>
-                      <button onClick={() => handleSort('type')} className="w-20 text-left hover:text-white transition-colors shrink-0">
-                        Type{sortArrow('type')}
+                      <button
+                        onClick={() => handleSort("type")}
+                        className="w-20 text-left hover:text-white transition-colors shrink-0"
+                      >
+                        Type{sortArrow("type")}
                       </button>
-                      <button onClick={() => handleSort('size')} className="w-20 text-right hover:text-white transition-colors shrink-0">
-                        Size{sortArrow('size')}
+                      <button
+                        onClick={() => handleSort("size")}
+                        className="w-20 text-right hover:text-white transition-colors shrink-0"
+                      >
+                        Size{sortArrow("size")}
                       </button>
-                      <button onClick={() => handleSort('createdAt')} className="w-32 text-right hover:text-white transition-colors shrink-0 hidden sm:block">
-                        Created{sortArrow('createdAt')}
+                      <button
+                        onClick={() => handleSort("createdAt")}
+                        className="w-32 text-right hover:text-white transition-colors shrink-0 hidden sm:block"
+                      >
+                        Created{sortArrow("createdAt")}
                       </button>
                       <div className="w-24 shrink-0" />
                     </div>
 
-                    {sortFiles(listing.files, sortField, sortDir).map(file => (
-                      <div key={file.name} className="group flex items-center rounded-lg hover:bg-neutral-800 transition-colors">
+                    {sortFiles(listing.files, sortField, sortDir).map((file) => (
+                      <div
+                        key={file.name}
+                        className="group flex items-center rounded-lg hover:bg-neutral-800 transition-colors"
+                      >
                         <button
-                          onClick={() => setSelectedFile(selectedFile === file.name ? null : file.name)}
+                          onClick={() =>
+                            setSelectedFile(selectedFile === file.name ? null : file.name)
+                          }
                           className={`flex-1 flex items-center px-3 py-2.5 text-left text-sm min-w-0 ${
-                            selectedFile === file.name ? 'bg-blue-600/20' : ''
+                            selectedFile === file.name ? "bg-blue-600/20" : ""
                           }`}
                         >
-                          <span className="w-5 text-center text-neutral-600 shrink-0">&#x1F4C4;</span>
+                          <span className="w-5 text-center text-neutral-600 shrink-0">
+                            &#x1F4C4;
+                          </span>
                           <span className="text-neutral-200 truncate ml-3 flex-1">{file.name}</span>
-                          <span className="w-20 text-xs text-neutral-500 shrink-0">{getFileType(file.name)}</span>
-                          <span className="w-20 text-xs text-neutral-600 text-right shrink-0">{formatBytes(file.size)}</span>
+                          <span className="w-20 text-xs text-neutral-500 shrink-0">
+                            {getFileType(file.name)}
+                          </span>
+                          <span className="w-20 text-xs text-neutral-600 text-right shrink-0">
+                            {formatBytes(file.size)}
+                          </span>
                           <span className="w-32 text-xs text-neutral-600 text-right shrink-0 hidden sm:block">
-                            {file.createdAt ? new Date(file.createdAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : '—'}
+                            {file.createdAt
+                              ? new Date(file.createdAt).toLocaleDateString("en-US", {
+                                  month: "short",
+                                  day: "numeric",
+                                  year: "numeric",
+                                })
+                              : "—"}
                           </span>
                         </button>
                         <div className="flex items-center gap-0.5 shrink-0">
@@ -534,16 +655,23 @@ export default function Drive() {
                             disabled={actionLoading === `toggle-${file.name}`}
                             className={`text-[10px] font-semibold uppercase tracking-wide px-1.5 py-0.5 rounded cursor-pointer transition-colors shrink-0 ${
                               file.isPublic
-                                ? 'text-green-400 bg-green-400/10 hover:bg-green-400/20'
-                                : 'text-neutral-600 bg-neutral-600/10 hover:bg-neutral-600/20'
+                                ? "text-green-400 bg-green-400/10 hover:bg-green-400/20"
+                                : "text-neutral-600 bg-neutral-600/10 hover:bg-neutral-600/20"
                             }`}
-                            title={file.isPublic ? 'Click to make private' : 'Click to make public'}
+                            title={file.isPublic ? "Click to make private" : "Click to make public"}
                           >
-                            {actionLoading === `toggle-${file.name}` ? '...' : file.isPublic ? 'public' : 'private'}
+                            {actionLoading === `toggle-${file.name}`
+                              ? "..."
+                              : file.isPublic
+                                ? "public"
+                                : "private"}
                           </button>
                           {file.isPublic && (
                             <button
-                              onClick={() => { navigator.clipboard.writeText(publicFileUrl(file.name)); showToast('URL copied', 'success'); }}
+                              onClick={() => {
+                                navigator.clipboard.writeText(publicFileUrl(file.name));
+                                showToast("URL copied", "success");
+                              }}
                               className="text-xs text-neutral-600 hover:text-blue-400 px-2 opacity-0 group-hover:opacity-100 transition-opacity"
                               title="Copy public URL"
                             >
@@ -557,9 +685,14 @@ export default function Drive() {
                                 disabled={actionLoading === `delete-${file.name}`}
                                 className="text-xs px-2 py-1 rounded bg-red-600 text-white hover:bg-red-500 disabled:opacity-50"
                               >
-                                {actionLoading === `delete-${file.name}` ? '...' : 'Delete'}
+                                {actionLoading === `delete-${file.name}` ? "..." : "Delete"}
                               </button>
-                              <button onClick={() => setDeleteConfirm(null)} className="text-xs px-2 py-1 rounded bg-neutral-700 text-white hover:bg-neutral-600">No</button>
+                              <button
+                                onClick={() => setDeleteConfirm(null)}
+                                className="text-xs px-2 py-1 rounded bg-neutral-700 text-white hover:bg-neutral-600"
+                              >
+                                No
+                              </button>
                             </div>
                           ) : (
                             <button
@@ -576,7 +709,9 @@ export default function Drive() {
                 )}
 
                 {listing.dirs.length === 0 && listing.files.length === 0 && !currentPath && (
-                  <div className="text-center text-neutral-500 py-12">Drive is empty. Upload a file or create a folder.</div>
+                  <div className="text-center text-neutral-500 py-12">
+                    Drive is empty. Upload a file or create a folder.
+                  </div>
                 )}
                 {listing.dirs.length === 0 && listing.files.length === 0 && currentPath && (
                   <div className="text-center text-neutral-500 py-8">Empty folder</div>
@@ -592,7 +727,7 @@ export default function Drive() {
                 <span className="text-sm text-neutral-400 truncate">{selectedFile}</span>
                 <div className="flex items-center gap-2 shrink-0">
                   <button
-                    onClick={() => window.open(fileUrl(selectedFile), '_blank')}
+                    onClick={() => window.open(fileUrl(selectedFile), "_blank")}
                     className="text-xs px-2 py-1 rounded bg-neutral-700 hover:bg-neutral-600 text-neutral-300 hover:text-white transition-colors"
                     title="Open in new tab"
                   >
@@ -600,10 +735,14 @@ export default function Drive() {
                   </button>
                   <button
                     onClick={() => {
-                      const file = listing?.files.find(f => f.name === selectedFile);
-                      const url = file?.isPublic ? publicFileUrl(selectedFile) : fileUrl(selectedFile);
-                      navigator.clipboard.writeText(file?.isPublic ? url : `${window.location.origin}${url}`);
-                      showToast('Link copied', 'success');
+                      const file = listing?.files.find((f) => f.name === selectedFile);
+                      const url = file?.isPublic
+                        ? publicFileUrl(selectedFile)
+                        : fileUrl(selectedFile);
+                      navigator.clipboard.writeText(
+                        file?.isPublic ? url : `${window.location.origin}${url}`,
+                      );
+                      showToast("Link copied", "success");
                     }}
                     className="text-xs px-2 py-1 rounded bg-neutral-700 hover:bg-neutral-600 text-neutral-300 hover:text-white transition-colors"
                     title="Copy link"
@@ -622,7 +761,6 @@ export default function Drive() {
             </div>
           )}
         </div>
-
       </div>
 
       {/* Fullscreen preview overlay - mobile/tablet only (under 1280px) */}
@@ -632,17 +770,19 @@ export default function Drive() {
           <div className="flex items-center gap-2 px-4 py-3 border-b border-neutral-800 bg-black shrink-0">
             <span className="text-sm text-neutral-300 truncate min-w-0 flex-1">{selectedFile}</span>
             <button
-              onClick={() => window.open(fileUrl(selectedFile), '_blank')}
+              onClick={() => window.open(fileUrl(selectedFile), "_blank")}
               className="px-3 py-2 rounded-lg bg-neutral-800 hover:bg-neutral-700 text-neutral-300 hover:text-white text-sm font-medium transition-colors flex-none"
             >
               Open ↗
             </button>
             <button
               onClick={() => {
-                const file = listing?.files.find(f => f.name === selectedFile);
+                const file = listing?.files.find((f) => f.name === selectedFile);
                 const url = file?.isPublic ? publicFileUrl(selectedFile) : fileUrl(selectedFile);
-                navigator.clipboard.writeText(file?.isPublic ? url : `${window.location.origin}${url}`);
-                showToast('Link copied', 'success');
+                navigator.clipboard.writeText(
+                  file?.isPublic ? url : `${window.location.origin}${url}`,
+                );
+                showToast("Link copied", "success");
               }}
               className="px-3 py-2 rounded-lg bg-neutral-800 hover:bg-neutral-700 text-neutral-300 hover:text-white text-sm font-medium transition-colors flex-none"
             >
@@ -673,17 +813,31 @@ export default function Drive() {
   );
 }
 
-function FilePreview({ url, filePath, fullscreen = false }: { url: string; filePath: string; fullscreen?: boolean }) {
-  const ext = filePath.split('.').pop()?.toLowerCase() || '';
-  const imageExts = ['png', 'jpg', 'jpeg', 'gif', 'webp', 'svg', 'bmp'];
-  const audioExts = ['mp3', 'wav', 'ogg', 'm4a', 'aac', 'flac', 'webm'];
-  const videoExts = ['mp4', 'webm', 'mov', 'avi', 'mkv'];
-  const textExts = ['html', 'css', 'js', 'ts', 'json', 'txt', 'md', 'xml', 'csv', 'yml', 'yaml'];
+function FilePreview({
+  url,
+  filePath,
+  fullscreen = false,
+}: {
+  url: string;
+  filePath: string;
+  fullscreen?: boolean;
+}) {
+  const ext = filePath.split(".").pop()?.toLowerCase() || "";
+  const imageExts = ["png", "jpg", "jpeg", "gif", "webp", "svg", "bmp"];
+  const audioExts = ["mp3", "wav", "ogg", "m4a", "aac", "flac", "webm"];
+  const videoExts = ["mp4", "webm", "mov", "avi", "mkv"];
+  const textExts = ["html", "css", "js", "ts", "json", "txt", "md", "xml", "csv", "yml", "yaml"];
 
   if (imageExts.includes(ext)) {
     return (
-      <div className={`bg-neutral-900 border border-neutral-800 rounded-lg overflow-hidden p-2 ${fullscreen ? 'h-full flex items-center justify-center' : ''}`}>
-        <img src={url} alt={filePath} className={`max-w-full object-contain mx-auto ${fullscreen ? 'max-h-full' : 'max-h-64'}`} />
+      <div
+        className={`bg-neutral-900 border border-neutral-800 rounded-lg overflow-hidden p-2 ${fullscreen ? "h-full flex items-center justify-center" : ""}`}
+      >
+        <img
+          src={url}
+          alt={filePath}
+          className={`max-w-full object-contain mx-auto ${fullscreen ? "max-h-full" : "max-h-64"}`}
+        />
       </div>
     );
   }
@@ -693,10 +847,10 @@ function FilePreview({ url, filePath, fullscreen = false }: { url: string; fileP
       <div className="bg-neutral-900 border border-neutral-800 rounded-lg overflow-hidden p-4">
         <div className="flex items-center gap-3 mb-3">
           <span className="text-2xl">🎵</span>
-          <span className="text-sm text-neutral-300 truncate">{filePath.split('/').pop()}</span>
+          <span className="text-sm text-neutral-300 truncate">{filePath.split("/").pop()}</span>
         </div>
         <audio controls className="w-full" preload="metadata">
-          <source src={url} type={`audio/${ext === 'mp3' ? 'mpeg' : ext}`} />
+          <source src={url} type={`audio/${ext === "mp3" ? "mpeg" : ext}`} />
           Your browser does not support the audio element.
         </audio>
       </div>
@@ -705,19 +859,31 @@ function FilePreview({ url, filePath, fullscreen = false }: { url: string; fileP
 
   if (videoExts.includes(ext)) {
     return (
-      <div className={`bg-neutral-900 border border-neutral-800 rounded-lg overflow-hidden p-2 ${fullscreen ? 'h-full flex items-center' : ''}`}>
-        <video controls className={`w-full ${fullscreen ? 'max-h-full' : 'max-h-64'}`} preload="metadata">
-          <source src={url} type={`video/${ext === 'mov' ? 'quicktime' : ext}`} />
+      <div
+        className={`bg-neutral-900 border border-neutral-800 rounded-lg overflow-hidden p-2 ${fullscreen ? "h-full flex items-center" : ""}`}
+      >
+        <video
+          controls
+          className={`w-full ${fullscreen ? "max-h-full" : "max-h-64"}`}
+          preload="metadata"
+        >
+          <source src={url} type={`video/${ext === "mov" ? "quicktime" : ext}`} />
           Your browser does not support the video element.
         </video>
       </div>
     );
   }
 
-  if (ext === 'pdf') {
+  if (ext === "pdf") {
     return (
-      <div className={`bg-neutral-900 border border-neutral-800 rounded-lg overflow-hidden ${fullscreen ? 'h-full' : ''}`}>
-        <iframe src={url} className={`w-full border-0 ${fullscreen ? 'h-full' : 'h-64'}`} title={filePath} />
+      <div
+        className={`bg-neutral-900 border border-neutral-800 rounded-lg overflow-hidden ${fullscreen ? "h-full" : ""}`}
+      >
+        <iframe
+          src={url}
+          className={`w-full border-0 ${fullscreen ? "h-full" : "h-64"}`}
+          title={filePath}
+        />
       </div>
     );
   }
@@ -728,26 +894,42 @@ function FilePreview({ url, filePath, fullscreen = false }: { url: string; fileP
 
   return (
     <div className="bg-neutral-900 border border-neutral-800 rounded-lg p-4 text-sm text-neutral-400">
-      <a href={url} download className="text-blue-400 hover:underline">Download {filePath}</a>
+      <a href={url} download className="text-blue-400 hover:underline">
+        Download {filePath}
+      </a>
     </div>
   );
 }
 
-function TextFilePreview({ url, filePath, fullscreen = false }: { url: string; filePath: string; fullscreen?: boolean }) {
+function TextFilePreview({
+  url,
+  filePath,
+  fullscreen = false,
+}: {
+  url: string;
+  filePath: string;
+  fullscreen?: boolean;
+}) {
   const [content, setContent] = useState<string | null>(null);
 
   useEffect(() => {
     fetch(url)
-      .then(r => r.text())
+      .then((r) => r.text())
       .then(setContent)
-      .catch(() => setContent('(failed to load)'));
+      .catch(() => setContent("(failed to load)"));
   }, [url]);
 
   return (
-    <div className={`bg-neutral-900 border border-neutral-800 rounded-lg overflow-hidden ${fullscreen ? 'h-full flex flex-col' : ''}`}>
-      <div className="px-3 py-2 bg-neutral-800 text-xs text-neutral-400 font-mono shrink-0">{filePath}</div>
-      <pre className={`p-3 text-xs text-neutral-300 font-mono overflow-auto whitespace-pre-wrap break-all ${fullscreen ? 'flex-1' : 'max-h-64'}`}>
-        {content === null ? 'Loading...' : content}
+    <div
+      className={`bg-neutral-900 border border-neutral-800 rounded-lg overflow-hidden ${fullscreen ? "h-full flex flex-col" : ""}`}
+    >
+      <div className="px-3 py-2 bg-neutral-800 text-xs text-neutral-400 font-mono shrink-0">
+        {filePath}
+      </div>
+      <pre
+        className={`p-3 text-xs text-neutral-300 font-mono overflow-auto whitespace-pre-wrap break-all ${fullscreen ? "flex-1" : "max-h-64"}`}
+      >
+        {content === null ? "Loading..." : content}
       </pre>
     </div>
   );

@@ -1,13 +1,13 @@
-import { useState, useEffect } from 'react';
-import { useSearchParams } from 'react-router-dom';
-import ReactMarkdown from 'react-markdown';
-import remarkGfm from 'remark-gfm';
+import { useState, useEffect } from "react";
+import { useSearchParams } from "react-router-dom";
+import ReactMarkdown from "react-markdown";
+import remarkGfm from "remark-gfm";
 
 interface Skill {
   name: string;
   description: string;
   path: string;
-  source: 'builtin' | 'user';
+  source: "builtin" | "user";
 }
 
 interface SkillFile {
@@ -17,13 +17,13 @@ interface SkillFile {
 
 function Skills() {
   const [searchParams, setSearchParams] = useSearchParams();
-  const selectedSkillName = searchParams.get('name');
+  const selectedSkillName = searchParams.get("name");
 
   const [skills, setSkills] = useState<Skill[]>([]);
   const [selectedSkill, setSelectedSkill] = useState<Skill | null>(null);
   const [files, setFiles] = useState<SkillFile[]>([]);
   const [selectedFile, setSelectedFile] = useState<SkillFile | null>(null);
-  const [fileContent, setFileContent] = useState<string>('');
+  const [fileContent, setFileContent] = useState<string>("");
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -32,7 +32,7 @@ function Skills() {
 
   useEffect(() => {
     if (selectedSkillName && skills.length > 0) {
-      const skill = skills.find(s => s.name === selectedSkillName);
+      const skill = skills.find((s) => s.name === selectedSkillName);
       if (skill) {
         setSelectedSkill(skill);
         fetchFiles(skill.name);
@@ -41,7 +41,7 @@ function Skills() {
       setSelectedSkill(null);
       setFiles([]);
       setSelectedFile(null);
-      setFileContent('');
+      setFileContent("");
     }
   }, [selectedSkillName, skills]);
 
@@ -53,11 +53,11 @@ function Skills() {
 
   const fetchSkills = async () => {
     try {
-      const res = await fetch('/api/skills');
+      const res = await fetch("/api/skills");
       const data = await res.json();
       setSkills(data);
     } catch (err) {
-      console.error('Failed to fetch skills:', err);
+      console.error("Failed to fetch skills:", err);
     } finally {
       setLoading(false);
     }
@@ -70,7 +70,7 @@ function Skills() {
       setFiles(data);
       if (data.length > 0) setSelectedFile(data[0]);
     } catch (err) {
-      console.error('Failed to fetch skill files:', err);
+      console.error("Failed to fetch skill files:", err);
       setFiles([]);
     }
   };
@@ -81,15 +81,15 @@ function Skills() {
       const text = await res.text();
       setFileContent(text);
     } catch (err) {
-      console.error('Failed to fetch file content:', err);
-      setFileContent('Error loading file');
+      console.error("Failed to fetch file content:", err);
+      setFileContent("Error loading file");
     }
   };
 
   const renderFileContent = () => {
     if (!selectedFile) return null;
-    const extension = selectedFile.name.split('.').pop()?.toLowerCase();
-    const isMarkdown = extension === 'md';
+    const extension = selectedFile.name.split(".").pop()?.toLowerCase();
+    const isMarkdown = extension === "md";
     if (isMarkdown) {
       return (
         <div className="max-w-4xl mx-auto text-neutral-200 leading-relaxed [&_h1]:text-white [&_h1]:text-2xl [&_h1]:sm:text-3xl [&_h1]:mt-6 [&_h1]:mb-3 [&_h1]:border-b-2 [&_h1]:border-neutral-700 [&_h1]:pb-2 [&_h2]:text-white [&_h2]:text-xl [&_h2]:mt-6 [&_h2]:mb-3 [&_h2]:border-b [&_h2]:border-neutral-800 [&_h2]:pb-2 [&_h3]:text-white [&_h3]:text-lg [&_h3]:mt-4 [&_h3]:mb-2 [&_p]:my-3 [&_ul]:my-3 [&_ul]:pl-6 [&_ol]:my-3 [&_ol]:pl-6 [&_li]:my-2 [&_code]:bg-neutral-800 [&_code]:px-1.5 [&_code]:py-0.5 [&_code]:rounded [&_code]:font-mono [&_code]:text-cyan-400 [&_code]:text-[0.9em] [&_pre]:bg-neutral-900 [&_pre]:p-4 [&_pre]:rounded-lg [&_pre]:overflow-x-auto [&_pre]:whitespace-pre-wrap [&_pre]:break-words [&_pre]:my-4 [&_pre_code]:bg-transparent [&_pre_code]:p-0 [&_pre_code]:text-neutral-200 [&_blockquote]:border-l-4 [&_blockquote]:border-blue-600 [&_blockquote]:my-4 [&_blockquote]:pl-4 [&_blockquote]:text-neutral-400 [&_blockquote]:italic [&_a]:text-cyan-400 [&_a]:no-underline hover:[&_a]:underline [&_table]:w-full [&_table]:border-collapse [&_table]:my-4 [&_th]:border [&_th]:border-neutral-700 [&_th]:p-2 [&_th]:text-left [&_th]:bg-neutral-800 [&_th]:font-semibold [&_td]:border [&_td]:border-neutral-700 [&_td]:p-2">
@@ -131,8 +131,8 @@ function Skills() {
                 key={file.name}
                 className={`px-3 py-2 rounded-md text-sm cursor-pointer transition-all whitespace-nowrap shrink-0 ${
                   selectedFile?.name === file.name
-                    ? 'bg-blue-600 text-white border border-blue-600'
-                    : 'bg-neutral-900 text-neutral-400 border border-neutral-800 hover:bg-neutral-800 hover:text-white hover:border-neutral-700'
+                    ? "bg-blue-600 text-white border border-blue-600"
+                    : "bg-neutral-900 text-neutral-400 border border-neutral-800 hover:bg-neutral-800 hover:text-white hover:border-neutral-700"
                 }`}
                 onClick={() => setSelectedFile(file)}
               >
@@ -143,7 +143,9 @@ function Skills() {
 
           {/* File content */}
           <div className="px-4 pb-4">
-            {selectedFile ? renderFileContent() : (
+            {selectedFile ? (
+              renderFileContent()
+            ) : (
               <div className="text-center text-neutral-500 py-12">No files</div>
             )}
           </div>
@@ -153,8 +155,8 @@ function Skills() {
   }
 
   // Separate builtin vs user skills
-  const builtinSkills = skills.filter(s => s.source === 'builtin');
-  const userSkills = skills.filter(s => s.source === 'user');
+  const builtinSkills = skills.filter((s) => s.source === "builtin");
+  const userSkills = skills.filter((s) => s.source === "user");
 
   const renderSkillItem = (skill: Skill) => (
     <div
@@ -185,9 +187,7 @@ function Skills() {
             <div className="px-5 pt-4 pb-2 text-xs font-semibold uppercase tracking-wider text-neutral-600">
               User Skills ({userSkills.length})
             </div>
-            <div className="px-4 pb-4">
-              {userSkills.map(renderSkillItem)}
-            </div>
+            <div className="px-4 pb-4">{userSkills.map(renderSkillItem)}</div>
           </>
         )}
 
@@ -196,9 +196,7 @@ function Skills() {
             <div className="px-5 pt-2 pb-2 text-xs font-semibold uppercase tracking-wider text-neutral-600">
               System Skills ({builtinSkills.length})
             </div>
-            <div className="px-4 pb-4">
-              {builtinSkills.map(renderSkillItem)}
-            </div>
+            <div className="px-4 pb-4">{builtinSkills.map(renderSkillItem)}</div>
           </>
         )}
 

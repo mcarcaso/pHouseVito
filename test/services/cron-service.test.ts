@@ -12,13 +12,15 @@ describe("CronerCronService", () => {
 
     service.start(x, {
       timezone: "UTC",
-      jobs: [{
-        name: "daily-check",
-        schedule: "0 0 * * *",
-        session: "telegram:123",
-        prompt: "Check status",
-        sendCondition: "status changed",
-      }],
+      jobs: [
+        {
+          name: "daily-check",
+          schedule: "0 0 * * *",
+          session: "telegram:123",
+          prompt: "Check status",
+          sendCondition: "status changed",
+        },
+      ],
       onJob: async (event, channel) => {
         events.push({ event, channel });
       },

@@ -37,7 +37,7 @@ before(async () => {
 
 after(async () => {
   await new Promise<void>((resolve, reject) => {
-    server.close((error) => error ? reject(error) : resolve());
+    server.close((error) => (error ? reject(error) : resolve()));
   });
   rmSync(root, { recursive: true, force: true });
 });
@@ -67,11 +67,14 @@ describe("drive router", () => {
 
     const listing = await fetch(`${baseUrl}/api/drive/ls?path=site`);
     assert.equal(listing.status, 200);
-    const result = z.object({
-      path: z.string(),
-      isPublic: z.boolean(),
-      files: z.array(z.object({ name: z.string(), size: z.number(), isPublic: z.boolean() })),
-    }).passthrough().parse(await listing.json());
+    const result = z
+      .object({
+        path: z.string(),
+        isPublic: z.boolean(),
+        files: z.array(z.object({ name: z.string(), size: z.number(), isPublic: z.boolean() })),
+      })
+      .passthrough()
+      .parse(await listing.json());
     assert.equal(result.files[0].name, "index.html");
     assert.equal(result.files[0].isPublic, false);
   });

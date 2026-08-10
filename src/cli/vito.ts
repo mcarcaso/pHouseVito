@@ -5,11 +5,7 @@ import { runAppsCommand } from "./commands/apps.js";
 import { runConfigCommand } from "./commands/config.js";
 import { runMemoryCommand } from "./commands/memory.js";
 
-const projectRoot = resolve(
-  dirname(fileURLToPath(import.meta.url)),
-  "..",
-  "..",
-);
+const projectRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..", "..");
 
 const help = `Usage: vito <command>
 
@@ -24,12 +20,7 @@ Run "vito <command> --help" for command-specific help.
 
 export async function runCli(args: string[]): Promise<number> {
   const [command, ...commandArgs] = args;
-  if (
-    !command ||
-    command === "help" ||
-    command === "--help" ||
-    command === "-h"
-  ) {
+  if (!command || command === "help" || command === "--help" || command === "-h") {
     process.stdout.write(help);
     return 0;
   }

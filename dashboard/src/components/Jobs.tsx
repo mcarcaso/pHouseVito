@@ -42,16 +42,16 @@ export default function Jobs() {
   };
 
   const getSessionDisplay = (sessionId: string) => {
-    const session = sessions.find(s => s.id === sessionId);
+    const session = sessions.find((s) => s.id === sessionId);
     if (session?.alias) {
       return session.alias;
     }
     // If no alias, try to show a cleaner version (channel:target -> just target if recognizable)
-    const parts = sessionId.split(':');
+    const parts = sessionId.split(":");
     if (parts.length === 2) {
       const [channel, target] = parts;
       // For system sessions, just show the target
-      if (channel === 'system') return target;
+      if (channel === "system") return target;
       // For others, show channel badge + target
       return sessionId;
     }
@@ -247,7 +247,9 @@ export default function Jobs() {
 
             {/* Send Condition */}
             <div className="flex flex-col gap-1">
-              <label className="text-xs text-neutral-500 font-medium">Send Condition (optional)</label>
+              <label className="text-xs text-neutral-500 font-medium">
+                Send Condition (optional)
+              </label>
               <input
                 type="text"
                 value={formData.sendCondition || ""}
@@ -255,7 +257,10 @@ export default function Jobs() {
                 placeholder="Only send if X is down 5% or more"
                 className="px-3 py-2 bg-neutral-950 border border-neutral-700 rounded-md text-neutral-200 text-sm sm:text-base focus:outline-none focus:border-blue-600 transition-colors"
               />
-              <span className="text-xs text-neutral-600">If set, response only sent when condition is met (AI will respond NO_REPLY otherwise)</span>
+              <span className="text-xs text-neutral-600">
+                If set, response only sent when condition is met (AI will respond NO_REPLY
+                otherwise)
+              </span>
             </div>
 
             {/* One-time checkbox */}
@@ -280,9 +285,7 @@ export default function Jobs() {
 
         {/* Jobs List */}
         {jobs.length === 0 ? (
-          <div className="text-center py-12 text-neutral-500">
-            No scheduled jobs yet
-          </div>
+          <div className="text-center py-12 text-neutral-500">No scheduled jobs yet</div>
         ) : (
           <div className="space-y-3">
             {jobs.map((job) => (
@@ -323,19 +326,31 @@ export default function Jobs() {
                 {/* Job Details - Desktop: grid, Mobile: stack */}
                 <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 mb-3">
                   <div className="flex flex-col gap-0.5">
-                    <span className="text-[11px] text-neutral-500 font-medium uppercase tracking-wide">Schedule</span>
+                    <span className="text-[11px] text-neutral-500 font-medium uppercase tracking-wide">
+                      Schedule
+                    </span>
                     <span className="text-sm text-neutral-300 font-mono">{job.schedule}</span>
                   </div>
                   <div className="flex flex-col gap-0.5">
-                    <span className="text-[11px] text-neutral-500 font-medium uppercase tracking-wide">Timezone</span>
-                    <span className="text-sm text-neutral-300">{job.timezone || "America/New_York"}</span>
+                    <span className="text-[11px] text-neutral-500 font-medium uppercase tracking-wide">
+                      Timezone
+                    </span>
+                    <span className="text-sm text-neutral-300">
+                      {job.timezone || "America/New_York"}
+                    </span>
                   </div>
                   <div className="flex flex-col gap-0.5">
-                    <span className="text-[11px] text-neutral-500 font-medium uppercase tracking-wide">Session</span>
+                    <span className="text-[11px] text-neutral-500 font-medium uppercase tracking-wide">
+                      Session
+                    </span>
                     <div className="flex flex-col gap-0.5">
-                      <span className="text-sm text-neutral-300">{getSessionDisplay(job.session)}</span>
-                      {sessions.find(s => s.id === job.session)?.alias && (
-                        <span className="text-xs text-neutral-500 font-mono truncate">{job.session}</span>
+                      <span className="text-sm text-neutral-300">
+                        {getSessionDisplay(job.session)}
+                      </span>
+                      {sessions.find((s) => s.id === job.session)?.alias && (
+                        <span className="text-xs text-neutral-500 font-mono truncate">
+                          {job.session}
+                        </span>
                       )}
                     </div>
                   </div>
@@ -343,7 +358,9 @@ export default function Jobs() {
 
                 {/* Prompt */}
                 <div className="flex flex-col gap-1">
-                  <span className="text-[11px] text-neutral-500 font-medium uppercase tracking-wide">Prompt</span>
+                  <span className="text-[11px] text-neutral-500 font-medium uppercase tracking-wide">
+                    Prompt
+                  </span>
                   <pre className="bg-neutral-950 p-3 rounded-md text-sm text-neutral-300 font-mono whitespace-pre-wrap break-words">
                     {job.prompt}
                   </pre>
@@ -351,7 +368,9 @@ export default function Jobs() {
 
                 {/* Send Condition */}
                 <div className="flex flex-col gap-1 mt-3">
-                  <span className="text-[11px] text-neutral-500 font-medium uppercase tracking-wide">Send Condition</span>
+                  <span className="text-[11px] text-neutral-500 font-medium uppercase tracking-wide">
+                    Send Condition
+                  </span>
                   {editingCondition === job.name ? (
                     <div className="flex gap-2">
                       <input
@@ -380,7 +399,7 @@ export default function Jobs() {
                       </button>
                     </div>
                   ) : (
-                    <div 
+                    <div
                       className="flex items-center gap-2 cursor-pointer group"
                       onClick={() => startEditingCondition(job)}
                     >

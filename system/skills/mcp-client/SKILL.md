@@ -18,12 +18,12 @@ In another skill's `SKILL.md` frontmatter:
 name: tavily
 description: Web research through Tavily MCP
 mcp:
-  transport: http              # http | streamable-http | stdio
+  transport: http # http | streamable-http | stdio
   url: https://mcp.example.com/mcp?apiKey=${API_KEY}
   # Optional safety/config:
-  allowToolPrefix: tavily_     # optional; soft safety fence for calls
-  timeoutMs: 30000             # optional; default 30000, max 120000
-  maxOutputBytes: 50000        # optional; default 50000
+  allowToolPrefix: tavily_ # optional; soft safety fence for calls
+  timeoutMs: 30000 # optional; default 30000, max 120000
+  maxOutputBytes: 50000 # optional; default 50000
 ---
 ```
 
@@ -50,6 +50,7 @@ node system/skills/mcp-client/mcp-client.mjs schema <skill-md-or-url-or-dir> <to
 ```
 
 Aliases:
+
 - `tools` = `list`
 - `invoke` = `call`
 - `sequence` = `batch`

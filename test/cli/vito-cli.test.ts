@@ -33,28 +33,28 @@ describe("Vito CLI", () => {
   });
 
   it("validates a config through the stable command", () => {
-    const result = runVito([
-      "config",
-      "validate",
-      "user.example/vito.config.json",
-    ]);
+    const result = runVito(["config", "validate", "user.example/vito.config.json"]);
     assert.equal(result.status, 0, result.stderr);
     assert.match(result.stdout, /Valid Vito config/);
   });
 
   it("atomically migrates legacy Pi configuration", () => {
     const path = join(tempDir, "legacy.json");
-    writeFileSync(path, JSON.stringify({
-      settings: { harness: "pi-coding-agent", streamMode: "final" },
-      harnesses: {
-        "pi-coding-agent": {
-          model: { provider: "openrouter", name: "legacy-model" },
+    writeFileSync(
+      path,
+      JSON.stringify({
+        settings: { harness: "pi-coding-agent", streamMode: "final" },
+        harnesses: {
+          "pi-coding-agent": {
+            model: { provider: "openrouter", name: "legacy-model" },
+          },
         },
-      },
-      channels: {},
-      sessions: { default: { harness: "pi-coding-agent" } },
-      cron: { jobs: [] },
-    }), "utf-8");
+        channels: {},
+        sessions: { default: { harness: "pi-coding-agent" } },
+        cron: { jobs: [] },
+      }),
+      "utf-8",
+    );
 
     const result = runVito(["config", "migrate", path]);
     assert.equal(result.status, 0, result.stderr);

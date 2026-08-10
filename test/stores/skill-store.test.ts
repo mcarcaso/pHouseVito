@@ -10,14 +10,14 @@ import { FileSkillStore } from "../../src/stores/skills/FileSkillStore.js";
 function writeSkill(
   root: string,
   directory: string,
-  args: { name?: string; description: string; content?: string }
+  args: { name?: string; description: string; content?: string },
 ): void {
   const skillDir = join(root, directory);
   mkdirSync(skillDir, { recursive: true });
   const nameLine = args.name ? `name: ${args.name}\n` : "";
   writeFileSync(
     join(skillDir, "SKILL.md"),
-    `---\n${nameLine}description: ${args.description}\n---\n${args.content ?? ""}`
+    `---\n${nameLine}description: ${args.description}\n---\n${args.content ?? ""}`,
   );
 }
 
@@ -53,10 +53,7 @@ describe("FileSkillStore", () => {
       const skills = store.list(x, {});
       assert.equal(skills.length, 2);
       assert.equal(skills.find((skill) => skill.name === "shared")?.source, "user");
-      assert.equal(
-        skills.find((skill) => skill.name === "shared")?.description,
-        "User version"
-      );
+      assert.equal(skills.find((skill) => skill.name === "shared")?.description, "User version");
       assert.equal(store.count(x, { sources: ["builtin"] }), 1);
     } finally {
       rmSync(root, { recursive: true, force: true });
@@ -79,10 +76,10 @@ describe("FileSkillStore", () => {
         includeFiles: true,
       })[0];
       assert.equal(withoutFiles?.files, undefined);
-      assert.deepEqual(withFiles?.files?.map((file) => file.name), [
-        "scripts/run.ts",
-        "SKILL.md",
-      ]);
+      assert.deepEqual(
+        withFiles?.files?.map((file) => file.name),
+        ["scripts/run.ts", "SKILL.md"],
+      );
     } finally {
       rmSync(root, { recursive: true, force: true });
     }
@@ -117,16 +114,14 @@ describe("FileSkillStore", () => {
         description: "Read only",
       });
       assert.throws(
-        () => store.update(x, {
-          name: "protected",
-          changes: { description: "Nope" },
-        }),
-        StorePermissionDeniedError
+        () =>
+          store.update(x, {
+            name: "protected",
+            changes: { description: "Nope" },
+          }),
+        StorePermissionDeniedError,
       );
-      assert.throws(
-        () => store.delete(x, { names: ["protected"] }),
-        StorePermissionDeniedError
-      );
+      assert.throws(() => store.delete(x, { names: ["protected"] }), StorePermissionDeniedError);
     } finally {
       rmSync(root, { recursive: true, force: true });
     }

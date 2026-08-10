@@ -16,23 +16,12 @@ import {
   nonRootDrivePathSchema,
 } from "../lib/types/drive.js";
 import { xDriveStore } from "../lib/x.js";
-import {
-  InvalidDriveArchiveError,
-  InvalidDrivePathError,
-} from "../stores/drive/FileDriveStore.js";
+import { InvalidDriveArchiveError, InvalidDrivePathError } from "../stores/drive/FileDriveStore.js";
 import { StoreRecordNotFoundError } from "../stores/Store.js";
-import {
-  emptyRouteSchema,
-  unknownRouteSchema,
-  createRawRoute,
-} from "./createRoute.js";
+import { emptyRouteSchema, unknownRouteSchema, createRawRoute } from "./createRoute.js";
 
-const pathQuerySchema = z
-  .object({ path: drivePathSchema.default("") })
-  .strict();
-const requiredPathQuerySchema = z
-  .object({ path: nonRootDrivePathSchema })
-  .strict();
+const pathQuerySchema = z.object({ path: drivePathSchema.default("") }).strict();
+const requiredPathQuerySchema = z.object({ path: nonRootDrivePathSchema }).strict();
 const wildcardPathSchema = z
   .object({
     filepath: z
@@ -51,12 +40,7 @@ function decodeDataUrl(value: string): Buffer | undefined {
   return Buffer.from(match[1], "base64");
 }
 
-function sendDriveFile(
-  x: Context,
-  path: string,
-  indexFallback: boolean,
-  res: Response,
-): boolean {
+function sendDriveFile(x: Context, path: string, indexFallback: boolean, res: Response): boolean {
   const parsed = driveReadResultSchema.safeParse(
     xDriveStore(x).cmd(x, { type: "read", path, indexFallback }),
   );
@@ -130,10 +114,7 @@ function driveErrorMiddleware(
   res: Response,
   next: NextFunction,
 ): void {
-  if (
-    error instanceof InvalidDriveArchiveError ||
-    error instanceof InvalidDrivePathError
-  ) {
+  if (error instanceof InvalidDriveArchiveError || error instanceof InvalidDrivePathError) {
     res.status(400).json({ error: error.message });
     return;
   }
@@ -206,9 +187,7 @@ function createDriveRouter(x: Context): Router {
           res.status(400).json({ error: "Invalid data URL format" });
           return;
         }
-        const path = body.folder
-          ? `${body.folder}/${body.filename}`
-          : body.filename;
+        const path = body.folder ? `${body.folder}/${body.filename}` : body.filename;
         const parsedPath = nonRootDrivePathSchema.safeParse(path);
         if (!parsedPath.success) {
           res.status(400).json({ error: "Invalid drive path" });

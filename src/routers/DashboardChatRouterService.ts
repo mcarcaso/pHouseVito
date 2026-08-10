@@ -24,9 +24,7 @@ export class DashboardChatRouterService implements RouterService {
             `[Dashboard] HTTP chat received: content=${input.body.content?.substring(0, 50)}`,
           );
           if (!xDashboardChatService(routeX).send(routeX, input.body)) {
-            res
-              .status(400)
-              .json({ error: "Invalid chat message or no handler" });
+            res.status(400).json({ error: "Invalid chat message or no handler" });
             return;
           }
           res.json({ ok: true });

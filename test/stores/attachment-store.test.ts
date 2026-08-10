@@ -41,10 +41,12 @@ describe("FileAttachmentStore", () => {
         filename: "../unsafe.bin",
       });
       assert.equal(attachment.filename, "unsafe.bin");
-      const result = attachmentReadResultSchema.parse(store.cmd(x, {
-        type: "read",
-        id: attachment.id,
-      }));
+      const result = attachmentReadResultSchema.parse(
+        store.cmd(x, {
+          type: "read",
+          id: attachment.id,
+        }),
+      );
       const chunks: Buffer[] = [];
       for await (const chunk of result.stream) {
         chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk));

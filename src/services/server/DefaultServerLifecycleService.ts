@@ -60,7 +60,7 @@ export class DefaultServerLifecycleService implements ServerLifecycleService {
 
   requestRestart(_x: Context, request: ServerRestartRequest): void {
     console.log(
-      `[Dashboard] Server restart requested from ${request.clientIp} ua=${request.userAgent}`
+      `[Dashboard] Server restart requested from ${request.clientIp} ua=${request.userAgent}`,
     );
     this.schedule(() => {
       void this.rebuildAndRestart();

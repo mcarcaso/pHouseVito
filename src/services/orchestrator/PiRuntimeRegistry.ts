@@ -32,8 +32,7 @@ export class PiRuntimeRegistry {
     settings: ResolvedSettings,
   ): Promise<PiSessionRuntime> {
     const piConfig = settings["pi-coding-agent"] || {};
-    const model = piConfig.model
-      || { provider: "anthropic", name: "claude-sonnet-4-20250514" };
+    const model = piConfig.model || { provider: "anthropic", name: "claude-sonnet-4-20250514" };
     const openRouterProvider = piConfig.openRouterProvider;
     const existing = this.runtimes.get(sessionId);
     if (existing) {
@@ -58,7 +57,9 @@ export class PiRuntimeRegistry {
       skills: xSkillStore(x).list(x, {}),
     } satisfies PiSessionRuntimeConfig);
     this.runtimes.set(sessionId, runtime);
-    console.log(`[PiRuntimeRegistry] Created ${sessionId} with ${runtime.getModel()} at ${sessionDir}`);
+    console.log(
+      `[PiRuntimeRegistry] Created ${sessionId} with ${runtime.getModel()} at ${sessionDir}`,
+    );
     return runtime;
   }
 }

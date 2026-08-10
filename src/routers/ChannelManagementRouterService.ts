@@ -7,11 +7,7 @@ import {
   ChannelManagementNotSupportedError,
   ChannelNotConfiguredError,
 } from "../services/channels/ChannelRegistryService.js";
-import {
-  emptyRouteSchema,
-  unknownRouteSchema,
-  createRawRoute,
-} from "./createRoute.js";
+import { emptyRouteSchema, unknownRouteSchema, createRawRoute } from "./createRoute.js";
 
 export type ManagedChannelName = "discord" | "telegram";
 
@@ -31,10 +27,7 @@ function channelErrorMiddleware(
   });
 }
 
-function createChannelManagementRouter(
-  x: Context,
-  channel: ManagedChannelName,
-): Router {
+function createChannelManagementRouter(x: Context, channel: ManagedChannelName): Router {
   const router = express.Router();
 
   router.post(
@@ -47,12 +40,7 @@ function createChannelManagementRouter(
         body: unknownRouteSchema,
       },
       handler: async (routeX, _input, _req, res) => {
-        res.json(
-          await xChannelRegistryService(routeX).registerCommands(
-            routeX,
-            channel,
-          ),
-        );
+        res.json(await xChannelRegistryService(routeX).registerCommands(routeX, channel));
       },
     }),
   );
@@ -67,12 +55,7 @@ function createChannelManagementRouter(
         body: unknownRouteSchema,
       },
       handler: async (routeX, _input, _req, res) => {
-        res.json(
-          await xChannelRegistryService(routeX).generateAliases(
-            routeX,
-            channel,
-          ),
-        );
+        res.json(await xChannelRegistryService(routeX).generateAliases(routeX, channel));
       },
     }),
   );

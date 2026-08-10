@@ -13,10 +13,12 @@ import type {
 } from "./MessageStore.js";
 
 const messageCommandSchema = z.discriminatedUnion("type", [
-  z.object({
-    type: z.literal("archive-sessions"),
-    sessionIds: z.array(z.string().min(1)).min(1),
-  }).strict(),
+  z
+    .object({
+      type: z.literal("archive-sessions"),
+      sessionIds: z.array(z.string().min(1)).min(1),
+    })
+    .strict(),
 ]);
 
 interface SqlFilter {
@@ -29,7 +31,7 @@ function appendArrayFilter(
   params: Array<string | number>,
   column: string,
   values: Array<string | number> | undefined,
-  exclude = false
+  exclude = false,
 ): void {
   if (values === undefined) return;
   if (values.length === 0) {
@@ -81,9 +83,7 @@ export class SqliteMessageStore implements MessageStore {
     const order = args.order === "newest" ? "DESC" : "ASC";
     const orderBy = args.orderBy === "timestamp" ? "timestamp" : "id";
     const limitClause = args.limit === undefined ? "" : " LIMIT ?";
-    const params = args.limit === undefined
-      ? filter.params
-      : [...filter.params, args.limit];
+    const params = args.limit === undefined ? filter.params : [...filter.params, args.limit];
 
     return xDb(x)
       .prepare(`SELECT * FROM messages${filter.clause} ORDER BY ${orderBy} ${order}${limitClause}`)
@@ -104,7 +104,7 @@ export class SqliteMessageStore implements MessageStore {
         `INSERT INTO messages
            (session_id, channel, channel_target, timestamp, type, content, archived, author)
          VALUES
-           (@session_id, @channel, @channel_target, @timestamp, @type, @content, @archived, @author)`
+           (@session_id, @channel, @channel_target, @timestamp, @type, @content, @archived, @author)`,
       )
       .run(args);
     return { id: Number(result.lastInsertRowid), ...args };

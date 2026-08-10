@@ -1,13 +1,6 @@
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
-import {
-  mkdirSync,
-  mkdtempSync,
-  readFileSync,
-  rmSync,
-  symlinkSync,
-  writeFileSync,
-} from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, it } from "node:test";
@@ -29,7 +22,10 @@ describe("FileDriveStore", () => {
       store.create(x, { kind: "file", path: "docs/readme.txt", content: Buffer.from("hello") });
 
       const rootEntries = store.list(x, { parentPaths: [""] });
-      assert.deepEqual(rootEntries.map((entry) => entry.path), ["docs"]);
+      assert.deepEqual(
+        rootEntries.map((entry) => entry.path),
+        ["docs"],
+      );
       const docsEntries = store.list(x, { parentPaths: ["docs"] });
       assert.equal(docsEntries[0].size, 5);
       assert.equal(store.count(x, { kinds: ["file"] }), 1);
@@ -68,10 +64,12 @@ describe("FileDriveStore", () => {
     const { root, x, store } = createHarness();
     try {
       store.create(x, { kind: "file", path: "file.txt", content: Buffer.from("content") });
-      const result = driveReadResultSchema.parse(store.cmd(x, {
-        type: "read",
-        path: "file.txt",
-      }));
+      const result = driveReadResultSchema.parse(
+        store.cmd(x, {
+          type: "read",
+          path: "file.txt",
+        }),
+      );
       const chunks: Buffer[] = [];
       for await (const chunk of result.stream) {
         chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk));
@@ -96,11 +94,13 @@ describe("FileDriveStore", () => {
         path: "website",
         archive: readFileSync(archivePath),
       });
-      const result = driveReadResultSchema.parse(store.cmd(x, {
-        type: "read",
-        path: "website",
-        indexFallback: true,
-      }));
+      const result = driveReadResultSchema.parse(
+        store.cmd(x, {
+          type: "read",
+          path: "website",
+          indexFallback: true,
+        }),
+      );
       const chunks: Buffer[] = [];
       for await (const chunk of result.stream) {
         chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk));
@@ -118,11 +118,13 @@ describe("FileDriveStore", () => {
     try {
       writeFileSync(outside, "outside");
       symlinkSync(outside, join(root, "link.txt"));
-      assert.throws(() => store.create(x, {
-        kind: "file",
-        path: "../outside.txt",
-        content: Buffer.from("bad"),
-      }));
+      assert.throws(() =>
+        store.create(x, {
+          kind: "file",
+          path: "../outside.txt",
+          content: Buffer.from("bad"),
+        }),
+      );
       assert.equal(store.list(x, { paths: ["link.txt"] }).length, 0);
       assert.equal(store.cmd(x, { type: "read", path: "link.txt" }), undefined);
       assert.equal(store.delete(x, { paths: [""] }), 0);

@@ -45,8 +45,7 @@ export const xAttachmentStore = (x: Context): AttachmentStore =>
 export const xUserDir = (x: Context): string => x.get("userDir") as string;
 export const xProjectDir = (x: Context): string => x.get("projectDir") as string;
 export const xSkillsDir = (x: Context): string => x.get("skillsDir") as string;
-export const xSystemSkillsDir = (x: Context): string =>
-  x.get("systemSkillsDir") as string;
+export const xSystemSkillsDir = (x: Context): string => x.get("systemSkillsDir") as string;
 export const xLogsDir = (x: Context): string => x.get("logsDir") as string;
 export const xSecretsPath = (x: Context): string => x.get("secretsPath") as string;
 export const xPiAuthPath = (x: Context): string => x.get("piAuthPath") as string;

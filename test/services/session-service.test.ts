@@ -15,7 +15,9 @@ class MemorySessionStore implements SessionStore {
   private readonly sessions = new Map<string, SessionRow>();
 
   list(_x: Context, args: SessionListArgs): SessionRow[] {
-    return [...this.sessions.values()].filter((session) => !args.ids || args.ids.includes(session.id));
+    return [...this.sessions.values()].filter(
+      (session) => !args.ids || args.ids.includes(session.id),
+    );
   }
 
   count(): number {

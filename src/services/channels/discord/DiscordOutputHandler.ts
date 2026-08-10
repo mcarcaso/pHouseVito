@@ -21,15 +21,15 @@ function isUnknownRecord(value: unknown): value is Record<string, unknown> {
 }
 
 function isDiscordOutputChannel(value: unknown): value is DiscordOutputChannel {
-  return isUnknownRecord(value)
-    && typeof value.id === "string"
-    && typeof value.send === "function";
+  return isUnknownRecord(value) && typeof value.id === "string" && typeof value.send === "function";
 }
 
 function isChatInputInteraction(value: unknown): value is ChatInputCommandInteraction {
-  return isUnknownRecord(value)
-    && typeof value.commandName === "string"
-    && typeof value.editReply === "function";
+  return (
+    isUnknownRecord(value) &&
+    typeof value.commandName === "string" &&
+    typeof value.editReply === "function"
+  );
 }
 
 export class DiscordOutputHandler implements OutputHandler {
@@ -45,16 +45,19 @@ export class DiscordOutputHandler implements OutputHandler {
   constructor(
     private client: Client,
     private event: InboundEvent,
-    private token?: string
+    private token?: string,
   ) {
     // Check if this is a slash command interaction
     const raw = event.raw;
     if (isChatInputInteraction(raw)) {
       this.interaction = raw;
       // For interactions, we still need the channel for typing indicators
-      this.channelReady = this.client.channels.fetch(event.target).then((channel) => {
-        if (isDiscordOutputChannel(channel)) this.channel = channel;
-      }).catch(() => {});
+      this.channelReady = this.client.channels
+        .fetch(event.target)
+        .then((channel) => {
+          if (isDiscordOutputChannel(channel)) this.channel = channel;
+        })
+        .catch(() => {});
       return;
     }
 
@@ -65,13 +68,16 @@ export class DiscordOutputHandler implements OutputHandler {
       this.channelReady = Promise.resolve();
     } else if (event.target) {
       // Cron job or other non-message trigger — fetch channel by ID
-      this.channelReady = this.client.channels.fetch(event.target).then((channel) => {
-        if (!isDiscordOutputChannel(channel)) return;
-        this.channel = channel;
-        console.log(`[Discord] Fetched channel ${event.target} for cron job`);
-      }).catch((err) => {
-        console.error(`[Discord] Failed to fetch channel ${event.target}: ${err.message}`);
-      });
+      this.channelReady = this.client.channels
+        .fetch(event.target)
+        .then((channel) => {
+          if (!isDiscordOutputChannel(channel)) return;
+          this.channel = channel;
+          console.log(`[Discord] Fetched channel ${event.target} for cron job`);
+        })
+        .catch((err) => {
+          console.error(`[Discord] Failed to fetch channel ${event.target}: ${err.message}`);
+        });
     } else {
       this.channelReady = Promise.resolve();
     }
@@ -205,9 +211,15 @@ export class DiscordOutputHandler implements OutputHandler {
           const fileData = fs.readFileSync(filePath);
           const ext = path.extname(filePath).toLowerCase();
           const mimeMap: Record<string, string> = {
-            ".png": "image/png", ".jpg": "image/jpeg", ".jpeg": "image/jpeg",
-            ".gif": "image/gif", ".webp": "image/webp", ".mp4": "video/mp4",
-            ".mp3": "audio/mpeg", ".wav": "audio/wav", ".ogg": "audio/ogg"
+            ".png": "image/png",
+            ".jpg": "image/jpeg",
+            ".jpeg": "image/jpeg",
+            ".gif": "image/gif",
+            ".webp": "image/webp",
+            ".mp4": "video/mp4",
+            ".mp3": "audio/mpeg",
+            ".wav": "audio/wav",
+            ".ogg": "audio/ogg",
           };
           const mime = mimeMap[ext] || "application/octet-stream";
           form.append("files[0]", new Blob([fileData], { type: mime }), path.basename(filePath));

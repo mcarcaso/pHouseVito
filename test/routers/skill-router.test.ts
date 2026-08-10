@@ -18,7 +18,7 @@ mkdirSync(systemSkillsDir, { recursive: true });
 mkdirSync(skillDir, { recursive: true });
 writeFileSync(
   join(skillDir, "SKILL.md"),
-  "---\nname: example\ndescription: Example skill\n---\n# Example\n"
+  "---\nname: example\ndescription: Example skill\n---\n# Example\n",
 );
 writeFileSync(join(skillDir, "script.ts"), "export {};\n");
 
@@ -57,7 +57,7 @@ before(async () => {
 
 after(async () => {
   await new Promise<void>((resolve, reject) => {
-    server.close((error) => error ? reject(error) : resolve());
+    server.close((error) => (error ? reject(error) : resolve()));
   });
   rmSync(root, { recursive: true, force: true });
 });
@@ -76,7 +76,10 @@ describe("skill router", () => {
     const response = await fetch(`${baseUrl}/api/skills/example/files`);
     assert.equal(response.status, 200);
     const files = z.array(fileSchema).parse(await response.json());
-    assert.deepEqual(files.map((file) => file.name), ["script.ts", "SKILL.md"]);
+    assert.deepEqual(
+      files.map((file) => file.name),
+      ["script.ts", "SKILL.md"],
+    );
   });
 
   it("returns 404 for unknown skills", async () => {

@@ -35,5 +35,4 @@ export class AuthenticatedDashboardAuthService implements DashboardAuthService {
   }
 }
 
-export const authenticatedDashboardAuthService =
-  new AuthenticatedDashboardAuthService();
+export const authenticatedDashboardAuthService = new AuthenticatedDashboardAuthService();

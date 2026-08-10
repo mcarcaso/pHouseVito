@@ -33,7 +33,7 @@ before(async () => {
 
 after(async () => {
   await new Promise<void>((resolve, reject) => {
-    server.close((error) => error ? reject(error) : resolve());
+    server.close((error) => (error ? reject(error) : resolve()));
   });
 });
 
@@ -90,36 +90,44 @@ describe("Ask API router", () => {
       received.push(options);
       return "Voice answer";
     });
-    const response = await postAsk({
-      question: "What time is it?",
-      session: "api:bland-phone",
-      author: "phone",
-      channelPrompt: "No markdown",
-      timeoutMs: 5000,
-      relayToSession: true,
-      ignoredCompatibilityField: "ignored",
-    }, "Bearer secret");
+    const response = await postAsk(
+      {
+        question: "What time is it?",
+        session: "api:bland-phone",
+        author: "phone",
+        channelPrompt: "No markdown",
+        timeoutMs: 5000,
+        relayToSession: true,
+        ignoredCompatibilityField: "ignored",
+      },
+      "Bearer secret",
+    );
     assert.equal(response.status, 200);
     const body = await response.json();
     assert.equal(body.answer, "Voice answer");
     assert.equal(typeof body.elapsed, "number");
-    assert.deepEqual(received, [{
-      question: "What time is it?",
-      session: "api:bland-phone",
-      author: "phone",
-      channelPrompt: "No markdown",
-      timeoutMs: 5000,
-      relayToSession: true,
-    }]);
+    assert.deepEqual(received, [
+      {
+        question: "What time is it?",
+        session: "api:bland-phone",
+        author: "phone",
+        channelPrompt: "No markdown",
+        timeoutMs: 5000,
+        relayToSession: true,
+      },
+    ]);
 
-    const defaultsResponse = await postAsk({
-      question: "Use defaults",
-      session: null,
-      author: null,
-      channelPrompt: null,
-      timeoutMs: null,
-      relayToSession: null,
-    }, "Bearer secret");
+    const defaultsResponse = await postAsk(
+      {
+        question: "Use defaults",
+        session: null,
+        author: null,
+        channelPrompt: null,
+        timeoutMs: null,
+        relayToSession: null,
+      },
+      "Bearer secret",
+    );
     assert.equal(defaultsResponse.status, 200);
     assert.deepEqual(received[1], {
       question: "Use defaults",

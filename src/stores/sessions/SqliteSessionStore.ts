@@ -20,7 +20,7 @@ function appendArrayFilter(
   clauses: string[],
   params: string[],
   column: string,
-  values: string[] | undefined
+  values: string[] | undefined,
 ): void {
   if (values === undefined) return;
   if (values.length === 0) {
@@ -56,13 +56,12 @@ export class SqliteSessionStore implements SessionStore {
     const filter = buildFilter(args);
     const order = args.order === "oldest" ? "ASC" : "DESC";
     const limitClause = args.limit === undefined ? "" : " LIMIT ?";
-    const params: Array<string | number> = args.limit === undefined
-      ? filter.params
-      : [...filter.params, args.limit];
+    const params: Array<string | number> =
+      args.limit === undefined ? filter.params : [...filter.params, args.limit];
 
     return xDb(x)
       .prepare(
-        `SELECT * FROM sessions${filter.clause} ORDER BY last_active_at ${order}${limitClause}`
+        `SELECT * FROM sessions${filter.clause} ORDER BY last_active_at ${order}${limitClause}`,
       )
       .all(...params) as SessionRow[];
   }
@@ -81,7 +80,7 @@ export class SqliteSessionStore implements SessionStore {
         `INSERT INTO sessions
            (id, channel, channel_target, created_at, last_active_at, config, alias)
          VALUES
-           (@id, @channel, @channel_target, @created_at, @last_active_at, @config, @alias)`
+           (@id, @channel, @channel_target, @created_at, @last_active_at, @config, @alias)`,
       )
       .run(args);
     return args;

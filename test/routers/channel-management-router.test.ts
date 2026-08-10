@@ -14,7 +14,10 @@ import type {
   ChannelRegistryService,
 } from "../../src/services/channels/ChannelRegistryService.js";
 import { ChannelNotConfiguredError } from "../../src/services/channels/ChannelRegistryService.js";
-import type { ChannelService, CommandRegistrationResult } from "../../src/services/channels/ChannelService.js";
+import type {
+  ChannelService,
+  CommandRegistrationResult,
+} from "../../src/services/channels/ChannelService.js";
 
 class TestChannelRegistryService implements ChannelRegistryService {
   configured = new Set<ManagedChannelName>(["discord"]);
@@ -35,16 +38,13 @@ class TestChannelRegistryService implements ChannelRegistryService {
 
   async registerCommands(
     _x: Context,
-    channel: ManagedChannelName
+    channel: ManagedChannelName,
   ): Promise<CommandRegistrationResult> {
     if (!this.configured.has(channel)) throw new ChannelNotConfiguredError(channel);
     return { success: true, count: channel === "discord" ? 5 : 4 };
   }
 
-  async generateAliases(
-    _x: Context,
-    channel: ManagedChannelName
-  ): Promise<AliasGenerationResult> {
+  async generateAliases(_x: Context, channel: ManagedChannelName): Promise<AliasGenerationResult> {
     if (!this.configured.has(channel)) throw new ChannelNotConfiguredError(channel);
     return {
       success: true,
@@ -78,7 +78,7 @@ before(async () => {
 
 after(async () => {
   await new Promise<void>((resolve, reject) => {
-    server.close((error) => error ? reject(error) : resolve());
+    server.close((error) => (error ? reject(error) : resolve()));
   });
 });
 

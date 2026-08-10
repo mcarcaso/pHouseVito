@@ -22,6 +22,7 @@ Add to the agent's user config under `cron.jobs` and adjust `session` / `timezon
 This relies on the built-in `profile` skill plus the built-in history search tools.
 
 The job should:
+
 - count recent message volume
 - use raw transcript mode when manageable
 - use semantic probes when the day is too large
@@ -127,6 +128,7 @@ node user/skills/openrouter-image/generate.mjs "prompt text" --out user/drive/im
 ```
 
 Recommended CLI behavior:
+
 - read `OPENROUTER_API_KEY` from `user/secrets.json` or env
 - accept prompt as CLI arg or `--prompt-file`
 - write output file to `user/drive/images/...`

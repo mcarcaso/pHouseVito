@@ -34,10 +34,12 @@ describe("Pm2AppProcessService", () => {
     });
     await service.execute(x, { action: "restart", appName: "alpha" });
     assert.deepEqual(calls, [["pm2", "restart", "app-alpha"]]);
-    await assert.rejects(() => service.execute(x, {
-      action: "delete",
-      appName: "../bad",
-    }));
+    await assert.rejects(() =>
+      service.execute(x, {
+        action: "delete",
+        appName: "../bad",
+      }),
+    );
   });
 
   it("returns no statuses when PM2 is unavailable or malformed", async () => {

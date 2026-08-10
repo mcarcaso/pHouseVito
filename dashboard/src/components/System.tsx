@@ -1,27 +1,27 @@
-import { useState, useEffect } from 'react';
-import ReactMarkdown from 'react-markdown';
-import remarkGfm from 'remark-gfm';
+import { useState, useEffect } from "react";
+import ReactMarkdown from "react-markdown";
+import remarkGfm from "remark-gfm";
 
-type Tab = 'soul' | 'system';
+type Tab = "soul" | "system";
 
 function System() {
-  const [tab, setTab] = useState<Tab>('soul');
-  const [soulContent, setSoulContent] = useState('');
-  const [systemContent, setSystemContent] = useState('');
+  const [tab, setTab] = useState<Tab>("soul");
+  const [soulContent, setSoulContent] = useState("");
+  const [systemContent, setSystemContent] = useState("");
 
   useEffect(() => {
-    fetch('/api/soul')
+    fetch("/api/soul")
       .then((res) => res.json())
       .then((data) => setSoulContent(data.content))
-      .catch((err) => console.error('Failed to load soul:', err));
+      .catch((err) => console.error("Failed to load soul:", err));
 
-    fetch('/api/system-prompt')
+    fetch("/api/system-prompt")
       .then((res) => res.json())
       .then((data) => setSystemContent(data.content))
-      .catch((err) => console.error('Failed to load system prompt:', err));
+      .catch((err) => console.error("Failed to load system prompt:", err));
   }, []);
 
-  const currentContent = tab === 'soul' ? soulContent : systemContent;
+  const currentContent = tab === "soul" ? soulContent : systemContent;
 
   return (
     <div className="flex flex-col pb-8">
@@ -30,21 +30,21 @@ function System() {
         <div className="flex gap-2">
           <button
             className={`px-4 py-2 rounded-md text-sm cursor-pointer transition-all ${
-              tab === 'soul'
-                ? 'bg-green-700 border border-green-600 text-white'
-                : 'bg-neutral-800 border border-neutral-700 text-neutral-400 hover:bg-neutral-700 hover:text-white'
+              tab === "soul"
+                ? "bg-green-700 border border-green-600 text-white"
+                : "bg-neutral-800 border border-neutral-700 text-neutral-400 hover:bg-neutral-700 hover:text-white"
             }`}
-            onClick={() => setTab('soul')}
+            onClick={() => setTab("soul")}
           >
             Soul
           </button>
           <button
             className={`px-4 py-2 rounded-md text-sm cursor-pointer transition-all ${
-              tab === 'system'
-                ? 'bg-green-700 border border-green-600 text-white'
-                : 'bg-neutral-800 border border-neutral-700 text-neutral-400 hover:bg-neutral-700 hover:text-white'
+              tab === "system"
+                ? "bg-green-700 border border-green-600 text-white"
+                : "bg-neutral-800 border border-neutral-700 text-neutral-400 hover:bg-neutral-700 hover:text-white"
             }`}
-            onClick={() => setTab('system')}
+            onClick={() => setTab("system")}
           >
             System Prompt
           </button>
@@ -53,7 +53,7 @@ function System() {
 
       <div className="p-4">
         <p className="text-neutral-500 text-sm mb-4">
-          {tab === 'soul'
+          {tab === "soul"
             ? "Personality, values, and boundaries. Loaded from user/SOUL.md."
             : "Architecture context and instructions. Loaded from system/SYSTEM.md."}
         </p>

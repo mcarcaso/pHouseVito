@@ -9,22 +9,21 @@ import { z } from "zod";
 import { RootContext } from "../../src/context/RootContext.js";
 import { dashboardRouterContext } from "../support/dashboard-router-context.js";
 import { createDatabase } from "../../src/lib/sqlite/database.js";
-import {
-  xSessionStore,
-  xTraceEventStore,
-  xTraceStore,
-} from "../../src/lib/x.js";
+import { xSessionStore, xTraceEventStore, xTraceStore } from "../../src/lib/x.js";
 import { TraceRouterService } from "../../src/routers/TraceRouterService.js";
 
 const logsDir = mkdtempSync(join(tmpdir(), "vito-trace-router-"));
 const userDir = mkdtempSync(join(tmpdir(), "vito-trace-user-"));
 const db = createDatabase(":memory:");
-const x = dashboardRouterContext({}, RootContext({
-  db,
-  userDir,
-  skillsDir: join(userDir, "skills"),
-  logsDir,
-}));
+const x = dashboardRouterContext(
+  {},
+  RootContext({
+    db,
+    userDir,
+    skillsDir: join(userDir, "skills"),
+    logsDir,
+  }),
+);
 xSessionStore(x).create(x, {
   id: "dashboard:test",
   channel: "dashboard",
@@ -52,11 +51,15 @@ app.use(express.json());
 app.use("/api/logs", await new TraceRouterService().createRouter(x));
 
 const listSchema = z.object({
-  files: z.array(z.object({
-    filename: z.string(),
-    alias: z.string().nullable(),
-    userMessage: z.string(),
-  }).passthrough()),
+  files: z.array(
+    z
+      .object({
+        filename: z.string(),
+        alias: z.string().nullable(),
+        userMessage: z.string(),
+      })
+      .passthrough(),
+  ),
   totalCount: z.number(),
   offset: z.number(),
   limit: z.number(),
@@ -81,7 +84,7 @@ before(async () => {
 
 after(async () => {
   await new Promise<void>((resolve, reject) => {
-    server.close((error) => error ? reject(error) : resolve());
+    server.close((error) => (error ? reject(error) : resolve()));
   });
   db.close();
   rmSync(logsDir, { recursive: true, force: true });
@@ -103,17 +106,19 @@ describe("trace router", () => {
     const response = await fetch(`${baseUrl}/api/logs/${encodeURIComponent(trace.id)}`);
     assert.equal(response.status, 200);
     const result = detailSchema.parse(await response.json());
-    assert.deepEqual(result.lines.map((line) => line.type), ["header", "user_message"]);
+    assert.deepEqual(
+      result.lines.map((line) => line.type),
+      ["header", "user_message"],
+    );
   });
 
   it("validates inputs and deletes traces", async () => {
     const invalidResponse = await fetch(`${baseUrl}/api/logs?limit=0`);
     assert.equal(invalidResponse.status, 400);
 
-    const deleteResponse = await fetch(
-      `${baseUrl}/api/logs/${encodeURIComponent(trace.id)}`,
-      { method: "DELETE" }
-    );
+    const deleteResponse = await fetch(`${baseUrl}/api/logs/${encodeURIComponent(trace.id)}`, {
+      method: "DELETE",
+    });
     assert.equal(deleteResponse.status, 200);
     assert.equal(xTraceStore(x).count(x, {}), 0);
   });

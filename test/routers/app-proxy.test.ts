@@ -28,10 +28,13 @@ before(async () => {
 
   const directory = join(root, "alpha");
   mkdirSync(directory);
-  writeFileSync(join(directory, ".vito-app.json"), JSON.stringify({
-    port: upstreamAddress.port,
-    url: "https://alpha.example.com",
-  }));
+  writeFileSync(
+    join(directory, ".vito-app.json"),
+    JSON.stringify({
+      port: upstreamAddress.port,
+      url: "https://alpha.example.com",
+    }),
+  );
 
   const x = new ObjectContext({
     appsDir: () => root,
@@ -53,38 +56,53 @@ before(async () => {
 
 after(async () => {
   await Promise.all([
-    new Promise<void>((resolve, reject) => proxy.close((error) => error ? reject(error) : resolve())),
-    new Promise<void>((resolve, reject) => upstream.close((error) => error ? reject(error) : resolve())),
+    new Promise<void>((resolve, reject) =>
+      proxy.close((error) => (error ? reject(error) : resolve())),
+    ),
+    new Promise<void>((resolve, reject) =>
+      upstream.close((error) => (error ? reject(error) : resolve())),
+    ),
   ]);
   rmSync(root, { recursive: true, force: true });
 });
 
-function sendRequest(host: string, method = "GET", body?: string): Promise<{
+function sendRequest(
+  host: string,
+  method = "GET",
+  body?: string,
+): Promise<{
   status: number;
   body: string;
 }> {
   const url = new URL("/echo", proxyUrl);
   return new Promise((resolve, reject) => {
-    const req = request({
-      hostname: url.hostname,
-      port: url.port,
-      path: url.pathname,
-      method,
-      headers: {
-        host,
-        ...(body ? {
-          "content-type": "text/plain",
-          "content-length": Buffer.byteLength(body),
-        } : {}),
+    const req = request(
+      {
+        hostname: url.hostname,
+        port: url.port,
+        path: url.pathname,
+        method,
+        headers: {
+          host,
+          ...(body
+            ? {
+                "content-type": "text/plain",
+                "content-length": Buffer.byteLength(body),
+              }
+            : {}),
+        },
       },
-    }, (res) => {
-      const chunks: Buffer[] = [];
-      res.on("data", (chunk: Buffer) => chunks.push(chunk));
-      res.on("end", () => resolve({
-        status: res.statusCode ?? 0,
-        body: Buffer.concat(chunks).toString("utf-8"),
-      }));
-    });
+      (res) => {
+        const chunks: Buffer[] = [];
+        res.on("data", (chunk: Buffer) => chunks.push(chunk));
+        res.on("end", () =>
+          resolve({
+            status: res.statusCode ?? 0,
+            body: Buffer.concat(chunks).toString("utf-8"),
+          }),
+        );
+      },
+    );
     req.on("error", reject);
     if (body) req.write(body);
     req.end();

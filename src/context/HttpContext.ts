@@ -25,21 +25,12 @@ export function PublicDriveContext(rootX: Context): Context {
 
 /** Dependencies available to the existing unauthenticated provider OAuth flow. */
 export function ProviderAuthContext(rootX: Context): Context {
-  return explicitContext(rootX, [
-    "providerService",
-    "secretService",
-    "secretsPath",
-    "piAuthPath",
-  ]);
+  return explicitContext(rootX, ["providerService", "secretService", "secretsPath", "piAuthPath"]);
 }
 
 /** Dependencies available to the independently authenticated Ask API. */
 export function AskApiContext(rootX: Context): Context {
-  return explicitContext(rootX, [
-    "askApiService",
-    "secretService",
-    "secretsPath",
-  ]);
+  return explicitContext(rootX, ["askApiService", "secretService", "secretsPath"]);
 }
 
 /** Dependencies available while resolving dashboard authentication. */

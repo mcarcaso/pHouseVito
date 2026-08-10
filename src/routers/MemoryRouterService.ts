@@ -4,11 +4,7 @@ import type { Context } from "../context/Context.js";
 import { memorySearchQuerySchema } from "../shared/schemas/memory-api.js";
 import type { RouterService } from "./RouterService.js";
 import { xMemoryService, xSessionStore } from "../lib/x.js";
-import {
-  emptyRouteSchema,
-  unknownRouteSchema,
-  createRawRoute,
-} from "./createRoute.js";
+import { emptyRouteSchema, unknownRouteSchema, createRawRoute } from "./createRoute.js";
 
 export class MemoryRouterService implements RouterService {
   async createRouter(x: Context): Promise<Router> {
@@ -75,15 +71,11 @@ export class MemoryRouterService implements RouterService {
         handler: async (routeX, { query }, _req, res) => {
           const start = Date.now();
           try {
-            const results = await xMemoryService(routeX).search(
-              routeX,
-              query.q,
-              {
-                limit: query.limit,
-                mode: query.mode,
-                sessionFilter: query.session,
-              },
-            );
+            const results = await xMemoryService(routeX).search(routeX, query.q, {
+              limit: query.limit,
+              mode: query.mode,
+              sessionFilter: query.session,
+            });
             res.json({
               query: query.q,
               mode: query.mode,

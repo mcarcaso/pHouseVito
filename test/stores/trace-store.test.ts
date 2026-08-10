@@ -80,11 +80,10 @@ describe("file trace stores", () => {
         traceIds: [trace.id],
         order: "oldest",
       });
-      assert.deepEqual(events.map((event) => event.data.type), [
-        "user_message",
-        "embedding_result",
-        "footer",
-      ]);
+      assert.deepEqual(
+        events.map((event) => event.data.type),
+        ["user_message", "embedding_result", "footer"],
+      );
       assert.equal(eventStore.count(x, { traceIds: [trace.id] }), 3);
     } finally {
       rmSync(logsDir, { recursive: true, force: true });
@@ -126,10 +125,12 @@ describe("file trace stores", () => {
         model: "anthropic/test",
         harness: "test-harness",
       });
-      assert.throws(() => eventStore.create(x, {
-        traceId: trace.id,
-        data: { content: "missing type" },
-      }));
+      assert.throws(() =>
+        eventStore.create(x, {
+          traceId: trace.id,
+          data: { content: "missing type" },
+        }),
+      );
       assert.equal(eventStore.count(x, { traceIds: [trace.id] }), 0);
     } finally {
       rmSync(logsDir, { recursive: true, force: true });

@@ -9,7 +9,7 @@ import { TelegramOutputHandler } from "./TelegramOutputHandler.js";
 
 export function formatTelegramSessionAlias(
   sessionId: string,
-  info: { name: string; type: string }
+  info: { name: string; type: string },
 ): string {
   const threadId = sessionId.split(":")[2];
   if (info.type === "private") return `telegram: DM: ${info.name}`;
@@ -36,9 +36,7 @@ export class TelegramChannelService implements ChannelService {
   async start(x: Context): Promise<void> {
     const token = xSecretService(x).get(x, "TELEGRAM_BOT_TOKEN");
     if (!token) {
-      throw new Error(
-        "TELEGRAM_BOT_TOKEN not set. Get one from @BotFather on Telegram."
-      );
+      throw new Error("TELEGRAM_BOT_TOKEN not set. Get one from @BotFather on Telegram.");
     }
 
     this.bot = new Bot(token);
@@ -94,7 +92,9 @@ export class TelegramChannelService implements ChannelService {
 
       if (chat.type === "private") {
         // DM - use username or first/last name
-        name = chat.username ? `@${chat.username}` : `${chat.first_name || ""} ${chat.last_name || ""}`.trim();
+        name = chat.username
+          ? `@${chat.username}`
+          : `${chat.first_name || ""} ${chat.last_name || ""}`.trim();
         type = "private";
       } else {
         // Group or channel - use title
@@ -109,10 +109,7 @@ export class TelegramChannelService implements ChannelService {
     }
   }
 
-  async listen(
-    x: Context,
-    onEvent: (event: InboundEvent) => void
-  ): Promise<() => void> {
+  async listen(x: Context, onEvent: (event: InboundEvent) => void): Promise<() => void> {
     const bot = this.bot;
     if (!bot) throw new Error("Bot not initialized — call start() first");
 
@@ -141,7 +138,9 @@ export class TelegramChannelService implements ChannelService {
       // Groups: check for @botname in the text
       const isPrivate = ctx.chat.type === "private";
       const botUsername = bot.botInfo.username;
-      const isMentionedInText = !!(botUsername && ctx.message.text.toLowerCase().includes(`@${botUsername.toLowerCase()}`));
+      const isMentionedInText = !!(
+        botUsername && ctx.message.text.toLowerCase().includes(`@${botUsername.toLowerCase()}`)
+      );
       const hasMention = isPrivate || isMentionedInText;
 
       // Normalize bot @mention to @BotName
@@ -170,7 +169,9 @@ export class TelegramChannelService implements ChannelService {
         raw: ctx,
         hasMention,
       };
-      console.log(`[Telegram] ✅ Firing onEvent for chat ${ctx.chat.id}${hasMention ? '' : ' (no @mention)'}${threadId ? ` (thread ${threadId})` : ''}`);
+      console.log(
+        `[Telegram] ✅ Firing onEvent for chat ${ctx.chat.id}${hasMention ? "" : " (no @mention)"}${threadId ? ` (thread ${threadId})` : ""}`,
+      );
       onEvent(event);
     });
 
@@ -340,7 +341,6 @@ export class TelegramChannelService implements ChannelService {
     if (!this.bot) throw new Error("Telegram bot not initialized");
     return new TelegramOutputHandler(this.bot, event);
   }
-
 
   getCustomPrompt(_x: Context): string {
     return [

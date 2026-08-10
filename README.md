@@ -82,7 +82,8 @@ Use the project-local CLI for agent and operator workflows:
 ```bash
 ./vito --help
 ./vito config validate
-./vito config migrate    # Canonicalize a legacy config (use scripts/migrate-vito.sh for a backed-up migration)
+./vito config migrate    # Canonicalize a legacy config directly
+./scripts/migrate-vito.sh # Back up, install, verify, build, and migrate an existing agent
 ./vito apps list
 ./vito memory search "previous architecture decisions" --mode hybrid
 ```

@@ -11,8 +11,9 @@ usage() {
   cat <<'EOF'
 Usage: scripts/migrate-vito.sh [options]
 
-Creates and verifies a pre-migration backup, rewrites user/vito.config.json to
-the current schema, and preserves the existing PM2 running state.
+Creates and verifies a pre-migration backup, installs dependencies, verifies
+and builds the application, rewrites user/vito.config.json to the current
+schema, and preserves the existing PM2 running state.
 
 Options:
   --output DIR   Backup destination (default: $VITO_BACKUP_DIR or ~/vito-backups)
@@ -84,6 +85,26 @@ cd "$PROJECT_ROOT"
 printf '==> Creating pre-migration backup\n'
 "$SCRIPT_DIR/backup-vito.sh" "${BACKUP_ARGS[@]}"
 
+printf '==> Installing backend dependencies\n'
+npm ci
+
+printf '==> Installing dashboard dependencies\n'
+npm --prefix dashboard ci
+
+printf '==> Installing runtime dependencies\n'
+"$SCRIPT_DIR/install-runtime-deps.sh"
+
+printf '==> Running verification\n'
+npm run check
+
+printf '==> Building backend\n'
+npm run build
+
+printf '==> Building dashboard\n'
+npm run build:dashboard
+
+# Migrate only after the new code has installed, verified, and built. If an
+# earlier step fails, the existing configuration remains untouched.
 printf '==> Migrating Vito configuration\n'
 ./vito config migrate user/vito.config.json
 

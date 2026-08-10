@@ -18,7 +18,7 @@ npm run format           # Format the repository with Prettier
 npm run format:check     # Verify repository formatting
 npm test                 # Node test runner via tsx
 ./vito config validate   # Zod-validate user/vito.config.json
-./scripts/migrate-vito.sh # Back up and canonicalize legacy configuration
+./scripts/migrate-vito.sh # Back up, install, verify, build, and migrate an existing agent
 ./vito apps list         # Stable agent/operator app-management CLI
 ./vito memory search "query"  # Search embedded conversation history
 npm run validate:config  # Compatibility alias for config validation

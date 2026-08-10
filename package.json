@@ -22,6 +22,7 @@
     "format": "prettier --write .",
     "format:check": "prettier --check .",
     "prepare": "git config core.hooksPath .githooks || true",
+    "postinstall": "node scripts/patch-croner-timeout.mjs",
     "dev": "tsx watch src/index.ts",
     "build:dashboard": "cd dashboard && npm run build",
     "dev:dashboard": "cd dashboard && npm run dev"

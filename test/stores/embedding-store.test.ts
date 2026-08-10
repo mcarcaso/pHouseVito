@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { after, describe, it } from "node:test";
 import { RootContext } from "../../src/context/RootContext.js";
-import { createDatabase } from "../../src/db/schema.js";
+import { createDatabase } from "../../src/lib/sqlite/database.js";
 import { xEmbeddingDb, xEmbeddingStore } from "../../src/lib/x.js";
 
 const userDir = mkdtempSync(join(tmpdir(), "vito-embedding-store-"));

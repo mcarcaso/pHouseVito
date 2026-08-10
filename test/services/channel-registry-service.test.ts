@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import type { Context } from "../../src/context/Context.js";
 import { ObjectContext } from "../../src/context/ObjectContext.js";
-import { createDatabase } from "../../src/db/schema.js";
+import { createDatabase } from "../../src/lib/sqlite/database.js";
 import { xSessionStore } from "../../src/lib/x.js";
 import type { ChannelService } from "../../src/services/channels/ChannelService.js";
 import { DefaultChannelRegistryService } from "../../src/services/channels/DefaultChannelRegistryService.js";

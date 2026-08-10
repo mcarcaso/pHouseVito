@@ -9,7 +9,7 @@ import { z } from "zod";
 import { vitoConfigSchema } from "../../src/shared/contracts/vito-config.js";
 import { RootContext } from "../../src/context/RootContext.js";
 import { dashboardRouterContext } from "../support/dashboard-router-context.js";
-import { createDatabase } from "../../src/db/schema.js";
+import { createDatabase } from "../../src/lib/sqlite/database.js";
 import { xVitoService } from "../../src/lib/x.js";
 import { ConfigRouterService } from "../../src/routers/ConfigRouterService.js";
 

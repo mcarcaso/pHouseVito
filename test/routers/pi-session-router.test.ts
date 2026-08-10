@@ -8,7 +8,7 @@ import express from "express";
 import { z } from "zod";
 import { RootContext } from "../../src/context/RootContext.js";
 import { dashboardRouterContext } from "../support/dashboard-router-context.js";
-import { createDatabase } from "../../src/db/schema.js";
+import { createDatabase } from "../../src/lib/sqlite/database.js";
 import { xSessionStore } from "../../src/lib/x.js";
 import { PiSessionRouterService } from "../../src/routers/PiSessionRouterService.js";
 

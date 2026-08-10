@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import { ObjectContext } from "../../src/context/ObjectContext.js";
-import { createDatabase } from "../../src/db/schema.js";
+import { createDatabase } from "../../src/lib/sqlite/database.js";
 import { SqliteMessageStore } from "../../src/stores/messages/SqliteMessageStore.js";
 import { SqliteSessionStore } from "../../src/stores/sessions/SqliteSessionStore.js";
 

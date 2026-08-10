@@ -1,6 +1,6 @@
 import { resolve } from "path";
 import { watch } from "fs";
-import { createDatabase } from "./db/schema.js";
+import { createDatabase } from "./lib/sqlite/database.js";
 import { RootContext } from "./context/RootContext.js";
 import { ensureUserDir, USER_DIR } from "./lib/user-directory.js";
 import { xAskApiService, xCronService, xEmbeddingDb, xOrchestratorService, xSecretService, xVitoService } from "./lib/x.js";

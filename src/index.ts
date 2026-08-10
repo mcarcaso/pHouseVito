@@ -2,7 +2,7 @@ import { resolve } from "path";
 import { watch } from "fs";
 import { createDatabase } from "./db/schema.js";
 import { RootContext } from "./context/RootContext.js";
-import { ensureUserDir, USER_DIR } from "./user-directory.js";
+import { ensureUserDir, USER_DIR } from "./lib/user-directory.js";
 import { xAskApiService, xCronService, xEmbeddingDb, xOrchestratorService, xSecretService, xVitoService } from "./lib/x.js";
 import { DashboardChannelService } from "./services/channels/dashboard/DashboardChannelService.js";
 import { DiscordChannelService } from "./services/channels/discord/DiscordChannelService.js";

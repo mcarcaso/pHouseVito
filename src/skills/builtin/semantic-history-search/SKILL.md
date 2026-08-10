@@ -21,7 +21,7 @@ Use this skill when:
 ## Usage
 
 ```bash
-node src/skills/builtin/semantic-history-search/search-memory.mjs "your search query" [--limit N] [--session id] [--mode hybrid|embedding|bm25]
+./vito memory search "your search query" [--limit N] [--session id] [--mode hybrid|embedding|bm25]
 ```
 
 **Arguments:**
@@ -37,19 +37,19 @@ node src/skills/builtin/semantic-history-search/search-memory.mjs "your search q
 
 ```bash
 # Find conversations about shoulder rehab
-node src/skills/builtin/semantic-history-search/search-memory.mjs "shoulder rehab exercises"
+./vito memory search "shoulder rehab exercises"
 
 # Search for a specific person
-node src/skills/builtin/semantic-history-search/search-memory.mjs "Norma" --mode bm25
+./vito memory search "Norma" --mode bm25
 
 # Deep dig into a topic with more results
-node src/skills/builtin/semantic-history-search/search-memory.mjs "DCA investment strategy QQQ" --limit 10
+./vito memory search "DCA investment strategy QQQ" --limit 10
 
 # Search within a specific channel
-node src/skills/builtin/semantic-history-search/search-memory.mjs "workout programming" --session discord:fitness
+./vito memory search "workout programming" --session discord:fitness
 
 # Conceptual search (no exact keywords needed)
-node src/skills/builtin/semantic-history-search/search-memory.mjs "that time we built the phone calling feature" --mode embedding
+./vito memory search "that time we built the phone calling feature" --mode embedding
 ```
 
 ## Output

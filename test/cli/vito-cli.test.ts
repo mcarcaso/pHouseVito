@@ -18,7 +18,7 @@ function runVito(args: string[]) {
 after(() => rmSync(tempDir, { recursive: true, force: true }));
 
 describe("Vito CLI", () => {
-  it("shows top-level and app command help", () => {
+  it("shows top-level, app, and memory command help", () => {
     const topLevel = runVito(["--help"]);
     assert.equal(topLevel.status, 0);
     assert.match(topLevel.stdout, /config\s+Validate Vito configuration/);
@@ -26,6 +26,10 @@ describe("Vito CLI", () => {
     const apps = runVito(["apps", "--help"]);
     assert.equal(apps.status, 0);
     assert.match(apps.stdout, /vito apps/);
+
+    const memory = runVito(["memory", "--help"]);
+    assert.equal(memory.status, 0);
+    assert.match(memory.stdout, /vito memory search/);
   });
 
   it("validates a config through the stable command", () => {
@@ -45,6 +49,12 @@ describe("Vito CLI", () => {
     assert.equal(result.status, 1);
     assert.match(result.stderr, /Invalid Vito config/);
     assert.match(result.stderr, /<root>/);
+  });
+
+  it("rejects malformed memory search arguments before opening storage", () => {
+    const result = runVito(["memory", "search", "query", "--limit", "0"]);
+    assert.equal(result.status, 2);
+    assert.match(result.stderr, /greater than or equal to 1/);
   });
 
   it("returns a usage error for unknown commands", () => {

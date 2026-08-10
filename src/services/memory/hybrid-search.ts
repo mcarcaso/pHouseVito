@@ -2,6 +2,7 @@
 
 import type { Context } from "../../context/Context.js";
 import { xEmbeddingService, xEmbeddingStore } from "../../lib/x.js";
+import type { SearchOptions, SearchResult } from "./MemoryService.js";
 
 const RRF_K = 60;
 
@@ -37,28 +38,6 @@ function applyRecencyBias(score: number, dayString: string): RecencyBiasResult {
     recencyFactor,
     daysAgo,
   };
-}
-
-export interface SearchResult {
-  id: number;
-  sessionId: string;
-  day: string;
-  chunkIndex: number;
-  text: string;
-  context: string | null;
-  msgCount: number;
-  embeddingScore: number;
-  rawEmbeddingScore: number;
-  recencyFactor: number;
-  daysAgo: number;
-  bm25Score: number;
-  rrfScore: number;
-}
-
-export interface SearchOptions {
-  limit?: number;
-  sessionFilter?: string;
-  mode?: "hybrid" | "embedding" | "bm25";
 }
 
 export function getLastEmbeddedMessageId(

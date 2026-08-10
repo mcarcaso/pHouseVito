@@ -77,6 +77,7 @@ Use the project-local CLI for agent and operator workflows:
 ./vito --help
 ./vito config validate
 ./vito apps list
+./vito memory search "previous architecture decisions" --mode hybrid
 ```
 
 The existing `npm run validate:config` command remains available for compatibility.

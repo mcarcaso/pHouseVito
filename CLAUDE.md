@@ -17,6 +17,7 @@ npm run check            # backend/dashboard types + tests + example config vali
 npm test                 # Node test runner via tsx
 ./vito config validate   # Zod-validate user/vito.config.json
 ./vito apps list         # Stable agent/operator app-management CLI
+./vito memory search "query"  # Search embedded conversation history
 npm run validate:config  # Compatibility alias for config validation
 npm start                # build dashboard + pm2 start user/ecosystem.config.cjs
 npm run logs             # pm2 logs vito-server
@@ -53,7 +54,7 @@ Channel emits `InboundEvent` → `Orchestrator.handleInbound()` → per-session 
 
 ### Memory: agent-initiated, not pre-loaded
 
-Vito does **not** auto-search embeddings on every turn and does **not** stuff prior messages into the system prompt. The agent calls memory skills explicitly when needed: `semantic-history-search` (hybrid cosine + FTS5 BM25 + RRF) and `keyword-history-search` (raw SQL). `MemoryService` owns chunking and search workflows, `EmbeddingService` owns provider integration, and `EmbeddingStore` owns persistence. `src/memory/search.ts` remains only as the standalone skill adapter. Dashboard memory APIs live in `src/routers/MemoryRouterService.ts`. Within one Vito session, conversation history lives in Pi's `AgentSession`; cross-session lookup is only through memory skills. `user/profile.md` is not inlined into the prompt—the capabilities map tells the agent to read it on the first response and update it when appropriate.
+Vito does **not** auto-search embeddings on every turn and does **not** stuff prior messages into the system prompt. The agent calls memory skills explicitly when needed: `semantic-history-search` (hybrid cosine + FTS5 BM25 + RRF) and `keyword-history-search` (raw SQL). `MemoryService` owns chunking and search workflows, `EmbeddingService` owns provider integration, and `EmbeddingStore` owns persistence. Standalone semantic search runs through `./vito memory search`, whose CLI command composes the required context. Dashboard memory APIs live in `src/routers/MemoryRouterService.ts`. Within one Vito session, conversation history lives in Pi's `AgentSession`; cross-session lookup is only through memory skills. `user/profile.md` is not inlined into the prompt—the capabilities map tells the agent to read it on the first response and update it when appropriate.
 
 ### Pi sessions on disk
 

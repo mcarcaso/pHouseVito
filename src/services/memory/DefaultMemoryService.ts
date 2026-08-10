@@ -6,14 +6,14 @@ import {
   type EmbedOptions,
   type EmbeddingResult,
 } from "./chunking.js";
-import {
-  searchMemory,
-  type SearchOptions,
-  type SearchResult,
-} from "./search.js";
+import { searchMemory } from "./hybrid-search.js";
 import { xEmbeddingStore, xUserDir } from "../../lib/x.js";
 import type { EmbeddingStats } from "../../stores/embeddings/EmbeddingStore.js";
-import type { MemoryService } from "./MemoryService.js";
+import type {
+  MemoryService,
+  SearchOptions,
+  SearchResult,
+} from "./MemoryService.js";
 
 export class DefaultMemoryService implements MemoryService {
   private embeddingInProgress = false;

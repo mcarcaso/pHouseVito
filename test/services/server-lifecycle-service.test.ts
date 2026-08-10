@@ -40,7 +40,7 @@ describe("DefaultServerLifecycleService", () => {
     });
   });
 
-  it("schedules a structured dashboard build followed by PM2 restart", async () => {
+  it("schedules the complete rebuild and restart workflow", async () => {
     const x = new ObjectContext({});
     const commands: Array<{ file: string; args: string[]; timeout?: number }> = [];
     let scheduled: (() => void) | undefined;
@@ -62,13 +62,10 @@ describe("DefaultServerLifecycleService", () => {
     scheduled();
     await waitForBackgroundWork();
 
-    assert.deepEqual(commands, [
-      { file: "npm", args: ["run", "build:dashboard"], timeout: 120_000 },
-      { file: "npx", args: ["pm2", "restart", "vito-server"] },
-    ]);
+    assert.deepEqual(commands, [{ file: "./scripts/restart-vito.sh", args: [], timeout: 300_000 }]);
   });
 
-  it("attempts PM2 restart when the dashboard build fails", async () => {
+  it("leaves the current process running when the rebuild workflow fails", async () => {
     const x = new ObjectContext({});
     const commands: string[] = [];
     let scheduled: (() => void) | undefined;
@@ -78,7 +75,7 @@ describe("DefaultServerLifecycleService", () => {
       },
       runCommand: async (command) => {
         commands.push(command.file);
-        if (command.file === "npm") throw new Error("build failed");
+        throw new Error("build failed");
       },
     });
 
@@ -86,6 +83,6 @@ describe("DefaultServerLifecycleService", () => {
     assert.ok(scheduled);
     scheduled();
     await waitForBackgroundWork();
-    assert.deepEqual(commands, ["npm", "npx"]);
+    assert.deepEqual(commands, ["./scripts/restart-vito.sh"]);
   });
 });

@@ -70,24 +70,15 @@ export class DefaultServerLifecycleService implements ServerLifecycleService {
   private async rebuildAndRestart(): Promise<void> {
     try {
       await this.runCommand({
-        file: "npm",
-        args: ["run", "build:dashboard"],
-        timeout: 120_000,
+        file: "./scripts/restart-vito.sh",
+        args: [],
+        timeout: 300_000,
       });
     } catch (error: unknown) {
       console.error(
-        "[Dashboard] Dashboard build failed; restarting with the existing bundle:",
+        "[Dashboard] Vito rebuild/restart failed; the current process is unchanged:",
         error,
       );
-    }
-
-    try {
-      await this.runCommand({
-        file: "npx",
-        args: ["pm2", "restart", "vito-server"],
-      });
-    } catch (error: unknown) {
-      console.error("[Dashboard] PM2 restart failed:", error);
     }
   }
 }

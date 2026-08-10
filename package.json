@@ -9,7 +9,7 @@
   "scripts": {
     "start": "cd dashboard && rm -rf dist && npm run build && cd .. && pm2 start user/ecosystem.config.cjs",
     "stop": "pm2 stop vito-server",
-    "restart": "pm2 restart vito-server",
+    "restart": "./scripts/restart-vito.sh",
     "logs": "pm2 logs vito-server",
     "status": "pm2 status",
     "build": "tsc",
@@ -25,7 +25,8 @@
     "postinstall": "node scripts/patch-croner-timeout.mjs",
     "dev": "tsx watch src/index.ts",
     "build:dashboard": "cd dashboard && npm run build",
-    "dev:dashboard": "cd dashboard && npm run dev"
+    "dev:dashboard": "cd dashboard && npm run dev",
+    "restart:process": "pm2 restart vito-server"
   },
   "dependencies": {
     "@earendil-works/pi-ai": "^0.84.1",

@@ -24,7 +24,9 @@ npm test                 # Node test runner via tsx
 npm run validate:config  # Compatibility alias for config validation
 npm start                # build dashboard + pm2 start user/ecosystem.config.cjs
 npm run logs             # pm2 logs vito-server
-npm run status / stop / restart   # pm2 wrappers (service name: vito-server)
+npm run status / stop             # PM2 wrappers (service name: vito-server)
+npm run restart                   # sync deps, build backend/dashboard, restart PM2
+npm run restart:process           # fast PM2-only restart without rebuilding
 ```
 
 Production deploy: `./aws_deploy/deploy.sh mike5` (git pull → npm ci → builds → pm2 restart on the EC2 box).
@@ -82,7 +84,7 @@ Shared output-handler interfaces and cross-channel decorators live under `src/li
 ### Slash commands (priority, bypass queue)
 
 - `/stop` — abort active request, clear queue, release session lock.
-- `/restart` — confirm, then spawn delayed `pm2 restart vito-server`.
+- `/restart` — confirm, then run the complete dependency sync, backend/dashboard build, and PM2 restart workflow.
 - `/new` — write `.fresh` marker; next turn starts a brand-new pi session (history archived in `messages.archived`, embedded first).
 - `/compact` — summarize older turns of the live pi session in place.
 - `/model <name>` — hot-swap the model on the live pi session.

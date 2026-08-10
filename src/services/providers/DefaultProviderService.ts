@@ -1,9 +1,8 @@
-import { getModels, getProviders } from "@earendil-works/pi-ai/compat";
-import { getOAuthProviders } from "@earendil-works/pi-ai/oauth";
-import { AuthStorage } from "@earendil-works/pi-coding-agent";
+import type { AuthEvent, AuthPrompt } from "@earendil-works/pi-ai";
+import { ModelRuntime } from "@earendil-works/pi-coding-agent";
 import { z } from "zod";
 import type { Context } from "../../context/Context.js";
-import { xSecretService } from "../../lib/x.js";
+import { xPiAuthPath, xSecretService } from "../../lib/x.js";
 import type {
   ProviderLoginStartResult,
   ProviderLoginStatus,
@@ -19,7 +18,7 @@ interface PendingLogin {
   resolvePrompt?: (value: string) => void;
 }
 
-const providerListSchema = z.array(z.unknown());
+const providerListSchema = z.array(z.string());
 const modelListSchema = z.array(z.object({ id: z.string() }).passthrough());
 const oauthProviderListSchema = z.array(
   z
@@ -32,25 +31,30 @@ const oauthProviderListSchema = z.array(
 
 export class DefaultProviderService implements ProviderService {
   private readonly pendingLogins = new Map<string, PendingLogin>();
+  private runtime?: Promise<ModelRuntime>;
 
-  getOverview(x: Context): ProviderOverview {
+  async getOverview(x: Context): Promise<ProviderOverview> {
     const secrets = xSecretService(x);
+    const providers = (await this.getRuntime(x)).getProviders();
     return {
-      providers: providerListSchema.parse(getProviders()),
+      providers: providerListSchema.parse(providers.map((provider) => provider.id)),
       keyStatus: secrets.getProviderKeyStatus(x),
       authStatus: secrets.getProviderAuthStatus(x),
       keyInfo: secrets.getProviderApiKeyInfo(x),
       oauthProviders: oauthProviderListSchema
-        .parse(getOAuthProviders())
+        .parse(
+          providers
+            .filter((provider) => provider.auth.oauth !== undefined)
+            .map((provider) => ({ id: provider.id, name: provider.name })),
+        )
         .map((provider) => ({ id: provider.id, name: provider.name })),
     };
   }
 
-  listModels(_x: Context, providerId: string): { id: string }[] {
-    const providers = getProviders();
-    const provider = providers.find((candidate) => candidate === providerId);
-    if (!provider) throw new Error(`Unknown provider: ${providerId}`);
-    return modelListSchema.parse(getModels(provider)).map((model) => ({ id: model.id }));
+  async listModels(x: Context, providerId: string): Promise<{ id: string }[]> {
+    const runtime = await this.getRuntime(x);
+    if (!runtime.getProvider(providerId)) throw new Error(`Unknown provider: ${providerId}`);
+    return modelListSchema.parse(runtime.getModels(providerId)).map((model) => ({ id: model.id }));
   }
 
   async startLogin(x: Context, providerId: string): Promise<ProviderLoginStartResult> {
@@ -78,50 +82,16 @@ export class DefaultProviderService implements ProviderService {
         reject(error);
       };
 
-      const authStorage = AuthStorage.create();
-      const callbacks = {
-        onAuth: (info: { url: string; instructions?: string }) => {
-          resolveOnce({
-            status: "login_started",
-            url: info.url,
-            instructions: info.instructions,
+      this.getRuntime(x)
+        .then(async (runtime) => {
+          const provider = runtime.getProvider(providerId);
+          if (!provider?.auth.oauth)
+            throw new Error(`Provider does not support OAuth: ${providerId}`);
+          await runtime.login(providerId, "oauth", {
+            notify: (event) => this.handleAuthEvent(providerId, event, resolveOnce),
+            prompt: async (prompt) => await this.handleAuthPrompt(providerId, prompt),
           });
-        },
-        onDeviceCode: (info: {
-          userCode: string;
-          verificationUri: string;
-          intervalSeconds?: number;
-          expiresInSeconds?: number;
-        }) => {
-          resolveOnce({
-            status: "device_code_started",
-            userCode: info.userCode,
-            verificationUri: info.verificationUri,
-            intervalSeconds: info.intervalSeconds,
-            expiresInSeconds: info.expiresInSeconds,
-          });
-        },
-        onSelect: async (info: { options: Array<{ id: string; label: string }> }) => {
-          const deviceOption = info.options.find((option) =>
-            /device|code/i.test(`${option.id} ${option.label}`),
-          );
-          return deviceOption?.id ?? info.options[0]?.id;
-        },
-        onPrompt: async (info: { message: string }) =>
-          await this.waitForPrompt(providerId, info.message),
-        onManualCodeInput: async () =>
-          await this.waitForPrompt(
-            providerId,
-            "After the browser redirects to localhost, copy the full redirected URL and paste it here:",
-          ),
-        onProgress: (message: string) => {
-          console.log(`[oauth/${providerId}] ${message}`);
-        },
-      };
-
-      authStorage
-        .login(providerId, callbacks)
-        .then(() => {
+          resolveOnce({ status: "already_authenticated" });
           this.pendingLogins.set(providerId, { status: "success" });
           console.log(`[oauth/${providerId}] Login successful`);
         })
@@ -162,16 +132,72 @@ export class DefaultProviderService implements ProviderService {
     this.pendingLogins.set(args.providerId, { status: "pending" });
   }
 
-  logout(_x: Context, providerId: string): void {
-    AuthStorage.create().logout(providerId);
+  async logout(x: Context, providerId: string): Promise<void> {
+    await (await this.getRuntime(x)).logout(providerId);
   }
 
-  private async waitForPrompt(providerId: string, promptMessage: string): Promise<string> {
-    return await new Promise<string>((resolve) => {
+  private getRuntime(x: Context): Promise<ModelRuntime> {
+    this.runtime ??= ModelRuntime.create({
+      authPath: xPiAuthPath(x),
+      refreshOnCreate: false,
+    });
+    return this.runtime;
+  }
+
+  private handleAuthEvent(
+    providerId: string,
+    event: AuthEvent,
+    resolveLogin: (result: ProviderLoginStartResult) => void,
+  ): void {
+    if (event.type === "auth_url") {
+      resolveLogin({
+        status: "login_started",
+        url: event.url,
+        instructions: event.instructions,
+      });
+      return;
+    }
+    if (event.type === "device_code") {
+      resolveLogin({
+        status: "device_code_started",
+        userCode: event.userCode,
+        verificationUri: event.verificationUri,
+        intervalSeconds: event.intervalSeconds,
+        expiresInSeconds: event.expiresInSeconds,
+      });
+      return;
+    }
+    console.log(`[oauth/${providerId}] ${event.message}`);
+  }
+
+  private async handleAuthPrompt(providerId: string, prompt: AuthPrompt): Promise<string> {
+    if (prompt.type === "select") {
+      const deviceOption = prompt.options.find((option) =>
+        /device|code/i.test(`${option.id} ${option.label}`),
+      );
+      const selected = deviceOption?.id ?? prompt.options[0]?.id;
+      if (!selected) throw new Error(`OAuth provider ${providerId} returned no login options`);
+      return selected;
+    }
+    return await this.waitForPrompt(providerId, prompt.message, prompt.signal);
+  }
+
+  private async waitForPrompt(
+    providerId: string,
+    promptMessage: string,
+    signal?: AbortSignal,
+  ): Promise<string> {
+    return await new Promise<string>((resolve, reject) => {
+      const onAbort = (): void => reject(signal?.reason ?? new Error("Login prompt cancelled"));
+      if (signal?.aborted) return onAbort();
+      signal?.addEventListener("abort", onAbort, { once: true });
       this.pendingLogins.set(providerId, {
         status: "prompt",
         promptMessage,
-        resolvePrompt: resolve,
+        resolvePrompt: (value) => {
+          signal?.removeEventListener("abort", onAbort);
+          resolve(value);
+        },
       });
     });
   }

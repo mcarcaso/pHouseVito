@@ -20,7 +20,7 @@ class TestProviderService implements ProviderService {
   waitingForPrompt = false;
   loggedOut = "";
 
-  getOverview(_x: Context): ProviderOverview {
+  async getOverview(_x: Context): Promise<ProviderOverview> {
     return {
       providers: ["test"],
       keyStatus: { test: true },
@@ -30,7 +30,7 @@ class TestProviderService implements ProviderService {
     };
   }
 
-  listModels(_x: Context, providerId: string): { id: string }[] {
+  async listModels(_x: Context, providerId: string): Promise<{ id: string }[]> {
     if (providerId !== "test") throw new Error("Unknown provider");
     return [{ id: "model" }];
   }
@@ -53,7 +53,7 @@ class TestProviderService implements ProviderService {
     this.waitingForPrompt = args.value === "code";
   }
 
-  logout(_x: Context, providerId: string): void {
+  async logout(_x: Context, providerId: string): Promise<void> {
     this.loggedOut = providerId;
   }
 }
@@ -87,7 +87,7 @@ describe("provider routers", () => {
   it("preserves model discovery responses", async () => {
     const overview = await fetch(`${baseUrl}/api/models/providers`);
     assert.equal(overview.status, 200);
-    assert.deepEqual(await overview.json(), service.getOverview(x));
+    assert.deepEqual(await overview.json(), await service.getOverview(x));
 
     const models = await fetch(`${baseUrl}/api/models/test`);
     assert.equal(models.status, 200);

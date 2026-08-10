@@ -16,10 +16,9 @@
  * - Uses the same chunking/embedding logic as the backfill scripts
  */
 
-import { completeSimple, getModel } from "@earendil-works/pi-ai/compat";
-import { AuthStorage } from "@earendil-works/pi-coding-agent";
+import { ModelRuntime } from "@earendil-works/pi-coding-agent";
 import type { Context } from "../../context/Context.js";
-import { xEmbeddingService, xEmbeddingStore, xMessageStore } from "../../lib/x.js";
+import { xEmbeddingService, xEmbeddingStore, xMessageStore, xPiAuthPath } from "../../lib/x.js";
 
 // ── Config ─────────────────────────────────────────────────
 
@@ -190,6 +189,7 @@ interface ContextualizerModel {
 }
 
 async function generateContext(
+  runtime: ModelRuntime,
   currentText: string,
   previousText: string | null,
   modelConfig: ContextualizerModel,
@@ -207,16 +207,14 @@ Write a short, succinct context (1-2 sentences max) to situate this conversation
 
 Do NOT summarize the full conversation. Just provide enough context so that if someone searches for related topics, this chunk can be found. Respond with ONLY the context sentence(s), nothing else.`;
 
-  const authStorage = AuthStorage.create();
-  const apiKey = await authStorage.getApiKey(modelConfig.provider);
-  if (!apiKey)
-    throw new Error(`No credentials found for contextualizer provider: ${modelConfig.provider}`);
-
-  const model = getModel(modelConfig.provider as any, modelConfig.name as any);
-  const response = await completeSimple(
+  const model = runtime.getModel(modelConfig.provider, modelConfig.name);
+  if (!model) {
+    throw new Error(`Unknown contextualizer model: ${modelConfig.provider}/${modelConfig.name}`);
+  }
+  const response = await runtime.completeSimple(
     model,
     { messages: [{ role: "user", content: prompt, timestamp: Date.now() }] },
-    { apiKey, maxTokens: 200, reasoning: "minimal" },
+    { maxTokens: 200, reasoning: "minimal" },
   );
   if (response.stopReason === "error") {
     throw new Error(
@@ -359,11 +357,16 @@ async function doEmbedding(
   }
 
   console.log(`[Embeddings] Processing ${chunks.length} new chunk(s) for session ${sessionId}`);
+  const contextualizerRuntime = await ModelRuntime.create({
+    authPath: xPiAuthPath(x),
+    refreshOnCreate: false,
+  });
   const createdChunks: EmbeddingResult["chunks"] = [];
   for (const chunk of chunks) {
     try {
       const previousText = embeddingStore.getPreviousChunkText(x, sessionId);
       const context = await generateContext(
+        contextualizerRuntime,
         chunk.text,
         previousText,
         options.contextualizerModel ?? DEFAULT_CONTEXTUAL_MODEL,

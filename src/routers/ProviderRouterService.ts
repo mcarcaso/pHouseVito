@@ -40,8 +40,8 @@ function createModelRouter(x: Context): Router {
         query: emptyRouteSchema,
         body: unknownRouteSchema,
       },
-      handler: (routeX, _input, _req, res) => {
-        res.json(xProviderService(routeX).getOverview(routeX));
+      handler: async (routeX, _input, _req, res) => {
+        res.json(await xProviderService(routeX).getOverview(routeX));
       },
     }),
   );
@@ -55,9 +55,9 @@ function createModelRouter(x: Context): Router {
         query: emptyRouteSchema,
         body: unknownRouteSchema,
       },
-      handler: (routeX, { params }, _req, res) => {
+      handler: async (routeX, { params }, _req, res) => {
         try {
-          res.json(xProviderService(routeX).listModels(routeX, params.provider));
+          res.json(await xProviderService(routeX).listModels(routeX, params.provider));
         } catch {
           res.status(400).json({ error: `Unknown provider: ${params.provider}` });
         }
@@ -135,8 +135,8 @@ function createProviderAuthRouter(x: Context): Router {
         query: emptyRouteSchema,
         body: unknownRouteSchema,
       },
-      handler: (routeX, { params }, _req, res) => {
-        xProviderService(routeX).logout(routeX, params.id);
+      handler: async (routeX, { params }, _req, res) => {
+        await xProviderService(routeX).logout(routeX, params.id);
         res.json({ status: "logged_out" });
       },
     }),

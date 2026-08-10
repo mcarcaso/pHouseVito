@@ -20,17 +20,17 @@ function createHarness() {
 }
 
 describe("DefaultProviderService", () => {
-  it("returns framework provider metadata and model IDs", () => {
+  it("returns framework provider metadata and model IDs", async () => {
     const { root, x, service } = createHarness();
     try {
-      const overview = service.getOverview(x);
+      const overview = await service.getOverview(x);
       const providers = z.array(z.string()).parse(overview.providers);
       assert.ok(providers.length > 0);
       assert.ok(Array.isArray(overview.oauthProviders));
-      const models = service.listModels(x, providers[0]);
+      const models = await service.listModels(x, providers[0]);
       assert.ok(models.length > 0);
       assert.ok(models.every((model) => typeof model.id === "string"));
-      assert.throws(() => service.listModels(x, "not-a-provider"));
+      await assert.rejects(service.listModels(x, "not-a-provider"));
     } finally {
       rmSync(root, { recursive: true, force: true });
     }

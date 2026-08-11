@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { useSessions } from "../../hooks/useSessions";
 import type { Settings, VitoConfig } from "../../utils/settingsResolution";
-import { getEffectiveSettings } from "../../utils/settingsResolution";
+import { countActiveSettingOverrides, getEffectiveSettings } from "../../utils/settingsResolution";
 import CascadingSettingsEditor from "./CascadingSettingsEditor";
 import {
   removeSettingsValue,
@@ -81,6 +81,23 @@ export default function SessionSettingsPanel({
     ? ("channel" as const)
     : ("global" as const);
   const overrides = sessionOverrides[selectedSession] || {};
+  const overrideCount = countActiveSettingOverrides(overrides);
+  const hasOverrides = Object.keys(overrides).length > 0;
+  const sessionsWithOverrides = availableSessionIds.filter(
+    (id) => Object.keys(sessionOverrides[id] || {}).length > 0,
+  );
+  const sessionsWithoutOverrides = availableSessionIds.filter(
+    (id) => Object.keys(sessionOverrides[id] || {}).length === 0,
+  );
+  const renderSessionOption = (id: string) => {
+    const session = sessions.find((candidate) => candidate.id === id);
+    const name = session?.alias || id;
+    return (
+      <option key={id} value={id}>
+        {name} ({id})
+      </option>
+    );
+  };
 
   return (
     <div className="space-y-4">
@@ -93,18 +110,30 @@ export default function SessionSettingsPanel({
           onChange={(event) => setSelectedSession(event.target.value)}
           className="w-full bg-neutral-950 border border-neutral-700 rounded-md px-3 py-2.5 text-neutral-200 text-sm focus:outline-none focus:border-blue-600"
         >
-          {availableSessionIds.map((id) => {
-            const session = sessions.find((candidate) => candidate.id === id);
-            const name = session?.alias || id;
-            return (
-              <option key={id} value={id}>
-                {name} ({id})
-              </option>
-            );
-          })}
+          {sessionsWithOverrides.length > 0 && (
+            <optgroup label={`Overrides configured (${sessionsWithOverrides.length})`}>
+              {sessionsWithOverrides.map(renderSessionOption)}
+            </optgroup>
+          )}
+          {sessionsWithoutOverrides.length > 0 && (
+            <optgroup label={`Inheriting only (${sessionsWithoutOverrides.length})`}>
+              {sessionsWithoutOverrides.map(renderSessionOption)}
+            </optgroup>
+          )}
         </select>
-        <div className="flex items-center gap-2 mt-2 text-xs text-neutral-600">
+        <div className="flex flex-wrap items-center gap-2 mt-2 text-xs text-neutral-600">
           <span className="uppercase text-blue-400">{channel}</span>
+          {hasOverrides ? (
+            <span className="rounded-full bg-blue-950/60 px-2 py-0.5 text-blue-300">
+              {overrideCount > 0
+                ? `${overrideCount} override${overrideCount === 1 ? "" : "s"}`
+                : "Overrides configured"}
+            </span>
+          ) : (
+            <span className="rounded-full bg-neutral-900 px-2 py-0.5 text-neutral-500">
+              Inheriting only
+            </span>
+          )}
           {selectedMetadata?.alias && <span className="font-mono">{selectedSession}</span>}
         </div>
       </div>

@@ -4,9 +4,15 @@ import {
   type Settings,
 } from "../../../../src/shared/schemas/vito-config";
 import type { InheritSource } from "../../utils/settingsResolution";
-import SettingRow, { renderSegmented, renderTextarea, renderToggle } from "./SettingRow";
+import SettingRow, {
+  renderSegmented,
+  renderSelect,
+  renderTextarea,
+  renderToggle,
+} from "./SettingRow";
 import {
   STREAM_MODE_OPTIONS,
+  TIMEZONE_OPTIONS,
   type BasicSettingsPath,
   type SettingsUpdate,
 } from "./settings-values";
@@ -15,7 +21,8 @@ interface ScopedSettingsFieldsProps {
   inherited: ResolvedSettings;
   inheritedFrom: InheritSource;
   overrides: Settings;
-  instructionScope: "channel" | "session";
+  instructionScope: "global" | "channel" | "session";
+  mode?: "base" | "override";
   onUpdate: (update: SettingsUpdate) => void;
   onReset: (path: BasicSettingsPath) => void;
 }
@@ -34,12 +41,14 @@ export default function ScopedSettingsFields({
   inheritedFrom,
   overrides,
   instructionScope,
+  mode = "override",
   onUpdate,
   onReset,
 }: ScopedSettingsFieldsProps) {
   return (
     <>
       <SettingRow
+        mode={mode}
         label="Stream Mode"
         inheritedValue={inherited.streamMode}
         inheritedFrom={inheritedFrom}
@@ -54,6 +63,7 @@ export default function ScopedSettingsFields({
       />
 
       <SettingRow
+        mode={mode}
         label="Require @Mention"
         inheritedValue={inherited.requireMention !== false}
         inheritedFrom={inheritedFrom}
@@ -65,6 +75,7 @@ export default function ScopedSettingsFields({
       />
 
       <SettingRow
+        mode={mode}
         label="Trace Message Updates"
         hint="Log raw message_update events in traces (noisy)"
         inheritedValue={inherited.traceMessageUpdates ?? false}
@@ -77,6 +88,19 @@ export default function ScopedSettingsFields({
       />
 
       <SettingRow
+        mode={mode}
+        label="Timezone"
+        hint="Used for scheduling and datetime display"
+        inheritedValue={inherited.timezone || "America/Toronto"}
+        inheritedFrom={inheritedFrom}
+        overrideValue={overrides.timezone}
+        onOverride={(value) => onUpdate({ path: "timezone", value })}
+        onReset={() => onReset("timezone")}
+        renderInput={(value, onChange) => renderSelect(value, onChange, [...TIMEZONE_OPTIONS])}
+      />
+
+      <SettingRow
+        mode={mode}
         label="Custom Instructions"
         hint={`Additional system prompt instructions for this ${instructionScope}`}
         inheritedValue={inherited.customInstructions ?? ""}

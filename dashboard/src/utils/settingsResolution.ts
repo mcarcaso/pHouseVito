@@ -82,9 +82,15 @@ export const CASCADING_FIELDS = [
   { key: "requireMention", label: "Require @Mention", type: "boolean" as const },
   { key: "traceMessageUpdates", label: "Trace Message Updates", type: "boolean" as const },
   { key: "customInstructions", label: "Custom Instructions", type: "text" as const },
+  { key: "timezone", label: "Timezone", type: "select" as const },
   { key: "pi-coding-agent.model", label: "Pi Model", type: "select" as const },
   { key: "pi-coding-agent.openRouterProvider", label: "OpenRouter Route", type: "select" as const },
   { key: "pi-coding-agent.thinkingLevel", label: "Thinking Level", type: "select" as const },
+  {
+    key: "memory.chunkContextualizerModel",
+    label: "Chunk Contextualizer",
+    type: "select" as const,
+  },
 ] as const;
 
 /** Count settings that are active in the current UI. */

@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { useSessions } from "../../hooks/useSessions";
 import type { Settings, VitoConfig } from "../../utils/settingsResolution";
 import { getEffectiveSettings } from "../../utils/settingsResolution";
-import ScopedSettingsEditor from "./ScopedSettingsEditor";
+import CascadingSettingsEditor from "./CascadingSettingsEditor";
 import {
   removeSettingsValue,
   setSettingsValue,
@@ -109,7 +109,7 @@ export default function SessionSettingsPanel({
         </div>
       </div>
 
-      <ScopedSettingsEditor
+      <CascadingSettingsEditor
         key={selectedSession}
         inherited={inherited}
         inheritedFrom={inheritedFrom}

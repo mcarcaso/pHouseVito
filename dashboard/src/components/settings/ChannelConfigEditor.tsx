@@ -2,7 +2,7 @@ import { useState } from "react";
 import type { ChannelConfig, Settings, VitoConfig } from "../../utils/settingsResolution";
 import { getEffectiveSettings } from "../../utils/settingsResolution";
 import { channelConfigComponents, CHANNEL_ICONS, type ChannelIdField } from "./channels";
-import ScopedSettingsEditor from "./ScopedSettingsEditor";
+import CascadingSettingsEditor from "./CascadingSettingsEditor";
 import {
   removeSettingsValue,
   setSettingsValue,
@@ -169,7 +169,7 @@ export default function ChannelConfigEditor({
         )}
       </section>
 
-      <ScopedSettingsEditor
+      <CascadingSettingsEditor
         inherited={inherited}
         inheritedFrom="global"
         overrides={channelSettings}

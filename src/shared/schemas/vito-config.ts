@@ -12,7 +12,7 @@ const timezoneSchema = z
     }
   }, "Invalid IANA timezone");
 
-const modelSchema = z.object({
+export const modelSchema = z.object({
   provider: z.string().min(1, "Model provider is required"),
   name: z.string().min(1, "Model name is required"),
 });
@@ -212,6 +212,7 @@ export const vitoConfigSchema = z
     };
   });
 
+export type ModelConfig = z.infer<typeof modelSchema>;
 export type PiRuntimeConfig = z.infer<typeof piRuntimeConfigSchema>;
 export type Settings = z.infer<typeof settingsSchema>;
 export type ChannelConfig = z.infer<typeof channelConfigSchema>;

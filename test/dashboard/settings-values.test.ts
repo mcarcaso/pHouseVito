@@ -33,6 +33,26 @@ describe("settings value helpers", () => {
     assert.equal(settingsSchema.safeParse(updated).success, true);
   });
 
+  it("updates and removes the same cascading fields at every scope", () => {
+    const withMemory = setSettingsValue(setSettingsValue({}, { path: "timezone", value: "UTC" }), {
+      path: "memory.chunkContextualizerModel",
+      value: { provider: "openrouter", name: "openai/gpt-5.4-nano" },
+    });
+
+    assert.equal(settingsSchema.safeParse(withMemory).success, true);
+    assert.deepEqual(removeSettingsValue(withMemory, "memory.chunkContextualizerModel"), {
+      timezone: "UTC",
+    });
+    assert.deepEqual(removeSettingsValue(withMemory, "timezone"), {
+      memory: {
+        chunkContextualizerModel: {
+          provider: "openrouter",
+          name: "openai/gpt-5.4-nano",
+        },
+      },
+    });
+  });
+
   it("removes empty Pi containers while preserving sibling overrides", () => {
     const withSibling = {
       requireMention: true,

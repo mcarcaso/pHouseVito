@@ -3,6 +3,7 @@ import type { InheritSource } from "../../utils/settingsResolution";
 
 interface SettingRowProps<Value> {
   label: string;
+  mode?: "base" | "override";
   hint?: string;
   /** The inherited value from the parent level */
   inheritedValue?: Value;
@@ -29,6 +30,7 @@ const SOURCE_LABELS: Record<InheritSource, string> = {
 
 export default function SettingRow<Value>({
   label,
+  mode = "override",
   hint,
   inheritedValue,
   inheritedFrom = "default",
@@ -39,6 +41,7 @@ export default function SettingRow<Value>({
   formatValue = (v) => String(v ?? "—"),
 }: SettingRowProps<Value>) {
   const isOverridden = overrideValue !== undefined;
+  const effectiveValue = overrideValue ?? inheritedValue;
 
   return (
     <div className="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-4 py-3 border-b border-neutral-800/50 last:border-b-0">
@@ -48,7 +51,9 @@ export default function SettingRow<Value>({
       </div>
 
       <div className="flex-1 flex items-center gap-3 min-w-0">
-        {isOverridden ? (
+        {mode === "base" && effectiveValue !== undefined ? (
+          renderInput(effectiveValue, onOverride)
+        ) : isOverridden ? (
           <>
             {renderInput(overrideValue, onOverride)}
             <span className="text-xs text-neutral-600 whitespace-nowrap shrink-0">

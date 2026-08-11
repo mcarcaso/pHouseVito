@@ -12,6 +12,7 @@ import {
 } from "./settings-values";
 
 interface PiSettingsOverrideFieldsProps {
+  mode?: "base" | "override";
   inherited?: Partial<PiRuntimeConfig>;
   inheritedFrom: InheritSource;
   overrides?: Partial<PiRuntimeConfig>;
@@ -31,6 +32,7 @@ const POPULAR_PROVIDERS = [
 ];
 
 export default function PiSettingsOverrideFields({
+  mode = "override",
   inherited,
   inheritedFrom,
   overrides = {},
@@ -96,15 +98,17 @@ export default function PiSettingsOverrideFields({
                 {effectiveModel
                   ? `${effectiveModel.provider}/${effectiveModel.name}`
                   : "Not configured"}
-                <span className="ml-2 font-sans text-neutral-600">
-                  {overrides.model ? "override" : `from ${inheritedFrom}`}
-                </span>
+                {mode === "override" && (
+                  <span className="ml-2 font-sans text-neutral-600">
+                    {overrides.model ? "override" : `from ${inheritedFrom}`}
+                  </span>
+                )}
               </div>
             )}
           </div>
           {!editingModel && (
             <div className="flex items-center gap-3 shrink-0">
-              {overrides.model && (
+              {mode === "override" && overrides.model && (
                 <button
                   onClick={() => void onReset("pi-coding-agent.model")}
                   className="text-xs text-neutral-500 hover:text-red-400 transition-colors"
@@ -116,7 +120,7 @@ export default function PiSettingsOverrideFields({
                 onClick={beginModelEdit}
                 className="text-xs text-blue-400 hover:text-blue-300 transition-colors"
               >
-                {overrides.model ? "Edit" : "Override"}
+                {overrides.model || mode === "base" ? "Edit" : "Override"}
               </button>
             </div>
           )}
@@ -173,7 +177,7 @@ export default function PiSettingsOverrideFields({
                 disabled={savingModel || !draftProvider || !draftModel}
                 className="px-3 py-1.5 text-xs bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white rounded-md"
               >
-                {savingModel ? "Saving..." : "Save override"}
+                {savingModel ? "Saving..." : mode === "base" ? "Save" : "Save override"}
               </button>
             </div>
           </div>
@@ -182,6 +186,7 @@ export default function PiSettingsOverrideFields({
 
       {(effectiveModel?.provider === "openrouter" || draftProvider === "openrouter") && (
         <SettingRow
+          mode={mode}
           label="OR Route"
           inheritedValue={inherited?.openRouterProvider || "Auto"}
           inheritedFrom={inheritedFrom}
@@ -198,6 +203,7 @@ export default function PiSettingsOverrideFields({
       )}
 
       <SettingRow
+        mode={mode}
         label="Thinking Level"
         inheritedValue={inherited?.thinkingLevel || "off"}
         inheritedFrom={inheritedFrom}

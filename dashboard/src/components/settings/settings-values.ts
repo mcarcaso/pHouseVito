@@ -6,6 +6,15 @@ export const STREAM_MODE_OPTIONS = [
   { value: "final", label: "Final" },
 ] as const;
 
+export const TIMEZONE_OPTIONS = [
+  { value: "America/Toronto", label: "America/Toronto" },
+  { value: "America/New_York", label: "America/New_York" },
+  { value: "America/Chicago", label: "America/Chicago" },
+  { value: "America/Denver", label: "America/Denver" },
+  { value: "America/Los_Angeles", label: "America/Los_Angeles" },
+  { value: "UTC", label: "UTC" },
+] as const;
+
 export const THINKING_LEVEL_OPTIONS = [
   { value: "off", label: "Off" },
   { value: "low", label: "Low" },
@@ -26,13 +35,14 @@ export const OPENROUTER_PROVIDER_OPTIONS = [
 ] as const;
 
 export type BasicSettingsPath =
-  "streamMode" | "requireMention" | "traceMessageUpdates" | "customInstructions";
+  "streamMode" | "requireMention" | "traceMessageUpdates" | "customInstructions" | "timezone";
 
 export type SettingsUpdate =
   | { path: "streamMode"; value: NonNullable<Settings["streamMode"]> }
   | { path: "requireMention"; value: boolean }
   | { path: "traceMessageUpdates"; value: boolean }
   | { path: "customInstructions"; value: string }
+  | { path: "timezone"; value: NonNullable<Settings["timezone"]> }
   | { path: "pi-coding-agent.model"; value: PiRuntimeConfig["model"] }
   | {
       path: "pi-coding-agent.openRouterProvider";
@@ -41,6 +51,10 @@ export type SettingsUpdate =
   | {
       path: "pi-coding-agent.thinkingLevel";
       value: NonNullable<PiRuntimeConfig["thinkingLevel"]>;
+    }
+  | {
+      path: "memory.chunkContextualizerModel";
+      value: NonNullable<NonNullable<Settings["memory"]>["chunkContextualizerModel"]>;
     };
 
 export type SettingsPath = SettingsUpdate["path"];
@@ -55,6 +69,8 @@ export function setSettingsValue(settings: Settings, update: SettingsUpdate): Se
       return { ...settings, traceMessageUpdates: update.value };
     case "customInstructions":
       return { ...settings, customInstructions: update.value };
+    case "timezone":
+      return { ...settings, timezone: update.value };
     case "pi-coding-agent.model":
       return {
         ...settings,
@@ -72,6 +88,11 @@ export function setSettingsValue(settings: Settings, update: SettingsUpdate): Se
       return {
         ...settings,
         "pi-coding-agent": { ...settings["pi-coding-agent"], thinkingLevel: update.value },
+      };
+    case "memory.chunkContextualizerModel":
+      return {
+        ...settings,
+        memory: { ...settings.memory, chunkContextualizerModel: update.value },
       };
   }
 }
@@ -94,12 +115,23 @@ export function removeSettingsValue(settings: Settings, path: SettingsPath): Set
       const { customInstructions: _removed, ...remaining } = settings;
       return remaining;
     }
+    case "timezone": {
+      const { timezone: _removed, ...remaining } = settings;
+      return remaining;
+    }
     case "pi-coding-agent.model":
       return removePiValue(settings, "model");
     case "pi-coding-agent.openRouterProvider":
       return removePiValue(settings, "openRouterProvider");
     case "pi-coding-agent.thinkingLevel":
       return removePiValue(settings, "thinkingLevel");
+    case "memory.chunkContextualizerModel": {
+      const memory = { ...settings.memory };
+      delete memory.chunkContextualizerModel;
+      if (Object.keys(memory).length > 0) return { ...settings, memory };
+      const { memory: _removed, ...remaining } = settings;
+      return remaining;
+    }
   }
 }
 

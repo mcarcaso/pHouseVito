@@ -10,7 +10,8 @@ import { errorMessage, jsonRequest, requestJson } from "../lib/api-client";
 interface UseConfigReturn {
   config: VitoConfig | null;
   loading: boolean;
-  error: string | null;
+  loadError: string | null;
+  saveError: string | null;
   saving: boolean;
   saved: boolean;
   updateConfig: (updates: VitoConfigPatch) => Promise<void>;
@@ -48,11 +49,8 @@ export function useConfig(): UseConfigReturn {
   return {
     config: configQuery.data ?? null,
     loading: configQuery.isPending,
-    error: configQuery.error
-      ? errorMessage(configQuery.error, "Failed to load config")
-      : updateMutation.error
-        ? errorMessage(updateMutation.error, "Failed to save")
-        : null,
+    loadError: configQuery.error ? errorMessage(configQuery.error, "Failed to load config") : null,
+    saveError: updateMutation.error ? errorMessage(updateMutation.error, "Failed to save") : null,
     saving: updateMutation.isPending,
     saved,
     updateConfig: async (updates) => {

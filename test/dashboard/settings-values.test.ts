@@ -4,6 +4,7 @@ import {
   removeSettingsValue,
   setSettingsValue,
 } from "../../dashboard/src/components/settings/settings-values.js";
+import { settingsSchema } from "../../src/shared/schemas/vito-config.js";
 
 describe("settings value helpers", () => {
   it("updates scoped scalar and Pi settings without mutating the source", () => {
@@ -29,6 +30,7 @@ describe("settings value helpers", () => {
       name: "new",
     });
     assert.equal(updated["pi-coding-agent"]?.thinkingLevel, "low");
+    assert.equal(settingsSchema.safeParse(updated).success, true);
   });
 
   it("removes empty Pi containers while preserving sibling overrides", () => {

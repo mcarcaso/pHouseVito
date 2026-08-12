@@ -75,7 +75,7 @@ function createProviderAuthRouter(x: Context): Router {
   router.post(
     "/:id/login",
     createRawRoute(x, {
-      auth: "provider-auth",
+      auth: "dashboard",
       schemas: {
         params: providerParamsSchema,
         query: emptyRouteSchema,
@@ -90,7 +90,7 @@ function createProviderAuthRouter(x: Context): Router {
   router.get(
     "/:id/login/status",
     createRawRoute(x, {
-      auth: "provider-auth",
+      auth: "dashboard",
       schemas: {
         params: providerParamsSchema,
         query: emptyRouteSchema,
@@ -105,7 +105,7 @@ function createProviderAuthRouter(x: Context): Router {
   router.post(
     "/:id/login/prompt",
     createRawRoute(x, {
-      auth: "provider-auth",
+      auth: "dashboard",
       schemas: {
         params: providerParamsSchema,
         query: emptyRouteSchema,
@@ -129,7 +129,7 @@ function createProviderAuthRouter(x: Context): Router {
   router.post(
     "/:id/logout",
     createRawRoute(x, {
-      auth: "provider-auth",
+      auth: "dashboard",
       schemas: {
         params: providerParamsSchema,
         query: emptyRouteSchema,

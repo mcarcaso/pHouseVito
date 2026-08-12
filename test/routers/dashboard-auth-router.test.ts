@@ -39,16 +39,7 @@ const protectedRoute = createRawRoute(x, {
 });
 app.get("/api/protected", protectedRoute);
 app.get("/api/server/status", protectedRoute);
-app.get(
-  "/api/auth/provider/test",
-  createRawRoute(x, {
-    auth: "provider-auth",
-    schemas: emptySchemas,
-    handler: (_routeX, _input, _req, res) => {
-      res.json({ public: true });
-    },
-  }),
-);
+app.get("/api/auth/provider/test", protectedRoute);
 app.get("/attachments/test", protectedRoute);
 app.get(
   "/api/health",
@@ -88,7 +79,7 @@ describe("dashboard authentication routes", () => {
     assert.equal((await fetch(`${baseUrl}/api/server/status`)).status, 403);
     assert.equal((await fetch(`${baseUrl}/attachments/test`)).status, 403);
     assert.equal((await fetch(`${baseUrl}/api/health`)).status, 200);
-    assert.equal((await fetch(`${baseUrl}/api/auth/provider/test`)).status, 200);
+    assert.equal((await fetch(`${baseUrl}/api/auth/provider/test`)).status, 403);
 
     const setup = await fetch(`${baseUrl}/api/auth/setup`, { method: "POST" });
     assert.equal(setup.status, 200);
@@ -109,7 +100,7 @@ describe("dashboard authentication routes", () => {
     });
     assert.equal((await fetch(`${baseUrl}/api/protected`)).status, 401);
     assert.equal((await fetch(`${baseUrl}/api/server/status`)).status, 401);
-    assert.equal((await fetch(`${baseUrl}/api/auth/provider/test`)).status, 200);
+    assert.equal((await fetch(`${baseUrl}/api/auth/provider/test`)).status, 401);
     assert.equal(
       (
         await fetch(`${baseUrl}/api/protected`, {

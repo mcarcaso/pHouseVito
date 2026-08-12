@@ -5,7 +5,6 @@ import { DashboardUserContext } from "../context/DashboardUserContext.js";
 import {
   AskApiContext,
   DashboardAuthContext,
-  ProviderAuthContext,
   PublicDriveContext,
   PublicHttpContext,
 } from "../context/HttpContext.js";
@@ -31,7 +30,7 @@ export interface ValidatedRouteInput<
   body: z.output<TBody>;
 }
 
-export type HttpAuthPolicy = "public" | "public-drive" | "provider-auth" | "dashboard" | "ask";
+export type HttpAuthPolicy = "public" | "public-drive" | "dashboard" | "ask";
 
 type RouteHandlerArgs<TInput> = {
   data: TInput;
@@ -101,7 +100,6 @@ function resolveRequestContext(
 ): Context | null {
   if (auth === "public") return PublicHttpContext(rootX);
   if (auth === "public-drive") return PublicDriveContext(rootX);
-  if (auth === "provider-auth") return ProviderAuthContext(rootX);
 
   if (auth === "ask") {
     const authX = AskApiContext(rootX);

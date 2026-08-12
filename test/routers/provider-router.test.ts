@@ -3,6 +3,8 @@ import type { Server } from "node:http";
 import { after, before, describe, it } from "node:test";
 import express from "express";
 import { dashboardRouterContext } from "../support/dashboard-router-context.js";
+import { AuthenticatedDashboardAuthService } from "../support/authenticated-dashboard-auth-service.js";
+import { ObjectContext } from "../../src/context/ObjectContext.js";
 import {
   ModelRouterService,
   ProviderAuthRouterService,
@@ -83,7 +85,41 @@ after(async () => {
   });
 });
 
+class UnauthenticatedDashboardAuthService extends AuthenticatedDashboardAuthService {
+  override isAuthenticated(): boolean {
+    return false;
+  }
+}
+
 describe("provider routers", () => {
+  it("requires dashboard authentication for provider account management", async () => {
+    const unauthenticatedX = new ObjectContext({
+      providerService: () => service,
+      dashboardAuthService: () => new UnauthenticatedDashboardAuthService(),
+    });
+    const protectedApp = express();
+    protectedApp.use(
+      "/api/auth/provider",
+      await new ProviderAuthRouterService().createRouter(unauthenticatedX),
+    );
+    const protectedServer = await new Promise<Server>((resolve) => {
+      const listener = protectedApp.listen(0, "127.0.0.1", () => resolve(listener));
+    });
+    try {
+      const address = protectedServer.address();
+      if (!address || typeof address === "string") throw new Error("Missing test server address");
+      const response = await fetch(
+        `http://127.0.0.1:${address.port}/api/auth/provider/test/login`,
+        { method: "POST" },
+      );
+      assert.equal(response.status, 401);
+    } finally {
+      await new Promise<void>((resolve, reject) =>
+        protectedServer.close((error) => (error ? reject(error) : resolve())),
+      );
+    }
+  });
+
   it("preserves model discovery responses", async () => {
     const overview = await fetch(`${baseUrl}/api/models/providers`);
     assert.equal(overview.status, 200);

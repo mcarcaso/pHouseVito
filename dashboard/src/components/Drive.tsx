@@ -3,6 +3,7 @@ import { useNavigate, useLocation } from "react-router-dom";
 import { useDriveCommand, useDriveListing } from "../hooks/useDrive";
 import { errorMessage } from "../lib/api-client";
 import FilePreview from "./drive/FilePreview";
+import DriveUploadForm from "./drive/DriveUploadForm";
 
 import {
   formatBytes,
@@ -332,62 +333,18 @@ export default function Drive() {
           </div>
         )}
 
-        {/* Upload form */}
         {showUpload && (
-          <div className="bg-neutral-900 border border-neutral-800 rounded-xl p-4 mb-4">
-            <div className="flex flex-col gap-3">
-              <div className="flex gap-2">
-                <button
-                  onClick={() => setUploadType("file")}
-                  className={`px-3 py-1.5 text-sm font-medium rounded-lg transition-colors ${
-                    uploadType === "file"
-                      ? "bg-blue-600 text-white"
-                      : "bg-neutral-800 text-neutral-400 hover:text-white"
-                  }`}
-                >
-                  File
-                </button>
-                <button
-                  onClick={() => setUploadType("site")}
-                  className={`px-3 py-1.5 text-sm font-medium rounded-lg transition-colors ${
-                    uploadType === "site"
-                      ? "bg-blue-600 text-white"
-                      : "bg-neutral-800 text-neutral-400 hover:text-white"
-                  }`}
-                >
-                  Site (.zip)
-                </button>
-              </div>
-
-              {uploadType === "site" && (
-                <input
-                  type="text"
-                  placeholder="Folder name for site"
-                  value={siteFolderName}
-                  onChange={(e) => setSiteFolderName(e.target.value)}
-                  className="w-full px-3 py-2 rounded-lg bg-neutral-800 border border-neutral-700 text-white text-sm placeholder:text-neutral-500 focus:outline-none focus:border-blue-500"
-                />
-              )}
-
-              <input
-                ref={fileInputRef}
-                type="file"
-                accept={uploadType === "site" ? ".zip" : undefined}
-                onChange={(e) => setUploadFile(e.target.files?.[0] || null)}
-                className="w-full text-sm text-neutral-400 file:mr-3 file:px-3 file:py-1.5 file:rounded-lg file:border-0 file:bg-neutral-800 file:text-neutral-300 file:text-sm file:font-medium file:cursor-pointer hover:file:bg-neutral-700"
-              />
-
-              <button
-                onClick={handleUpload}
-                disabled={
-                  uploading || !uploadFile || (uploadType === "site" && !siteFolderName.trim())
-                }
-                className="w-full px-3 py-2 text-sm font-medium rounded-lg bg-blue-600 hover:bg-blue-500 text-white disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-              >
-                {uploading ? "Uploading..." : "Upload"}
-              </button>
-            </div>
-          </div>
+          <DriveUploadForm
+            uploadType={uploadType}
+            onUploadTypeChange={setUploadType}
+            siteFolderName={siteFolderName}
+            onSiteFolderNameChange={setSiteFolderName}
+            fileInputRef={fileInputRef}
+            onFileChange={setUploadFile}
+            onUpload={() => void handleUpload()}
+            uploading={uploading}
+            hasFile={uploadFile !== null}
+          />
         )}
 
         {/* Main content: file list + preview */}

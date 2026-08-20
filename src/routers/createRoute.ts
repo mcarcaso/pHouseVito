@@ -1,6 +1,12 @@
-import type { Request, RequestHandler, Response } from "express";
+import type { NextFunction, Request, RequestHandler, Response } from "express";
 import { z } from "zod";
 import type { Context } from "../context/Context.js";
+import { VitoError } from "../lib/VitoError.js";
+import {
+  vitoErrorDataSchema,
+  type VitoErrorData,
+  type VitoErrorResponse,
+} from "../shared/schemas/vito-error.js";
 import { DashboardUserContext } from "../context/DashboardUserContext.js";
 import {
   AskApiContext,
@@ -71,17 +77,6 @@ interface CreateRawRouteArgs<
     req: Request,
     res: Response,
   ) => Promise<void> | void;
-}
-
-export class HttpError extends Error {
-  constructor(
-    readonly statusCode: number,
-    message: string,
-    readonly body: unknown = { error: message },
-  ) {
-    super(message);
-    this.name = "HttpError";
-  }
 }
 
 export const emptyRouteSchema = z.object({});
@@ -171,15 +166,68 @@ function parseRequest<
   return { params: params.data, query: query.data, body: body.data };
 }
 
-function handleRouteError(error: unknown, req: Request, res: Response): void {
-  console.error(`[HTTP] ${req.method} ${req.path} failed`, error);
-  if (error instanceof HttpError) {
-    res.status(error.statusCode).json(error.body);
+const statusByVitoErrorCode = {
+  BAD_REQUEST: 400,
+  VALIDATION_FAILED: 400,
+  UNAUTHORIZED: 401,
+  FORBIDDEN: 403,
+  NOT_FOUND: 404,
+  CONFLICT: 409,
+  SERVICE_UNAVAILABLE: 503,
+  INTERNAL_ERROR: 500,
+} satisfies Record<VitoErrorData["code"], number>;
+
+function safeErrorType(error: unknown): string {
+  try {
+    if (error instanceof Error) {
+      const name = error.name;
+      return typeof name === "string" && name.length > 0 ? name.slice(0, 80) : "Error";
+    }
+  } catch {
+    return "UnknownThrownValue";
+  }
+  return "UnknownThrownValue";
+}
+
+function toVitoError(error: unknown): VitoError {
+  try {
+    if (error instanceof VitoError) {
+      const parsed = vitoErrorDataSchema.safeParse(error.data);
+      if (parsed.success) return error;
+    }
+  } catch {
+    // Treat malformed or hostile thrown values as unknown internal failures.
+  }
+  return new VitoError(
+    { code: "INTERNAL_ERROR", message: "Internal server error" },
+    { cause: error },
+  );
+}
+
+function toErrorResponse(data: VitoErrorData): VitoErrorResponse {
+  const { code, message, ...details } = data;
+  return {
+    error: message,
+    code,
+    ...(Object.keys(details).length > 0 ? { details } : {}),
+  };
+}
+
+function handleRouteError(error: unknown, req: Request, res: Response, next: NextFunction): void {
+  const vitoError = toVitoError(error);
+  const status = statusByVitoErrorCode[vitoError.data.code];
+
+  if (status >= 500) {
+    console.error(
+      `[HTTP] ${req.method} ${req.path} failed code=${vitoError.data.code} type=${safeErrorType(error)}`,
+    );
+  }
+
+  if (res.headersSent) {
+    next(vitoError);
     return;
   }
-  res.status(500).json({
-    error: error instanceof Error ? error.message : "Internal server error",
-  });
+  res.status(status).json(toErrorResponse(vitoError.data));
 }
 
 export function createRoute<
@@ -188,7 +236,7 @@ export function createRoute<
   TBody extends z.ZodTypeAny,
   TResponse extends z.ZodTypeAny,
 >(rootX: Context, args: CreateRouteArgs<TParams, TQuery, TBody, TResponse>): RequestHandler {
-  return async (req, res) => {
+  return async (req, res, next) => {
     const requestX = resolveRequestContext(rootX, args.auth, req, res);
     if (!requestX) return;
     const data = parseRequest(args.schemas, req, res);
@@ -197,7 +245,7 @@ export function createRoute<
       const result = await args.handler(requestX, { data, req, res });
       res.json(args.responseSchema.parse(result));
     } catch (error) {
-      handleRouteError(error, req, res);
+      handleRouteError(error, req, res, next);
     }
   };
 }

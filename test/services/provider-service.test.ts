@@ -27,6 +27,10 @@ describe("DefaultProviderService", () => {
       const providers = z.array(z.string()).parse(overview.providers);
       assert.ok(providers.length > 0);
       assert.ok(Array.isArray(overview.oauthProviders));
+      assert.ok(
+        overview.oauthProviders.some((provider) => provider.id === "xai"),
+        "xAI subscription login should be exposed through Provider Access",
+      );
       const models = await service.listModels(x, providers[0]);
       assert.ok(models.length > 0);
       assert.ok(models.every((model) => typeof model.id === "string"));

@@ -86,10 +86,10 @@ printf '==> Creating pre-migration backup\n'
 "$SCRIPT_DIR/backup-vito.sh" "${BACKUP_ARGS[@]}"
 
 printf '==> Installing backend dependencies\n'
-npm ci
+npm ci --include=dev
 
 printf '==> Installing dashboard dependencies\n'
-npm --prefix dashboard ci
+npm --prefix dashboard ci --include=dev
 
 printf '==> Installing runtime dependencies\n'
 "$SCRIPT_DIR/install-runtime-deps.sh"

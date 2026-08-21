@@ -3,20 +3,34 @@
   "version": "0.1.0",
   "private": true,
   "type": "module",
+  "bin": {
+    "vito": "./vito"
+  },
   "scripts": {
     "start": "cd dashboard && rm -rf dist && npm run build && cd .. && pm2 start user/ecosystem.config.cjs",
     "stop": "pm2 stop vito-server",
-    "restart": "pm2 restart vito-server",
+    "restart": "./scripts/restart-vito.sh",
     "logs": "pm2 logs vito-server",
     "status": "pm2 status",
     "build": "tsc",
+    "typecheck": "tsc --noEmit",
+    "typecheck:dashboard": "npm --prefix dashboard run typecheck",
+    "test": "tsx --test test/**/*.test.ts",
+    "vito": "tsx src/cli/vito.ts",
+    "validate:config": "tsx src/cli/validate-config.ts",
+    "check": "npm run typecheck && npm run typecheck:dashboard && npm test && npm run validate:config -- user.example/vito.config.json",
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
+    "prepare": "git config core.hooksPath .githooks || true",
+    "postinstall": "node scripts/patch-croner-timeout.mjs",
     "dev": "tsx watch src/index.ts",
     "build:dashboard": "cd dashboard && npm run build",
-    "dev:dashboard": "cd dashboard && npm run dev"
+    "dev:dashboard": "cd dashboard && npm run dev",
+    "restart:process": "pm2 restart vito-server"
   },
   "dependencies": {
-    "@earendil-works/pi-ai": "^0.80.6",
-    "@earendil-works/pi-coding-agent": "^0.80.6",
+    "@earendil-works/pi-ai": "^0.84.2",
+    "@earendil-works/pi-coding-agent": "^0.84.2",
     "@modelcontextprotocol/sdk": "^1.29.0",
     "@playwright/mcp": "^0.0.75",
     "@viz-js/viz": "^3.25.0",
@@ -24,7 +38,6 @@
     "axios": "1.13.6",
     "better-sqlite3": "^11.0.0",
     "chess.js": "^1.4.0",
-    "cors": "^2.8.6",
     "croner": "^10.0.1",
     "discord.js": "^14.25.1",
     "dotenv": "^17.3.1",
@@ -36,14 +49,15 @@
     "openai": "^4.104.0",
     "playwright": "^1.58.2",
     "tsx": "^4.21.0",
-    "ws": "^8.19.0"
+    "ws": "^8.19.0",
+    "zod": "^3.25.76"
   },
   "devDependencies": {
     "@types/better-sqlite3": "^7.6.13",
-    "@types/cors": "^2.8.19",
     "@types/express": "^5.0.6",
     "@types/node": "^22.0.0",
     "@types/ws": "^8.18.1",
+    "prettier": "^3.9.6",
     "typescript": "^5.7.3"
   }
 }

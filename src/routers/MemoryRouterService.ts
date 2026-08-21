@@ -1,0 +1,111 @@
+import express from "express";
+import type { Router } from "express";
+import type { Context } from "../context/Context.js";
+import { memorySearchQuerySchema } from "../shared/schemas/memory-api.js";
+import type { RouterService } from "./RouterService.js";
+import { xMemoryService, xSessionStore } from "../lib/x.js";
+import { emptyRouteSchema, unknownRouteSchema, createRawRoute } from "./createRoute.js";
+
+export class MemoryRouterService implements RouterService {
+  async createRouter(x: Context): Promise<Router> {
+    const router = express.Router();
+
+    router.get(
+      "/profile",
+      createRawRoute(x, {
+        auth: "dashboard",
+        schemas: {
+          params: emptyRouteSchema,
+          query: emptyRouteSchema,
+          body: unknownRouteSchema,
+        },
+        handler: (routeX, _input, _req, res) => {
+          res.json({ content: xMemoryService(routeX).getProfile(routeX) });
+        },
+      }),
+    );
+
+    router.get(
+      "/embeddings/stats",
+      createRawRoute(x, {
+        auth: "dashboard",
+        schemas: {
+          params: emptyRouteSchema,
+          query: emptyRouteSchema,
+          body: unknownRouteSchema,
+        },
+        handler: (routeX, _input, _req, res) => {
+          const stats = xMemoryService(routeX).getStats(routeX);
+          const aliases = Object.fromEntries(
+            xSessionStore(routeX)
+              .list(routeX, { hasAlias: true })
+              .map((session) => [session.id, session.alias]),
+          );
+          res.json({
+            totalChunks: stats.totalChunks,
+            totalSessions: stats.totalSessions,
+            totalDays: stats.totalDays,
+            oldestDay: stats.oldestDay,
+            newestDay: stats.newestDay,
+            sessions: stats.sessions.map((session) => ({
+              session_id: session.sessionId,
+              count: session.count,
+              first_day: session.firstDay,
+              last_day: session.lastDay,
+              alias: aliases[session.sessionId] || null,
+            })),
+          });
+        },
+      }),
+    );
+
+    router.get(
+      "/embeddings/search",
+      createRawRoute(x, {
+        auth: "dashboard",
+        schemas: {
+          params: emptyRouteSchema,
+          query: memorySearchQuerySchema,
+          body: unknownRouteSchema,
+        },
+        handler: async (routeX, { query }, _req, res) => {
+          const start = Date.now();
+          try {
+            const results = await xMemoryService(routeX).search(routeX, query.q, {
+              limit: query.limit,
+              mode: query.mode,
+              sessionFilter: query.session,
+            });
+            res.json({
+              query: query.q,
+              mode: query.mode,
+              duration_ms: Date.now() - start,
+              results: results.map((result) => ({
+                id: result.id,
+                session_id: result.sessionId,
+                day: result.day,
+                chunk_index: result.chunkIndex,
+                text: result.text,
+                context: result.context,
+                msg_count: result.msgCount,
+                rrfScore: result.rrfScore,
+                embeddingScore: result.embeddingScore,
+                rawEmbeddingScore: result.rawEmbeddingScore,
+                recencyFactor: result.recencyFactor,
+                daysAgo: result.daysAgo,
+                bm25Score: result.bm25Score,
+              })),
+            });
+          } catch (error) {
+            console.error("[Dashboard] Embeddings search error:", error);
+            res.status(500).json({
+              error: error instanceof Error ? error.message : String(error),
+            });
+          }
+        },
+      }),
+    );
+
+    return router;
+  }
+}

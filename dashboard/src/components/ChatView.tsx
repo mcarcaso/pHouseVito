@@ -1,9 +1,9 @@
-import { useState, useEffect, useRef } from 'react';
-import ReactMarkdown from 'react-markdown';
-import remarkGfm from 'remark-gfm';
+import { useState, useEffect, useRef } from "react";
+import ReactMarkdown from "react-markdown";
+import remarkGfm from "remark-gfm";
 
 interface Attachment {
-  type: 'image' | 'file' | 'audio';
+  type: "image" | "file" | "audio";
   data?: string;
   path?: string;
   url?: string;
@@ -13,7 +13,7 @@ interface Attachment {
 
 interface DbMessage {
   id?: number;
-  type: string;  // 'user' | 'thought' | 'assistant' | 'tool_start' | 'tool_end'
+  type: string; // 'user' | 'thought' | 'assistant' | 'tool_start' | 'tool_end'
   content: string;
   timestamp: number;
   author?: string | null;
@@ -25,7 +25,7 @@ interface ParsedMessage {
   timestamp: number;
   attachments?: Attachment[];
   toolName?: string;
-  toolPhase?: 'start' | 'end';
+  toolPhase?: "start" | "end";
   toolArgs?: any;
   toolResult?: any;
   isError?: boolean;
@@ -34,19 +34,25 @@ interface ParsedMessage {
 }
 
 function truncate(s: string, max: number): string {
-  if (!s) return '';
-  return s.length > max ? s.slice(0, max) + '...' : s;
+  if (!s) return "";
+  return s.length > max ? s.slice(0, max) + "..." : s;
 }
 
 /** Map internal type to display role */
 function typeToRole(type: string): string {
   switch (type) {
-    case 'user': return 'user';
-    case 'thought': return 'assistant';
-    case 'assistant': return 'assistant';
-    case 'tool_start': return 'tool';
-    case 'tool_end': return 'tool';
-    default: return type;
+    case "user":
+      return "user";
+    case "thought":
+      return "assistant";
+    case "assistant":
+      return "assistant";
+    case "tool_start":
+      return "tool";
+    case "tool_end":
+      return "tool";
+    default:
+      return type;
   }
 }
 
@@ -54,39 +60,45 @@ export function parseDbMessage(msg: DbMessage): ParsedMessage {
   try {
     const parsed = JSON.parse(msg.content);
     const role = typeToRole(msg.type);
-    const isThought = msg.type === 'thought';
+    const isThought = msg.type === "thought";
 
-    if (msg.type === 'tool_start' || msg.type === 'tool_end') {
+    if (msg.type === "tool_start" || msg.type === "tool_end") {
       return {
-        role: 'tool',
-        content: '',
+        role: "tool",
+        content: "",
         timestamp: msg.timestamp,
         toolName: parsed.toolName,
-        toolPhase: msg.type === 'tool_start' ? 'start' : 'end',
+        toolPhase: msg.type === "tool_start" ? "start" : "end",
         toolArgs: parsed.args,
         toolResult: parsed.result,
         isError: parsed.isError,
       };
     }
 
-    if (typeof parsed === 'string') {
+    if (typeof parsed === "string") {
       return { role, content: parsed, timestamp: msg.timestamp, isThought, author: msg.author };
     }
 
     const attachments = parsed.attachments?.map((a: any) => ({
       ...a,
-      url: a.url || (a.path ? `/attachments/${a.path.split('/').pop()}` : undefined),
+      url: a.url || (a.path ? `/attachments/${a.path.split("/").pop()}` : undefined),
     }));
     return {
       role,
-      content: parsed.text || parsed.content || '',
+      content: parsed.text || parsed.content || "",
       timestamp: msg.timestamp,
       attachments,
       isThought,
       author: msg.author,
     };
   } catch {
-    return { role: typeToRole(msg.type), content: msg.content, timestamp: msg.timestamp, isThought: msg.type === 'thought', author: msg.author };
+    return {
+      role: typeToRole(msg.type),
+      content: msg.content,
+      timestamp: msg.timestamp,
+      isThought: msg.type === "thought",
+      author: msg.author,
+    };
   }
 }
 
@@ -100,7 +112,6 @@ interface ChatViewProps {
   isTyping?: boolean;
   autoScroll?: boolean;
   showFilters?: boolean;
-  reversed?: boolean;
   hasMoreOnServer?: boolean;
   loadingMore?: boolean;
   onLoadMore?: () => void;
@@ -114,12 +125,11 @@ interface ChatViewProps {
   serverSideFiltering?: boolean;
 }
 
-function ChatView({ 
-  messages, 
-  isTyping = false, 
-  autoScroll = true, 
-  showFilters = true, 
-  reversed = false,
+function ChatView({
+  messages,
+  isTyping = false,
+  autoScroll = true,
+  showFilters = true,
   hasMoreOnServer = false,
   loadingMore = false,
   onLoadMore,
@@ -130,12 +140,15 @@ function ChatView({
   serverSideFiltering = false,
 }: ChatViewProps) {
   // Removed displayCount - we now show ALL messages in memory
-  const [internalFilterState, setInternalFilterState] = useState<FilterState>({ showThoughts: true, showTools: true });
+  const [internalFilterState, setInternalFilterState] = useState<FilterState>({
+    showThoughts: true,
+    showTools: true,
+  });
   const [expandedToolItems, setExpandedToolItems] = useState<Set<string>>(new Set());
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
   const toggleToolItem = (key: string) => {
-    setExpandedToolItems(prev => {
+    setExpandedToolItems((prev) => {
       const next = new Set(prev);
       if (next.has(key)) {
         next.delete(key);
@@ -147,7 +160,7 @@ function ChatView({
   };
 
   const formatJson = (value: any): string => {
-    if (typeof value === 'string') {
+    if (typeof value === "string") {
       try {
         const parsed = JSON.parse(value);
         return JSON.stringify(parsed, null, 2);
@@ -162,10 +175,10 @@ function ChatView({
   // Extract plain text from various formats (including Claude content arrays)
   const extractPlainText = (value: any): string | null => {
     // Already a string
-    if (typeof value === 'string') {
+    if (typeof value === "string") {
       const trimmed = value.trim();
       // If it looks like JSON, try to parse and extract
-      if (trimmed.startsWith('{') || trimmed.startsWith('[')) {
+      if (trimmed.startsWith("{") || trimmed.startsWith("[")) {
         try {
           const parsed = JSON.parse(trimmed);
           return extractPlainText(parsed);
@@ -176,40 +189,35 @@ function ChatView({
       }
       return trimmed;
     }
-    
+
     // Object with content array (Claude style: { content: [{ type: "text", text: "..." }] })
-    if (value && typeof value === 'object') {
+    if (value && typeof value === "object") {
       // Check for { content: [...] } structure
       if (Array.isArray(value.content)) {
         const textParts = value.content
-          .filter((item: any) => item?.type === 'text' && typeof item?.text === 'string')
+          .filter((item: any) => item?.type === "text" && typeof item?.text === "string")
           .map((item: any) => item.text);
         if (textParts.length > 0) {
-          return textParts.join('\n');
+          return textParts.join("\n");
         }
       }
       // Check for [{ type: "text", text: "..." }] array directly
       if (Array.isArray(value)) {
         const textParts = value
-          .filter((item: any) => item?.type === 'text' && typeof item?.text === 'string')
+          .filter((item: any) => item?.type === "text" && typeof item?.text === "string")
           .map((item: any) => item.text);
         if (textParts.length > 0) {
-          return textParts.join('\n');
+          return textParts.join("\n");
         }
       }
     }
-    
-    return null; // Can't extract plain text
-  };
 
-  // Check if content is plain text (not JSON/structured data)
-  const isPlainText = (value: any): boolean => {
-    return extractPlainText(value) !== null;
+    return null; // Can't extract plain text
   };
 
   // Use external state if provided, otherwise use internal state
   const filterState = externalFilterState ?? internalFilterState;
-  
+
   const toggleThoughts = () => {
     const newState = { ...filterState, showThoughts: !filterState.showThoughts };
     if (onFilterStateChange) {
@@ -218,7 +226,7 @@ function ChatView({
       setInternalFilterState(newState);
     }
   };
-  
+
   const toggleTools = () => {
     const newState = { ...filterState, showTools: !filterState.showTools };
     if (onFilterStateChange) {
@@ -227,17 +235,17 @@ function ChatView({
       setInternalFilterState(newState);
     }
   };
-  
+
   // Derive filter booleans - skip if server already filtered
   const hideThoughts = serverSideFiltering ? false : !filterState.showThoughts;
   const hideToolCalls = serverSideFiltering ? false : !filterState.showTools;
-  
+
   // Determine if filters are controlled externally (parent will render them)
   const filtersControlledExternally = onFilterStateChange !== undefined;
 
   useEffect(() => {
     if (autoScroll) {
-      messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+      messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
     }
   }, [messages, autoScroll]);
 
@@ -257,28 +265,32 @@ function ChatView({
         continue;
       }
 
-      if (msg.role === 'tool') {
+      if (msg.role === "tool") {
         if (hideToolCalls) {
-          while (i < visibleMessages.length && visibleMessages[i].role === 'tool') {
+          while (i < visibleMessages.length && visibleMessages[i].role === "tool") {
             i++;
           }
           continue;
         }
 
         const toolBlock: ParsedMessage[] = [];
-        while (i < visibleMessages.length && visibleMessages[i].role === 'tool') {
+        while (i < visibleMessages.length && visibleMessages[i].role === "tool") {
           toolBlock.push(visibleMessages[i]);
           i++;
         }
         const toolKey = `tool-${toolBlock[0].timestamp}`;
-        const toolNames = [...new Set(toolBlock.map(t => t.toolName).filter(Boolean))];
-        const hasErrors = toolBlock.some(t => t.isError);
-        
+        const toolNames = [...new Set(toolBlock.map((t) => t.toolName).filter(Boolean))];
+        const hasErrors = toolBlock.some((t) => t.isError);
+
         elements.push(
-          <div key={toolKey} className="mb-2 p-3 rounded-lg bg-[#0d1117] border border-blue-900/50 mr-0 md:mr-[10%]">
+          <div
+            key={toolKey}
+            className="mb-2 p-3 rounded-lg bg-[#0d1117] border border-blue-900/50 mr-0 md:mr-[10%]"
+          >
             <div className="flex justify-between mb-2 text-sm opacity-70">
               <span className="font-semibold capitalize">
-                🔧 {toolNames.slice(0, 3).join(', ')}{toolNames.length > 3 ? ` +${toolNames.length - 3}` : ''}
+                🔧 {toolNames.slice(0, 3).join(", ")}
+                {toolNames.length > 3 ? ` +${toolNames.length - 3}` : ""}
                 {hasErrors && <span className="text-red-400 ml-2">⚠</span>}
                 <span className="font-normal opacity-50 ml-2 text-xs">({toolBlock.length})</span>
               </span>
@@ -290,42 +302,41 @@ function ChatView({
               {toolBlock.map((t, idx) => {
                 const itemKey = `${toolKey}-${idx}`;
                 const isItemExpanded = expandedToolItems.has(itemKey);
-                const content = t.toolPhase === 'start' 
-                  ? t.toolArgs 
-                  : t.toolResult;
-                
+                const content = t.toolPhase === "start" ? t.toolArgs : t.toolResult;
+
                 // Try to extract plain text from the content
-                const plainText = t.toolPhase === 'end' ? extractPlainText(content) : null;
+                const plainText = t.toolPhase === "end" ? extractPlainText(content) : null;
                 const isPlainTextContent = plainText !== null;
-                
+
                 // Use extracted plain text if available, otherwise format as JSON
                 const displayStr = isPlainTextContent ? plainText : formatJson(content);
                 const needsTruncation = displayStr.length > 200;
-                
+
                 return (
-                  <div 
-                    key={idx} 
+                  <div
+                    key={idx}
                     className={`py-1 break-words ${
-                      t.toolPhase === 'start' ? 'text-blue-400' : 
-                      t.isError ? 'text-red-400' : 'text-green-400'
+                      t.toolPhase === "start"
+                        ? "text-blue-400"
+                        : t.isError
+                          ? "text-red-400"
+                          : "text-green-400"
                     }`}
                   >
                     <div className="flex flex-col gap-1">
                       <span className="shrink-0">
-                        {t.toolPhase === 'start' ? '▶' : t.isError ? '✗' : '✓'} <strong>{t.toolName}</strong>
-                        {t.toolPhase === 'end' && ' →'}
+                        {t.toolPhase === "start" ? "▶" : t.isError ? "✗" : "✓"}{" "}
+                        <strong>{t.toolName}</strong>
+                        {t.toolPhase === "end" && " →"}
                       </span>
                       {isPlainTextContent ? (
                         // Plain text result - render as readable text, not code
                         <div className="ml-4 text-sm leading-relaxed text-neutral-200 whitespace-pre-wrap">
                           {needsTruncation ? (
-                            <div 
-                              className="cursor-pointer"
-                              onClick={() => toggleToolItem(itemKey)}
-                            >
+                            <div className="cursor-pointer" onClick={() => toggleToolItem(itemKey)}>
                               {isItemExpanded ? displayStr : truncate(displayStr, 200)}
                               <span className="block text-right text-[10px] text-blue-400 mt-1 opacity-70 hover:opacity-100">
-                                {isItemExpanded ? '▲ collapse' : '▼ expand'}
+                                {isItemExpanded ? "▲ collapse" : "▼ expand"}
                               </span>
                             </div>
                           ) : (
@@ -333,7 +344,7 @@ function ChatView({
                           )}
                         </div>
                       ) : needsTruncation ? (
-                        <div 
+                        <div
                           className="ml-4 bg-neutral-900 rounded p-2 overflow-x-auto cursor-pointer transition-colors hover:bg-neutral-800"
                           onClick={() => toggleToolItem(itemKey)}
                         >
@@ -341,7 +352,7 @@ function ChatView({
                             {isItemExpanded ? displayStr : truncate(displayStr, 200)}
                           </pre>
                           <span className="block text-right text-[10px] text-blue-400 mt-1 opacity-70 hover:opacity-100">
-                            {isItemExpanded ? '▲ collapse' : '▼ expand'}
+                            {isItemExpanded ? "▲ collapse" : "▼ expand"}
                           </span>
                         </div>
                       ) : (
@@ -356,49 +367,47 @@ function ChatView({
                 );
               })}
             </div>
-          </div>
+          </div>,
         );
       } else {
-        const isUser = msg.role === 'user';
+        const isUser = msg.role === "user";
         const roleLabel = isUser && msg.author ? msg.author : msg.role;
         elements.push(
-          <div 
-            key={`${msg.role}-${msg.timestamp}-${i}`} 
+          <div
+            key={`${msg.role}-${msg.timestamp}-${i}`}
             className={`mb-6 p-4 rounded-lg ${
-              isUser 
-                ? 'bg-blue-950/50 ml-0 md:ml-[10%]' 
-                : 'bg-neutral-800 mr-0 md:mr-[10%]'
+              isUser ? "bg-blue-950/50 ml-0 md:ml-[10%]" : "bg-neutral-800 mr-0 md:mr-[10%]"
             }`}
           >
             <div className="flex justify-between mb-2 text-sm opacity-70">
               <span className="font-semibold capitalize">{roleLabel}</span>
-              <span className="text-xs">
-                {new Date(msg.timestamp).toLocaleTimeString()}
-              </span>
+              <span className="text-xs">{new Date(msg.timestamp).toLocaleTimeString()}</span>
             </div>
             {msg.attachments && msg.attachments.length > 0 && (
               <div className="flex gap-3 mb-3 flex-wrap">
                 {msg.attachments.map((att, idx) => (
                   <div key={idx} className="max-w-[400px] w-full md:w-auto">
-                    {att.type === 'image' ? (
-                      <img 
-                        src={att.data || att.url} 
-                        alt={att.filename || 'Image'} 
-                        className="w-full max-w-[300px] h-auto rounded-md block cursor-pointer transition-transform hover:scale-[1.02]" 
+                    {att.type === "image" ? (
+                      <img
+                        src={att.data || att.url}
+                        alt={att.filename || "Image"}
+                        className="w-full max-w-[300px] h-auto rounded-md block cursor-pointer transition-transform hover:scale-[1.02]"
                       />
-                    ) : att.type === 'audio' ? (
+                    ) : att.type === "audio" ? (
                       <div className="bg-neutral-700 border border-neutral-600 rounded-md px-4 py-3 flex items-center gap-3">
                         <span className="text-xl shrink-0">🎵</span>
                         <div className="flex flex-col min-w-0">
-                          <span className="text-sm font-semibold text-blue-400 truncate">{att.filename || 'Audio'}</span>
+                          <span className="text-sm font-semibold text-blue-400 truncate">
+                            {att.filename || "Audio"}
+                          </span>
                           <audio controls className="h-8 mt-2 w-full max-w-[240px]">
-                            <source src={att.url} type={att.mimeType || 'audio/mpeg'} />
+                            <source src={att.url} type={att.mimeType || "audio/mpeg"} />
                           </audio>
                         </div>
                       </div>
                     ) : (
                       <div className="bg-neutral-700 border border-neutral-600 rounded-md px-4 py-3 text-sm text-neutral-400">
-                        {att.filename || 'File'}
+                        {att.filename || "File"}
                       </div>
                     )}
                   </div>
@@ -410,24 +419,29 @@ function ChatView({
                 remarkPlugins={[remarkGfm]}
                 components={{
                   a: ({ node, ...props }) => (
-                    <a {...props} target="_blank" rel="noopener noreferrer" className="text-blue-400 hover:underline" />
+                    <a
+                      {...props}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="text-blue-400 hover:underline"
+                    />
                   ),
                 }}
               >
                 {msg.content.replace(/MEDIA:(\/[^\s]+)/g, (_match, filePath) => {
                   const encodedPath = encodeURIComponent(filePath);
-                  const extension = filePath.split('.').pop()?.toLowerCase();
-                  const imageExtensions = ['jpg', 'jpeg', 'png', 'gif', 'webp', 'svg', 'bmp'];
+                  const extension = filePath.split(".").pop()?.toLowerCase();
+                  const imageExtensions = ["jpg", "jpeg", "png", "gif", "webp", "svg", "bmp"];
                   if (extension && imageExtensions.includes(extension)) {
                     return `![image](/api/file?path=${encodedPath})`;
                   } else {
-                    const filename = filePath.split('/').pop() || 'file';
+                    const filename = filePath.split("/").pop() || "file";
                     return `[\ud83d\udcce ${filename}](/api/file?path=${encodedPath})`;
                   }
                 })}
               </ReactMarkdown>
             </div>
-          </div>
+          </div>,
         );
         i++;
       }
@@ -442,36 +456,44 @@ function ChatView({
         <div className="flex gap-2 p-2 flex-wrap bg-neutral-900 border-b border-neutral-700">
           <button
             className={`bg-neutral-800 text-neutral-200 border border-neutral-700 rounded-md px-3 py-1.5 cursor-pointer text-sm transition-all whitespace-nowrap hover:bg-neutral-700 hover:border-neutral-600 ${
-              !filterState.showThoughts ? 'opacity-40 line-through text-neutral-500 hover:opacity-60' : ''
+              !filterState.showThoughts
+                ? "opacity-40 line-through text-neutral-500 hover:opacity-60"
+                : ""
             }`}
             onClick={toggleThoughts}
-            title={filterState.showThoughts ? 'Hide thoughts' : 'Show thoughts'}
+            title={filterState.showThoughts ? "Hide thoughts" : "Show thoughts"}
           >
-            💭 {filterState.showThoughts ? '' : '(hidden)'}
+            💭 {filterState.showThoughts ? "" : "(hidden)"}
           </button>
           <button
             className={`bg-neutral-800 text-neutral-200 border border-neutral-700 rounded-md px-3 py-1.5 cursor-pointer text-sm transition-all whitespace-nowrap hover:bg-neutral-700 hover:border-neutral-600 ${
-              !filterState.showTools ? 'opacity-40 line-through text-neutral-500 hover:opacity-60' : ''
+              !filterState.showTools
+                ? "opacity-40 line-through text-neutral-500 hover:opacity-60"
+                : ""
             }`}
             onClick={toggleTools}
-            title={filterState.showTools ? 'Hide tools' : 'Show tools'}
+            title={filterState.showTools ? "Hide tools" : "Show tools"}
           >
-            🔧 {filterState.showTools ? '' : '(hidden)'}
+            🔧 {filterState.showTools ? "" : "(hidden)"}
           </button>
         </div>
       )}
 
-      <div className={`p-4 bg-neutral-900 rounded-lg flex flex-col flex-1 min-h-0 ${
-        isStatic ? 'overflow-visible' : 'overflow-y-auto'
-      }`}>
+      <div
+        className={`p-4 bg-neutral-900 rounded-lg flex flex-col flex-1 min-h-0 ${
+          isStatic ? "overflow-visible" : "overflow-y-auto"
+        }`}
+      >
         {hasMoreOnServer && onLoadMore && (
           <div className="text-center mb-6">
-            <button 
+            <button
               className="bg-neutral-800 text-neutral-400 border border-neutral-700 rounded-md px-4 py-2 cursor-pointer text-sm transition-all hover:bg-neutral-700 hover:border-neutral-600 hover:text-neutral-200 disabled:opacity-50"
               onClick={onLoadMore}
               disabled={loadingMore}
             >
-              {loadingMore ? 'Loading...' : `Load Earlier (${messages.length}${totalMessages ? ` of ${totalMessages}` : ''} loaded)`}
+              {loadingMore
+                ? "Loading..."
+                : `Load Earlier (${messages.length}${totalMessages ? ` of ${totalMessages}` : ""} loaded)`}
             </button>
           </div>
         )}

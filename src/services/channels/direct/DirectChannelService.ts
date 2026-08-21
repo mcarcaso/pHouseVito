@@ -1,0 +1,177 @@
+/**
+ * DirectChannelService — A programmatic channel for API/internal use.
+ *
+ * Unlike Discord/Telegram/Dashboard, this channel doesn't relay to a chat platform.
+ * Instead, it captures the AI response and returns it directly to the caller.
+ *
+ * This ensures API calls (Bland phone, webhooks, internal triggers) go through
+ * the EXACT same pipeline as chat messages: full context, semantic search,
+ * decorators, persistence — no drift, no missing features.
+ */
+
+import { parseInboundEventMetadata } from "../../../lib/types/inbound-event.js";
+import type { Context } from "../../../context/Context.js";
+import type { OutputHandler } from "../../../lib/output/OutputHandler.js";
+import type { InboundEvent } from "../../../lib/types/inbound-event.js";
+import type { ChannelService } from "../ChannelService.js";
+
+interface PendingRequest {
+  resolve: (response: string) => void;
+  reject: (error: Error) => void;
+  collectedMessages: string[];
+}
+
+export class DirectChannelService implements ChannelService {
+  readonly name = "direct";
+
+  readonly capabilities = {
+    typing: false,
+    reactions: false,
+    attachments: false,
+    streaming: false, // We collect, don't stream
+  };
+
+  private pendingRequests = new Map<string, PendingRequest>();
+  private eventHandler: ((event: InboundEvent) => void) | null = null;
+
+  async start(_x: Context): Promise<void> {
+    // No external connections to establish
+  }
+
+  async stop(_x: Context): Promise<void> {
+    // Reject any pending requests
+    for (const [key, pending] of this.pendingRequests) {
+      pending.reject(new Error("DirectChannel stopped"));
+      this.pendingRequests.delete(key);
+    }
+  }
+
+  async listen(_x: Context, onEvent: (event: InboundEvent) => void): Promise<() => void> {
+    this.eventHandler = onEvent;
+    return () => {
+      this.eventHandler = null;
+    };
+  }
+
+  /**
+   * Send a question through the full AI pipeline and wait for the response.
+   * This is the main entry point for API/programmatic use.
+   */
+  async ask(options: {
+    question: string;
+    session?: string; // e.g., "api:bland-phone" — defaults to "api:default"
+    author?: string;
+    channelPrompt?: string;
+    timeoutMs?: number | null; // 0/null disables timeout
+  }): Promise<string> {
+    if (!this.eventHandler) {
+      throw new Error("DirectChannel not started — call start() and listen() first");
+    }
+
+    // Parse session into channel:target format
+    const sessionParts = (options.session || "api:default").split(":");
+    const channel = sessionParts[0] || "api";
+    const target = sessionParts.slice(1).join(":") || "default";
+    const sessionKey = `${channel}:${target}`;
+
+    // Generate a unique request ID for this call
+    const requestId = `${sessionKey}:${Date.now()}:${Math.random().toString(36).slice(2)}`;
+
+    // Create promise that will be resolved when response is complete
+    const responsePromise = new Promise<string>((resolve, reject) => {
+      this.pendingRequests.set(requestId, {
+        resolve,
+        reject,
+        collectedMessages: [],
+      });
+    });
+
+    // Default channel prompt for API/phone calls
+    const defaultChannelPrompt = `## Channel: API
+You are responding to a programmatic API request.
+Keep responses concise and direct.
+Do NOT use markdown formatting unless specifically requested.`;
+
+    // Build the inbound event
+    const event: InboundEvent = {
+      sessionKey,
+      channel,
+      target,
+      author: options.author || "api",
+      timestamp: Date.now(),
+      content: options.question,
+      hasMention: true, // Direct API calls always get a response
+      raw: {
+        synthetic: true,
+        source: "direct-channel",
+        requestId,
+        // Per-request channel prompt — orchestrator checks event.raw.channelPrompt first
+        channelPrompt: options.channelPrompt || defaultChannelPrompt,
+      },
+    };
+
+    // Fire the event through the normal pipeline
+    this.eventHandler(event);
+
+    // Wait for response. timeoutMs: 0/null disables timeout for long-running pipeline steps.
+    const timeout = options.timeoutMs === undefined ? 120000 : options.timeoutMs;
+    if (timeout === null || timeout <= 0) {
+      return responsePromise;
+    }
+
+    let timeoutHandle: NodeJS.Timeout | undefined;
+    const timeoutPromise = new Promise<string>((_, reject) => {
+      timeoutHandle = setTimeout(() => {
+        this.pendingRequests.delete(requestId);
+        reject(new Error(`DirectChannel request timed out after ${timeout}ms`));
+      }, timeout);
+    });
+
+    try {
+      return await Promise.race([responsePromise, timeoutPromise]);
+    } finally {
+      if (timeoutHandle) clearTimeout(timeoutHandle);
+    }
+  }
+
+  createOutputHandler(_x: Context, event: InboundEvent): OutputHandler {
+    const requestId = parseInboundEventMetadata(event.raw).requestId;
+    if (!requestId) throw new Error("DirectChannel event is missing a request ID");
+
+    return {
+      relay: async (msg: string) => {
+        const pending = this.pendingRequests.get(requestId);
+        if (pending) {
+          pending.collectedMessages.push(msg);
+        }
+      },
+
+      relayEvent: async () => {
+        // No UI to send tool events to
+      },
+
+      startTyping: async () => {
+        // No typing indicator for API
+      },
+
+      stopTyping: async () => {
+        // No typing indicator for API
+      },
+
+      endMessage: async () => {
+        // Called when a complete assistant message ends
+        // For final mode, this is where we resolve the promise
+        const pending = this.pendingRequests.get(requestId);
+        if (pending) {
+          // Get the last message (final response) or empty string if none
+          const response =
+            pending.collectedMessages.length > 0
+              ? pending.collectedMessages[pending.collectedMessages.length - 1]
+              : "";
+          pending.resolve(response);
+          this.pendingRequests.delete(requestId);
+        }
+      },
+    };
+  }
+}

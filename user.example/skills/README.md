@@ -18,6 +18,7 @@ skill-name/
 ### SKILL.md
 
 The `SKILL.md` file contains:
+
 - **Frontmatter** (name, description)
 - **Documentation** (when to use, how to use, examples)
 
@@ -38,18 +39,18 @@ Export a `skill` object with tools for function calling:
 
 ```javascript
 export const skill = {
-  name: 'my-skill',
-  description: 'A short description',
+  name: "my-skill",
+  description: "A short description",
   tools: [
     {
-      name: 'tool_name',
-      description: 'What this tool does',
+      name: "tool_name",
+      description: "What this tool does",
       input_schema: {
-        type: 'object',
+        type: "object",
         properties: {
-          param1: { type: 'string', description: 'What param1 is for' },
+          param1: { type: "string", description: "What param1 is for" },
         },
-        required: ['param1'],
+        required: ["param1"],
       },
       async execute({ param1 }) {
         return `Result: ${param1}`;

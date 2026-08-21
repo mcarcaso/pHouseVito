@@ -1,7 +1,22 @@
-import { useState, useEffect, useRef, useCallback, useLayoutEffect, useMemo } from 'react';
-import ChatView, { parseDbMessage, type ParsedMessage, type Attachment, type FilterState } from './ChatView';
-import FilterButton from './FilterButton';
-import React from 'react';
+import { useState, useEffect, useRef, useCallback, useLayoutEffect, useMemo } from "react";
+import ChatView, {
+  parseDbMessage,
+  type ParsedMessage,
+  type Attachment,
+  type FilterState,
+} from "./ChatView";
+import FilterButton from "./FilterButton";
+import React from "react";
+import { useSearchParams } from "react-router-dom";
+import {
+  useArchiveSessionMessages,
+  useSendChatMessage,
+  useSessions,
+  useUpdateSessionAlias,
+  useUploadAttachment,
+  type DashboardSession,
+} from "../hooks/useSessions";
+import { useChatMessages } from "../hooks/useChatMessages";
 
 // Memoize ChatView to prevent re-renders when typing in the input
 const MemoizedChatView = React.memo(ChatView);
@@ -14,7 +29,7 @@ function playNotificationSound() {
     osc.connect(gain);
     gain.connect(ctx.destination);
     osc.frequency.value = 880;
-    osc.type = 'sine';
+    osc.type = "sine";
     gain.gain.setValueAtTime(0.3, ctx.currentTime);
     gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.3);
     osc.start(ctx.currentTime);
@@ -24,161 +39,137 @@ function playNotificationSound() {
   }
 }
 
-const POLL_INTERVAL = 5000; // 5 seconds
+const POLL_INTERVAL = 5000;
 
-interface DashboardMessage {
-  id: number;
-  type: string;
-  content: string;
-  timestamp: number;
-  author?: string | null;
-}
-
-interface DashboardSession {
-  id: string;
-  channel: string;
-  channel_target: string;
-  last_active_at: number;
-  alias?: string | null;
-}
-
-const DEFAULT_SESSION_ID = 'dashboard:default';
-const CHAT_SESSION_STORAGE_KEY = 'chat-selected-session-id';
+const DEFAULT_SESSION_ID = "dashboard:default";
+const CHAT_SESSION_STORAGE_KEY = "chat-selected-session-id";
 
 function Chat() {
-  const [allMessages, setAllMessages] = useState<ParsedMessage[]>([]);
-  const [sessions, setSessions] = useState<DashboardSession[]>([]);
+  const [searchParams, setSearchParams] = useSearchParams();
   const [selectedSessionId, setSelectedSessionId] = useState<string>(() => {
     try {
-      return localStorage.getItem(CHAT_SESSION_STORAGE_KEY) || DEFAULT_SESSION_ID;
+      return (
+        searchParams.get("session") ||
+        searchParams.get("id") ||
+        localStorage.getItem(CHAT_SESSION_STORAGE_KEY) ||
+        DEFAULT_SESSION_ID
+      );
     } catch {
       return DEFAULT_SESSION_ID;
     }
   });
-  const [input, setInput] = useState('');
+  const [input, setInput] = useState("");
   const [isTyping] = useState(false); // Unused but kept for ChatView prop
   const [attachments, setAttachments] = useState<Attachment[]>([]);
   const [filterState, setFilterState] = useState<FilterState>(() => {
     try {
-      const saved = localStorage.getItem('chat-filter');
+      const saved = localStorage.getItem("chat-filter");
       if (saved) return JSON.parse(saved);
     } catch {}
     return { showThoughts: true, showTools: true };
   });
   useEffect(() => {
-    try { localStorage.setItem('chat-filter', JSON.stringify(filterState)); } catch {}
+    try {
+      localStorage.setItem("chat-filter", JSON.stringify(filterState));
+    } catch {}
   }, [filterState]);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const lastAssistantTsRef = useRef<number | null>(null);
-  const lastMessageIdRef = useRef<number | null>(null);
-  const initialLoadRef = useRef(true);
-  const pollTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const sessionsQuery = useSessions({ refetchInterval: POLL_INTERVAL });
+  const sessions = sessionsQuery.data ?? [];
+  const messagesQuery = useChatMessages(selectedSessionId, filterState);
+  const allMessages: ParsedMessage[] = useMemo(
+    () =>
+      messagesQuery.messages.map((message) =>
+        parseDbMessage({
+          type: message.type,
+          content: message.content,
+          timestamp: message.timestamp,
+          author: message.author,
+        }),
+      ),
+    [messagesQuery.messages],
+  );
+  const uploadAttachment = useUploadAttachment();
+  const sendChatMessage = useSendChatMessage();
+  const archiveMessages = useArchiveSessionMessages();
+  const updateAlias = useUpdateSessionAlias();
+  const prependAnchorRef = useRef<{ scrollHeight: number; scrollY: number } | null>(null);
+  const nearBottomRef = useRef(true);
+  const initialScrollRef = useRef(true);
+
+  const loadOlderMessages = useCallback(() => {
+    if (
+      prependAnchorRef.current ||
+      !messagesQuery.hasPreviousPage ||
+      messagesQuery.isFetchingPreviousPage
+    )
+      return;
+    prependAnchorRef.current = {
+      scrollHeight: document.documentElement.scrollHeight,
+      scrollY: window.scrollY,
+    };
+    void messagesQuery.fetchPreviousPage();
+  }, [
+    messagesQuery.fetchPreviousPage,
+    messagesQuery.hasPreviousPage,
+    messagesQuery.isFetchingPreviousPage,
+  ]);
 
   const formatSessionLabel = useCallback((session: DashboardSession) => {
     const name = session.alias || session.id;
     return name === session.id ? session.id : `${name} — ${session.id}`;
   }, []);
 
-  const fetchSessions = useCallback(() => {
-    fetch('/api/sessions')
-      .then((res) => res.json())
-      .then((data) => {
-        if (!Array.isArray(data)) return;
-        setSessions(data as DashboardSession[]);
-      })
-      .catch((err) => console.error('Failed to load sessions:', err));
-  }, []);
-
   useEffect(() => {
-    fetchSessions();
-  }, [fetchSessions]);
-
-  useEffect(() => {
-    try { localStorage.setItem(CHAT_SESSION_STORAGE_KEY, selectedSessionId); } catch {}
-    initialLoadRef.current = true;
+    try {
+      localStorage.setItem(CHAT_SESSION_STORAGE_KEY, selectedSessionId);
+    } catch {}
     lastAssistantTsRef.current = null;
-    lastMessageIdRef.current = null;
-    setAllMessages([]);
-  }, [selectedSessionId]);
+    initialScrollRef.current = true;
+    nearBottomRef.current = true;
+    prependAnchorRef.current = null;
+  }, [selectedSessionId, filterState]);
 
-  const applyMessages = useCallback((rawMessages: DashboardMessage[], mode: 'replace' | 'append') => {
-    if (!Array.isArray(rawMessages) || rawMessages.length === 0) return;
+  useEffect(() => {
+    const handleScroll = () => {
+      const documentHeight = document.documentElement.scrollHeight;
+      nearBottomRef.current = window.scrollY + window.innerHeight >= documentHeight - 150;
+      if (window.scrollY <= 150) loadOlderMessages();
+    };
+    window.addEventListener("scroll", handleScroll, { passive: true });
+    return () => window.removeEventListener("scroll", handleScroll);
+  }, [loadOlderMessages]);
 
-    const messages = rawMessages.map((msg) => parseDbMessage({
-      type: msg.type,
-      content: msg.content,
-      timestamp: msg.timestamp,
-      author: msg.author,
-    }));
+  useLayoutEffect(() => {
+    const anchor = prependAnchorRef.current;
+    if (!anchor || messagesQuery.isFetchingPreviousPage) return;
+    const addedHeight = document.documentElement.scrollHeight - anchor.scrollHeight;
+    window.scrollTo({ top: anchor.scrollY + addedHeight, behavior: "instant" });
+    prependAnchorRef.current = null;
+  }, [messagesQuery.isFetchingPreviousPage, messagesQuery.lowWatermark]);
 
-    const latestAssistant = [...messages].reverse().find((msg) => msg.role === 'assistant') ?? null;
+  useLayoutEffect(() => {
+    if (allMessages.length === 0) return;
+    if (initialScrollRef.current || nearBottomRef.current) {
+      window.scrollTo({ top: document.documentElement.scrollHeight, behavior: "instant" });
+      initialScrollRef.current = false;
+    }
+  }, [messagesQuery.highWatermark, allMessages.length]);
 
+  useEffect(() => {
+    const latestAssistant = [...allMessages]
+      .reverse()
+      .find((message) => message.role === "assistant");
+    if (!latestAssistant) return;
     if (
-      !initialLoadRef.current &&
-      latestAssistant &&
+      lastAssistantTsRef.current !== null &&
       latestAssistant.timestamp !== lastAssistantTsRef.current
     ) {
       playNotificationSound();
     }
-
-    initialLoadRef.current = false;
-    if (latestAssistant) {
-      lastAssistantTsRef.current = latestAssistant.timestamp;
-    }
-    lastMessageIdRef.current = rawMessages[rawMessages.length - 1]?.id ?? lastMessageIdRef.current;
-
-    setAllMessages((prev) => (mode === 'append' ? [...prev, ...messages] : messages));
-  }, []);
-
-  const fetchMessages = useCallback((filter?: FilterState, mode: 'replace' | 'append' = 'replace') => {
-    const params = new URLSearchParams();
-    if (filter) {
-      if (!filter.showThoughts) params.set('hideThoughts', 'true');
-      if (!filter.showTools) params.set('hideTools', 'true');
-    }
-    if (mode === 'append' && lastMessageIdRef.current) {
-      params.set('after', String(lastMessageIdRef.current));
-    }
-    const url = `/api/sessions/${encodeURIComponent(selectedSessionId)}/messages${params.toString() ? '?' + params.toString() : ''}`;
-    fetch(url)
-      .then((res) => res.json())
-      .then((data) => {
-        const rawMessages = Array.isArray(data) ? data : data.messages;
-        if (!Array.isArray(rawMessages)) return;
-
-        if (mode === 'append') {
-          applyMessages(rawMessages as DashboardMessage[], 'append');
-          return;
-        }
-
-        if (rawMessages.length === 0) {
-          initialLoadRef.current = false;
-          lastAssistantTsRef.current = null;
-          lastMessageIdRef.current = null;
-          setAllMessages([]);
-          return;
-        }
-
-        applyMessages(rawMessages as DashboardMessage[], 'replace');
-      })
-      .catch((err) => console.error('Failed to load messages:', err));
-  }, [applyMessages, selectedSessionId]);
-
-  // Polling — initial full load, then incremental append every 5s
-  useEffect(() => {
-    fetchMessages(filterState, 'replace');
-
-    pollTimerRef.current = setInterval(() => {
-      fetchMessages(filterState, 'append');
-    }, POLL_INTERVAL);
-
-    return () => {
-      if (pollTimerRef.current) {
-        clearInterval(pollTimerRef.current);
-        pollTimerRef.current = null;
-      }
-    };
-  }, [fetchMessages, filterState]);
+    lastAssistantTsRef.current = latestAssistant.timestamp;
+  }, [allMessages]);
 
   const handleFileSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = e.target.files;
@@ -187,13 +178,13 @@ function Chat() {
     const newAttachments: Attachment[] = [];
     for (let i = 0; i < files.length; i++) {
       const file = files[i];
-      const isImageFile = file.type.startsWith('image/');
-      const isAudioFile = file.type.startsWith('audio/');
+      const isImageFile = file.type.startsWith("image/");
+      const isAudioFile = file.type.startsWith("audio/");
       const reader = new FileReader();
       await new Promise<void>((resolve) => {
         reader.onload = () => {
           newAttachments.push({
-            type: isImageFile ? 'image' : (isAudioFile ? 'audio' : 'file'),
+            type: isImageFile ? "image" : isAudioFile ? "audio" : "file",
             data: reader.result as string,
             filename: file.name,
             mimeType: file.type,
@@ -204,7 +195,7 @@ function Chat() {
       });
     }
     setAttachments((prev) => [...prev, ...newAttachments]);
-    if (fileInputRef.current) fileInputRef.current.value = '';
+    if (fileInputRef.current) fileInputRef.current.value = "";
   };
 
   const removeAttachment = (index: number) => {
@@ -216,19 +207,17 @@ function Chat() {
 
     const text = input;
     const currentAttachments = [...attachments];
-    setInput('');
+    setInput("");
     setAttachments([]);
 
     const uploaded: Attachment[] = [];
     for (const att of currentAttachments) {
       if (att.data) {
         try {
-          const res = await fetch('/api/attachments', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ data: att.data, filename: att.filename }),
+          const result = await uploadAttachment.mutateAsync({
+            data: att.data,
+            filename: att.filename,
           });
-          const result = await res.json();
           uploaded.push({
             type: att.type,
             path: result.path,
@@ -237,38 +226,34 @@ function Chat() {
             mimeType: result.mimeType || att.mimeType,
           });
         } catch (err) {
-          console.error('Failed to upload attachment:', err);
+          console.error("Failed to upload attachment:", err);
         }
       }
     }
 
-    const payload = {
-      type: 'chat' as const,
-      content: text,
-      attachments: uploaded.length > 0 ? uploaded : undefined,
-      sessionId: selectedSessionId,
-    };
-
-    // Send via HTTP POST
     try {
-      await fetch('/api/chat', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload),
+      await sendChatMessage.mutateAsync({
+        type: "chat",
+        content: text,
+        attachments:
+          uploaded.length > 0
+            ? uploaded.map(({ type, url, path, mimeType, filename }) => ({
+                type,
+                url,
+                path,
+                mimeType,
+                filename,
+              }))
+            : undefined,
+        sessionId: selectedSessionId,
       });
-    } catch (err) {
-      console.error('Failed to send message:', err);
+    } catch (error: unknown) {
+      console.error("Failed to send message:", error);
     }
-
-    // Fetch immediately to show our sent message, and refresh sessions in case this created/updated one
-    setTimeout(() => {
-      fetchMessages(filterState, 'append');
-      fetchSessions();
-    }, 200);
   };
 
   const handleKeyPress = (e: React.KeyboardEvent) => {
-    if (e.key === 'Enter' && !e.shiftKey) {
+    if (e.key === "Enter" && !e.shiftKey) {
       e.preventDefault();
       sendMessage();
     }
@@ -281,18 +266,18 @@ function Chat() {
     const newAttachments: Attachment[] = [];
     for (let i = 0; i < items.length; i++) {
       const item = items[i];
-      if (item.kind === 'file') {
+      if (item.kind === "file") {
         const file = item.getAsFile();
         if (!file) continue;
-        const isImageFile = file.type.startsWith('image/');
-        const isAudioFile = file.type.startsWith('audio/');
+        const isImageFile = file.type.startsWith("image/");
+        const isAudioFile = file.type.startsWith("audio/");
         const reader = new FileReader();
         await new Promise<void>((resolve) => {
           reader.onload = () => {
             newAttachments.push({
-              type: isImageFile ? 'image' : (isAudioFile ? 'audio' : 'file'),
+              type: isImageFile ? "image" : isAudioFile ? "audio" : "file",
               data: reader.result as string,
-              filename: file.name || `pasted-${Date.now()}.${file.type.split('/')[1] || 'bin'}`,
+              filename: file.name || `pasted-${Date.now()}.${file.type.split("/")[1] || "bin"}`,
               mimeType: file.type,
             });
             resolve();
@@ -307,13 +292,6 @@ function Chat() {
     }
   };
 
-  // Auto-scroll to bottom on initial load
-  useLayoutEffect(() => {
-    if (allMessages.length > 0) {
-      window.scrollTo({ top: document.body.scrollHeight, behavior: 'instant' });
-    }
-  }, [allMessages.length === 0]); // Only on first load when messages arrive
-
   return (
     <div className="flex flex-col min-h-full max-w-[1200px] mx-auto w-full">
       {/* Fixed status bar */}
@@ -326,7 +304,10 @@ function Chat() {
             </div>
             <select
               value={selectedSessionId}
-              onChange={(e) => setSelectedSessionId(e.target.value)}
+              onChange={(e) => {
+                setSelectedSessionId(e.target.value);
+                setSearchParams({ session: e.target.value }, { replace: true });
+              }}
               className="bg-neutral-950 border border-neutral-700 rounded-lg px-3 py-2 text-sm text-neutral-200 min-w-[220px] max-w-[520px] truncate focus:outline-none focus:border-neutral-500"
               title="Chat session"
             >
@@ -341,29 +322,50 @@ function Chat() {
             </select>
           </div>
           <div className="flex gap-2 shrink-0">
+            <button
+              onClick={() => {
+                const session = sessions.find(({ id }) => id === selectedSessionId);
+                const alias = prompt("Session alias", session?.alias ?? "");
+                if (alias === null) return;
+                void updateAlias.mutateAsync({
+                  sessionId: selectedSessionId,
+                  alias: alias.trim() || null,
+                });
+              }}
+              className="p-2 rounded-lg bg-neutral-800 hover:bg-neutral-700 text-neutral-400 hover:text-white transition-colors"
+              title="Edit session alias"
+            >
+              ✏️
+            </button>
+            <a
+              href={`/settings?tab=sessions&session=${encodeURIComponent(selectedSessionId)}`}
+              className="p-2 rounded-lg bg-neutral-800 hover:bg-neutral-700 text-neutral-400 hover:text-white transition-colors"
+              title="Session settings"
+            >
+              ⚙️
+            </a>
             <FilterButton
               active={!filterState.showThoughts}
-              onClick={() => setFilterState(prev => ({ ...prev, showThoughts: !prev.showThoughts }))}
-              title={filterState.showThoughts ? 'Hide thoughts' : 'Show thoughts'}
+              onClick={() =>
+                setFilterState((prev) => ({ ...prev, showThoughts: !prev.showThoughts }))
+              }
+              title={filterState.showThoughts ? "Hide thoughts" : "Show thoughts"}
               emoji="💭"
             />
             <FilterButton
               active={!filterState.showTools}
-              onClick={() => setFilterState(prev => ({ ...prev, showTools: !prev.showTools }))}
-              title={filterState.showTools ? 'Hide tools' : 'Show tools'}
+              onClick={() => setFilterState((prev) => ({ ...prev, showTools: !prev.showTools }))}
+              title={filterState.showTools ? "Hide tools" : "Show tools"}
               emoji="🔧"
             />
             <button
               onClick={async () => {
-                if (!confirm('Clear all messages in this chat?')) return;
+                if (!confirm("Clear all messages in this chat?")) return;
                 try {
-                  await fetch(`/api/sessions/${encodeURIComponent(selectedSessionId)}/messages`, { method: 'DELETE' });
-                  initialLoadRef.current = false;
+                  await archiveMessages.mutateAsync(selectedSessionId);
                   lastAssistantTsRef.current = null;
-                  lastMessageIdRef.current = null;
-                  setAllMessages([]);
                 } catch (err) {
-                  console.error('Failed to clear messages:', err);
+                  console.error("Failed to clear messages:", err);
                 }
               }}
               className="p-2 rounded-lg bg-neutral-800 hover:bg-neutral-700 text-neutral-400 hover:text-red-400 transition-colors"
@@ -375,8 +377,11 @@ function Chat() {
         </div>
       </div>
 
-      {/* Messages scroll naturally */}
+      {/* Messages scroll naturally. Older pages are prepended near the top. */}
       <div className="pt-[55px] md:pt-[60px] pb-[160px] md:pb-[180px] px-2 md:px-3">
+        {messagesQuery.isFetchingPreviousPage && (
+          <div className="py-3 text-center text-xs text-neutral-500">Loading earlier messages…</div>
+        )}
         <MemoizedChatView
           messages={allMessages}
           isTyping={isTyping}
@@ -396,16 +401,23 @@ function Chat() {
           ref={fileInputRef}
           onChange={handleFileSelect}
           multiple
-          style={{ display: 'none' }}
+          style={{ display: "none" }}
         />
 
         {attachments.length > 0 && (
           <div className="flex gap-2 mb-3 flex-wrap max-w-[1200px] mx-auto">
             {attachments.map((att, idx) => (
-              <div key={idx} className="relative bg-neutral-800 border border-neutral-700 rounded-md p-2 max-w-[150px]">
-                {att.type === 'image' ? (
-                  <img src={att.data || att.url} alt={att.filename || 'Preview'} className="w-full h-[100px] object-cover rounded block" />
-                ) : att.type === 'audio' ? (
+              <div
+                key={idx}
+                className="relative bg-neutral-800 border border-neutral-700 rounded-md p-2 max-w-[150px]"
+              >
+                {att.type === "image" ? (
+                  <img
+                    src={att.data || att.url}
+                    alt={att.filename || "Preview"}
+                    className="w-full h-[100px] object-cover rounded block"
+                  />
+                ) : att.type === "audio" ? (
                   <div className="p-2 text-sm text-center text-blue-400">🎵 {att.filename}</div>
                 ) : (
                   <div className="p-2 text-sm text-center text-neutral-400">{att.filename}</div>

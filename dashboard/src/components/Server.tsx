@@ -1,15 +1,5 @@
-import { useState, useEffect } from 'react';
-
-interface ServerStatus {
-  uptime: number;
-  pid: number;
-  nodeVersion: string;
-  memoryUsage: {
-    rss: number;
-    heapTotal: number;
-    heapUsed: number;
-  };
-}
+import { useState } from "react";
+import { useRestartServer, useServerStatus } from "../hooks/useServer";
 
 function formatUptime(seconds: number): string {
   const d = Math.floor(seconds / 86400);
@@ -21,7 +11,7 @@ function formatUptime(seconds: number): string {
   if (h > 0) parts.push(`${h}h`);
   if (m > 0) parts.push(`${m}m`);
   parts.push(`${s}s`);
-  return parts.join(' ');
+  return parts.join(" ");
 }
 
 function formatBytes(bytes: number): string {
@@ -30,22 +20,11 @@ function formatBytes(bytes: number): string {
 }
 
 export default function Server() {
-  const [status, setStatus] = useState<ServerStatus | null>(null);
-  const [restarting, setRestarting] = useState(false);
+  const statusQuery = useServerStatus();
+  const restartServer = useRestartServer();
+  const status = statusQuery.data ?? null;
+  const restarting = restartServer.isPending;
   const [confirmRestart, setConfirmRestart] = useState(false);
-
-  const fetchStatus = () => {
-    fetch('/api/server/status')
-      .then(r => r.json())
-      .then(setStatus)
-      .catch(() => setStatus(null));
-  };
-
-  useEffect(() => {
-    fetchStatus();
-    const interval = setInterval(fetchStatus, 5000);
-    return () => clearInterval(interval);
-  }, []);
 
   const handleRestart = async () => {
     if (!confirmRestart) {
@@ -54,34 +33,8 @@ export default function Server() {
       return;
     }
 
-    setRestarting(true);
     setConfirmRestart(false);
-
-    try {
-      await fetch('/api/server/restart', { method: 'POST' });
-    } catch {
-      // Expected — server dies mid-request
-    }
-
-    // Poll until server comes back
-    const poll = setInterval(async () => {
-      try {
-        const res = await fetch('/api/server/status');
-        if (res.ok) {
-          clearInterval(poll);
-          setRestarting(false);
-          fetchStatus();
-        }
-      } catch {
-        // Still restarting
-      }
-    }, 1000);
-
-    // Stop polling after 30s
-    setTimeout(() => {
-      clearInterval(poll);
-      setRestarting(false);
-    }, 30000);
+    await restartServer.mutateAsync().catch(() => undefined);
   };
 
   return (
@@ -103,7 +56,9 @@ export default function Server() {
               </div>
               <div className="flex justify-between items-center">
                 <span className="text-sm text-neutral-500">Uptime</span>
-                <span className="text-sm text-neutral-300 font-mono">{formatUptime(status.uptime)}</span>
+                <span className="text-sm text-neutral-300 font-mono">
+                  {formatUptime(status.uptime)}
+                </span>
               </div>
               <div className="flex justify-between items-center">
                 <span className="text-sm text-neutral-500">PID</span>
@@ -115,11 +70,16 @@ export default function Server() {
               </div>
               <div className="flex justify-between items-center">
                 <span className="text-sm text-neutral-500">Memory (RSS)</span>
-                <span className="text-sm text-neutral-300 font-mono">{formatBytes(status.memoryUsage.rss)}</span>
+                <span className="text-sm text-neutral-300 font-mono">
+                  {formatBytes(status.memoryUsage.rss)}
+                </span>
               </div>
               <div className="flex justify-between items-center">
                 <span className="text-sm text-neutral-500">Heap Used</span>
-                <span className="text-sm text-neutral-300 font-mono">{formatBytes(status.memoryUsage.heapUsed)} / {formatBytes(status.memoryUsage.heapTotal)}</span>
+                <span className="text-sm text-neutral-300 font-mono">
+                  {formatBytes(status.memoryUsage.heapUsed)} /{" "}
+                  {formatBytes(status.memoryUsage.heapTotal)}
+                </span>
               </div>
             </div>
           ) : (
@@ -136,7 +96,8 @@ export default function Server() {
         <div className="bg-neutral-900 border border-neutral-800 rounded-xl p-5 sm:p-6">
           <h3 className="text-base font-semibold text-white mb-2">Restart</h3>
           <p className="text-sm text-neutral-500 mb-4 leading-relaxed">
-            Rebuilds the dashboard and restarts the server via PM2. The server will be briefly unavailable.
+            Rebuilds the dashboard and restarts the server via PM2. The server will be briefly
+            unavailable.
           </p>
 
           {restarting ? (
@@ -148,12 +109,12 @@ export default function Server() {
             <button
               className={`w-full p-3.5 rounded-xl text-sm font-semibold cursor-pointer transition-all ${
                 confirmRestart
-                  ? 'bg-red-900 border border-red-400 text-white animate-pulse'
-                  : 'bg-neutral-800 border border-neutral-700 text-red-400 hover:bg-red-950/50 hover:border-red-400'
+                  ? "bg-red-900 border border-red-400 text-white animate-pulse"
+                  : "bg-neutral-800 border border-neutral-700 text-red-400 hover:bg-red-950/50 hover:border-red-400"
               }`}
               onClick={handleRestart}
             >
-              {confirmRestart ? 'Are you sure? Click again to confirm' : 'Restart Server'}
+              {confirmRestart ? "Are you sure? Click again to confirm" : "Restart Server"}
             </button>
           )}
         </div>

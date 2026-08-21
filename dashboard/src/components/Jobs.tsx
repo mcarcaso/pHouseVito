@@ -1,23 +1,24 @@
-import React, { useState, useEffect } from "react";
-
-interface CronJob {
-  name: string;
-  schedule: string;
-  timezone?: string;
-  session: string;
-  prompt: string;
-  oneTime?: boolean;
-  sendCondition?: string;
-}
-
-interface Session {
-  id: string;
-  alias: string | null;
-}
+import React, { useState } from "react";
+import type { CronJobConfig as CronJob } from "../../../src/shared/schemas/vito-config";
+import {
+  useCreateCronJob,
+  useCronHealth,
+  useCronJobs,
+  useDeleteCronJob,
+  useTriggerCronJob,
+  useUpdateCronJob,
+} from "../hooks/useCronJobs";
+import { useSessions } from "../hooks/useSessions";
 
 export default function Jobs() {
-  const [jobs, setJobs] = useState<CronJob[]>([]);
-  const [sessions, setSessions] = useState<Session[]>([]);
+  const jobsQuery = useCronJobs();
+  const sessionsQuery = useSessions();
+  const createJob = useCreateCronJob();
+  const deleteJob = useDeleteCronJob();
+  const triggerJob = useTriggerCronJob();
+  const updateJob = useUpdateCronJob();
+  const jobs = jobsQuery.data ?? [];
+  const sessions = sessionsQuery.data ?? [];
   const [showForm, setShowForm] = useState(false);
   const [formData, setFormData] = useState<CronJob>({
     name: "",
@@ -30,37 +31,22 @@ export default function Jobs() {
   });
   const [editingCondition, setEditingCondition] = useState<string | null>(null);
   const [conditionValue, setConditionValue] = useState("");
-  const [healthData, setHealthData] = useState<any>(null);
   const [showHealth, setShowHealth] = useState(false);
-
-  useEffect(() => {
-    fetchJobs();
-    fetchSessions();
-  }, []);
-
-  const fetchJobs = async () => {
-    const res = await fetch("/api/cron/jobs");
-    const data = await res.json();
-    setJobs(data);
-  };
-
-  const fetchSessions = async () => {
-    const res = await fetch("/api/sessions");
-    const data = await res.json();
-    setSessions(data);
-  };
+  const healthQuery = useCronHealth(showHealth);
+  const healthData =
+    healthQuery.data ?? (healthQuery.error ? { error: healthQuery.error.message } : null);
 
   const getSessionDisplay = (sessionId: string) => {
-    const session = sessions.find(s => s.id === sessionId);
+    const session = sessions.find((s) => s.id === sessionId);
     if (session?.alias) {
       return session.alias;
     }
     // If no alias, try to show a cleaner version (channel:target -> just target if recognizable)
-    const parts = sessionId.split(':');
+    const parts = sessionId.split(":");
     if (parts.length === 2) {
       const [channel, target] = parts;
       // For system sessions, just show the target
-      if (channel === 'system') return target;
+      if (channel === "system") return target;
       // For others, show channel badge + target
       return sessionId;
     }
@@ -69,14 +55,8 @@ export default function Jobs() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    const res = await fetch("/api/cron/jobs", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(formData),
-    });
-
-    if (res.ok) {
-      await fetchJobs();
+    try {
+      await createJob.mutateAsync(formData);
       setShowForm(false);
       setFormData({
         name: "",
@@ -86,41 +66,32 @@ export default function Jobs() {
         prompt: "",
         oneTime: false,
       });
-    } else {
-      const error = await res.json();
-      alert(`Error: ${error.error}`);
+    } catch (error: unknown) {
+      alert(`Error: ${error instanceof Error ? error.message : "Failed to create job"}`);
     }
   };
 
   const handleDelete = async (name: string) => {
     if (!confirm(`Delete job "${name}"?`)) return;
-    const res = await fetch(`/api/cron/jobs/${name}`, { method: "DELETE" });
-    if (res.ok) await fetchJobs();
+    await deleteJob.mutateAsync(name);
   };
 
   const handleTrigger = async (name: string) => {
     if (!confirm(`Run job "${name}" now?`)) return;
-    const res = await fetch(`/api/cron/jobs/${name}/trigger`, { method: "POST" });
-    if (res.ok) {
+    try {
+      await triggerJob.mutateAsync(name);
       alert(`Job "${name}" triggered!`);
-    } else {
-      const error = await res.json();
-      alert(`Error: ${error.error}`);
+    } catch (error: unknown) {
+      alert(`Error: ${error instanceof Error ? error.message : "Failed to trigger job"}`);
     }
   };
 
   const handleUpdateCondition = async (name: string, sendCondition: string) => {
-    const res = await fetch(`/api/cron/jobs/${name}`, {
-      method: "PUT",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ sendCondition }),
-    });
-    if (res.ok) {
-      await fetchJobs();
+    try {
+      await updateJob.mutateAsync({ name, updates: { sendCondition } });
       setEditingCondition(null);
-    } else {
-      const error = await res.json();
-      alert(`Error: ${error.error}`);
+    } catch (error: unknown) {
+      alert(`Error: ${error instanceof Error ? error.message : "Failed to update job"}`);
     }
   };
 
@@ -129,21 +100,7 @@ export default function Jobs() {
     setConditionValue(job.sendCondition || "");
   };
 
-  const checkHealth = async () => {
-    console.log("[Jobs] checkHealth called");
-    try {
-      const res = await fetch("/api/cron/health");
-      console.log("[Jobs] health response status:", res.status);
-      const data = await res.json();
-      console.log("[Jobs] health data:", data);
-      setHealthData(data);
-      setShowHealth(true);
-    } catch (err) {
-      console.error("[Jobs] health error:", err);
-      setHealthData({ error: "Failed to fetch health data" });
-      setShowHealth(true);
-    }
-  };
+  const checkHealth = () => setShowHealth(true);
 
   return (
     <div className="flex flex-col pb-8">
@@ -256,7 +213,9 @@ export default function Jobs() {
 
             {/* Send Condition */}
             <div className="flex flex-col gap-1">
-              <label className="text-xs text-neutral-500 font-medium">Send Condition (optional)</label>
+              <label className="text-xs text-neutral-500 font-medium">
+                Send Condition (optional)
+              </label>
               <input
                 type="text"
                 value={formData.sendCondition || ""}
@@ -264,7 +223,10 @@ export default function Jobs() {
                 placeholder="Only send if X is down 5% or more"
                 className="px-3 py-2 bg-neutral-950 border border-neutral-700 rounded-md text-neutral-200 text-sm sm:text-base focus:outline-none focus:border-blue-600 transition-colors"
               />
-              <span className="text-xs text-neutral-600">If set, response only sent when condition is met (AI will respond NO_REPLY otherwise)</span>
+              <span className="text-xs text-neutral-600">
+                If set, response only sent when condition is met (AI will respond NO_REPLY
+                otherwise)
+              </span>
             </div>
 
             {/* One-time checkbox */}
@@ -289,9 +251,7 @@ export default function Jobs() {
 
         {/* Jobs List */}
         {jobs.length === 0 ? (
-          <div className="text-center py-12 text-neutral-500">
-            No scheduled jobs yet
-          </div>
+          <div className="text-center py-12 text-neutral-500">No scheduled jobs yet</div>
         ) : (
           <div className="space-y-3">
             {jobs.map((job) => (
@@ -332,19 +292,31 @@ export default function Jobs() {
                 {/* Job Details - Desktop: grid, Mobile: stack */}
                 <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 mb-3">
                   <div className="flex flex-col gap-0.5">
-                    <span className="text-[11px] text-neutral-500 font-medium uppercase tracking-wide">Schedule</span>
+                    <span className="text-[11px] text-neutral-500 font-medium uppercase tracking-wide">
+                      Schedule
+                    </span>
                     <span className="text-sm text-neutral-300 font-mono">{job.schedule}</span>
                   </div>
                   <div className="flex flex-col gap-0.5">
-                    <span className="text-[11px] text-neutral-500 font-medium uppercase tracking-wide">Timezone</span>
-                    <span className="text-sm text-neutral-300">{job.timezone || "America/New_York"}</span>
+                    <span className="text-[11px] text-neutral-500 font-medium uppercase tracking-wide">
+                      Timezone
+                    </span>
+                    <span className="text-sm text-neutral-300">
+                      {job.timezone || "America/New_York"}
+                    </span>
                   </div>
                   <div className="flex flex-col gap-0.5">
-                    <span className="text-[11px] text-neutral-500 font-medium uppercase tracking-wide">Session</span>
+                    <span className="text-[11px] text-neutral-500 font-medium uppercase tracking-wide">
+                      Session
+                    </span>
                     <div className="flex flex-col gap-0.5">
-                      <span className="text-sm text-neutral-300">{getSessionDisplay(job.session)}</span>
-                      {sessions.find(s => s.id === job.session)?.alias && (
-                        <span className="text-xs text-neutral-500 font-mono truncate">{job.session}</span>
+                      <span className="text-sm text-neutral-300">
+                        {getSessionDisplay(job.session)}
+                      </span>
+                      {sessions.find((s) => s.id === job.session)?.alias && (
+                        <span className="text-xs text-neutral-500 font-mono truncate">
+                          {job.session}
+                        </span>
                       )}
                     </div>
                   </div>
@@ -352,7 +324,9 @@ export default function Jobs() {
 
                 {/* Prompt */}
                 <div className="flex flex-col gap-1">
-                  <span className="text-[11px] text-neutral-500 font-medium uppercase tracking-wide">Prompt</span>
+                  <span className="text-[11px] text-neutral-500 font-medium uppercase tracking-wide">
+                    Prompt
+                  </span>
                   <pre className="bg-neutral-950 p-3 rounded-md text-sm text-neutral-300 font-mono whitespace-pre-wrap break-words">
                     {job.prompt}
                   </pre>
@@ -360,7 +334,9 @@ export default function Jobs() {
 
                 {/* Send Condition */}
                 <div className="flex flex-col gap-1 mt-3">
-                  <span className="text-[11px] text-neutral-500 font-medium uppercase tracking-wide">Send Condition</span>
+                  <span className="text-[11px] text-neutral-500 font-medium uppercase tracking-wide">
+                    Send Condition
+                  </span>
                   {editingCondition === job.name ? (
                     <div className="flex gap-2">
                       <input
@@ -389,7 +365,7 @@ export default function Jobs() {
                       </button>
                     </div>
                   ) : (
-                    <div 
+                    <div
                       className="flex items-center gap-2 cursor-pointer group"
                       onClick={() => startEditingCondition(job)}
                     >

@@ -1,0 +1,132 @@
+---
+name: apps
+description: Create, deploy, and manage web apps accessible at subdomains of your configured base domain
+---
+
+# Apps Skill
+
+Create and deploy web apps using ANY technology stack — static HTML, React, Node.js, Python, Astro, whatever the job calls for. Apps run locally on PM2 and are accessible via your configured domain.
+
+## Architecture
+
+- **App directory:** `user/apps/<name>/` — each deployed app gets its own folder
+- **Metadata:** `.vito-app.json` in each app folder (name, description, port, URL, createdAt)
+- **PM2 tracking:** Each app registered as `app-<name>` in PM2
+- **Ports:** Auto-assigned starting from 3100 (configurable via `apps.portStart` in config.json)
+
+## Configuration
+
+In your `vito.config.json`:
+
+```json
+{
+  "apps": {
+    "baseDomain": "your-domain.com",
+    "portStart": 3100
+  }
+}
+```
+
+If not set, apps will be accessible at `http://localhost:<port>`.
+
+## Lifecycle
+
+- **create_app:** Writes files → installs deps → starts server on assigned port → verifies app → **runs `pm2 save`**
+- **delete_app:** Stops PM2 process → deletes files → **runs `pm2 save`**
+- **Updates:** If app name already exists, files are overwritten and the server is restarted → verify app → **run `pm2 save`**
+
+**PM2 persistence is non-optional.** If you create, update, restore, restart, or delete app processes, finish by running:
+
+```bash
+pm2 save
+```
+
+Without `pm2 save`, the app family may not come back properly after a reboot.
+
+## When to Use
+
+Use this skill when you need to:
+
+- Create a new website or web app
+- Deploy anything from a simple page to a full-stack app
+- List or manage existing deployed apps
+- Remove an app from deployment
+
+## Guidelines for Creating Apps
+
+**Choose the right technology for the job:**
+
+- Simple landing page → plain HTML/CSS/JS (no build step needed)
+- Interactive SPA → include a `server.js` that serves built files (bundle everything, don't rely on build steps)
+- API/backend needed → Node.js `server.js` or Python `server.py`
+- Complex app → Node.js with Express, include all dependencies inline or use a `package.json`
+
+**Server conventions:**
+
+- **Node.js apps**: Include a `server.js` that accepts `--port <port>` flag
+- **Python apps**: Include a `server.py` that accepts `--port <port>` flag
+- **Static sites**: Just HTML/CSS/JS files — a static file server is used automatically
+- If the app has a `package.json`, `npm install` is run automatically before starting
+- If the app has a `requirements.txt`, `pip install` is run automatically before starting
+
+**Important:**
+
+- Don't rely on build steps (no `npm run build` during deploy) — ship ready-to-run code
+- For React-style apps, use self-contained approaches (CDN imports, single-file bundles)
+- The server MUST listen on the port passed via `--port` flag
+- Keep app names short, lowercase, URL-friendly (letters, numbers, hyphens)
+
+## CLI Usage
+
+Use Vito's project CLI. It delegates to the existing app deployment workflow while keeping the agent-facing command stable for future gateway changes.
+
+### Create/update an app
+
+```bash
+./vito apps create \
+  --name "my-app" \
+  --description "My cool app" \
+  --files '[{"path":"index.html","content":"<h1>Hello</h1>"},{"path":"style.css","content":"body{margin:0}"}]'
+```
+
+- If the app already exists, files are overwritten and the server is restarted.
+- The `--files` flag takes a JSON array of `{path, content}` objects.
+
+### List all apps
+
+```bash
+./vito apps list
+```
+
+### Delete an app
+
+```bash
+./vito apps delete --name "my-app"
+```
+
+## Examples
+
+- "Create a portfolio website" → static HTML/CSS/JS
+- "Build a todo app" → React via CDN + static serve
+- "Make an API that returns random quotes" → Node.js Express server
+- "Create a URL shortener" → Node.js with SQLite backend
+- "Build a Python Flask dashboard" → Python server.py
+
+## File Structure
+
+```
+user/apps/
+├── my-portfolio/
+│   ├── .vito-app.json    (metadata — port, url, description)
+│   ├── index.html
+│   ├── style.css
+│   └── script.js
+├── my-api/
+│   ├── .vito-app.json
+│   ├── server.js
+│   └── package.json
+├── my-flask-app/
+│   ├── .vito-app.json
+│   ├── server.py
+│   └── requirements.txt
+```

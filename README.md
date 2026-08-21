@@ -5,38 +5,44 @@ A personal AI agent framework with persistent memory, extensible skills, and mul
 ## Features
 
 ### 🧠 Intelligent Memory System
+
 - **Short-term memory** - Recent conversation context per session
 - **Long-term memory** - LLM-managed semantic memories with embeddings
 - **Cross-session awareness** - Sessions can reference each other
 - **Automatic compaction** - LLM decides what to remember
 
 ### 📡 Multi-Channel Support
+
 - **CLI** - Terminal-based chat interface
 - **Dashboard** - Web-based UI with real-time updates
 - **Discord** - Bot integration with guild/channel filtering
 - **Telegram** - Bot integration with chat ID filtering
 
-### 🔌 Harness System
-- **pi-coding-agent** - Pi Coding Agent harness (supports OpenAI, Anthropic, Google, OpenRouter)
+### 🔌 Pi Runtime
+
+- **pi-coding-agent** - In-process Pi sessions supporting OpenAI, Anthropic, Google, and OpenRouter
 - **Per-session overrides** - Use different models for different conversations
 
 ### 🎯 Skills System
+
 - Markdown-based skill definitions
 - Optional script execution
 - Auto-discovery from `skills/` directory
 
 ### 📊 Web Dashboard
+
 - 💬 Real-time chat interface
 - 📋 Browse all sessions and message history
 - 🧠 View and search long-term memories
 - 🛠️ Manage skills
 - ⏰ Scheduled cron jobs
-- ⚙️ Settings management (harness, channels, per-session overrides)
+- ⚙️ Settings management (Pi models, channels, per-session overrides)
 
 ## Quick Start
 
 ### Prerequisites
-- Node.js 18+ 
+
+- Node.js 18+
 - npm or pnpm
 - PM2 (`npm install -g pm2`)
 
@@ -58,6 +64,7 @@ cp -r user.example user
 
 # Configure your settings
 # Edit user/vito.config.json to set model, channels, etc.
+./vito config validate
 
 # Configure PM2 paths
 # Edit user/ecosystem.config.cjs and set your node path
@@ -67,6 +74,21 @@ npm start
 ```
 
 The dashboard will be available at **http://localhost:3030**
+
+### CLI
+
+Use the project-local CLI for agent and operator workflows:
+
+```bash
+./vito --help
+./vito config validate
+./vito config migrate    # Canonicalize a legacy config directly
+./scripts/migrate-vito.sh # Back up, install, verify, build, and migrate an existing agent
+./vito apps list
+./vito memory search "previous architecture decisions" --mode hybrid
+```
+
+The existing `npm run validate:config` command remains available for compatibility.
 
 ### User Directory
 
@@ -98,13 +120,15 @@ Edit `user/SOUL.md` to define your agent's personality. This is how you make Vit
 ```
 pHouseVito/
 ├── src/                       # Core application code
-│   ├── channels/              # Channel adapters (Dashboard, Telegram, Discord)
-│   ├── db/                    # SQLite schema and queries
-│   ├── harnesses/             # AI backend harnesses (pi-coding-agent)
-│   ├── memory/                # Memory management and compaction
-│   ├── sessions/              # Session management
-│   ├── skills/                # Builtin skill discovery and loading
-│   └── orchestrator.ts        # Core message flow
+│   ├── services/channels/     # Context-driven channel services and registry
+│   ├── services/memory/       # Memory workflows and embedding provider integration
+│   ├── services/orchestrator/ # Message orchestration and Pi session runtime pipeline
+│   ├── services/sessions/     # Vito session lifecycle
+│   ├── lib/sqlite/            # SQLite connection and schema bootstrap
+│   ├── lib/types/             # Server-only types and runtime schemas
+│   ├── lib/output/            # Shared output-handler interfaces and decorators
+│   └── shared/schemas/        # Browser-safe Zod schemas shared with dashboard
+├── system/                    # Project-owned policy and bundled skills
 ├── dashboard/                 # React-based web UI
 ├── data/                      # Runtime data (attachments, etc.) — gitignored
 ├── user.example/              # Template — copy to user/ to get started
@@ -141,6 +165,19 @@ Type your messages and press Enter. Type `/quit` to exit.
    - View long-term memories
    - Manage skills and jobs
 
+### Ask API
+
+External integrations can send a question through Vito's full agent pipeline with `POST /api/ask`. Set `VITO_ASK_API_KEY` in `user/secrets.json`, then authenticate with a bearer token:
+
+```bash
+curl http://localhost:3030/api/ask \
+  -H "Authorization: Bearer $VITO_ASK_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{"question":"Hello","session":"api:integration"}'
+```
+
+The response is `{ "answer": "...", "elapsed": 123 }`. Optional request fields are `author`, `channelPrompt`, `timeoutMs`, and `relayToSession`. This API intentionally uses bearer authentication instead of dashboard cookies.
+
 ### Adding Skills
 
 Create a new directory in `user/skills/` with a `SKILL.md` file:
@@ -154,9 +191,11 @@ description: What this skill does
 # Example Skill
 
 ## When to Use
+
 - Describe when the agent should use this skill
 
 ## How to Use
+
 - Provide instructions for the agent
 ```
 
@@ -188,21 +227,20 @@ npm run build:dashboard
 
 ### Core Runtime
 
-- **Orchestrator** — Central brain that routes inbound messages to the harness and outbound responses to channels.
+- **Orchestrator** — Central brain that routes inbound messages to Pi and outbound responses to channels.
 - **Per-session queue** — Messages are queued per session so work completes in order without interruption. Cross-session work runs in parallel.
 - **Streaming pipeline** — Raw events are emitted in real-time while normalized events are stored in the DB.
-- **Thought promotion** — Harness emits thoughts; the last “thought” is promoted to the final assistant message.
+- **Thought promotion** — Pi emits thoughts; the last “thought” is promoted to the final assistant message.
 
-### Harness System
+### Pi Runtime
 
-The harness is the pluggable AI backend that handles LLM interaction.
-
-- **pi-coding-agent** — Uses the Pi Coding Agent SDK. Supports multiple providers (OpenAI, Anthropic, Google, OpenRouter) with thinking levels.
+Vito uses the Pi Coding Agent SDK for all model interaction. Pi supports multiple providers (OpenAI, Anthropic, Google, OpenRouter) with thinking levels.
 
 Configure in `user/vito.config.json`:
+
 ```json
 {
-  "harnesses": {
+  "settings": {
     "pi-coding-agent": {
       "model": { "provider": "openrouter", "name": "anthropic/claude-sonnet-4.6" },
       "thinkingLevel": "off"
@@ -213,20 +251,21 @@ Configure in `user/vito.config.json`:
 
 Override per-session via the Dashboard Settings page.
 
-### Harness Decorators
+### Runtime Decorators
 
 Runtime behaviors are layered via decorators:
+
 - `withTracing()` — JSONL trace logging
 - `withPersistence()` — SQLite message storage
 - `withRelay()` — Streaming to channels
 - `withTyping()` — Typing indicators
-- `withNoReplyCheck()` — Drops responses containing `NO_REPLY`
+
+Conditional cron output is wrapped with `NoReplyOutputHandler`, which suppresses responses containing `NO_REPLY`.
 
 ### System Instructions
 
-System instructions are centralized in `src/system-instructions.ts`, including:
-- **Core instructions** (tools, MEDIA protocol, restart rules)
-- **Commands block** (`/new` only for interactive sessions)
+Project-owned instructions live in `system/SYSTEM.md`. `VitoService` reads them and the orchestrator's pure prompt builder combines them with personality, commands, capabilities, and session context.
+
 - **Cardinal rules** (verify facts, investigate before assuming)
 - **Investigation-first behavior**
 
@@ -243,18 +282,20 @@ System instructions are centralized in `src/system-instructions.ts`, including:
 ### Compaction System
 
 Compaction is implemented as a **skill** and runs via the `system:compaction` session:
+
 - Orchestrator triggers a synthetic message when threshold is exceeded or `/new` is used
 - The compaction skill reads SQLite + memory files, then rewrites memory docs
 - Orchestrator marks compaction session messages as compacted after completion
 
 ### Multimodal Handling
 
-- **Images**: stored as `[Attached image: /path]` tags and converted by the harness to pixel data
+- **Images**: stored as `[Attached image: /path]` tags and converted by Pi to pixel data
 - **Audio**: not wired by default; requires explicit transcription
 
 ### Channel System
 
 Channels are adapters that convert between platform-specific formats and Vito's internal message format. Each channel implements:
+
 - `start()` / `stop()` - Lifecycle
 - `listen()` - Receive inbound messages
 - `createHandler()` - Send outbound messages
@@ -289,10 +330,12 @@ Channels are adapters that convert between platform-specific formats and Vito's 
 ## Lessons Learned
 
 ### File Operations
+
 - **Check file size before reading** (use `ls -la` or `wc -l`)
 - **Send .txt for iOS** — Mike can’t open `.ts`/`.js` on iOS
 
 ### Build & Deploy
+
 - **Always rebuild after source changes** — `npm run build` if changes aren’t working
 - **Dashboard needs devDeps** — use `NODE_ENV=development npm install` in dashboard dir
 - **Cloudflare caches 404s** — use cache-busting params or wait for expiry
@@ -301,34 +344,41 @@ Channels are adapters that convert between platform-specific formats and Vito's 
 - **Don’t use SPA mode** for static sites (`serve -s` breaks static files)
 
 ### PM2 & Processes
+
 - **Use `npx pm2`** — not bare `pm2`
 - **Service name is `vito-server`** — not `vito`
 - **Always use `--nostream`** for logs
 - **Watch for orphan processes** — avoid rogue `node server.js &`
 
 ### React
+
 - **Hooks must be before any returns**
 - **Number inputs need local string state**
 - **localStorage can corrupt** — wrap JSON.parse in try/catch
 - **Defensive object access** — handle empty objects in inherited configs
 
 ### API & Config Patterns
+
 - **PUT endpoints do shallow merge** — `{}` doesn’t delete keys
 - **Send `null` to remove config keys**
 - **Nested object replacement** — replace, don’t merge
 
 ### Unicode in JSX
+
 - `\u25BC` in JSX renders literally — use `▼` or `{"\u25BC"}`
 
 ### Hallucination Risk
+
 - **Don’t assume image content** — look first
 - **Verify personal details** — no sloppy memory recall
 
 ### Debugging & Investigation
+
 - **Never restart yourself** — tell the user “changes are ready”
 - **Search the message DB first** when something looks off
 
 ### Browser Cookie Extraction
+
 - **Safari cookies are binary** — use `browser_cookie3` or parse manually
 - **Playwright sessions are isolated** — must inject cookies
 - **Pattern**: login in browser → extract cookies → load into Playwright
@@ -339,8 +389,8 @@ Channels are adapters that convert between platform-specific formats and Vito's 
 - [x] Telegram channel adapter
 - [x] Cron job system for scheduled tasks
 - [x] Secrets management UI
-- [x] Harness system with multiple AI backends
-- [x] Per-session harness/model overrides
+- [x] Long-lived Pi session runtime
+- [x] Per-session Pi model overrides
 - [ ] Memory visualization
 - [ ] Export/backup tools
 - [ ] Multi-user support (optional)

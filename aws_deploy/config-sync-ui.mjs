@@ -52,7 +52,7 @@ function ssh(ip, cmd) {
 function sshWrite(ip, remotePath, content) {
   execSync(
     `ssh ${SSH_OPTS} ubuntu@${ip} "cat > ${remotePath}" << 'CONFIGEOF'\n${content}\nCONFIGEOF`,
-    { encoding: "utf-8", timeout: 30000 }
+    { encoding: "utf-8", timeout: 30000 },
   );
 }
 
@@ -723,7 +723,11 @@ const PORT = 9384;
 
 const server = createServer((req, res) => {
   if (req.method === "GET" && (req.url === "/" || req.url === "/index.html")) {
-    const dataPayload = JSON.stringify({ defaultCfg, instances, legacyConfigPrefixes: LEGACY_CONFIG_PREFIXES });
+    const dataPayload = JSON.stringify({
+      defaultCfg,
+      instances,
+      legacyConfigPrefixes: LEGACY_CONFIG_PREFIXES,
+    });
     const html = buildHTML().replace("__DATA_PLACEHOLDER__", dataPayload);
     res.writeHead(200, { "Content-Type": "text/html; charset=utf-8" });
     res.end(html);

@@ -1,13 +1,20 @@
-import type { ComponentType } from 'react';
-import type { ChannelConfig, VitoConfig } from '../../../utils/settingsResolution';
-import DiscordConfig from './DiscordConfig';
-import TelegramConfig from './TelegramConfig';
+import type { ComponentType } from "react";
+import type { ChannelConfig, VitoConfig } from "../../../utils/settingsResolution";
+import DiscordConfig from "./DiscordConfig";
+import TelegramConfig from "./TelegramConfig";
+
+export type ChannelIdField = "allowedChatIds" | "allowedGuildIds" | "allowedChannelIds";
 
 export interface ChannelSpecificConfigProps {
   channelConfig: ChannelConfig;
   config: VitoConfig;
   onSave: (updates: Partial<VitoConfig>) => Promise<void>;
-  renderIdList: (field: string, label: string, emptyText: string, placeholder: string) => React.ReactNode;
+  renderIdList: (
+    field: ChannelIdField,
+    label: string,
+    emptyText: string,
+    placeholder: string,
+  ) => React.ReactNode;
 }
 
 // Registry of channel-specific config components
@@ -19,8 +26,8 @@ export const channelConfigComponents: Record<string, ComponentType<ChannelSpecif
 
 // Channel icons — add new ones here
 export const CHANNEL_ICONS: Record<string, string> = {
-  dashboard: '🖥️',
-  telegram: '📱',
-  discord: '🎮',
-  cli: '⌨️',
+  dashboard: "🖥️",
+  telegram: "📱",
+  discord: "🎮",
+  cli: "⌨️",
 };

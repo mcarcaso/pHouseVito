@@ -74,6 +74,8 @@ const runAll = db.transaction(() => {
 
 runAll();
 
-console.log(`Done. Promoted ${promoted} to 'assistant', demoted ${demoted} to 'thought' across ${sessions.size} sessions.`);
+console.log(
+  `Done. Promoted ${promoted} to 'assistant', demoted ${demoted} to 'thought' across ${sessions.size} sessions.`,
+);
 
 db.close();

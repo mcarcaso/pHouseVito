@@ -47,7 +47,6 @@ xTraceEventStore(x).create(x, {
 });
 
 const app = express();
-app.use(express.json());
 app.use("/api/logs", await new TraceRouterService().createRouter(x));
 
 const listSchema = z.object({

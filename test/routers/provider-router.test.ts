@@ -63,7 +63,6 @@ class TestProviderService implements ProviderService {
 const service = new TestProviderService();
 const x = dashboardRouterContext({ providerService: () => service });
 const app = express();
-app.use(express.json());
 app.use("/api/models", await new ModelRouterService().createRouter(x));
 app.use("/api/auth/provider", await new ProviderAuthRouterService().createRouter(x));
 

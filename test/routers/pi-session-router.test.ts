@@ -40,7 +40,6 @@ xSessionStore(x).create(x, {
 });
 
 const app = express();
-app.use(express.json());
 app.use("/api/pi-sessions", await new PiSessionRouterService().createRouter(x));
 
 let server: Server;

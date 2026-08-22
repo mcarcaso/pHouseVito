@@ -93,7 +93,6 @@ const x = dashboardRouterContext(
   rootX,
 );
 const app = express();
-app.use(express.json());
 app.use("/api/cron", await new CronRouterService().createRouter(x));
 
 const errorResponseSchema = z.object({ error: z.string() }).passthrough();

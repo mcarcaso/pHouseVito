@@ -1,12 +1,7 @@
-import type { NextFunction, Request, RequestHandler, Response } from "express";
+import express from "express";
+import type { NextFunction, Request, RequestHandler, Response, Router } from "express";
 import { z } from "zod";
 import type { Context } from "../context/Context.js";
-import { VitoError } from "../lib/VitoError.js";
-import {
-  vitoErrorDataSchema,
-  type VitoErrorData,
-  type VitoErrorResponse,
-} from "../shared/schemas/vito-error.js";
 import { DashboardUserContext } from "../context/DashboardUserContext.js";
 import {
   AskApiContext,
@@ -14,7 +9,13 @@ import {
   PublicDriveContext,
   PublicHttpContext,
 } from "../context/HttpContext.js";
+import { VitoError } from "../lib/VitoError.js";
 import { xAskApiService, xDashboardAuthService, xSecretService } from "../lib/x.js";
+import {
+  vitoErrorDataSchema,
+  type VitoErrorData,
+  type VitoErrorResponse,
+} from "../shared/schemas/vito-error.js";
 
 export interface RouteSchemas<
   TParams extends z.ZodTypeAny,
@@ -37,6 +38,9 @@ export interface ValidatedRouteInput<
 }
 
 export type HttpAuthPolicy = "public" | "public-drive" | "dashboard" | "ask";
+export type HttpMethod = "GET" | "POST" | "PUT" | "PATCH" | "DELETE" | "OPTIONS";
+
+const DEFAULT_JSON_LIMIT = "1mb";
 
 type RouteHandlerArgs<TInput> = {
   data: TInput;
@@ -49,11 +53,20 @@ interface BaseRouteArgs<
   TQuery extends z.ZodTypeAny,
   TBody extends z.ZodTypeAny,
 > {
+  router: Router;
+  method: HttpMethod;
+  path: string;
   auth: HttpAuthPolicy;
   schemas: RouteSchemas<TParams, TQuery, TBody>;
+  /** JSON body limit for this route. Body-capable methods default to 1 MB. */
+  jsonLimit?: string | number;
+  /** Successful response status. Defaults to 200. */
+  successStatus?: number;
+  /** Delegate handler errors to router-local error middleware. */
+  delegateErrors?: boolean;
 }
 
-interface CreateRouteArgs<
+interface RegisterRouteArgs<
   TParams extends z.ZodTypeAny,
   TQuery extends z.ZodTypeAny,
   TBody extends z.ZodTypeAny,
@@ -63,10 +76,10 @@ interface CreateRouteArgs<
   handler: (
     x: Context,
     args: RouteHandlerArgs<ValidatedRouteInput<TParams, TQuery, TBody>>,
-  ) => Promise<z.input<TResponse>> | z.input<TResponse>;
+  ) => Promise<z.input<TResponse> | void> | z.input<TResponse> | void;
 }
 
-interface CreateRawRouteArgs<
+interface RegisterStreamRouteArgs<
   TParams extends z.ZodTypeAny,
   TQuery extends z.ZodTypeAny,
   TBody extends z.ZodTypeAny,
@@ -130,6 +143,42 @@ function resolveRequestContext(
     return authenticationFailure(res, 401, "Unauthorized");
   }
   return DashboardUserContext(rootX);
+}
+
+function methodHasBody(method: HttpMethod): boolean {
+  return method === "POST" || method === "PUT" || method === "PATCH";
+}
+
+function parseJsonBody(req: Request, res: Response, parser: RequestHandler): Promise<void> {
+  return new Promise((resolve, reject) => {
+    parser(req, res, (error?: unknown) => {
+      if (error) reject(error);
+      else resolve();
+    });
+  });
+}
+
+const bodyParserErrorSchema = z
+  .object({
+    type: z.string().optional(),
+    status: z.number().int().optional(),
+    statusCode: z.number().int().optional(),
+  })
+  .passthrough();
+
+function handleBodyParserError(error: unknown, res: Response): boolean {
+  const parsed = bodyParserErrorSchema.safeParse(error);
+  if (!parsed.success) return false;
+  const status = parsed.data.status ?? parsed.data.statusCode;
+  if (status === 413 || parsed.data.type === "entity.too.large") {
+    res.status(413).json({ error: "Request body too large" });
+    return true;
+  }
+  if (status === 400 || parsed.data.type === "entity.parse.failed") {
+    res.status(400).json({ error: "Invalid JSON body" });
+    return true;
+  }
+  return false;
 }
 
 function parseRequest<
@@ -214,6 +263,7 @@ function toErrorResponse(data: VitoErrorData): VitoErrorResponse {
 }
 
 function handleRouteError(error: unknown, req: Request, res: Response, next: NextFunction): void {
+  if (handleBodyParserError(error, res)) return;
   const vitoError = toVitoError(error);
   const status = statusByVitoErrorCode[vitoError.data.code];
 
@@ -230,40 +280,98 @@ function handleRouteError(error: unknown, req: Request, res: Response, next: Nex
   res.status(status).json(toErrorResponse(vitoError.data));
 }
 
-export function createRoute<
+async function prepareRequest<
+  TParams extends z.ZodTypeAny,
+  TQuery extends z.ZodTypeAny,
+  TBody extends z.ZodTypeAny,
+>(
+  rootX: Context,
+  args: BaseRouteArgs<TParams, TQuery, TBody>,
+  req: Request,
+  res: Response,
+  jsonParser: RequestHandler | undefined,
+): Promise<{
+  x: Context;
+  data: ValidatedRouteInput<TParams, TQuery, TBody>;
+} | null> {
+  const requestX = resolveRequestContext(rootX, args.auth, req, res);
+  if (!requestX) return null;
+  if (jsonParser) await parseJsonBody(req, res, jsonParser);
+  const data = parseRequest(args.schemas, req, res);
+  return data ? { x: requestX, data } : null;
+}
+
+function mountRoute(router: Router, method: HttpMethod, path: string, handler: RequestHandler) {
+  switch (method) {
+    case "GET":
+      router.get(path, handler);
+      return;
+    case "POST":
+      router.post(path, handler);
+      return;
+    case "PUT":
+      router.put(path, handler);
+      return;
+    case "PATCH":
+      router.patch(path, handler);
+      return;
+    case "DELETE":
+      router.delete(path, handler);
+      return;
+    case "OPTIONS":
+      router.options(path, handler);
+  }
+}
+
+export function registerRoute<
   TParams extends z.ZodTypeAny,
   TQuery extends z.ZodTypeAny,
   TBody extends z.ZodTypeAny,
   TResponse extends z.ZodTypeAny,
->(rootX: Context, args: CreateRouteArgs<TParams, TQuery, TBody, TResponse>): RequestHandler {
-  return async (req, res, next) => {
-    const requestX = resolveRequestContext(rootX, args.auth, req, res);
-    if (!requestX) return;
-    const data = parseRequest(args.schemas, req, res);
-    if (!data) return;
+>(rootX: Context, args: RegisterRouteArgs<TParams, TQuery, TBody, TResponse>): void {
+  const jsonParser = methodHasBody(args.method)
+    ? express.json({ limit: args.jsonLimit ?? DEFAULT_JSON_LIMIT })
+    : undefined;
+  mountRoute(args.router, args.method, args.path, async (req, res, next) => {
     try {
-      const result = await args.handler(requestX, { data, req, res });
-      res.json(args.responseSchema.parse(result));
+      const prepared = await prepareRequest(rootX, args, req, res, jsonParser);
+      if (!prepared) return;
+      const result = await args.handler(prepared.x, { data: prepared.data, req, res });
+      if (res.headersSent) return;
+      const response = args.responseSchema.parse(result);
+      const status = args.successStatus ?? 200;
+      if (status === 204) {
+        res.status(status).end();
+        return;
+      }
+      res.status(status).json(response);
     } catch (error) {
+      if (args.delegateErrors) {
+        if (handleBodyParserError(error, res)) return;
+        next(error);
+        return;
+      }
       handleRouteError(error, req, res, next);
     }
-  };
+  });
 }
 
-export function createRawRoute<
+export function registerStreamRoute<
   TParams extends z.ZodTypeAny,
   TQuery extends z.ZodTypeAny,
   TBody extends z.ZodTypeAny,
->(rootX: Context, args: CreateRawRouteArgs<TParams, TQuery, TBody>): RequestHandler {
-  return async (req, res, next) => {
-    const requestX = resolveRequestContext(rootX, args.auth, req, res);
-    if (!requestX) return;
-    const data = parseRequest(args.schemas, req, res);
-    if (!data) return;
+>(rootX: Context, args: RegisterStreamRouteArgs<TParams, TQuery, TBody>): void {
+  const jsonParser = methodHasBody(args.method)
+    ? express.json({ limit: args.jsonLimit ?? DEFAULT_JSON_LIMIT })
+    : undefined;
+  mountRoute(args.router, args.method, args.path, async (req, res, next) => {
     try {
-      await args.handler(requestX, data, req, res);
+      const prepared = await prepareRequest(rootX, args, req, res, jsonParser);
+      if (!prepared) return;
+      await args.handler(prepared.x, prepared.data, req, res);
     } catch (error) {
+      if (handleBodyParserError(error, res)) return;
       next(error);
     }
-  };
+  });
 }

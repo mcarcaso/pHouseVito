@@ -49,7 +49,6 @@ class TestVitoService implements VitoService {
 const service = new TestVitoService();
 const x = dashboardRouterContext({ vitoService: () => service });
 const app = express();
-app.use(express.json());
 app.use("/api", await new SystemContentRouterService().createRouter(x));
 
 let server: Server;

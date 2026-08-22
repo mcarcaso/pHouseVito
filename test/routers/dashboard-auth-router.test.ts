@@ -8,10 +8,10 @@ import express from "express";
 import { z } from "zod";
 import { ObjectContext } from "../../src/context/ObjectContext.js";
 import {
-  createRawRoute,
+  registerRoute,
   emptyRouteSchema,
   unknownRouteSchema,
-} from "../../src/routers/createRoute.js";
+} from "../../src/routers/register-route.js";
 import { DashboardAuthRouterService } from "../../src/routers/DashboardAuthRouterService.js";
 import { InMemoryDashboardAuthService } from "../../src/services/auth/InMemoryDashboardAuthService.js";
 import { FileSecretService } from "../../src/services/secrets/FileSecretService.js";
@@ -23,34 +23,35 @@ const x = new ObjectContext({
   dashboardAuthService: () => new InMemoryDashboardAuthService(),
 });
 const app = express();
-app.use(express.json());
 app.use("/api/auth", await new DashboardAuthRouterService().createRouter(x));
 const emptySchemas = {
   params: emptyRouteSchema,
   query: emptyRouteSchema,
   body: unknownRouteSchema,
 };
-const protectedRoute = createRawRoute(x, {
-  auth: "dashboard",
-  schemas: emptySchemas,
-  handler: (_routeX, _input, _req, res) => {
-    res.json({ ok: true });
-  },
-});
-app.get("/api/protected", protectedRoute);
-app.get("/api/server/status", protectedRoute);
-app.get("/api/auth/provider/test", protectedRoute);
-app.get("/attachments/test", protectedRoute);
-app.get(
-  "/api/health",
-  createRawRoute(x, {
-    auth: "public",
+const registerProtectedRoute = (path: string) =>
+  registerRoute(x, {
+    router: app,
+    method: "GET",
+    path,
+    auth: "dashboard",
     schemas: emptySchemas,
-    handler: (_routeX, _input, _req, res) => {
-      res.json({ public: true });
-    },
-  }),
-);
+    responseSchema: z.object({ ok: z.literal(true) }),
+    handler: () => ({ ok: true as const }),
+  });
+registerProtectedRoute("/api/protected");
+registerProtectedRoute("/api/server/status");
+registerProtectedRoute("/api/auth/provider/test");
+registerProtectedRoute("/attachments/test");
+registerRoute(x, {
+  router: app,
+  method: "GET",
+  path: "/api/health",
+  auth: "public",
+  schemas: emptySchemas,
+  responseSchema: z.object({ public: z.literal(true) }),
+  handler: () => ({ public: true as const }),
+});
 
 let server: Server;
 let baseUrl: string;

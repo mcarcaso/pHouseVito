@@ -56,7 +56,6 @@ export class DashboardChannelService implements ChannelService {
     // Must precede body parsing so request bodies can stream to app processes.
     app.use(createAppProxyMiddleware(x));
 
-    app.use(express.json({ limit: "200mb" }));
     app.use(express.static(path.join(__dirname, "../../../../dashboard/dist")));
 
     // Public drive files and hosted sites are resolved through DriveStore.

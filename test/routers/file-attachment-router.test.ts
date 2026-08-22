@@ -23,7 +23,6 @@ const x = dashboardRouterContext({
   fileService: () => new FileSystemFileService(),
 });
 const app = express();
-app.use(express.json());
 app.use("/api/file", await new FileRouterService().createRouter(x));
 app.use("/api/attachments", await new AttachmentUploadRouterService().createRouter(x));
 app.use("/attachments", await new AttachmentFileRouterService().createRouter(x));

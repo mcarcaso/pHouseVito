@@ -10,7 +10,6 @@ import type { InboundEvent } from "../../src/lib/types/inbound-event.js";
 const chatService = new DefaultDashboardChatService();
 const x = dashboardRouterContext({ dashboardChatService: () => chatService });
 const app = express();
-app.use(express.json());
 app.use("/api/chat", await new DashboardChatRouterService().createRouter(x));
 
 let server: Server;

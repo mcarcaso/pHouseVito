@@ -30,7 +30,6 @@ const x = dashboardRouterContext(
   }),
 );
 const app = express();
-app.use(express.json());
 app.use("/api", await new ConfigRouterService().createRouter(x));
 
 const validationResponseSchema = z.object({

@@ -19,7 +19,6 @@ const x = dashboardRouterContext({
   driveStore: () => new FileDriveStore(),
 });
 const app = express();
-app.use(express.json({ limit: "5mb" }));
 app.use("/d", await new PublicDriveRouterService().createRouter(x));
 app.use("/api/drive", await new DriveRouterService().createRouter(x));
 

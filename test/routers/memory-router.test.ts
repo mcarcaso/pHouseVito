@@ -43,7 +43,6 @@ xEmbeddingStore(x).createChunk(x, {
 });
 
 const app = express();
-app.use(express.json());
 app.use("/api/memory", await new MemoryRouterService().createRouter(x));
 
 const profileSchema = z.object({ content: z.string().nullable() });

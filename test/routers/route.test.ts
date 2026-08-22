@@ -7,10 +7,10 @@ import { ObjectContext } from "../../src/context/ObjectContext.js";
 import { VitoError } from "../../src/lib/VitoError.js";
 import { xDashboardUser } from "../../src/lib/x.js";
 import {
-  createRoute,
+  registerRoute,
   emptyRouteSchema,
   unknownRouteSchema,
-} from "../../src/routers/createRoute.js";
+} from "../../src/routers/register-route.js";
 import type { DashboardAuthService } from "../../src/services/auth/DashboardAuthService.js";
 import { authenticatedDashboardAuthService } from "../support/authenticated-dashboard-auth-service.js";
 
@@ -24,52 +24,55 @@ const unavailableAuthService: DashboardAuthService = {
 };
 
 const app = express();
-app.get(
-  "/protected",
-  createRoute(
-    new ObjectContext({
-      dashboardAuthService: () => authenticatedDashboardAuthService,
-      askApiService: () => ({ privileged: true }),
-    }),
-    {
-      auth: "dashboard",
-      schemas: {
-        params: emptyRouteSchema,
-        query: emptyRouteSchema,
-        body: unknownRouteSchema,
-      },
-      responseSchema: z.object({
-        userId: z.literal("owner"),
-        excludesUnapprovedDependencies: z.literal(true),
-      }),
-      handler: (x) => {
-        assert.throws(() => x.get("askApiService"));
-        return {
-          userId: xDashboardUser(x).id,
-          excludesUnapprovedDependencies: true as const,
-        };
-      },
-    },
-  ),
-);
-app.get(
-  "/unavailable",
-  createRoute(new ObjectContext({ dashboardAuthService: () => unavailableAuthService }), {
+registerRoute(
+  new ObjectContext({
+    dashboardAuthService: () => authenticatedDashboardAuthService,
+    askApiService: () => ({ privileged: true }),
+  }),
+  {
+    router: app,
+    method: "GET",
+    path: "/protected",
     auth: "dashboard",
     schemas: {
       params: emptyRouteSchema,
       query: emptyRouteSchema,
       body: unknownRouteSchema,
     },
-    responseSchema: z.object({ ok: z.literal(true) }),
-    handler: () => ({ ok: true as const }),
-  }),
+    responseSchema: z.object({
+      userId: z.literal("owner"),
+      excludesUnapprovedDependencies: z.literal(true),
+    }),
+    handler: (x) => {
+      assert.throws(() => x.get("askApiService"));
+      return {
+        userId: xDashboardUser(x).id,
+        excludesUnapprovedDependencies: true as const,
+      };
+    },
+  },
 );
+registerRoute(new ObjectContext({ dashboardAuthService: () => unavailableAuthService }), {
+  router: app,
+  method: "GET",
+  path: "/unavailable",
+  auth: "dashboard",
+  schemas: {
+    params: emptyRouteSchema,
+    query: emptyRouteSchema,
+    body: unknownRouteSchema,
+  },
+  responseSchema: z.object({ ok: z.literal(true) }),
+  handler: () => ({ ok: true as const }),
+});
 const authenticatedX = new ObjectContext({
   dashboardAuthService: () => authenticatedDashboardAuthService,
 });
-const basicRoute = (handler: () => unknown) =>
-  createRoute(authenticatedX, {
+const registerBasicRoute = (path: string, handler: () => unknown) =>
+  registerRoute(authenticatedX, {
+    router: app,
+    method: "GET",
+    path,
     auth: "dashboard",
     schemas: {
       params: emptyRouteSchema,
@@ -80,48 +83,68 @@ const basicRoute = (handler: () => unknown) =>
     handler,
   });
 
-app.get(
-  "/invalid-response",
-  createRoute(authenticatedX, {
-    auth: "dashboard",
-    schemas: {
-      params: emptyRouteSchema,
-      query: emptyRouteSchema,
-      body: unknownRouteSchema,
+registerRoute(authenticatedX, {
+  router: app,
+  method: "GET",
+  path: "/invalid-response",
+  auth: "dashboard",
+  schemas: {
+    params: emptyRouteSchema,
+    query: emptyRouteSchema,
+    body: unknownRouteSchema,
+  },
+  responseSchema: z.object({ count: z.number().int() }),
+  handler: () => ({ count: 1.5 }),
+});
+registerBasicRoute("/not-found", () => {
+  throw new VitoError({
+    code: "NOT_FOUND",
+    message: "Widget not found",
+    resource: "widget",
+  });
+});
+registerBasicRoute("/private-error", () => {
+  throw new Error("provider response contained a private diagnostic");
+});
+registerBasicRoute("/hostile-error", () => {
+  const hostile = Object.create(null) as Record<string, unknown>;
+  Object.defineProperty(hostile, "name", {
+    get: () => {
+      throw new Error("name getter should not run");
     },
-    responseSchema: z.object({ count: z.number().int() }),
-    handler: () => ({ count: 1.5 }),
-  }),
-);
-app.get(
-  "/not-found",
-  basicRoute(() => {
-    throw new VitoError({
-      code: "NOT_FOUND",
-      message: "Widget not found",
-      resource: "widget",
-    });
-  }),
-);
-app.get(
-  "/private-error",
-  basicRoute(() => {
-    throw new Error("provider response contained a private diagnostic");
-  }),
-);
-app.get(
-  "/hostile-error",
-  basicRoute(() => {
-    const hostile = Object.create(null) as Record<string, unknown>;
-    Object.defineProperty(hostile, "name", {
-      get: () => {
-        throw new Error("name getter should not run");
-      },
-    });
-    hostile.self = hostile;
-    throw hostile;
-  }),
-);
+  });
+  hostile.self = hostile;
+  throw hostile;
+});
+
+registerRoute(new ObjectContext({ dashboardAuthService: () => unavailableAuthService }), {
+  router: app,
+  method: "POST",
+  path: "/unavailable-with-body",
+  auth: "dashboard",
+  schemas: {
+    params: emptyRouteSchema,
+    query: emptyRouteSchema,
+    body: z.object({ value: z.string() }),
+  },
+  responseSchema: z.object({ ok: z.literal(true) }),
+  handler: () => ({ ok: true as const }),
+});
+
+registerRoute(new ObjectContext({}), {
+  router: app,
+  method: "POST",
+  path: "/small-public-body",
+  auth: "public",
+  jsonLimit: 16,
+  schemas: {
+    params: emptyRouteSchema,
+    query: emptyRouteSchema,
+    body: z.object({ value: z.string() }),
+  },
+  responseSchema: z.object({ ok: z.literal(true) }),
+  handler: () => ({ ok: true as const }),
+});
 
 let server: Server;
 let baseUrl: string;
@@ -141,7 +164,7 @@ after(async () => {
   });
 });
 
-describe("createRoute", () => {
+describe("registerRoute", () => {
   it("authenticates and passes a dashboard user context to handlers", async () => {
     const response = await fetch(`${baseUrl}/protected`);
     assert.equal(response.status, 200);
@@ -157,6 +180,28 @@ describe("createRoute", () => {
     assert.deepEqual(await response.json(), {
       error: "Dashboard password not set. Complete /api/auth/setup first.",
     });
+  });
+
+  it("rejects unauthenticated requests before parsing their JSON body", async () => {
+    const response = await fetch(`${baseUrl}/unavailable-with-body`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: "{ malformed",
+    });
+    assert.equal(response.status, 403);
+    assert.deepEqual(await response.json(), {
+      error: "Dashboard password not set. Complete /api/auth/setup first.",
+    });
+  });
+
+  it("enforces route-specific JSON body limits", async () => {
+    const response = await fetch(`${baseUrl}/small-public-body`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ value: "a body larger than sixteen bytes" }),
+    });
+    assert.equal(response.status, 413);
+    assert.deepEqual(await response.json(), { error: "Request body too large" });
   });
 
   it("validates handler responses without exposing schema internals", async () => {

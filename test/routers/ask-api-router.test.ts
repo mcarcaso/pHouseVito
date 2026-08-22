@@ -16,7 +16,6 @@ const x = new ObjectContext({
   }),
 });
 const app = express();
-app.use(express.json());
 app.use("/api/ask", await new AskApiRouterService().createRouter(x));
 
 let server: Server;

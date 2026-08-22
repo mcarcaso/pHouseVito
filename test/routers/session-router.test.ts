@@ -56,7 +56,6 @@ const validationResponseSchema = z.object({
 const settingsResponseSchema = z.record(z.string(), z.unknown());
 
 const app = express();
-app.use(express.json());
 app.use("/api/sessions", await new SessionRouterService().createRouter(x));
 
 let server: Server;

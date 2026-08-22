@@ -9,8 +9,8 @@ import {
 import type { RouterService } from "./RouterService.js";
 import { xProviderService } from "../lib/x.js";
 import { ProviderLoginConflictError } from "../services/providers/ProviderService.js";
-import { emptyRouteSchema, unknownRouteSchema, createRawRoute } from "./createRoute.js";
-
+import { emptyRouteSchema, unknownRouteSchema, registerRoute } from "./register-route.js";
+import { jsonResponseSchema } from "../shared/schemas/json.js";
 const providerParamsSchema = z.object({ id: providerIdSchema }).strict();
 const modelParamsSchema = z.object({ provider: providerIdSchema }).strict();
 
@@ -31,39 +31,43 @@ function providerErrorMiddleware(
 function createModelRouter(x: Context): Router {
   const router = express.Router();
 
-  router.get(
-    "/providers",
-    createRawRoute(x, {
-      auth: "dashboard",
-      schemas: {
-        params: emptyRouteSchema,
-        query: emptyRouteSchema,
-        body: unknownRouteSchema,
-      },
-      handler: async (routeX, _input, _req, res) => {
-        res.json(await xProviderService(routeX).getOverview(routeX));
-      },
-    }),
-  );
+  registerRoute(x, {
+    router,
+    method: "GET",
+    path: "/providers",
+    auth: "dashboard",
+    delegateErrors: true,
+    schemas: {
+      params: emptyRouteSchema,
+      query: emptyRouteSchema,
+      body: unknownRouteSchema,
+    },
+    responseSchema: jsonResponseSchema,
+    handler: async (routeX, { data: _input, req: _req, res }) => {
+      return await xProviderService(routeX).getOverview(routeX);
+    },
+  });
 
-  router.get(
-    "/:provider",
-    createRawRoute(x, {
-      auth: "dashboard",
-      schemas: {
-        params: modelParamsSchema,
-        query: emptyRouteSchema,
-        body: unknownRouteSchema,
-      },
-      handler: async (routeX, { params }, _req, res) => {
-        try {
-          res.json(await xProviderService(routeX).listModels(routeX, params.provider));
-        } catch {
-          res.status(400).json({ error: `Unknown provider: ${params.provider}` });
-        }
-      },
-    }),
-  );
+  registerRoute(x, {
+    router,
+    method: "GET",
+    path: "/:provider",
+    auth: "dashboard",
+    delegateErrors: true,
+    schemas: {
+      params: modelParamsSchema,
+      query: emptyRouteSchema,
+      body: unknownRouteSchema,
+    },
+    responseSchema: jsonResponseSchema,
+    handler: async (routeX, { data: { params }, req: _req, res }) => {
+      try {
+        return await xProviderService(routeX).listModels(routeX, params.provider);
+      } catch {
+        res.status(400).json({ error: `Unknown provider: ${params.provider}` });
+      }
+    },
+  });
 
   router.use(providerErrorMiddleware);
   return router;
@@ -72,75 +76,83 @@ function createModelRouter(x: Context): Router {
 function createProviderAuthRouter(x: Context): Router {
   const router = express.Router();
 
-  router.post(
-    "/:id/login",
-    createRawRoute(x, {
-      auth: "dashboard",
-      schemas: {
-        params: providerParamsSchema,
-        query: emptyRouteSchema,
-        body: unknownRouteSchema,
-      },
-      handler: async (routeX, { params }, _req, res) => {
-        res.json(await xProviderService(routeX).startLogin(routeX, params.id));
-      },
-    }),
-  );
+  registerRoute(x, {
+    router,
+    method: "POST",
+    path: "/:id/login",
+    auth: "dashboard",
+    delegateErrors: true,
+    schemas: {
+      params: providerParamsSchema,
+      query: emptyRouteSchema,
+      body: unknownRouteSchema,
+    },
+    responseSchema: jsonResponseSchema,
+    handler: async (routeX, { data: { params }, req: _req, res }) => {
+      return await xProviderService(routeX).startLogin(routeX, params.id);
+    },
+  });
 
-  router.get(
-    "/:id/login/status",
-    createRawRoute(x, {
-      auth: "dashboard",
-      schemas: {
-        params: providerParamsSchema,
-        query: emptyRouteSchema,
-        body: unknownRouteSchema,
-      },
-      handler: (routeX, { params }, _req, res) => {
-        res.json(xProviderService(routeX).getLoginStatus(routeX, params.id));
-      },
-    }),
-  );
+  registerRoute(x, {
+    router,
+    method: "GET",
+    path: "/:id/login/status",
+    auth: "dashboard",
+    delegateErrors: true,
+    schemas: {
+      params: providerParamsSchema,
+      query: emptyRouteSchema,
+      body: unknownRouteSchema,
+    },
+    responseSchema: jsonResponseSchema,
+    handler: (routeX, { data: { params }, req: _req, res }) => {
+      return xProviderService(routeX).getLoginStatus(routeX, params.id);
+    },
+  });
 
-  router.post(
-    "/:id/login/prompt",
-    createRawRoute(x, {
-      auth: "dashboard",
-      schemas: {
-        params: providerParamsSchema,
-        query: emptyRouteSchema,
-        body: providerLoginPromptRequestSchema,
-      },
-      handler: (routeX, { params, body }, _req, res) => {
-        const value = typeof body.value === "string" ? body.value.trim() : "";
-        if (!value) {
-          res.status(400).json({ error: "Missing prompt value" });
-          return;
-        }
-        xProviderService(routeX).submitPrompt(routeX, {
-          providerId: params.id,
-          value,
-        });
-        res.json({ status: "submitted" });
-      },
-    }),
-  );
+  registerRoute(x, {
+    router,
+    method: "POST",
+    path: "/:id/login/prompt",
+    auth: "dashboard",
+    delegateErrors: true,
+    schemas: {
+      params: providerParamsSchema,
+      query: emptyRouteSchema,
+      body: providerLoginPromptRequestSchema,
+    },
+    responseSchema: jsonResponseSchema,
+    handler: (routeX, { data: { params, body }, req: _req, res }) => {
+      const value = typeof body.value === "string" ? body.value.trim() : "";
+      if (!value) {
+        res.status(400).json({ error: "Missing prompt value" });
+        return;
+      }
+      xProviderService(routeX).submitPrompt(routeX, {
+        providerId: params.id,
+        value,
+      });
+      return { status: "submitted" };
+    },
+  });
 
-  router.post(
-    "/:id/logout",
-    createRawRoute(x, {
-      auth: "dashboard",
-      schemas: {
-        params: providerParamsSchema,
-        query: emptyRouteSchema,
-        body: unknownRouteSchema,
-      },
-      handler: async (routeX, { params }, _req, res) => {
-        await xProviderService(routeX).logout(routeX, params.id);
-        res.json({ status: "logged_out" });
-      },
-    }),
-  );
+  registerRoute(x, {
+    router,
+    method: "POST",
+    path: "/:id/logout",
+    auth: "dashboard",
+    delegateErrors: true,
+    schemas: {
+      params: providerParamsSchema,
+      query: emptyRouteSchema,
+      body: unknownRouteSchema,
+    },
+    responseSchema: jsonResponseSchema,
+    handler: async (routeX, { data: { params }, req: _req, res }) => {
+      await xProviderService(routeX).logout(routeX, params.id);
+      return { status: "logged_out" };
+    },
+  });
 
   router.use(providerErrorMiddleware);
   return router;

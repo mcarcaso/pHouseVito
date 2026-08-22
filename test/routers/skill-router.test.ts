@@ -28,7 +28,6 @@ const x = dashboardRouterContext({
   skillStore: () => new FileSkillStore(),
 });
 const app = express();
-app.use(express.json());
 app.use("/api/skills", await new SkillRouterService().createRouter(x));
 
 const skillSchema = z.object({

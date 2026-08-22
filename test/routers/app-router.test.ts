@@ -57,7 +57,6 @@ const x = dashboardRouterContext({
   appProcessService: () => processes,
 });
 const app = express();
-app.use(express.json());
 app.use("/api/apps", await new AppRouterService().createRouter(x));
 
 let server: Server;

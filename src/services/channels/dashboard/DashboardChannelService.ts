@@ -4,6 +4,7 @@ import type { ChannelService } from "../ChannelService.js";
 import type { Context } from "../../../context/Context.js";
 import { xDashboardChatService } from "../../../lib/x.js";
 import { createAppProxyMiddleware } from "../../../routers/AppProxyMiddleware.js";
+import { createHttpSecurityMiddleware } from "./http-security.js";
 import { AppRouterService } from "../../../routers/AppRouterService.js";
 import { AskApiRouterService } from "../../../routers/AskApiRouterService.js";
 import {
@@ -53,6 +54,9 @@ export class DashboardChannelService implements ChannelService {
   private readonly port = parseInt(process.env.PORT || "3030", 10);
 
   private async setupExpress(x: Context, app: express.Express): Promise<void> {
+    app.disable("x-powered-by");
+    app.use(createHttpSecurityMiddleware(x));
+
     // Must precede body parsing so request bodies can stream to app processes.
     app.use(createAppProxyMiddleware(x));
 

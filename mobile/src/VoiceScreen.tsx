@@ -137,7 +137,13 @@ export function VoiceScreen({ onUnauthorized }: { onUnauthorized: () => void }) 
         output: JSON.stringify(result),
       },
     });
-    connectionRef.current?.sendEvent({ type: "response.create" });
+    connectionRef.current?.sendEvent({
+      type: "response.create",
+      response: {
+        instructions:
+          "Use the tool result. If another tool is needed, call it silently without narrating the search. Otherwise answer Mike directly.",
+      },
+    });
   }, []);
 
   const waitForTask = useCallback(async (id: string) => {

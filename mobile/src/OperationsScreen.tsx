@@ -167,8 +167,18 @@ export function OperationsScreen({
     }
   };
 
+  const rowIdentifier = (row: unknown, index: number): string => {
+    const record = (row ?? {}) as Record<string, unknown>;
+    if (area === "traces" && typeof record.filename === "string") return record.filename;
+    if (area === "pi" && typeof record.rel === "string") return record.rel;
+    if (area === "secrets" && typeof record.key === "string") return record.key;
+    if (area === "providers" && typeof record.id === "string") return record.id;
+    return labelFor(row, index);
+  };
+
   const openRow = async (row: unknown, index: number) => {
-    const name = labelFor(row, index);
+    const name = rowIdentifier(row, index);
+    setError(null);
     try {
       if (area === "skills")
         setSelected(await api(`/api/skills/${encodeURIComponent(name)}/files`));
@@ -513,6 +523,7 @@ export function OperationsScreen({
           {rows.map((row, index) => {
             const record = (row ?? {}) as Record<string, unknown>;
             const name = labelFor(row, index);
+            const identifier = rowIdentifier(row, index);
             return (
               <View key={`${name}-${index}`} style={styles.card}>
                 <Pressable onPress={() => void openRow(row, index)} style={styles.cardMain}>
@@ -628,7 +639,8 @@ export function OperationsScreen({
                     onPress={() =>
                       confirm(
                         `Delete ${name}`,
-                        () => void mutate(`/api/secrets/${encodeURIComponent(name)}`, "DELETE"),
+                        () =>
+                          void mutate(`/api/secrets/${encodeURIComponent(identifier)}`, "DELETE"),
                       )
                     }
                   >
@@ -643,8 +655,8 @@ export function OperationsScreen({
                         () =>
                           void mutate(
                             area === "traces"
-                              ? `/api/logs/${encodeURIComponent(name)}`
-                              : `/api/pi-sessions/${name.split("/").map(encodeURIComponent).join("/")}`,
+                              ? `/api/logs/${encodeURIComponent(identifier)}`
+                              : `/api/pi-sessions/${identifier.split("/").map(encodeURIComponent).join("/")}`,
                             "DELETE",
                           ),
                       )

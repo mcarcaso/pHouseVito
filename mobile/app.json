@@ -26,7 +26,17 @@
     "web": {
       "favicon": "./assets/favicon.png"
     },
-    "plugins": ["expo-secure-store", "@config-plugins/react-native-webrtc"],
+    "plugins": [
+      "expo-secure-store",
+      "@config-plugins/react-native-webrtc",
+      [
+        "expo-audio",
+        {
+          "enableBackgroundRecording": true,
+          "microphonePermission": "Vito uses the microphone for live voice conversations."
+        }
+      ]
+    ],
     "extra": {
       "eas": {
         "projectId": "fc800553-bd47-452e-8144-1c31566f5d40"

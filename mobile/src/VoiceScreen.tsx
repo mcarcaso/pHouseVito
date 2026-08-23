@@ -1,4 +1,5 @@
 import { useCallback, useRef, useState } from "react";
+import { setAudioModeAsync } from "expo-audio";
 import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
 import {
   mediaDevices,
@@ -6,7 +7,7 @@ import {
   RTCSessionDescription,
   type MediaStream,
 } from "react-native-webrtc";
-import { getRealtimeToken } from "./api";
+import { getRealtimeToken, persistVoiceEvent } from "./api";
 
 type VoiceState = "idle" | "connecting" | "listening" | "speaking" | "error";
 interface TranscriptLine {
@@ -19,11 +20,13 @@ interface RealtimeEvent {
   transcript?: string;
   delta?: string;
   error?: { message?: string };
+  response?: { usage?: unknown };
 }
 
 export function VoiceScreen({ onUnauthorized }: { onUnauthorized: () => void }) {
   const [state, setState] = useState<VoiceState>("idle");
   const [muted, setMuted] = useState(false);
+  const [audioRoute, setAudioRoute] = useState<"speaker" | "earpiece">("speaker");
   const [error, setError] = useState<string | null>(null);
   const [transcript, setTranscript] = useState<TranscriptLine[]>([]);
   const peerRef = useRef<RTCPeerConnection | null>(null);
@@ -31,11 +34,13 @@ export function VoiceScreen({ onUnauthorized }: { onUnauthorized: () => void }) 
   const channelRef = useRef<ReturnType<RTCPeerConnection["createDataChannel"]> | null>(null);
   const assistantDraftRef = useRef("");
   const lineIdRef = useRef(0);
+  const sessionIdRef = useRef(`voice:${Date.now()}`);
 
   const addLine = useCallback((role: "Mike" | "Vito", text: string) => {
     const clean = text.trim();
     if (!clean) return;
     setTranscript((current) => [...current, { id: ++lineIdRef.current, role, text: clean }]);
+    void persistVoiceEvent(sessionIdRef.current, role === "Mike" ? "user" : "assistant", clean);
   }, []);
 
   const stop = useCallback(() => {
@@ -62,7 +67,16 @@ export function VoiceScreen({ onUnauthorized }: { onUnauthorized: () => void }) 
 
       if (event.type === "input_audio_buffer.speech_started") setState("listening");
       if (event.type === "response.output_audio.delta") setState("speaking");
-      if (event.type === "response.done") setState("listening");
+      if (event.type === "response.done") {
+        setState("listening");
+        if (event.response?.usage) {
+          void persistVoiceEvent(
+            sessionIdRef.current,
+            "usage",
+            JSON.stringify(event.response.usage),
+          );
+        }
+      }
       if (
         event.type === "conversation.item.input_audio_transcription.completed" &&
         event.transcript
@@ -90,6 +104,15 @@ export function VoiceScreen({ onUnauthorized }: { onUnauthorized: () => void }) 
     setError(null);
     setTranscript([]);
     try {
+      sessionIdRef.current = `voice:${Date.now()}`;
+      await setAudioModeAsync({
+        allowsRecording: true,
+        playsInSilentMode: true,
+        shouldPlayInBackground: true,
+        shouldRouteThroughEarpiece: false,
+        interruptionMode: "doNotMix",
+      });
+      setAudioRoute("speaker");
       const token = await getRealtimeToken();
       const stream = await mediaDevices.getUserMedia({ audio: true, video: false });
       const peer = new RTCPeerConnection();
@@ -135,6 +158,18 @@ export function VoiceScreen({ onUnauthorized }: { onUnauthorized: () => void }) 
     setMuted(next);
   };
 
+  const toggleAudioRoute = async () => {
+    const next = audioRoute === "speaker" ? "earpiece" : "speaker";
+    await setAudioModeAsync({
+      allowsRecording: true,
+      playsInSilentMode: true,
+      shouldPlayInBackground: true,
+      shouldRouteThroughEarpiece: next === "earpiece",
+      interruptionMode: "doNotMix",
+    });
+    setAudioRoute(next);
+  };
+
   const active = state !== "idle" && state !== "error";
   return (
     <View style={styles.root}>
@@ -170,9 +205,16 @@ export function VoiceScreen({ onUnauthorized }: { onUnauthorized: () => void }) 
 
       <View style={styles.controls}>
         {active && (
-          <Pressable onPress={toggleMute} style={styles.secondaryButton}>
-            <Text style={styles.secondaryText}>{muted ? "Unmute" : "Mute"}</Text>
-          </Pressable>
+          <>
+            <Pressable onPress={toggleMute} style={styles.secondaryButton}>
+              <Text style={styles.secondaryText}>{muted ? "Unmute" : "Mute"}</Text>
+            </Pressable>
+            <Pressable onPress={() => void toggleAudioRoute()} style={styles.secondaryButton}>
+              <Text style={styles.secondaryText}>
+                {audioRoute === "speaker" ? "Earpiece" : "Speaker"}
+              </Text>
+            </Pressable>
+          </>
         )}
         <Pressable
           onPress={active ? stop : () => void start()}
@@ -247,7 +289,13 @@ const styles = StyleSheet.create({
     marginTop: 10,
     maxWidth: 340,
   },
-  controls: { flexDirection: "row", gap: 10, marginTop: 24 },
+  controls: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    justifyContent: "center",
+    gap: 10,
+    marginTop: 24,
+  },
   primaryButton: {
     minWidth: 140,
     height: 50,

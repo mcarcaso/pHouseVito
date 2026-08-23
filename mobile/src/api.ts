@@ -114,6 +114,17 @@ export async function sendMessage(sessionId: string, content: string): Promise<v
   });
 }
 
+export async function persistVoiceEvent(
+  sessionId: string,
+  kind: "user" | "assistant" | "usage",
+  content: string,
+): Promise<void> {
+  await api("/api/voice/event", {
+    method: "POST",
+    body: JSON.stringify({ sessionId, kind, content }),
+  });
+}
+
 export async function getRealtimeToken(): Promise<string> {
   const result = await api<unknown>("/api/voice/realtime-token", { method: "POST" });
   if (

@@ -210,7 +210,7 @@ export function VoiceScreen({ onUnauthorized }: { onUnauthorized: () => void }) 
             endDate: typeof args.endDate === "string" ? args.endDate : undefined,
             limit: typeof args.limit === "number" ? args.limit : undefined,
           });
-        } else if (name === "ask_vito_async") {
+        } else if (name === "investigate_with_vito") {
           const task = await startVoiceTask(sessionIdRef.current, String(args.question ?? ""));
           void waitForTask(task.id, callId);
           return;

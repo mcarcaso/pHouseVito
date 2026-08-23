@@ -102,6 +102,7 @@ export function ChatScreen({ onUnauthorized }: { onUnauthorized: () => void }) {
 
       <ScrollView
         horizontal
+        style={styles.sessionScroller}
         showsHorizontalScrollIndicator={false}
         contentContainerStyle={styles.sessions}
       >
@@ -203,6 +204,7 @@ const styles = StyleSheet.create({
   },
   dot: { width: 6, height: 6, borderRadius: 3, backgroundColor: "#a9e83a" },
   liveText: { color: "#b7ed5a", fontSize: 9, fontWeight: "800", letterSpacing: 1 },
+  sessionScroller: { flexGrow: 0, flexShrink: 0, height: 47 },
   sessions: { gap: 8, paddingBottom: 13 },
   session: {
     height: 34,

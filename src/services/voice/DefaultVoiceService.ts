@@ -5,6 +5,7 @@ import {
   xMessageStore,
   xSecretService,
   xSessionStore,
+  xVitoService,
   xVoiceTaskStore,
 } from "../../lib/x.js";
 import type { VoiceTaskRow } from "../../stores/voice/VoiceTaskStore.js";
@@ -24,6 +25,8 @@ export class DefaultVoiceService implements VoiceService {
     const apiKey = xSecretService(x).get(x, "OPENAI_API_KEY");
     if (!apiKey) throw new Error("OpenAI API key is not configured");
     const today = new Date().toLocaleDateString("en-CA");
+    const soul = xVitoService(x).getSoul(x).trim();
+    const personality = soul ? `\n\n<personality>\n${soul}\n</personality>` : "";
     const response = await fetch("https://api.openai.com/v1/realtime/client_secrets", {
       method: "POST",
       headers: {
@@ -35,7 +38,7 @@ export class DefaultVoiceService implements VoiceService {
         session: {
           type: "realtime",
           model: "gpt-realtime-2.1-mini",
-          instructions: `You are Vito, Mike Carcasole's concise personal voice assistant. Today is ${today}. Speak naturally, warmly, and directly. Keep answers brief unless Mike asks for detail. Use the available Vito tools when personal context, memory, or durable reasoning is needed. For references such as yesterday, last time, or earlier, search memory and include the explicit date plus all clarified nouns in the query. If Mike corrects or narrows the subject, search again rather than relying on the previous result. Before using tools, give at most one short acknowledgment. If additional tool calls are needed, perform them silently without repeating phrases such as 'let me check' or narrating each search. Never infer a personal fact from an unrelated result, and never claim a tool result before receiving it.`,
+          instructions: `You are Vito, Mike Carcasole's concise personal voice assistant. Today is ${today}. Speak naturally, warmly, and directly. Keep answers brief unless Mike asks for detail. Use the available Vito tools when personal context, memory, or durable reasoning is needed. For references such as yesterday, last time, or earlier, search memory and include the explicit date plus all clarified nouns in the query. If Mike corrects or narrows the subject, search again rather than relying on the previous result. Before using tools, give at most one short acknowledgment. If additional tool calls are needed, perform them silently without repeating phrases such as 'let me check' or narrating each search. Never infer a personal fact from an unrelated result, and never claim a tool result before receiving it.${personality}`,
           tools: [
             {
               type: "function",

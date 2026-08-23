@@ -1,0 +1,32 @@
+{
+  "expo": {
+    "name": "Vito",
+    "slug": "vito-mobile",
+    "version": "0.1.0",
+    "orientation": "default",
+    "icon": "./assets/icon.png",
+    "userInterfaceStyle": "dark",
+    "newArchEnabled": true,
+    "splash": {
+      "image": "./assets/splash-icon.png",
+      "resizeMode": "contain",
+      "backgroundColor": "#080a09"
+    },
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "com.phouse.vito"
+    },
+    "android": {
+      "adaptiveIcon": {
+        "foregroundImage": "./assets/android-icon-foreground.png",
+        "backgroundImage": "./assets/android-icon-background.png",
+        "monochromeImage": "./assets/android-icon-monochrome.png",
+        "backgroundColor": "#080a09"
+      },
+      "package": "com.phouse.vito"
+    },
+    "web": {
+      "favicon": "./assets/favicon.png"
+    }
+  }
+}

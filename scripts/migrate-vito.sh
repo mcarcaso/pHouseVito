@@ -91,6 +91,9 @@ npm ci --include=dev
 printf '==> Installing dashboard dependencies\n'
 npm --prefix dashboard ci --include=dev
 
+printf '==> Installing mobile dependencies\n'
+npm --prefix mobile ci --include=dev
+
 printf '==> Installing runtime dependencies\n'
 "$SCRIPT_DIR/install-runtime-deps.sh"
 

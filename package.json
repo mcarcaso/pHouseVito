@@ -18,7 +18,7 @@
     "test": "tsx --test test/**/*.test.ts",
     "vito": "tsx src/cli/vito.ts",
     "validate:config": "tsx src/cli/validate-config.ts",
-    "check": "npm run typecheck && npm run typecheck:dashboard && npm test && npm run validate:config -- user.example/vito.config.json",
+    "check": "npm run typecheck && npm run typecheck:dashboard && npm run typecheck:mobile && npm test && npm run validate:config -- user.example/vito.config.json",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
     "prepare": "git config core.hooksPath .githooks || true",
@@ -26,6 +26,9 @@
     "dev": "tsx watch src/index.ts",
     "build:dashboard": "cd dashboard && npm run build",
     "dev:dashboard": "cd dashboard && npm run dev",
+    "dev:mobile": "npm --prefix mobile run start",
+    "dev:mobile:web": "npm --prefix mobile run web",
+    "typecheck:mobile": "npm --prefix mobile run typecheck",
     "restart:process": "pm2 restart vito-server"
   },
   "dependencies": {

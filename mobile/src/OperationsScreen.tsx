@@ -14,7 +14,7 @@ import {
 } from "react-native";
 import { api, VITO_URL } from "./api";
 
-type Area =
+export type OperationArea =
   | "memory"
   | "skills"
   | "jobs"
@@ -28,7 +28,7 @@ type Area =
   | "server"
   | "providers";
 
-const areas: Array<{ id: Area; label: string }> = [
+export const operationAreas: Array<{ id: OperationArea; label: string }> = [
   { id: "memory", label: "Memory" },
   { id: "skills", label: "Skills" },
   { id: "jobs", label: "Jobs" },
@@ -43,7 +43,7 @@ const areas: Array<{ id: Area; label: string }> = [
   { id: "providers", label: "Providers" },
 ];
 
-const paths: Record<Area, string> = {
+const paths: Record<OperationArea, string> = {
   memory: "/api/memory/embeddings/stats",
   skills: "/api/skills",
   jobs: "/api/cron/jobs",
@@ -78,8 +78,18 @@ function labelFor(value: unknown, index: number): string {
   );
 }
 
-export function OperationsScreen({ onUnauthorized }: { onUnauthorized: () => void }) {
-  const [area, setArea] = useState<Area>("memory");
+export function OperationsScreen({
+  onUnauthorized,
+  initialArea = "memory",
+  showAreaTabs = true,
+  onBack,
+}: {
+  onUnauthorized: () => void;
+  initialArea?: OperationArea;
+  showAreaTabs?: boolean;
+  onBack?: () => void;
+}) {
+  const [area, setArea] = useState<OperationArea>(initialArea);
   const [data, setData] = useState<unknown>();
   const [selected, setSelected] = useState<unknown>();
   const [loading, setLoading] = useState(false);
@@ -286,28 +296,41 @@ export function OperationsScreen({ onUnauthorized }: { onUnauthorized: () => voi
   return (
     <View style={styles.root}>
       <Text style={styles.eyebrow}>COMPANION OPERATIONS</Text>
-      <Text style={styles.title}>Run the family business.</Text>
-      <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.tabs}>
-        <View style={styles.tabRow}>
-          {areas.map((item) => (
-            <Pressable
-              key={item.id}
-              onPress={() => {
-                setArea(item.id);
-                setDrivePath("");
-              }}
-              style={[styles.tab, area === item.id && styles.tabActive]}
-            >
-              <Text style={[styles.tabText, area === item.id && styles.tabTextActive]}>
-                {item.label}
-              </Text>
-            </Pressable>
-          ))}
-        </View>
-      </ScrollView>
+      <View style={styles.titleRow}>
+        {onBack && (
+          <Pressable onPress={onBack} style={styles.backButton}>
+            <Text style={styles.backText}>‹</Text>
+          </Pressable>
+        )}
+        <Text style={styles.title}>
+          {showAreaTabs
+            ? "Run the family business."
+            : operationAreas.find((item) => item.id === area)?.label}
+        </Text>
+      </View>
+      {showAreaTabs && (
+        <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.tabs}>
+          <View style={styles.tabRow}>
+            {operationAreas.map((item) => (
+              <Pressable
+                key={item.id}
+                onPress={() => {
+                  setArea(item.id);
+                  setDrivePath("");
+                }}
+                style={[styles.tab, area === item.id && styles.tabActive]}
+              >
+                <Text style={[styles.tabText, area === item.id && styles.tabTextActive]}>
+                  {item.label}
+                </Text>
+              </Pressable>
+            ))}
+          </View>
+        </ScrollView>
+      )}
 
       <View style={styles.toolbar}>
-        <Text style={styles.section}>{areas.find((item) => item.id === area)?.label}</Text>
+        <Text style={styles.section}>{operationAreas.find((item) => item.id === area)?.label}</Text>
         <Pressable onPress={() => void load()} style={styles.smallButton}>
           <Text style={styles.smallButtonText}>Refresh</Text>
         </Pressable>
@@ -704,7 +727,17 @@ export function OperationsScreen({ onUnauthorized }: { onUnauthorized: () => voi
 const styles = StyleSheet.create({
   root: { paddingBottom: 70 },
   eyebrow: { color: "#b7f34a", fontSize: 11, fontWeight: "800", letterSpacing: 2 },
-  title: { color: "#f3f5ef", fontSize: 30, fontWeight: "800", marginTop: 8, marginBottom: 18 },
+  titleRow: { flexDirection: "row", alignItems: "center", gap: 10, marginBottom: 18 },
+  title: { color: "#f3f5ef", fontSize: 30, fontWeight: "800", marginTop: 8 },
+  backButton: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: "#252b23",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  backText: { color: "#b7f34a", fontSize: 30, lineHeight: 31 },
   tabs: { marginHorizontal: -4, marginBottom: 20 },
   tabRow: { flexDirection: "row", gap: 8, paddingHorizontal: 4 },
   tab: {

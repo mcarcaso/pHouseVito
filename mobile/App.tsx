@@ -2,7 +2,7 @@ import { StatusBar } from "expo-status-bar";
 import { useCallback, useEffect, useState } from "react";
 import { ChatScreen } from "./src/ChatScreen";
 import { LoginScreen } from "./src/LoginScreen";
-import { OperationsScreen } from "./src/OperationsScreen";
+import { operationAreas, OperationsScreen, type OperationArea } from "./src/OperationsScreen";
 import { VoiceScreen } from "./src/VoiceScreen";
 import { checkAuth, loadToken, logout, saveToken, VITO_URL } from "./src/api";
 import {
@@ -34,6 +34,7 @@ const navigation: Array<{ id: Screen; label: string; icon: string }> = [
 
 export default function App() {
   const [screen, setScreen] = useState<Screen>("chat");
+  const [operationArea, setOperationArea] = useState<OperationArea | null>(null);
   const [health, setHealth] = useState<HealthState>({ kind: "loading" });
   const [authState, setAuthState] = useState<"loading" | "authenticated" | "login">("loading");
   const { width } = useWindowDimensions();
@@ -102,7 +103,7 @@ export default function App() {
       <ChatScreen onUnauthorized={unauthorized} />
     ) : screen === "voice" ? (
       <VoiceScreen onUnauthorized={unauthorized} />
-    ) : (
+    ) : desktop ? (
       <View>
         <OperationsScreen onUnauthorized={unauthorized} />
         <Button
@@ -111,6 +112,19 @@ export default function App() {
           onPress={() => void logout().finally(() => setAuthState("login"))}
         />
       </View>
+    ) : operationArea ? (
+      <OperationsScreen
+        key={operationArea}
+        onUnauthorized={unauthorized}
+        initialArea={operationArea}
+        showAreaTabs={false}
+        onBack={() => setOperationArea(null)}
+      />
+    ) : (
+      <MoreMenu
+        onSelect={setOperationArea}
+        onLogout={() => void logout().finally(() => setAuthState("login"))}
+      />
     );
 
   return (
@@ -127,7 +141,15 @@ export default function App() {
             <View style={styles.page}>{content}</View>
           </ScrollView>
         )}
-        {!desktop && <Navigation screen={screen} setScreen={setScreen} />}
+        {!desktop && (
+          <Navigation
+            screen={screen}
+            setScreen={(next) => {
+              if (next === "more") setOperationArea(null);
+              setScreen(next);
+            }}
+          />
+        )}
       </View>
     </SafeAreaView>
   );
@@ -238,6 +260,33 @@ function Home({ health, checkHealth }: { health: HealthState; checkHealth: () =>
           </Text>
         </View>
       </View>
+    </View>
+  );
+}
+
+function MoreMenu({
+  onSelect,
+  onLogout,
+}: {
+  onSelect: (area: OperationArea) => void;
+  onLogout: () => void;
+}) {
+  return (
+    <View>
+      <Text style={styles.eyebrow}>MORE</Text>
+      <Text style={styles.title}>Operations</Text>
+      <Text style={styles.subtitle}>Choose where you want to work.</Text>
+      <View style={styles.moreGrid}>
+        {operationAreas.map((item) => (
+          <Pressable key={item.id} onPress={() => onSelect(item.id)} style={styles.moreCard}>
+            <Text style={styles.moreCardTitle}>{item.label}</Text>
+            <Text style={styles.moreArrow}>›</Text>
+          </Pressable>
+        ))}
+      </View>
+      <Pressable onPress={onLogout} style={styles.logoutButton}>
+        <Text style={styles.logoutText}>Sign out</Text>
+      </Pressable>
     </View>
   );
 }
@@ -446,6 +495,23 @@ const styles = StyleSheet.create({
   smallCardNumber: { color: "#a9e83a", fontSize: 12, fontWeight: "800", letterSpacing: 1 },
   smallCardBody: { flex: 1 },
   smallCardTitle: { color: "#dce0dc", fontSize: 15, fontWeight: "700" },
+  moreGrid: { flexDirection: "row", flexWrap: "wrap", gap: 10 },
+  moreCard: {
+    width: "48%",
+    minHeight: 82,
+    backgroundColor: "#151914",
+    borderWidth: 1,
+    borderColor: "#30362d",
+    borderRadius: 16,
+    padding: 15,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+  },
+  moreCardTitle: { color: "#f3f5ef", fontWeight: "800", fontSize: 15 },
+  moreArrow: { color: "#b7f34a", fontSize: 26 },
+  logoutButton: { marginTop: 20, alignItems: "center", padding: 14 },
+  logoutText: { color: "#92998f", fontWeight: "700" },
   smallCardText: { color: "#737b73", fontSize: 12, lineHeight: 18, marginTop: 4 },
   comingCard: {
     marginTop: 40,

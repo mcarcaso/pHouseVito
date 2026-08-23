@@ -2,6 +2,7 @@ import { StatusBar } from "expo-status-bar";
 import { useCallback, useEffect, useState } from "react";
 import { ChatScreen } from "./src/ChatScreen";
 import { LoginScreen } from "./src/LoginScreen";
+import { OperationsScreen } from "./src/OperationsScreen";
 import { VoiceScreen } from "./src/VoiceScreen";
 import { checkAuth, loadToken, logout, saveToken, VITO_URL } from "./src/api";
 import {
@@ -28,7 +29,7 @@ const navigation: Array<{ id: Screen; label: string; icon: string }> = [
   { id: "home", label: "Home", icon: "⌂" },
   { id: "chat", label: "Chat", icon: "●" },
   { id: "voice", label: "Voice", icon: "◉" },
-  { id: "more", label: "More", icon: "•••" },
+  { id: "more", label: "Operations", icon: "•••" },
 ];
 
 export default function App() {
@@ -102,13 +103,14 @@ export default function App() {
     ) : screen === "voice" ? (
       <VoiceScreen onUnauthorized={unauthorized} />
     ) : (
-      <ComingSoon
-        eyebrow="PARITY PLAN"
-        title="One dashboard, every surface."
-        body="Settings, jobs, apps, Drive, memory and server controls will move into this shared Expo application one capability at a time."
-        action="Sign out"
-        onAction={() => void logout().finally(() => setAuthState("login"))}
-      />
+      <View>
+        <OperationsScreen onUnauthorized={unauthorized} />
+        <Button
+          title="Sign out"
+          secondary
+          onPress={() => void logout().finally(() => setAuthState("login"))}
+        />
+      </View>
     );
 
   return (
@@ -189,8 +191,8 @@ function Home({ health, checkHealth }: { health: HealthState; checkHealth: () =>
       <Text style={styles.eyebrow}>VITO MOBILE</Text>
       <Text style={styles.title}>The family business,{"\n"}now in your pocket.</Text>
       <Text style={styles.subtitle}>
-        A shared native and web foundation for managing Vito anywhere. We start small, keep it
-        clean, and move toward complete dashboard parity.
+        One shared native and web companion for chat, live voice, memory, apps, configuration, and
+        Vito operations.
       </Text>
 
       <View style={styles.card}>
@@ -223,7 +225,7 @@ function Home({ health, checkHealth }: { health: HealthState; checkHealth: () =>
         )}
         <View style={styles.actions}>
           <Button title="Check again" onPress={() => void checkHealth()} />
-          <Button title="Open dashboard" secondary onPress={() => void Linking.openURL(VITO_URL)} />
+          <Button title="Open companion" secondary onPress={() => void Linking.openURL(VITO_URL)} />
         </View>
       </View>
 

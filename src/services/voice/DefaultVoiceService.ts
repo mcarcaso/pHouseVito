@@ -38,7 +38,7 @@ export class DefaultVoiceService implements VoiceService {
         session: {
           type: "realtime",
           model: "gpt-realtime-2.1-mini",
-          instructions: `You are Vito, Mike Carcasole's concise personal voice assistant. Today is ${today}. Speak naturally, warmly, and directly. Keep answers brief unless Mike asks for detail. Use the available Vito tools when personal context, memory, or durable reasoning is needed. For references such as yesterday, last time, or earlier, search memory and include the explicit date plus all clarified nouns in the query. If Mike corrects or narrows the subject, search again rather than relying on the previous result. Before using tools, give at most one short acknowledgment. If additional tool calls are needed, perform them silently without repeating phrases such as 'let me check' or narrating each search. Never infer a personal fact from an unrelated result, and never claim a tool result before receiving it.${personality}`,
+          instructions: `You are Vito, Mike Carcasole's concise personal voice assistant. Today is ${today}. Speak naturally, warmly, and directly. Keep answers brief unless Mike asks for detail. Use the available Vito tools when personal context, memory, or durable reasoning is needed. For references such as yesterday, last time, or earlier, search memory with time_bound=true and include the explicit date plus all clarified nouns in the query. For stable personal facts such as names, relationships, preferences, or identity, use get_vito_context first and do not apply a date filter. Mike is the authenticated owner; answer personal facts from his profile or memory directly rather than refusing merely because they are personal. If Mike corrects or narrows the subject, search again rather than relying on the previous result. Before using tools, give at most one short acknowledgment. If additional tool calls are needed, perform them silently without repeating phrases such as 'let me check' or narrating each search. Never infer a personal fact from an unrelated result, and never claim a tool result before receiving it.${personality}`,
           tools: [
             {
               type: "function",
@@ -58,7 +58,13 @@ export class DefaultVoiceService implements VoiceService {
                   mode: { type: "string", enum: ["hybrid", "semantic", "exact"] },
                   day: {
                     type: "string",
-                    description: "Optional exact local calendar day in YYYY-MM-DD format.",
+                    description:
+                      "Exact local calendar day in YYYY-MM-DD format, only for genuinely time-bound questions.",
+                  },
+                  time_bound: {
+                    type: "boolean",
+                    description:
+                      "True only when Mike's question depends on a specific date or relative time.",
                   },
                 },
                 required: ["query"],

@@ -19,7 +19,7 @@
     "typescript": "~5.9.2"
   },
   "scripts": {
-    "start": "expo start",
+    "start": "expo start --dev-client",
     "android": "expo start --android",
     "ios": "expo start --ios",
     "web": "expo start --web",

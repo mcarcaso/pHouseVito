@@ -6,12 +6,6 @@
     "orientation": "default",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "dark",
-    "newArchEnabled": true,
-    "splash": {
-      "image": "./assets/splash-icon.png",
-      "resizeMode": "contain",
-      "backgroundColor": "#080a09"
-    },
     "ios": {
       "supportsTablet": true,
       "bundleIdentifier": "com.phouse.vito"
@@ -28,6 +22,6 @@
     "web": {
       "favicon": "./assets/favicon.png"
     },
-    "plugins": ["expo-secure-store"]
+    "plugins": ["expo-secure-store", "expo-status-bar"]
   }
 }

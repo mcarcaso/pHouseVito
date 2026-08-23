@@ -45,6 +45,7 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 function isPrivateDevelopmentOrigin(origin: string): boolean {
   try {
     const url = new URL(origin);
+    if (url.protocol === "https:" && url.hostname.endsWith(".ts.net")) return true;
     if (url.protocol !== "http:") return false;
     return (
       url.hostname === "localhost" ||

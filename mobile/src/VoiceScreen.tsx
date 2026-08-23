@@ -210,7 +210,13 @@ export function VoiceScreen({ onUnauthorized }: { onUnauthorized: () => void }) 
         let result: unknown;
         if (name === "get_vito_context") result = await getVoiceContext();
         else if (name === "search_memory") {
-          result = await searchVoiceMemory(String(args.question ?? ""));
+          result = await searchVoiceMemory({
+            query: String(args.query ?? ""),
+            mode: args.mode === "semantic" || args.mode === "exact" ? args.mode : "hybrid",
+            startDate: typeof args.startDate === "string" ? args.startDate : undefined,
+            endDate: typeof args.endDate === "string" ? args.endDate : undefined,
+            limit: typeof args.limit === "number" ? args.limit : undefined,
+          });
         } else if (name === "ask_vito_async") {
           const task = await startVoiceTask(sessionIdRef.current, String(args.question ?? ""));
           result = { taskId: task.id, status: task.status, message: "Vito is working on it." };
@@ -351,7 +357,7 @@ export function VoiceScreen({ onUnauthorized }: { onUnauthorized: () => void }) 
   const active = state !== "idle" && state !== "error";
   return (
     <View style={styles.root}>
-      <Text style={styles.eyebrow}>OPENAI REALTIME MINI</Text>
+      <Text style={styles.eyebrow}>OPENAI REALTIME 2.1</Text>
       <Text style={styles.title}>Live voice</Text>
       <Text style={styles.subtitle}>
         Fluid conversation backed by Vito memory, durable tasks, and saved transcripts.

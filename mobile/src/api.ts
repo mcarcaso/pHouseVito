@@ -197,10 +197,16 @@ export async function getVoiceContext(): Promise<unknown> {
   return await api("/api/voice/context");
 }
 
-export async function searchVoiceMemory(question: string): Promise<unknown> {
+export async function searchVoiceMemory(options: {
+  query: string;
+  mode?: "hybrid" | "semantic" | "exact";
+  startDate?: string;
+  endDate?: string;
+  limit?: number;
+}): Promise<unknown> {
   return await api("/api/voice/memory-search", {
     method: "POST",
-    body: JSON.stringify({ question }),
+    body: JSON.stringify(options),
   });
 }
 

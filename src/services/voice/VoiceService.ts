@@ -24,7 +24,16 @@ export interface VoiceService {
   listSessions(x: Context, limit?: number): SessionRow[];
   getSession(x: Context, sessionId: string): VoiceSessionDetail | null;
   getContext(x: Context): { profile: string | null; recentVoiceSessions: SessionRow[] };
-  searchMemory(x: Context, question: string): Promise<SearchResult[]>;
+  searchMemory(
+    x: Context,
+    query: string,
+    options?: {
+      mode?: "hybrid" | "semantic" | "exact";
+      startDate?: string;
+      endDate?: string;
+      limit?: number;
+    },
+  ): Promise<SearchResult[]>;
   askAsync(x: Context, voiceSessionId: string, question: string): VoiceTaskRow;
   getTask(x: Context, id: string): VoiceTaskRow | null;
   cancelTask(x: Context, id: string): VoiceTaskRow;

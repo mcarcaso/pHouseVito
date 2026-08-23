@@ -56,11 +56,22 @@ export async function searchMemory(
   query: string,
   options: SearchOptions = {},
 ): Promise<SearchResult[]> {
-  const { limit = 5, sessionFilter, dayFilter, referenceDay, mode = "hybrid" } = options;
+  const {
+    limit = 5,
+    sessionFilter,
+    dayFilter,
+    dayStart,
+    dayEnd,
+    referenceDay,
+    mode = "hybrid",
+  } = options;
   const store = xEmbeddingStore(x);
-  const chunks = store
-    .listChunksWithVectors(x, sessionFilter)
-    .filter((chunk) => !dayFilter || chunk.day === dayFilter);
+  const chunks = store.listChunksWithVectors(x, sessionFilter).filter((chunk) => {
+    if (dayFilter && chunk.day !== dayFilter) return false;
+    if (dayStart && chunk.day < dayStart) return false;
+    if (dayEnd && chunk.day > dayEnd) return false;
+    return true;
+  });
   if (chunks.length === 0) return [];
 
   let embeddingResults: Array<{
@@ -101,7 +112,7 @@ export async function searchMemory(
         bm25Results = store
           .searchFts(x, {
             query: ftsQuery,
-            limit: dayFilter ? 500 : Math.max(limit * 4, 20),
+            limit: dayFilter || dayStart || dayEnd ? 500 : Math.max(limit * 4, 20),
             sessionId: sessionFilter,
           })
           .filter((result) => allowedIds.has(result.id))

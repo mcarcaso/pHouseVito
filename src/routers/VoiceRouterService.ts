@@ -27,6 +27,18 @@ const realtimeVoiceSchema = z.enum([
 const realtimeClientSecretSchema = z
   .object({ value: z.string().min(1), expires_at: z.number().optional() })
   .passthrough();
+const calendarDaySchema = z.string().regex(/^\d{4}-\d{2}-\d{2}$/);
+const memorySearchSchema = z
+  .object({
+    query: z.string().min(1).max(2_000),
+    mode: z.enum(["hybrid", "semantic", "exact"]).optional(),
+    startDate: calendarDaySchema.optional(),
+    endDate: calendarDaySchema.optional(),
+    limit: z.number().int().min(1).max(10).optional(),
+  })
+  .refine((value) => !value.startDate || !value.endDate || value.startDate <= value.endDate, {
+    message: "startDate must not be after endDate",
+  });
 const taskSchema = z.object({
   id: z.string(),
   voice_session_id: sessionIdSchema,
@@ -117,11 +129,11 @@ export class VoiceRouterService implements RouterService {
       schemas: {
         params: emptyRouteSchema,
         query: emptyRouteSchema,
-        body: z.object({ question: z.string().min(1).max(2_000) }),
+        body: memorySearchSchema,
       },
       responseSchema: unknownRouteSchema,
       handler: async (routeX, { data: { body } }) =>
-        await xVoiceService(routeX).searchMemory(routeX, body.question),
+        await xVoiceService(routeX).searchMemory(routeX, body.query, body),
     });
 
     route({

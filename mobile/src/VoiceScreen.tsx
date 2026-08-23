@@ -174,31 +174,24 @@ export function VoiceScreen({ onUnauthorized }: { onUnauthorized: () => void }) 
     });
   }, []);
 
-  const waitForTask = useCallback(async (id: string) => {
-    for (let attempt = 0; attempt < 300; attempt += 1) {
-      await new Promise((resolve) => setTimeout(resolve, 2_000));
-      const task = await getVoiceTask(id);
-      if (!task || task.status === "queued" || task.status === "running") continue;
-      connectionRef.current?.sendEvent({
-        type: "conversation.item.create",
-        item: {
-          type: "message",
-          role: "system",
-          content: [
-            {
-              type: "input_text",
-              text:
-                task.status === "completed"
-                  ? `Vito task ${id} completed: ${task.result ?? "No result"}`
-                  : `Vito task ${id} ended with status ${task.status}: ${task.error ?? "No details"}`,
-            },
-          ],
-        },
-      });
-      connectionRef.current?.sendEvent({ type: "response.create" });
-      return;
-    }
-  }, []);
+  const waitForTask = useCallback(
+    async (id: string, callId: string) => {
+      for (let attempt = 0; attempt < 300; attempt += 1) {
+        await new Promise((resolve) => setTimeout(resolve, 2_000));
+        const task = await getVoiceTask(id);
+        if (!task || task.status === "queued" || task.status === "running") continue;
+        sendToolResult(callId, {
+          taskId: id,
+          status: task.status,
+          result: task.result,
+          error: task.error,
+        });
+        return;
+      }
+      sendToolResult(callId, { taskId: id, status: "timed_out" });
+    },
+    [sendToolResult],
+  );
 
   const executeTool = useCallback(
     async (name: string, callId: string, rawArguments?: string) => {
@@ -219,8 +212,8 @@ export function VoiceScreen({ onUnauthorized }: { onUnauthorized: () => void }) 
           });
         } else if (name === "ask_vito_async") {
           const task = await startVoiceTask(sessionIdRef.current, String(args.question ?? ""));
-          result = { taskId: task.id, status: task.status, message: "Vito is working on it." };
-          void waitForTask(task.id);
+          void waitForTask(task.id, callId);
+          return;
         } else if (name === "get_task") result = await getVoiceTask(String(args.id ?? ""));
         else if (name === "cancel_task") result = await cancelVoiceTask(String(args.id ?? ""));
         else throw new Error(`Unknown tool: ${name}`);

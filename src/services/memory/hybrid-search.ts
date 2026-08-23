@@ -24,15 +24,22 @@ interface RecencyBiasResult {
   daysAgo: number;
 }
 
-function applyRecencyBias(score: number, dayString: string): RecencyBiasResult {
+function applyRecencyBias(
+  score: number,
+  dayString: string,
+  referenceDay?: string,
+): RecencyBiasResult {
   if (!dayString) return { biasedScore: score, recencyFactor: 1, daysAgo: 0 };
-  const chunkDate = new Date(dayString);
-  const today = new Date();
+  const chunkDate = new Date(`${dayString}T12:00:00`);
+  const referenceDate = referenceDay ? new Date(`${referenceDay}T12:00:00`) : new Date();
   const daysAgo = Math.max(
     0,
-    Math.floor((today.getTime() - chunkDate.getTime()) / (1000 * 60 * 60 * 24)),
+    Math.floor(Math.abs(referenceDate.getTime() - chunkDate.getTime()) / (1000 * 60 * 60 * 24)),
   );
-  const recencyFactor = 1 / (1 + daysAgo * 0.01);
+  // Explicit temporal questions get a stronger proximity preference, while
+  // ordinary recall retains the established gentle bias toward recent memory.
+  const decayRate = referenceDay ? 0.25 : 0.01;
+  const recencyFactor = 1 / (1 + daysAgo * decayRate);
   return {
     biasedScore: score * recencyFactor,
     recencyFactor,
@@ -49,7 +56,7 @@ export async function searchMemory(
   query: string,
   options: SearchOptions = {},
 ): Promise<SearchResult[]> {
-  const { limit = 5, sessionFilter, dayFilter, mode = "hybrid" } = options;
+  const { limit = 5, sessionFilter, dayFilter, referenceDay, mode = "hybrid" } = options;
   const store = xEmbeddingStore(x);
   const chunks = store
     .listChunksWithVectors(x, sessionFilter)
@@ -67,7 +74,7 @@ export async function searchMemory(
     const queryVector = await xEmbeddingService(x).create(x, query);
     embeddingResults = chunks.map((chunk) => {
       const rawScore = cosineSimilarity(queryVector, chunk.vector);
-      const biased = applyRecencyBias(rawScore, chunk.day);
+      const biased = applyRecencyBias(rawScore, chunk.day, referenceDay);
       return {
         id: chunk.id,
         score: biased.biasedScore,

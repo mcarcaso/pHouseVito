@@ -210,11 +210,7 @@ export function VoiceScreen({ onUnauthorized }: { onUnauthorized: () => void }) 
         let result: unknown;
         if (name === "get_vito_context") result = await getVoiceContext();
         else if (name === "search_memory") {
-          result = await searchVoiceMemory(
-            String(args.query ?? ""),
-            args.mode === "semantic" || args.mode === "exact" ? args.mode : "hybrid",
-            args.time_bound === true && typeof args.day === "string" ? args.day : undefined,
-          );
+          result = await searchVoiceMemory(String(args.question ?? ""));
         } else if (name === "ask_vito_async") {
           const task = await startVoiceTask(sessionIdRef.current, String(args.question ?? ""));
           result = { taskId: task.id, status: task.status, message: "Vito is working on it." };

@@ -38,7 +38,7 @@ export class DefaultVoiceService implements VoiceService {
         session: {
           type: "realtime",
           model: "gpt-realtime-2.1-mini",
-          instructions: `You are Vito, Mike Carcasole's concise personal voice assistant. Today is ${today}. Speak naturally, warmly, and directly. Keep answers brief unless Mike asks for detail. Use the available Vito tools when personal context, memory, or durable reasoning is needed. For references such as yesterday, last time, or earlier, search memory with time_bound=true and include the explicit date plus all clarified nouns in the query. For stable personal facts such as names, relationships, preferences, or identity, use get_vito_context first and do not apply a date filter. Mike is the authenticated owner; answer personal facts from his profile or memory directly rather than refusing merely because they are personal. If Mike corrects or narrows the subject, search again rather than relying on the previous result. Before using tools, give at most one short acknowledgment. If additional tool calls are needed, perform them silently without repeating phrases such as 'let me check' or narrating each search. Never infer a personal fact from an unrelated result, and never claim a tool result before receiving it.${personality}`,
+          instructions: `You are Vito, Mike Carcasole's concise personal voice assistant. Today is ${today}. Speak naturally, warmly, and directly. Keep answers brief unless Mike asks for detail. Use the available Vito tools when personal context, memory, or durable reasoning is needed. For references such as yesterday, last time, or earlier, include the resolved explicit YYYY-MM-DD date and all clarified subject terms in the search question. The Vito server owns retrieval mode, limits, recency, and date handling. For stable personal facts such as names, relationships, preferences, or identity, use get_vito_context first. Mike is the authenticated owner; answer personal facts from his profile or memory directly rather than refusing merely because they are personal. If Mike corrects or narrows the subject, search again rather than relying on the previous result. Before using tools, give at most one short acknowledgment. If additional tool calls are needed, perform them silently without repeating phrases such as 'let me check' or narrating each search. Never infer a personal fact from an unrelated result, and never claim a tool result before receiving it.${personality}`,
           tools: [
             {
               type: "function",
@@ -50,24 +50,11 @@ export class DefaultVoiceService implements VoiceService {
               type: "function",
               name: "search_memory",
               description:
-                "Search Vito's durable conversation memory. Include explicit dates and clarified subject terms for time-relative questions.",
+                "Ask Vito's durable conversation memory one natural-language question. For genuinely time-relative questions, include the resolved YYYY-MM-DD date in the question.",
               parameters: {
                 type: "object",
-                properties: {
-                  query: { type: "string" },
-                  mode: { type: "string", enum: ["hybrid", "semantic", "exact"] },
-                  day: {
-                    type: "string",
-                    description:
-                      "Exact local calendar day in YYYY-MM-DD format, only for genuinely time-bound questions.",
-                  },
-                  time_bound: {
-                    type: "boolean",
-                    description:
-                      "True only when Mike's question depends on a specific date or relative time.",
-                  },
-                },
-                required: ["query"],
+                properties: { question: { type: "string" } },
+                required: ["question"],
                 additionalProperties: false,
               },
             },
@@ -187,24 +174,20 @@ export class DefaultVoiceService implements VoiceService {
     };
   }
 
-  async searchMemory(
-    x: Context,
-    query: string,
-    mode: "hybrid" | "semantic" | "exact",
-    day?: string,
-  ): Promise<SearchResult[]> {
-    const lowered = query.toLowerCase();
-    const targetDay =
-      day ??
+  async searchMemory(x: Context, question: string): Promise<SearchResult[]> {
+    const lowered = question.toLowerCase();
+    const explicitDay = question.match(/\b\d{4}-\d{2}-\d{2}\b/)?.[0];
+    const referenceDay =
+      explicitDay ??
       (lowered.includes("yesterday")
         ? new Date(Date.now() - 86_400_000).toLocaleDateString("en-CA")
         : lowered.includes("today")
           ? new Date().toLocaleDateString("en-CA")
           : undefined);
-    const results = await xMemoryService(x).search(x, query, {
+    const results = await xMemoryService(x).search(x, question, {
       limit: 5,
-      dayFilter: targetDay,
-      mode: mode === "semantic" ? "embedding" : mode === "exact" ? "bm25" : "hybrid",
+      referenceDay,
+      mode: "hybrid",
     });
     return results.map((result) => ({
       ...result,

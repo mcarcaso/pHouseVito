@@ -183,6 +183,7 @@ export function OperationsScreen({
   };
 
   const loadDetailPage = async (target: { area: "traces" | "pi"; id: string; offset: number }) => {
+    setDetailTarget(target);
     setDetailLoading(true);
     setError(null);
     try {
@@ -195,7 +196,6 @@ export function OperationsScreen({
           `/api/${target.area === "traces" ? "logs" : "pi-sessions"}/${encoded}?offset=${target.offset}&limit=50&order=newest`,
         ),
       );
-      setDetailTarget(target);
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : "Could not load details");
     } finally {
@@ -331,6 +331,77 @@ export function OperationsScreen({
             Array.isArray((data as { results: unknown[] }).results)
           ? (data as { results: unknown[] }).results
           : null);
+
+  if (detailTarget) {
+    return (
+      <View style={styles.root}>
+        <Text style={styles.eyebrow}>COMPANION OPERATIONS</Text>
+        <View style={styles.titleRow}>
+          <Pressable
+            onPress={() => {
+              setSelected(undefined);
+              setDetailTarget(null);
+              setError(null);
+            }}
+            style={styles.backButton}
+          >
+            <Text style={styles.backText}>‹</Text>
+          </Pressable>
+          <View style={styles.detailHeading}>
+            <Text style={styles.title}>
+              {detailTarget.area === "traces" ? "Trace details" : "Pi session"}
+            </Text>
+            <Text style={styles.detailId} numberOfLines={1}>
+              {detailTarget.id}
+            </Text>
+          </View>
+        </View>
+
+        {error && <Text style={styles.error}>{error}</Text>}
+        {detailLoading && (
+          <View style={styles.loadingRow}>
+            <ActivityIndicator color="#b7f34a" />
+            <Text style={styles.loadingText}>Loading selected rows…</Text>
+          </View>
+        )}
+
+        <View style={styles.pageControls}>
+          <Pressable
+            disabled={detailTarget.offset === 0 || detailLoading}
+            onPress={() =>
+              void loadDetailPage({
+                ...detailTarget,
+                offset: Math.max(0, detailTarget.offset - 50),
+              })
+            }
+            style={styles.smallButton}
+          >
+            <Text style={styles.smallButtonText}>Newer 50</Text>
+          </Pressable>
+          <Text style={styles.pageText}>
+            Rows {detailTarget.offset + 1}–{detailTarget.offset + 50}
+          </Text>
+          <Pressable
+            disabled={detailLoading}
+            onPress={() =>
+              void loadDetailPage({ ...detailTarget, offset: detailTarget.offset + 50 })
+            }
+            style={styles.smallButton}
+          >
+            <Text style={styles.smallButtonText}>Older 50</Text>
+          </Pressable>
+        </View>
+
+        {selected !== undefined && (
+          <View style={styles.jsonCard}>
+            <Text selectable style={styles.json}>
+              {pretty(selected)}
+            </Text>
+          </View>
+        )}
+      </View>
+    );
+  }
 
   return (
     <View style={styles.root}>
@@ -757,34 +828,6 @@ export function OperationsScreen({
 
       {selected !== undefined && (
         <View style={styles.detail}>
-          {detailTarget && (
-            <View style={styles.pageControls}>
-              <Pressable
-                disabled={detailTarget.offset === 0 || detailLoading}
-                onPress={() =>
-                  void loadDetailPage({
-                    ...detailTarget,
-                    offset: Math.max(0, detailTarget.offset - 50),
-                  })
-                }
-                style={styles.smallButton}
-              >
-                <Text style={styles.smallButtonText}>Newer 50</Text>
-              </Pressable>
-              <Text style={styles.pageText}>
-                Rows {detailTarget.offset + 1}–{detailTarget.offset + 50}
-              </Text>
-              <Pressable
-                disabled={detailLoading}
-                onPress={() =>
-                  void loadDetailPage({ ...detailTarget, offset: detailTarget.offset + 50 })
-                }
-                style={styles.smallButton}
-              >
-                <Text style={styles.smallButtonText}>Older 50</Text>
-              </Pressable>
-            </View>
-          )}
           <View style={styles.toolbar}>
             <Text style={styles.section}>Details</Text>
             <Pressable
@@ -809,6 +852,8 @@ const styles = StyleSheet.create({
   root: { paddingBottom: 70 },
   eyebrow: { color: "#b7f34a", fontSize: 11, fontWeight: "800", letterSpacing: 2 },
   titleRow: { flexDirection: "row", alignItems: "center", gap: 10, marginBottom: 18 },
+  detailHeading: { flex: 1 },
+  detailId: { color: "#858d82", fontSize: 11, fontFamily: "monospace", marginTop: 3 },
   title: { color: "#f3f5ef", fontSize: 30, fontWeight: "800", marginTop: 8 },
   backButton: {
     width: 36,

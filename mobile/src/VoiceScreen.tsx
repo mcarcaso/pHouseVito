@@ -1,13 +1,16 @@
 import { useCallback, useRef, useState } from "react";
 import { setAudioModeAsync } from "expo-audio";
-import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
 import {
-  mediaDevices,
-  RTCPeerConnection,
-  RTCSessionDescription,
-  type MediaStream,
-} from "react-native-webrtc";
+  ActivityIndicator,
+  Platform,
+  Pressable,
+  ScrollView,
+  StyleSheet,
+  Text,
+  View,
+} from "react-native";
 import { getRealtimeToken, persistVoiceEvent } from "./api";
+import { connectRealtime, type VoiceConnection } from "./realtime-webrtc";
 
 type VoiceState = "idle" | "connecting" | "listening" | "speaking" | "error";
 interface TranscriptLine {
@@ -29,9 +32,7 @@ export function VoiceScreen({ onUnauthorized }: { onUnauthorized: () => void }) 
   const [audioRoute, setAudioRoute] = useState<"speaker" | "earpiece">("speaker");
   const [error, setError] = useState<string | null>(null);
   const [transcript, setTranscript] = useState<TranscriptLine[]>([]);
-  const peerRef = useRef<RTCPeerConnection | null>(null);
-  const streamRef = useRef<MediaStream | null>(null);
-  const channelRef = useRef<ReturnType<RTCPeerConnection["createDataChannel"]> | null>(null);
+  const connectionRef = useRef<VoiceConnection | null>(null);
   const assistantDraftRef = useRef("");
   const lineIdRef = useRef(0);
   const sessionIdRef = useRef(`voice:${Date.now()}`);
@@ -40,16 +41,16 @@ export function VoiceScreen({ onUnauthorized }: { onUnauthorized: () => void }) 
     const clean = text.trim();
     if (!clean) return;
     setTranscript((current) => [...current, { id: ++lineIdRef.current, role, text: clean }]);
-    void persistVoiceEvent(sessionIdRef.current, role === "Mike" ? "user" : "assistant", clean);
+    void persistVoiceEvent(
+      sessionIdRef.current,
+      role === "Mike" ? "user" : "assistant",
+      clean,
+    ).catch(() => undefined);
   }, []);
 
   const stop = useCallback(() => {
-    channelRef.current?.close();
-    peerRef.current?.close();
-    streamRef.current?.getTracks().forEach((track) => track.stop());
-    channelRef.current = null;
-    peerRef.current = null;
-    streamRef.current = null;
+    connectionRef.current?.close();
+    connectionRef.current = null;
     assistantDraftRef.current = "";
     setMuted(false);
     setState("idle");
@@ -74,7 +75,7 @@ export function VoiceScreen({ onUnauthorized }: { onUnauthorized: () => void }) 
             sessionIdRef.current,
             "usage",
             JSON.stringify(event.response.usage),
-          );
+          ).catch(() => undefined);
         }
       }
       if (
@@ -105,41 +106,25 @@ export function VoiceScreen({ onUnauthorized }: { onUnauthorized: () => void }) 
     setTranscript([]);
     try {
       sessionIdRef.current = `voice:${Date.now()}`;
-      await setAudioModeAsync({
-        allowsRecording: true,
-        playsInSilentMode: true,
-        shouldPlayInBackground: true,
-        shouldRouteThroughEarpiece: false,
-        interruptionMode: "doNotMix",
-      });
-      setAudioRoute("speaker");
+      if (Platform.OS !== "web") {
+        await setAudioModeAsync({
+          allowsRecording: true,
+          playsInSilentMode: true,
+          shouldPlayInBackground: true,
+          shouldRouteThroughEarpiece: false,
+          interruptionMode: "doNotMix",
+        });
+        setAudioRoute("speaker");
+      }
       const token = await getRealtimeToken();
-      const stream = await mediaDevices.getUserMedia({ audio: true, video: false });
-      const peer = new RTCPeerConnection();
-      const channel = peer.createDataChannel("oai-events");
-      stream.getTracks().forEach((track) => peer.addTrack(track, stream));
-
-      streamRef.current = stream;
-      peerRef.current = peer;
-      channelRef.current = channel;
-
-      channel.onmessage = (message: unknown) => handleEvent((message as { data?: unknown }).data);
-      channel.onopen = () => setState("listening");
-      channel.onerror = () => {
-        setError("The realtime data channel failed");
-        setState("error");
-      };
-
-      const offer = await peer.createOffer();
-      await peer.setLocalDescription(offer);
-      const response = await fetch("https://api.openai.com/v1/realtime/calls", {
-        method: "POST",
-        headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/sdp" },
-        body: offer.sdp,
-      });
-      if (!response.ok) throw new Error(`Realtime connection failed (${response.status})`);
-      await peer.setRemoteDescription(
-        new RTCSessionDescription({ type: "answer", sdp: await response.text() }),
+      connectionRef.current = await connectRealtime(
+        token,
+        handleEvent,
+        () => setState("listening"),
+        () => {
+          setError("The realtime data channel failed");
+          setState("error");
+        },
       );
     } catch (cause) {
       stop();
@@ -152,9 +137,7 @@ export function VoiceScreen({ onUnauthorized }: { onUnauthorized: () => void }) 
 
   const toggleMute = () => {
     const next = !muted;
-    streamRef.current?.getAudioTracks().forEach((track) => {
-      track.enabled = !next;
-    });
+    connectionRef.current?.setMuted(next);
     setMuted(next);
   };
 
@@ -209,11 +192,13 @@ export function VoiceScreen({ onUnauthorized }: { onUnauthorized: () => void }) 
             <Pressable onPress={toggleMute} style={styles.secondaryButton}>
               <Text style={styles.secondaryText}>{muted ? "Unmute" : "Mute"}</Text>
             </Pressable>
-            <Pressable onPress={() => void toggleAudioRoute()} style={styles.secondaryButton}>
-              <Text style={styles.secondaryText}>
-                {audioRoute === "speaker" ? "Earpiece" : "Speaker"}
-              </Text>
-            </Pressable>
+            {Platform.OS !== "web" && (
+              <Pressable onPress={() => void toggleAudioRoute()} style={styles.secondaryButton}>
+                <Text style={styles.secondaryText}>
+                  {audioRoute === "speaker" ? "Earpiece" : "Speaker"}
+                </Text>
+              </Pressable>
+            )}
           </>
         )}
         <Pressable

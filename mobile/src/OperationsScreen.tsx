@@ -28,19 +28,19 @@ export type OperationArea =
   | "server"
   | "providers";
 
-export const operationAreas: Array<{ id: OperationArea; label: string }> = [
-  { id: "memory", label: "Memory" },
-  { id: "skills", label: "Skills" },
-  { id: "jobs", label: "Jobs" },
-  { id: "apps", label: "Apps" },
-  { id: "drive", label: "Drive" },
-  { id: "traces", label: "Traces" },
-  { id: "pi", label: "Pi sessions" },
-  { id: "settings", label: "Settings" },
-  { id: "secrets", label: "Secrets" },
-  { id: "system", label: "System" },
-  { id: "server", label: "Server" },
-  { id: "providers", label: "Providers" },
+export const operationAreas: Array<{ id: OperationArea; label: string; icon: string }> = [
+  { id: "memory", label: "Memory", icon: "🧠" },
+  { id: "skills", label: "Skills", icon: "🛠️" },
+  { id: "jobs", label: "Jobs", icon: "⏰" },
+  { id: "apps", label: "Apps", icon: "🚀" },
+  { id: "drive", label: "Drive", icon: "📁" },
+  { id: "traces", label: "Traces", icon: "🔍" },
+  { id: "pi", label: "Pi sessions", icon: "🧵" },
+  { id: "settings", label: "Settings", icon: "⚙️" },
+  { id: "secrets", label: "Secrets", icon: "🔑" },
+  { id: "system", label: "System", icon: "📄" },
+  { id: "server", label: "Server", icon: "🖥️" },
+  { id: "providers", label: "Providers", icon: "🤖" },
 ];
 
 const paths: Record<OperationArea, string> = {
@@ -321,7 +321,7 @@ export function OperationsScreen({
                 style={[styles.tab, area === item.id && styles.tabActive]}
               >
                 <Text style={[styles.tabText, area === item.id && styles.tabTextActive]}>
-                  {item.label}
+                  {item.icon} {item.label}
                 </Text>
               </Pressable>
             ))}

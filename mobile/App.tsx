@@ -20,9 +20,9 @@ import {
 type Screen = "chat" | "voice" | "more";
 
 const navigation: Array<{ id: Screen; label: string; icon: string }> = [
-  { id: "chat", label: "Chat", icon: "●" },
-  { id: "voice", label: "Voice", icon: "◉" },
-  { id: "more", label: "More", icon: "•••" },
+  { id: "chat", label: "Chat", icon: "💬" },
+  { id: "voice", label: "Voice", icon: "🎙️" },
+  { id: "more", label: "More", icon: "🧰" },
 ];
 
 export default function App() {
@@ -190,7 +190,10 @@ function MoreMenu({
       <View style={styles.moreGrid}>
         {operationAreas.map((item) => (
           <Pressable key={item.id} onPress={() => onSelect(item.id)} style={styles.moreCard}>
-            <Text style={styles.moreCardTitle}>{item.label}</Text>
+            <View style={styles.moreCardLabel}>
+              <Text style={styles.moreCardIcon}>{item.icon}</Text>
+              <Text style={styles.moreCardTitle}>{item.label}</Text>
+            </View>
             <Text style={styles.moreArrow}>›</Text>
           </Pressable>
         ))}
@@ -270,7 +273,7 @@ const styles = StyleSheet.create({
     borderRadius: 11,
   },
   navItemActive: { backgroundColor: "#1a2117" },
-  navIcon: { color: "#767d76", fontSize: 17, width: 22, textAlign: "center", fontWeight: "700" },
+  navIcon: { color: "#767d76", fontSize: 20, width: 28, textAlign: "center", fontWeight: "700" },
   navLabel: { color: "#949b94", fontWeight: "600", fontSize: 14 },
   activeText: { color: "#c5fb64" },
   sidebarFooter: { color: "#485048", fontSize: 9, letterSpacing: 1.2 },
@@ -389,6 +392,8 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "space-between",
   },
+  moreCardLabel: { flex: 1, gap: 8 },
+  moreCardIcon: { fontSize: 24 },
   moreCardTitle: { color: "#f3f5ef", fontWeight: "800", fontSize: 15 },
   moreArrow: { color: "#b7f34a", fontSize: 26 },
   logoutButton: { marginTop: 20, alignItems: "center", padding: 14 },

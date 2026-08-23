@@ -224,11 +224,11 @@ function Home({ health, checkHealth }: { health: HealthState; checkHealth: () =>
       </View>
 
       <View style={styles.smallCard}>
-        <Text style={styles.smallCardNumber}>01</Text>
+        <Text style={styles.smallCardNumber}>✓</Text>
         <View style={styles.smallCardBody}>
-          <Text style={styles.smallCardTitle}>Next: native chat</Text>
+          <Text style={styles.smallCardTitle}>Native update verified</Text>
           <Text style={styles.smallCardText}>
-            Sessions, messages, streaming responses, then voice capture.
+            Delivered remotely through EAS Update · August 23
           </Text>
         </View>
       </View>

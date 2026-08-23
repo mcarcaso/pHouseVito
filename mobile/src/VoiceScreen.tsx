@@ -46,6 +46,13 @@ interface TranscriptLine {
   role: "Mike" | "Vito";
   text: string;
 }
+interface VisibleTask {
+  id: string;
+  question: string;
+  status: "queued" | "running" | "completed" | "failed" | "cancelled" | "timed_out";
+  result: string | null;
+}
+
 interface RealtimeEvent {
   type?: string;
   transcript?: string;
@@ -72,6 +79,7 @@ export function VoiceScreen({ onUnauthorized }: { onUnauthorized: () => void }) 
   const [transcript, setTranscript] = useState<TranscriptLine[]>([]);
   const [history, setHistory] = useState<VoiceSession[]>([]);
   const [sessionSummary, setSessionSummary] = useState<string | null>(null);
+  const [tasks, setTasks] = useState<VisibleTask[]>([]);
   const connectionRef = useRef<VoiceConnection | null>(null);
   const assistantDraftRef = useRef("");
   const lineIdRef = useRef(0);
@@ -174,24 +182,36 @@ export function VoiceScreen({ onUnauthorized }: { onUnauthorized: () => void }) 
     });
   }, []);
 
-  const waitForTask = useCallback(
-    async (id: string, callId: string) => {
-      for (let attempt = 0; attempt < 300; attempt += 1) {
-        await new Promise((resolve) => setTimeout(resolve, 2_000));
-        const task = await getVoiceTask(id);
-        if (!task || task.status === "queued" || task.status === "running") continue;
-        sendToolResult(callId, {
-          taskId: id,
-          status: task.status,
-          result: task.result,
-          error: task.error,
-        });
-        return;
-      }
-      sendToolResult(callId, { taskId: id, status: "timed_out" });
-    },
-    [sendToolResult],
-  );
+  const waitForTask = useCallback(async (id: string) => {
+    for (let attempt = 0; attempt < 300; attempt += 1) {
+      await new Promise((resolve) => setTimeout(resolve, 2_000));
+      const task = await getVoiceTask(id);
+      if (!task) continue;
+      setTasks((current) =>
+        current.map((item) =>
+          item.id === id ? { ...item, status: task.status, result: task.result } : item,
+        ),
+      );
+      if (task.status === "queued" || task.status === "running") continue;
+      connectionRef.current?.sendEvent({
+        type: "conversation.item.create",
+        item: {
+          type: "message",
+          role: "system",
+          content: [
+            {
+              type: "input_text",
+              text: `Background Vito task ${id} is now ${task.status}. Result: ${task.result ?? task.error ?? "No result"}. Do not speak about this until Mike asks about the task or its result.`,
+            },
+          ],
+        },
+      });
+      return;
+    }
+    setTasks((current) =>
+      current.map((item) => (item.id === id ? { ...item, status: "timed_out" } : item)),
+    );
+  }, []);
 
   const executeTool = useCallback(
     async (name: string, callId: string, rawArguments?: string) => {
@@ -210,10 +230,19 @@ export function VoiceScreen({ onUnauthorized }: { onUnauthorized: () => void }) 
             endDate: typeof args.endDate === "string" ? args.endDate : undefined,
             limit: typeof args.limit === "number" ? args.limit : undefined,
           });
-        } else if (name === "investigate_with_vito") {
-          const task = await startVoiceTask(sessionIdRef.current, String(args.question ?? ""));
-          void waitForTask(task.id, callId);
-          return;
+        } else if (name === "ask_vito_async") {
+          const question = String(args.question ?? "");
+          const task = await startVoiceTask(sessionIdRef.current, question);
+          setTasks((current) => [
+            ...current,
+            { id: task.id, question, status: task.status, result: task.result },
+          ]);
+          void waitForTask(task.id);
+          result = {
+            taskId: task.id,
+            status: task.status,
+            message: "Vito is investigating in the background. Conversation can continue.",
+          };
         } else if (name === "get_task") result = await getVoiceTask(String(args.id ?? ""));
         else if (name === "cancel_task") result = await cancelVoiceTask(String(args.id ?? ""));
         else throw new Error(`Unknown tool: ${name}`);
@@ -296,6 +325,7 @@ export function VoiceScreen({ onUnauthorized }: { onUnauthorized: () => void }) 
     setState("connecting");
     setError(null);
     setTranscript([]);
+    setTasks([]);
     setSessionSummary(null);
     try {
       sessionIdRef.current = `voice:${Date.now()}`;
@@ -428,6 +458,39 @@ export function VoiceScreen({ onUnauthorized }: { onUnauthorized: () => void }) 
                 : "Connection failed"}
       </Text>
       {error && <Text style={styles.error}>{error}</Text>}
+
+      {tasks.length > 0 && (
+        <View style={styles.taskStack}>
+          {tasks.map((task) => (
+            <View key={task.id} style={styles.taskCard}>
+              <View style={styles.taskHeader}>
+                <Text style={styles.taskIcon}>
+                  {task.status === "completed"
+                    ? "✅"
+                    : task.status === "failed" ||
+                        task.status === "cancelled" ||
+                        task.status === "timed_out"
+                      ? "⚠️"
+                      : "⏳"}
+                </Text>
+                <Text style={styles.taskStatus}>
+                  {task.status === "completed"
+                    ? "Vito investigation complete"
+                    : task.status === "running"
+                      ? "Vito is investigating"
+                      : task.status.replace("_", " ")}
+                </Text>
+              </View>
+              <Text style={styles.taskQuestion} numberOfLines={2}>
+                {task.question}
+              </Text>
+              {task.status === "completed" && (
+                <Text style={styles.taskHint}>Say “Tell me the task result.”</Text>
+              )}
+            </View>
+          ))}
+        </View>
+      )}
 
       <View style={styles.controls}>
         {active && (
@@ -562,6 +625,19 @@ const styles = StyleSheet.create({
     marginTop: 10,
     maxWidth: 340,
   },
+  taskStack: { width: "100%", gap: 8, marginTop: 14 },
+  taskCard: {
+    backgroundColor: "#151914",
+    borderWidth: 1,
+    borderColor: "#30362d",
+    borderRadius: 13,
+    padding: 12,
+  },
+  taskHeader: { flexDirection: "row", alignItems: "center", gap: 8 },
+  taskIcon: { fontSize: 14 },
+  taskStatus: { color: "#e9ede6", fontSize: 12, fontWeight: "800" },
+  taskQuestion: { color: "#858d82", fontSize: 11, marginTop: 6 },
+  taskHint: { color: "#b7f34a", fontSize: 11, fontWeight: "700", marginTop: 7 },
   controls: {
     flexDirection: "row",
     flexWrap: "wrap",

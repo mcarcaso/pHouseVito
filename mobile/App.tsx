@@ -40,8 +40,13 @@ export default function App() {
   const checkHealth = useCallback(async () => {
     setHealth({ kind: "loading" });
     try {
-      const response = await fetch(`${VITO_URL}/api/health`);
-      if (!response.ok) throw new Error(`HTTP ${response.status}`);
+      const response = await fetch(
+        `${VITO_URL}/api/health`,
+        Platform.OS === "web" ? { mode: "no-cors" } : undefined,
+      );
+      // Browser development runs on Metro's port and receives an opaque
+      // no-CORS response from Vito. A resolved request still confirms reachability.
+      if (response.type !== "opaque" && !response.ok) throw new Error(`HTTP ${response.status}`);
       setHealth({ kind: "online", checkedAt: new Date() });
     } catch (error) {
       setHealth({

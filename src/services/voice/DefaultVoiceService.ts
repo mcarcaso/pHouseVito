@@ -158,8 +158,11 @@ export class DefaultVoiceService implements VoiceService {
   }
 
   getContext(x: Context) {
+    const profile = xMemoryService(x).getProfile(x);
     return {
-      profile: xMemoryService(x).getProfile(x),
+      // Realtime data channels and conversational context both benefit from a
+      // small curated payload. Full-profile retrieval belongs behind search.
+      profile: profile?.slice(0, 8_000) ?? null,
       recentVoiceSessions: this.listSessions(x, 5),
     };
   }

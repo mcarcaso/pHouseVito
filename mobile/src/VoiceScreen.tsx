@@ -38,6 +38,12 @@ interface RealtimeEvent {
   name?: string;
   call_id?: string;
   arguments?: string;
+  item?: {
+    type?: string;
+    name?: string;
+    call_id?: string;
+    arguments?: string;
+  };
 }
 
 export function VoiceScreen({ onUnauthorized }: { onUnauthorized: () => void }) {
@@ -52,6 +58,7 @@ export function VoiceScreen({ onUnauthorized }: { onUnauthorized: () => void }) 
   const assistantDraftRef = useRef("");
   const lineIdRef = useRef(0);
   const sessionIdRef = useRef(`voice:${Date.now()}`);
+  const handledToolCallsRef = useRef(new Set<string>());
 
   const loadHistory = useCallback(async () => {
     try {
@@ -161,6 +168,8 @@ export function VoiceScreen({ onUnauthorized }: { onUnauthorized: () => void }) 
 
   const executeTool = useCallback(
     async (name: string, callId: string, rawArguments?: string) => {
+      if (handledToolCallsRef.current.has(callId)) return;
+      handledToolCallsRef.current.add(callId);
       let args: Record<string, unknown> = {};
       try {
         args = rawArguments ? (JSON.parse(rawArguments) as Record<string, unknown>) : {};
@@ -180,12 +189,17 @@ export function VoiceScreen({ onUnauthorized }: { onUnauthorized: () => void }) 
         else throw new Error(`Unknown tool: ${name}`);
         sendToolResult(callId, result);
       } catch (cause) {
-        sendToolResult(callId, {
-          error: cause instanceof Error ? cause.message : "Voice tool failed",
-        });
+        const message = cause instanceof Error ? cause.message : "Voice tool failed";
+        addLine("Vito", `Tool ${name} failed: ${message}`);
+        void persistVoiceEvent(
+          sessionIdRef.current,
+          "usage",
+          JSON.stringify({ tool_error: { name, message } }),
+        ).catch(() => undefined);
+        sendToolResult(callId, { error: message });
       }
     },
-    [sendToolResult, waitForTask],
+    [addLine, sendToolResult, waitForTask],
   );
 
   const handleEvent = useCallback(
@@ -226,6 +240,14 @@ export function VoiceScreen({ onUnauthorized }: { onUnauthorized: () => void }) 
       if (event.type === "response.function_call_arguments.done" && event.name && event.call_id) {
         void executeTool(event.name, event.call_id, event.arguments);
       }
+      if (
+        event.type === "response.output_item.done" &&
+        event.item?.type === "function_call" &&
+        event.item.name &&
+        event.item.call_id
+      ) {
+        void executeTool(event.item.name, event.item.call_id, event.item.arguments);
+      }
       if (event.type === "error") {
         setError(event.error?.message ?? "OpenAI Realtime reported an error");
         setState("error");
@@ -242,6 +264,7 @@ export function VoiceScreen({ onUnauthorized }: { onUnauthorized: () => void }) 
     setSessionSummary(null);
     try {
       sessionIdRef.current = `voice:${Date.now()}`;
+      handledToolCallsRef.current.clear();
       if (Platform.OS !== "web") {
         await setAudioModeAsync({
           allowsRecording: true,

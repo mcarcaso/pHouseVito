@@ -187,6 +187,11 @@ export function VoiceScreen({ onUnauthorized }: { onUnauthorized: () => void }) 
         } else if (name === "get_task") result = await getVoiceTask(String(args.id ?? ""));
         else if (name === "cancel_task") result = await cancelVoiceTask(String(args.id ?? ""));
         else throw new Error(`Unknown tool: ${name}`);
+        void persistVoiceEvent(
+          sessionIdRef.current,
+          "usage",
+          JSON.stringify({ tool_success: { name } }),
+        ).catch(() => undefined);
         sendToolResult(callId, result);
       } catch (cause) {
         const message = cause instanceof Error ? cause.message : "Voice tool failed";

@@ -18,6 +18,7 @@ export class DefaultVoiceService implements VoiceService {
   async createRealtimeSecret(x: Context): Promise<unknown> {
     const apiKey = xSecretService(x).get(x, "OPENAI_API_KEY");
     if (!apiKey) throw new Error("OpenAI API key is not configured");
+    const today = new Date().toLocaleDateString("en-CA");
     const response = await fetch("https://api.openai.com/v1/realtime/client_secrets", {
       method: "POST",
       headers: {
@@ -29,8 +30,7 @@ export class DefaultVoiceService implements VoiceService {
         session: {
           type: "realtime",
           model: "gpt-realtime-2.1-mini",
-          instructions:
-            "You are Vito, Mike Carcasole's concise personal voice assistant. Speak naturally, warmly, and directly. Keep answers brief unless Mike asks for detail. Use the available Vito tools when personal context, memory, or durable reasoning is needed. Never claim a tool result before receiving it.",
+          instructions: `You are Vito, Mike Carcasole's concise personal voice assistant. Today is ${today}. Speak naturally, warmly, and directly. Keep answers brief unless Mike asks for detail. Use the available Vito tools when personal context, memory, or durable reasoning is needed. For references such as yesterday, last time, or earlier, search memory and include the explicit date plus all clarified nouns in the query. If Mike corrects or narrows the subject, search again rather than relying on the previous result. Never infer a personal fact from an unrelated result, and never claim a tool result before receiving it.`,
           tools: [
             {
               type: "function",
@@ -41,7 +41,8 @@ export class DefaultVoiceService implements VoiceService {
             {
               type: "function",
               name: "search_memory",
-              description: "Search Vito's durable conversation memory.",
+              description:
+                "Search Vito's durable conversation memory. Include explicit dates and clarified subject terms for time-relative questions.",
               parameters: {
                 type: "object",
                 properties: {
@@ -162,6 +163,7 @@ export class DefaultVoiceService implements VoiceService {
     return {
       // Realtime data channels and conversational context both benefit from a
       // small curated payload. Full-profile retrieval belongs behind search.
+      currentDate: new Date().toLocaleDateString("en-CA"),
       profile: profile?.slice(0, 8_000) ?? null,
       recentVoiceSessions: this.listSessions(x, 5),
     };
@@ -172,10 +174,22 @@ export class DefaultVoiceService implements VoiceService {
     query: string,
     mode: "hybrid" | "semantic" | "exact",
   ): Promise<SearchResult[]> {
-    return await xMemoryService(x).search(x, query, {
-      limit: 5,
+    const results = await xMemoryService(x).search(x, query, {
+      limit: 12,
       mode: mode === "semantic" ? "embedding" : mode === "exact" ? "bm25" : "hybrid",
     });
+    const lowered = query.toLowerCase();
+    const targetDay = lowered.includes("yesterday")
+      ? new Date(Date.now() - 86_400_000).toLocaleDateString("en-CA")
+      : lowered.includes("today")
+        ? new Date().toLocaleDateString("en-CA")
+        : null;
+    const dated = targetDay ? results.filter((result) => result.day === targetDay) : results;
+    return (dated.length > 0 ? dated : results).slice(0, 5).map((result) => ({
+      ...result,
+      text: result.text.slice(0, 1_600),
+      context: result.context?.slice(0, 500) ?? null,
+    }));
   }
 
   askAsync(x: Context, voiceSessionId: string, question: string): VoiceTaskRow {

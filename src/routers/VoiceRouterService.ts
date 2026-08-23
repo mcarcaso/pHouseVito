@@ -61,7 +61,7 @@ export class VoiceRouterService implements RouterService {
       method: "GET",
       path: "/sessions",
       auth: "dashboard",
-      schemas: { params: emptyRouteSchema, query: emptyRouteSchema, body: emptyRouteSchema },
+      schemas: { params: emptyRouteSchema, query: emptyRouteSchema, body: unknownRouteSchema },
       responseSchema: unknownRouteSchema,
       handler: (routeX) => xVoiceService(routeX).listSessions(routeX),
     });
@@ -74,7 +74,7 @@ export class VoiceRouterService implements RouterService {
       schemas: {
         params: z.object({ sessionId: sessionIdSchema }),
         query: emptyRouteSchema,
-        body: emptyRouteSchema,
+        body: unknownRouteSchema,
       },
       responseSchema: unknownRouteSchema,
       handler: (routeX, { data: { params } }) =>
@@ -86,7 +86,7 @@ export class VoiceRouterService implements RouterService {
       method: "GET",
       path: "/context",
       auth: "dashboard",
-      schemas: { params: emptyRouteSchema, query: emptyRouteSchema, body: emptyRouteSchema },
+      schemas: { params: emptyRouteSchema, query: emptyRouteSchema, body: unknownRouteSchema },
       responseSchema: unknownRouteSchema,
       handler: (routeX) => xVoiceService(routeX).getContext(routeX),
     });
@@ -132,7 +132,7 @@ export class VoiceRouterService implements RouterService {
       schemas: {
         params: z.object({ id: z.string().uuid() }),
         query: emptyRouteSchema,
-        body: emptyRouteSchema,
+        body: unknownRouteSchema,
       },
       responseSchema: taskSchema.nullable(),
       handler: (routeX, { data: { params } }) => xVoiceService(routeX).getTask(routeX, params.id),

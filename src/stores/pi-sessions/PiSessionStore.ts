@@ -24,6 +24,9 @@ export interface PiSessionFilter {
 
 export interface PiSessionListArgs extends PiSessionFilter {
   includeLines?: boolean;
+  lineOffset?: number;
+  lineLimit?: number;
+  lineOrder?: "oldest" | "newest";
   order?: "recent" | "oldest";
   limit?: number;
   offset?: number;

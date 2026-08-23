@@ -20,6 +20,7 @@ export interface TraceEventFilter {
 
 export interface TraceEventListArgs extends TraceEventFilter {
   limit?: number;
+  offset?: number;
   order?: "oldest" | "newest";
 }
 

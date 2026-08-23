@@ -69,7 +69,10 @@ export class FileTraceEventStore implements TraceEventStore {
       const difference = (left.sequence ?? 0) - (right.sequence ?? 0);
       return args.order === "newest" ? -difference : difference;
     });
-    return args.limit === undefined ? filtered : filtered.slice(0, args.limit);
+    const offset = Math.max(0, args.offset ?? 0);
+    return args.limit === undefined
+      ? filtered.slice(offset)
+      : filtered.slice(offset, offset + args.limit);
   }
 
   count(x: Context, args: TraceEventFilter): number {

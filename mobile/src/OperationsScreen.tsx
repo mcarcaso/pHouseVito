@@ -92,7 +92,13 @@ export function OperationsScreen({
   const [area, setArea] = useState<OperationArea>(initialArea);
   const [data, setData] = useState<unknown>();
   const [selected, setSelected] = useState<unknown>();
+  const [detailTarget, setDetailTarget] = useState<{
+    area: "traces" | "pi";
+    id: string;
+    offset: number;
+  } | null>(null);
   const [loading, setLoading] = useState(false);
+  const [detailLoading, setDetailLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [query, setQuery] = useState("");
   const [editor, setEditor] = useState("");
@@ -176,9 +182,35 @@ export function OperationsScreen({
     return labelFor(row, index);
   };
 
+  const loadDetailPage = async (target: { area: "traces" | "pi"; id: string; offset: number }) => {
+    setDetailLoading(true);
+    setError(null);
+    try {
+      const encoded =
+        target.area === "traces"
+          ? encodeURIComponent(target.id)
+          : target.id.split("/").map(encodeURIComponent).join("/");
+      setSelected(
+        await api(
+          `/api/${target.area === "traces" ? "logs" : "pi-sessions"}/${encoded}?offset=${target.offset}&limit=50&order=newest`,
+        ),
+      );
+      setDetailTarget(target);
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : "Could not load details");
+    } finally {
+      setDetailLoading(false);
+    }
+  };
+
   const openRow = async (row: unknown, index: number) => {
     const name = rowIdentifier(row, index);
     setError(null);
+    if (area === "traces" || area === "pi") {
+      await loadDetailPage({ area, id: name, offset: 0 });
+      return;
+    }
+    setDetailLoading(true);
     try {
       if (area === "skills")
         setSelected(await api(`/api/skills/${encodeURIComponent(name)}/files`));
@@ -190,14 +222,11 @@ export function OperationsScreen({
         );
       else if (area === "apps")
         setSelected(await api(`/api/apps/${encodeURIComponent(name)}/files`));
-      else if (area === "traces") setSelected(await api(`/api/logs/${encodeURIComponent(name)}`));
-      else if (area === "pi")
-        setSelected(
-          await api(`/api/pi-sessions/${name.split("/").map(encodeURIComponent).join("/")}`),
-        );
       else setSelected(row);
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : "Could not load details");
+    } finally {
+      setDetailLoading(false);
     }
   };
 
@@ -503,7 +532,14 @@ export function OperationsScreen({
       )}
 
       {error && <Text style={styles.error}>{error}</Text>}
-      {loading && <ActivityIndicator color="#b7f34a" style={styles.loader} />}
+      {(loading || detailLoading) && (
+        <View style={styles.loadingRow}>
+          <ActivityIndicator color="#b7f34a" />
+          <Text style={styles.loadingText}>
+            {detailLoading ? "Loading selected rows…" : "Loading…"}
+          </Text>
+        </View>
+      )}
 
       {!loading && area === "server" && (
         <View style={styles.actionRow}>
@@ -721,9 +757,42 @@ export function OperationsScreen({
 
       {selected !== undefined && (
         <View style={styles.detail}>
+          {detailTarget && (
+            <View style={styles.pageControls}>
+              <Pressable
+                disabled={detailTarget.offset === 0 || detailLoading}
+                onPress={() =>
+                  void loadDetailPage({
+                    ...detailTarget,
+                    offset: Math.max(0, detailTarget.offset - 50),
+                  })
+                }
+                style={styles.smallButton}
+              >
+                <Text style={styles.smallButtonText}>Newer 50</Text>
+              </Pressable>
+              <Text style={styles.pageText}>
+                Rows {detailTarget.offset + 1}–{detailTarget.offset + 50}
+              </Text>
+              <Pressable
+                disabled={detailLoading}
+                onPress={() =>
+                  void loadDetailPage({ ...detailTarget, offset: detailTarget.offset + 50 })
+                }
+                style={styles.smallButton}
+              >
+                <Text style={styles.smallButtonText}>Older 50</Text>
+              </Pressable>
+            </View>
+          )}
           <View style={styles.toolbar}>
             <Text style={styles.section}>Details</Text>
-            <Pressable onPress={() => setSelected(undefined)}>
+            <Pressable
+              onPress={() => {
+                setSelected(undefined);
+                setDetailTarget(null);
+              }}
+            >
               <Text style={styles.link}>close</Text>
             </Pressable>
           </View>
@@ -809,6 +878,16 @@ const styles = StyleSheet.create({
   dangerText: { color: "#ff9e9e", fontWeight: "800" },
   actionRow: { marginBottom: 14 },
   loader: { margin: 24 },
+  loadingRow: { flexDirection: "row", alignItems: "center", gap: 10, paddingVertical: 18 },
+  loadingText: { color: "#aab0a7", fontWeight: "700" },
+  pageControls: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: 8,
+    marginBottom: 14,
+  },
+  pageText: { color: "#858d82", fontSize: 11 },
   error: { color: "#ff9e9e", marginVertical: 10 },
   list: { gap: 9 },
   card: {

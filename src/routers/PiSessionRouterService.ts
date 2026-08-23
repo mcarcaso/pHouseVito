@@ -7,6 +7,14 @@ import { piSessionRecordIdSchema } from "../shared/schemas/pi-session.js";
 import { xPiSessionStore, xSessionStore } from "../lib/x.js";
 import { emptyRouteSchema, unknownRouteSchema, registerRoute } from "./register-route.js";
 import { jsonResponseSchema } from "../shared/schemas/json.js";
+const detailQuerySchema = z
+  .object({
+    offset: z.coerce.number().int().nonnegative().default(0),
+    limit: z.coerce.number().int().positive().max(200).default(50),
+    order: z.enum(["oldest", "newest"]).default("newest"),
+  })
+  .strict();
+
 const wildcardPathSchema = z
   .object({
     rel: z
@@ -65,14 +73,17 @@ export class PiSessionRouterService implements RouterService {
       auth: "dashboard",
       schemas: {
         params: wildcardPathSchema,
-        query: emptyRouteSchema,
+        query: detailQuerySchema,
         body: unknownRouteSchema,
       },
       responseSchema: jsonResponseSchema,
-      handler: (routeX, { data: { params }, req: _req, res }) => {
+      handler: (routeX, { data: { params, query }, req: _req, res }) => {
         const session = xPiSessionStore(routeX).list(routeX, {
           ids: [params.rel],
           includeLines: true,
+          lineOffset: query.offset,
+          lineLimit: query.limit,
+          lineOrder: query.order,
           limit: 1,
         })[0];
         if (!session) {
@@ -82,6 +93,9 @@ export class PiSessionRouterService implements RouterService {
         return {
           rel: session.id,
           format: "jsonl",
+          offset: query.offset,
+          limit: query.limit,
+          order: query.order,
           lines: session.lines ?? [],
         };
       },

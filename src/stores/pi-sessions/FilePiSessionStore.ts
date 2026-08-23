@@ -3,7 +3,6 @@ import {
   existsSync,
   lstatSync,
   openSync,
-  readFileSync,
   readSync,
   readdirSync,
   unlinkSync,
@@ -91,6 +90,57 @@ function parseLines(content: string): PiSessionLine[] {
     });
 }
 
+function readLineWindow(
+  path: string,
+  offset: number,
+  limit: number,
+  order: "oldest" | "newest",
+): PiSessionLine[] {
+  if (limit <= 0) return [];
+  const descriptor = openSync(path, "r");
+  const retained: string[] = [];
+  const retainCount = offset + limit;
+  let pending = "";
+  let lineIndex = 0;
+  let position = 0;
+  try {
+    const buffer = Buffer.alloc(64 * 1024);
+    while (true) {
+      const bytesRead = readSync(descriptor, buffer, 0, buffer.length, position);
+      if (bytesRead === 0) break;
+      position += bytesRead;
+      const parts = (pending + buffer.subarray(0, bytesRead).toString("utf-8")).split("\n");
+      pending = parts.pop() ?? "";
+      for (const line of parts) {
+        if (!line.trim()) continue;
+        if (order === "oldest") {
+          if (lineIndex >= offset && retained.length < limit) retained.push(line);
+          lineIndex++;
+          if (retained.length === limit) return parseLines(retained.join("\n"));
+        } else {
+          retained.push(line);
+          if (retained.length > retainCount) retained.shift();
+        }
+      }
+    }
+    if (pending.trim()) {
+      if (order === "oldest") {
+        if (lineIndex >= offset && retained.length < limit) retained.push(pending);
+      } else {
+        retained.push(pending);
+        if (retained.length > retainCount) retained.shift();
+      }
+    }
+    const selected =
+      order === "newest"
+        ? retained.slice(0, Math.max(0, retained.length - offset)).slice(-limit)
+        : retained;
+    return parseLines(selected.join("\n"));
+  } finally {
+    closeSync(descriptor);
+  }
+}
+
 function readSummaryLines(file: SessionFile): { lines: PiSessionLine[]; complete: boolean } {
   if (file.size <= SUMMARY_TAIL_BYTES) {
     return { lines: parseLines(readRange(file.path, 0, file.size)), complete: true };
@@ -105,16 +155,22 @@ function readSummaryLines(file: SessionFile): { lines: PiSessionLine[]; complete
   return { lines: parseLines([firstLine, ...tailParts].join("\n")), complete: false };
 }
 
-function buildSession(file: SessionFile, includeLines: boolean): PiSession {
+function buildSession(file: SessionFile, args: PiSessionListArgs): PiSession {
+  const includeLines = args.includeLines ?? false;
   let lines: PiSessionLine[] = [];
-  let complete = includeLines;
+  let selectedLines: PiSessionLine[] = [];
+  let complete = false;
   try {
+    const summary = readSummaryLines(file);
+    lines = summary.lines;
+    complete = summary.complete;
     if (includeLines) {
-      lines = parseLines(readFileSync(file.path, "utf-8"));
-    } else {
-      const summary = readSummaryLines(file);
-      lines = summary.lines;
-      complete = summary.complete;
+      selectedLines = readLineWindow(
+        file.path,
+        Math.max(0, args.lineOffset ?? 0),
+        Math.max(0, args.lineLimit ?? 100),
+        args.lineOrder ?? "newest",
+      );
     }
   } catch {
     // Preserve discoverable file metadata even if a file becomes unreadable.
@@ -167,7 +223,7 @@ function buildSession(file: SessionFile, includeLines: boolean): PiSession {
     messageCount: complete ? messageCount : null,
     lastModel,
     lastUserMessage,
-    ...(includeLines ? { lines } : {}),
+    ...(includeLines ? { lines: selectedLines } : {}),
   };
 }
 
@@ -223,7 +279,7 @@ export class FilePiSessionStore implements PiSessionStore {
           : a.updatedAt - b.updatedAt || a.id.localeCompare(b.id),
       )
       .slice(offset, offset + limit)
-      .map((file) => buildSession(file, args.includeLines ?? false));
+      .map((file) => buildSession(file, args));
   }
 
   count(x: Context, args: PiSessionFilter): number {

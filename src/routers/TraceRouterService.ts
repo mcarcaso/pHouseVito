@@ -13,6 +13,15 @@ const listQuerySchema = z
   })
   .strict();
 
+const detailQuerySchema = z
+  .object({
+    limit: z.coerce.number().int().positive().max(200).default(50),
+    offset: z.coerce.number().int().nonnegative().default(0),
+    afterSequence: z.coerce.number().int().nonnegative().optional(),
+    order: z.enum(["oldest", "newest"]).default("newest"),
+  })
+  .strict();
+
 const traceParamsSchema = z
   .object({
     id: z.string().min(1),
@@ -74,11 +83,11 @@ export class TraceRouterService implements RouterService {
       auth: "dashboard",
       schemas: {
         params: traceParamsSchema,
-        query: emptyRouteSchema,
+        query: detailQuerySchema,
         body: unknownRouteSchema,
       },
       responseSchema: jsonResponseSchema,
-      handler: (routeX, { data: { params }, req: _req, res }) => {
+      handler: (routeX, { data: { params, query }, req: _req, res }) => {
         const trace = xTraceStore(routeX).list(routeX, {
           ids: [params.id],
           limit: 1,
@@ -88,13 +97,24 @@ export class TraceRouterService implements RouterService {
           return;
         }
 
-        const events = xTraceEventStore(routeX).list(routeX, {
+        const eventStore = xTraceEventStore(routeX);
+        const filter = {
           traceIds: [trace.id],
-          order: "oldest",
+          ...(query.afterSequence === undefined ? {} : { afterSequence: query.afterSequence }),
+        };
+        const events = eventStore.list(routeX, {
+          ...filter,
+          limit: query.limit,
+          offset: query.offset,
+          order: query.order,
         });
         return {
           filename: trace.id,
           format: "jsonl",
+          totalCount: eventStore.count(routeX, filter),
+          limit: query.limit,
+          offset: query.offset,
+          order: query.order,
           lines: [
             {
               type: "header",

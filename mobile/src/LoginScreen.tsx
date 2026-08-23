@@ -1,5 +1,15 @@
 import { useState } from "react";
-import { ActivityIndicator, Pressable, StyleSheet, Text, TextInput, View } from "react-native";
+import {
+  ActivityIndicator,
+  KeyboardAvoidingView,
+  Platform,
+  Pressable,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TextInput,
+  View,
+} from "react-native";
 import { login } from "./api";
 
 export function LoginScreen({ onSuccess }: { onSuccess: () => void }) {
@@ -22,51 +32,64 @@ export function LoginScreen({ onSuccess }: { onSuccess: () => void }) {
   };
 
   return (
-    <View style={styles.page}>
-      <View style={styles.mark}>
-        <Text style={styles.markText}>V</Text>
-      </View>
-      <Text style={styles.eyebrow}>PRIVATE ACCESS</Text>
-      <Text style={styles.title}>Welcome back,{"\n"}boss.</Text>
-      <Text style={styles.body}>Use your existing Vito dashboard password.</Text>
-      <TextInput
-        autoCapitalize="none"
-        autoCorrect={false}
-        secureTextEntry
-        placeholder="Dashboard password"
-        placeholderTextColor="#596159"
-        value={password}
-        onChangeText={setPassword}
-        onSubmitEditing={() => void submit()}
-        style={styles.input}
-      />
-      {error && <Text style={styles.error}>{error}</Text>}
-      <Pressable
-        disabled={!password || busy}
-        onPress={() => void submit()}
-        style={({ pressed }) => [
-          styles.button,
-          (!password || busy) && styles.disabled,
-          pressed && styles.pressed,
-        ]}
+    <KeyboardAvoidingView
+      style={styles.keyboardView}
+      behavior={Platform.OS === "ios" ? "padding" : "height"}
+    >
+      <ScrollView
+        contentContainerStyle={styles.scrollContent}
+        keyboardShouldPersistTaps="handled"
+        keyboardDismissMode="interactive"
+        showsVerticalScrollIndicator={false}
       >
-        {busy ? (
-          <ActivityIndicator color="#11150d" />
-        ) : (
-          <Text style={styles.buttonText}>Sign in</Text>
-        )}
-      </Pressable>
-    </View>
+        <View style={styles.page}>
+          <View style={styles.mark}>
+            <Text style={styles.markText}>V</Text>
+          </View>
+          <Text style={styles.eyebrow}>PRIVATE ACCESS</Text>
+          <Text style={styles.title}>Welcome back,{"\n"}boss.</Text>
+          <Text style={styles.body}>Use your existing Vito dashboard password.</Text>
+          <TextInput
+            autoCapitalize="none"
+            autoCorrect={false}
+            secureTextEntry
+            returnKeyType="go"
+            placeholder="Dashboard password"
+            placeholderTextColor="#596159"
+            value={password}
+            onChangeText={setPassword}
+            onSubmitEditing={() => void submit()}
+            style={styles.input}
+          />
+          {error && <Text style={styles.error}>{error}</Text>}
+          <Pressable
+            disabled={!password || busy}
+            onPress={() => void submit()}
+            style={({ pressed }) => [
+              styles.button,
+              (!password || busy) && styles.disabled,
+              pressed && styles.pressed,
+            ]}
+          >
+            {busy ? (
+              <ActivityIndicator color="#11150d" />
+            ) : (
+              <Text style={styles.buttonText}>Sign in</Text>
+            )}
+          </Pressable>
+        </View>
+      </ScrollView>
+    </KeyboardAvoidingView>
   );
 }
 
 const styles = StyleSheet.create({
+  keyboardView: { flex: 1 },
+  scrollContent: { flexGrow: 1, justifyContent: "center" },
   page: {
-    flex: 1,
     width: "100%",
     maxWidth: 460,
     alignSelf: "center",
-    justifyContent: "center",
     padding: 26,
   },
   mark: {

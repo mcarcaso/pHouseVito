@@ -1,8 +1,15 @@
 import { Platform } from "react-native";
 import * as SecureStore from "expo-secure-store";
 
+const privateWebOrigin =
+  Platform.OS === "web" && globalThis.location?.hostname.endsWith(".ts.net")
+    ? globalThis.location.origin
+    : undefined;
+
 export const VITO_URL = (
-  process.env.EXPO_PUBLIC_VITO_URL ?? "https://theworstproductions.com"
+  process.env.EXPO_PUBLIC_VITO_URL ??
+  privateWebOrigin ??
+  "https://theworstproductions.com"
 ).replace(/\/$/, "");
 
 const TOKEN_KEY = "vito-dashboard-token";

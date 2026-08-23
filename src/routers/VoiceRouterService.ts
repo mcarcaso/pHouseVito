@@ -12,6 +12,18 @@ const voiceEventSchema = z.object({
   kind: z.enum(["user", "assistant", "usage", "session_end"]),
   content: z.string().min(1).max(100_000),
 });
+const realtimeVoiceSchema = z.enum([
+  "alloy",
+  "ash",
+  "ballad",
+  "cedar",
+  "coral",
+  "echo",
+  "marin",
+  "sage",
+  "shimmer",
+  "verse",
+]);
 const realtimeClientSecretSchema = z
   .object({ value: z.string().min(1), expires_at: z.number().optional() })
   .passthrough();
@@ -37,10 +49,16 @@ export class VoiceRouterService implements RouterService {
       method: "POST",
       path: "/realtime-token",
       auth: "dashboard",
-      schemas: { params: emptyRouteSchema, query: emptyRouteSchema, body: unknownRouteSchema },
+      schemas: {
+        params: emptyRouteSchema,
+        query: emptyRouteSchema,
+        body: z.object({ voice: realtimeVoiceSchema.default("marin") }),
+      },
       responseSchema: realtimeClientSecretSchema,
-      handler: async (routeX) =>
-        realtimeClientSecretSchema.parse(await xVoiceService(routeX).createRealtimeSecret(routeX)),
+      handler: async (routeX, { data: { body } }) =>
+        realtimeClientSecretSchema.parse(
+          await xVoiceService(routeX).createRealtimeSecret(routeX, body.voice),
+        ),
     });
 
     route({

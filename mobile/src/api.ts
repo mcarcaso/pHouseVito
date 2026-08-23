@@ -13,7 +13,39 @@ export const VITO_URL = (
 ).replace(/\/$/, "");
 
 const TOKEN_KEY = "vito-dashboard-token";
+const VOICE_KEY = "vito-realtime-voice";
 let authToken: string | null = null;
+
+export const REALTIME_VOICES = [
+  "marin",
+  "cedar",
+  "coral",
+  "sage",
+  "alloy",
+  "ash",
+  "ballad",
+  "echo",
+  "shimmer",
+  "verse",
+] as const;
+export type RealtimeVoice = (typeof REALTIME_VOICES)[number];
+
+function isRealtimeVoice(value: string | null): value is RealtimeVoice {
+  return value !== null && REALTIME_VOICES.some((voice) => voice === value);
+}
+
+export async function loadRealtimeVoice(): Promise<RealtimeVoice> {
+  const value =
+    Platform.OS === "web"
+      ? (globalThis.localStorage?.getItem(VOICE_KEY) ?? null)
+      : await SecureStore.getItemAsync(VOICE_KEY);
+  return isRealtimeVoice(value) ? value : "marin";
+}
+
+export async function saveRealtimeVoice(voice: RealtimeVoice): Promise<void> {
+  if (Platform.OS === "web") globalThis.localStorage?.setItem(VOICE_KEY, voice);
+  else await SecureStore.setItemAsync(VOICE_KEY, voice);
+}
 
 export class ApiError extends Error {
   constructor(
@@ -193,8 +225,11 @@ export async function cancelVoiceTask(id: string): Promise<VoiceTask> {
   });
 }
 
-export async function getRealtimeToken(): Promise<string> {
-  const result = await api<unknown>("/api/voice/realtime-token", { method: "POST" });
+export async function getRealtimeToken(voice: RealtimeVoice): Promise<string> {
+  const result = await api<unknown>("/api/voice/realtime-token", {
+    method: "POST",
+    body: JSON.stringify({ voice }),
+  });
   if (
     !result ||
     typeof result !== "object" ||

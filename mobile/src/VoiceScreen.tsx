@@ -16,9 +16,13 @@ import {
   getVoiceSession,
   getVoiceSessions,
   getVoiceTask,
+  loadRealtimeVoice,
   persistVoiceEvent,
+  REALTIME_VOICES,
+  saveRealtimeVoice,
   searchVoiceMemory,
   startVoiceTask,
+  type RealtimeVoice,
   type VoiceSession,
 } from "./api";
 import { connectRealtime, type VoiceConnection } from "./realtime-webrtc";
@@ -50,6 +54,7 @@ export function VoiceScreen({ onUnauthorized }: { onUnauthorized: () => void }) 
   const [state, setState] = useState<VoiceState>("idle");
   const [muted, setMuted] = useState(false);
   const [audioRoute, setAudioRoute] = useState<"speaker" | "earpiece">("speaker");
+  const [selectedVoice, setSelectedVoice] = useState<RealtimeVoice>("marin");
   const [error, setError] = useState<string | null>(null);
   const [transcript, setTranscript] = useState<TranscriptLine[]>([]);
   const [history, setHistory] = useState<VoiceSession[]>([]);
@@ -70,6 +75,7 @@ export function VoiceScreen({ onUnauthorized }: { onUnauthorized: () => void }) 
 
   useEffect(() => {
     void loadHistory();
+    void loadRealtimeVoice().then(setSelectedVoice);
   }, [loadHistory]);
 
   const openHistory = useCallback(async (id: string) => {
@@ -287,7 +293,7 @@ export function VoiceScreen({ onUnauthorized }: { onUnauthorized: () => void }) 
         });
         setAudioRoute("speaker");
       }
-      const token = await getRealtimeToken();
+      const token = await getRealtimeToken(selectedVoice);
       connectionRef.current = await connectRealtime(
         token,
         handleEvent,
@@ -332,6 +338,38 @@ export function VoiceScreen({ onUnauthorized }: { onUnauthorized: () => void }) 
       <Text style={styles.subtitle}>
         Fluid conversation backed by Vito memory, durable tasks, and saved transcripts.
       </Text>
+
+      {!active && (
+        <View style={styles.voicePicker}>
+          <Text style={styles.voicePickerLabel}>VOICE</Text>
+          <ScrollView horizontal showsHorizontalScrollIndicator={false}>
+            <View style={styles.voiceOptions}>
+              {REALTIME_VOICES.map((voice) => (
+                <Pressable
+                  key={voice}
+                  onPress={() => {
+                    setSelectedVoice(voice);
+                    void saveRealtimeVoice(voice);
+                  }}
+                  style={[
+                    styles.voiceOption,
+                    selectedVoice === voice && styles.voiceOptionSelected,
+                  ]}
+                >
+                  <Text
+                    style={[
+                      styles.voiceOptionText,
+                      selectedVoice === voice && styles.voiceOptionTextSelected,
+                    ]}
+                  >
+                    {voice.charAt(0).toUpperCase() + voice.slice(1)}
+                  </Text>
+                </Pressable>
+              ))}
+            </View>
+          </ScrollView>
+        </View>
+      )}
 
       <View
         style={[styles.orb, active && styles.orbActive, state === "speaking" && styles.orbSpeaking]}
@@ -444,6 +482,20 @@ const styles = StyleSheet.create({
     marginTop: 8,
     maxWidth: 500,
   },
+  voicePicker: { width: "100%", marginTop: 24, gap: 9 },
+  voicePickerLabel: { color: "#727a72", fontSize: 9, fontWeight: "800", letterSpacing: 1.2 },
+  voiceOptions: { flexDirection: "row", gap: 8 },
+  voiceOption: {
+    borderRadius: 999,
+    borderWidth: 1,
+    borderColor: "#303630",
+    backgroundColor: "#151915",
+    paddingHorizontal: 14,
+    paddingVertical: 9,
+  },
+  voiceOptionSelected: { backgroundColor: "#b7f34a", borderColor: "#b7f34a" },
+  voiceOptionText: { color: "#a1a8a0", fontSize: 12, fontWeight: "700" },
+  voiceOptionTextSelected: { color: "#11150d" },
   orb: {
     width: 150,
     height: 150,

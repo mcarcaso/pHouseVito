@@ -10,12 +10,17 @@ import {
 import type { VoiceTaskRow } from "../../stores/voice/VoiceTaskStore.js";
 import type { AskApiService } from "../ask/AskApiService.js";
 import type { SearchResult } from "../memory/MemoryService.js";
-import type { VoiceEventKind, VoiceService, VoiceSessionDetail } from "./VoiceService.js";
+import type {
+  RealtimeVoice,
+  VoiceEventKind,
+  VoiceService,
+  VoiceSessionDetail,
+} from "./VoiceService.js";
 
 export class DefaultVoiceService implements VoiceService {
   constructor(private readonly askApiService: AskApiService) {}
 
-  async createRealtimeSecret(x: Context): Promise<unknown> {
+  async createRealtimeSecret(x: Context, voice: RealtimeVoice): Promise<unknown> {
     const apiKey = xSecretService(x).get(x, "OPENAI_API_KEY");
     if (!apiKey) throw new Error("OpenAI API key is not configured");
     const today = new Date().toLocaleDateString("en-CA");
@@ -97,7 +102,7 @@ export class DefaultVoiceService implements VoiceService {
               transcription: { model: "gpt-4o-mini-transcribe" },
               turn_detection: { type: "semantic_vad" },
             },
-            output: { voice: "marin" },
+            output: { voice },
           },
         },
       }),

@@ -5,6 +5,8 @@ import type { VoiceTaskRow } from "../../stores/voice/VoiceTaskStore.js";
 import type { SearchResult } from "../memory/MemoryService.js";
 
 export type VoiceEventKind = "user" | "assistant" | "usage" | "session_end";
+export type RealtimeVoice =
+  "alloy" | "ash" | "ballad" | "cedar" | "coral" | "echo" | "marin" | "sage" | "shimmer" | "verse";
 
 export interface VoiceSessionDetail {
   session: SessionRow;
@@ -14,7 +16,7 @@ export interface VoiceSessionDetail {
 }
 
 export interface VoiceService {
-  createRealtimeSecret(x: Context): Promise<unknown>;
+  createRealtimeSecret(x: Context, voice: RealtimeVoice): Promise<unknown>;
   recordEvent(
     x: Context,
     event: { sessionId: string; kind: VoiceEventKind; content: string },

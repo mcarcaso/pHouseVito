@@ -102,11 +102,15 @@ export class VoiceRouterService implements RouterService {
         body: z.object({
           query: z.string().min(1).max(2_000),
           mode: z.enum(["hybrid", "semantic", "exact"]).default("hybrid"),
+          day: z
+            .string()
+            .regex(/^\d{4}-\d{2}-\d{2}$/)
+            .optional(),
         }),
       },
       responseSchema: unknownRouteSchema,
       handler: async (routeX, { data: { body } }) =>
-        await xVoiceService(routeX).searchMemory(routeX, body.query, body.mode),
+        await xVoiceService(routeX).searchMemory(routeX, body.query, body.mode, body.day),
     });
 
     route({

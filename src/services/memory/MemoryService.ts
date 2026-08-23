@@ -21,6 +21,7 @@ export interface SearchResult {
 export interface SearchOptions {
   limit?: number;
   sessionFilter?: string;
+  dayFilter?: string;
   mode?: "hybrid" | "embedding" | "bm25";
 }
 

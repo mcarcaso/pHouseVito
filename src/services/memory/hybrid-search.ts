@@ -49,9 +49,11 @@ export async function searchMemory(
   query: string,
   options: SearchOptions = {},
 ): Promise<SearchResult[]> {
-  const { limit = 5, sessionFilter, mode = "hybrid" } = options;
+  const { limit = 5, sessionFilter, dayFilter, mode = "hybrid" } = options;
   const store = xEmbeddingStore(x);
-  const chunks = store.listChunksWithVectors(x, sessionFilter);
+  const chunks = store
+    .listChunksWithVectors(x, sessionFilter)
+    .filter((chunk) => !dayFilter || chunk.day === dayFilter);
   if (chunks.length === 0) return [];
 
   let embeddingResults: Array<{
@@ -88,11 +90,15 @@ export async function searchMemory(
       .join(" OR ");
     if (ftsQuery) {
       try {
-        bm25Results = store.searchFts(x, {
-          query: ftsQuery,
-          limit: Math.max(limit * 4, 20),
-          sessionId: sessionFilter,
-        });
+        const allowedIds = new Set(chunks.map((chunk) => chunk.id));
+        bm25Results = store
+          .searchFts(x, {
+            query: ftsQuery,
+            limit: dayFilter ? 500 : Math.max(limit * 4, 20),
+            sessionId: sessionFilter,
+          })
+          .filter((result) => allowedIds.has(result.id))
+          .slice(0, Math.max(limit * 4, 20));
       } catch {
         bm25Results = [];
       }

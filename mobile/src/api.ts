@@ -168,10 +168,11 @@ export async function getVoiceContext(): Promise<unknown> {
 export async function searchVoiceMemory(
   query: string,
   mode: "hybrid" | "semantic" | "exact" = "hybrid",
+  day?: string,
 ): Promise<unknown> {
   return await api("/api/voice/memory-search", {
     method: "POST",
-    body: JSON.stringify({ query, mode }),
+    body: JSON.stringify({ query, mode, day }),
   });
 }
 

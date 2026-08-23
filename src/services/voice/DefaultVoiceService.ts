@@ -48,6 +48,10 @@ export class DefaultVoiceService implements VoiceService {
                 properties: {
                   query: { type: "string" },
                   mode: { type: "string", enum: ["hybrid", "semantic", "exact"] },
+                  day: {
+                    type: "string",
+                    description: "Optional exact local calendar day in YYYY-MM-DD format.",
+                  },
                 },
                 required: ["query"],
                 additionalProperties: false,
@@ -173,19 +177,22 @@ export class DefaultVoiceService implements VoiceService {
     x: Context,
     query: string,
     mode: "hybrid" | "semantic" | "exact",
+    day?: string,
   ): Promise<SearchResult[]> {
+    const lowered = query.toLowerCase();
+    const targetDay =
+      day ??
+      (lowered.includes("yesterday")
+        ? new Date(Date.now() - 86_400_000).toLocaleDateString("en-CA")
+        : lowered.includes("today")
+          ? new Date().toLocaleDateString("en-CA")
+          : undefined);
     const results = await xMemoryService(x).search(x, query, {
-      limit: 12,
+      limit: 5,
+      dayFilter: targetDay,
       mode: mode === "semantic" ? "embedding" : mode === "exact" ? "bm25" : "hybrid",
     });
-    const lowered = query.toLowerCase();
-    const targetDay = lowered.includes("yesterday")
-      ? new Date(Date.now() - 86_400_000).toLocaleDateString("en-CA")
-      : lowered.includes("today")
-        ? new Date().toLocaleDateString("en-CA")
-        : null;
-    const dated = targetDay ? results.filter((result) => result.day === targetDay) : results;
-    return (dated.length > 0 ? dated : results).slice(0, 5).map((result) => ({
+    return results.map((result) => ({
       ...result,
       text: result.text.slice(0, 1_600),
       context: result.context?.slice(0, 500) ?? null,

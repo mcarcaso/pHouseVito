@@ -26,6 +26,7 @@ export interface VoiceService {
     x: Context,
     query: string,
     mode: "hybrid" | "semantic" | "exact",
+    day?: string,
   ): Promise<SearchResult[]>;
   askAsync(x: Context, voiceSessionId: string, question: string): VoiceTaskRow;
   getTask(x: Context, id: string): VoiceTaskRow | null;

@@ -179,6 +179,7 @@ export function VoiceScreen({ onUnauthorized }: { onUnauthorized: () => void }) 
           result = await searchVoiceMemory(
             String(args.query ?? ""),
             args.mode === "semantic" || args.mode === "exact" ? args.mode : "hybrid",
+            typeof args.day === "string" ? args.day : undefined,
           );
         } else if (name === "ask_vito_async") {
           const task = await startVoiceTask(sessionIdRef.current, String(args.question ?? ""));
@@ -190,7 +191,7 @@ export function VoiceScreen({ onUnauthorized }: { onUnauthorized: () => void }) 
         void persistVoiceEvent(
           sessionIdRef.current,
           "usage",
-          JSON.stringify({ tool_success: { name } }),
+          JSON.stringify({ tool_success: { name, arguments: args } }),
         ).catch(() => undefined);
         sendToolResult(callId, result);
       } catch (cause) {

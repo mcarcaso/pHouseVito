@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { setAudioModeAsync } from "expo-audio";
+import { createAudioPlayer, setAudioModeAsync } from "expo-audio";
 import {
   ActivityIndicator,
   Platform,
@@ -26,6 +26,19 @@ import {
   type VoiceSession,
 } from "./api";
 import { connectRealtime, type VoiceConnection } from "./realtime-webrtc";
+
+const VOICE_PREVIEWS: Record<RealtimeVoice, number> = {
+  marin: require("../assets/voice-previews/marin.mp3"),
+  cedar: require("../assets/voice-previews/cedar.mp3"),
+  coral: require("../assets/voice-previews/coral.mp3"),
+  sage: require("../assets/voice-previews/sage.mp3"),
+  alloy: require("../assets/voice-previews/alloy.mp3"),
+  ash: require("../assets/voice-previews/ash.mp3"),
+  ballad: require("../assets/voice-previews/ballad.mp3"),
+  echo: require("../assets/voice-previews/echo.mp3"),
+  shimmer: require("../assets/voice-previews/shimmer.mp3"),
+  verse: require("../assets/voice-previews/verse.mp3"),
+};
 
 type VoiceState = "idle" | "connecting" | "listening" | "speaking" | "error";
 interface TranscriptLine {
@@ -64,6 +77,7 @@ export function VoiceScreen({ onUnauthorized }: { onUnauthorized: () => void }) 
   const lineIdRef = useRef(0);
   const sessionIdRef = useRef(`voice:${Date.now()}`);
   const handledToolCallsRef = useRef(new Set<string>());
+  const previewPlayerRef = useRef<ReturnType<typeof createAudioPlayer> | null>(null);
 
   const loadHistory = useCallback(async () => {
     try {
@@ -76,7 +90,15 @@ export function VoiceScreen({ onUnauthorized }: { onUnauthorized: () => void }) 
   useEffect(() => {
     void loadHistory();
     void loadRealtimeVoice().then(setSelectedVoice);
+    return () => previewPlayerRef.current?.remove();
   }, [loadHistory]);
+
+  const previewVoice = useCallback((voice: RealtimeVoice) => {
+    previewPlayerRef.current?.remove();
+    const player = createAudioPlayer(VOICE_PREVIEWS[voice]);
+    previewPlayerRef.current = player;
+    player.play();
+  }, []);
 
   const openHistory = useCallback(async (id: string) => {
     const detail = await getVoiceSession(id);
@@ -345,26 +367,43 @@ export function VoiceScreen({ onUnauthorized }: { onUnauthorized: () => void }) 
           <ScrollView horizontal showsHorizontalScrollIndicator={false}>
             <View style={styles.voiceOptions}>
               {REALTIME_VOICES.map((voice) => (
-                <Pressable
+                <View
                   key={voice}
-                  onPress={() => {
-                    setSelectedVoice(voice);
-                    void saveRealtimeVoice(voice);
-                  }}
                   style={[
                     styles.voiceOption,
                     selectedVoice === voice && styles.voiceOptionSelected,
                   ]}
                 >
-                  <Text
-                    style={[
-                      styles.voiceOptionText,
-                      selectedVoice === voice && styles.voiceOptionTextSelected,
-                    ]}
+                  <Pressable
+                    onPress={() => {
+                      setSelectedVoice(voice);
+                      void saveRealtimeVoice(voice);
+                    }}
                   >
-                    {voice.charAt(0).toUpperCase() + voice.slice(1)}
-                  </Text>
-                </Pressable>
+                    <Text
+                      style={[
+                        styles.voiceOptionText,
+                        selectedVoice === voice && styles.voiceOptionTextSelected,
+                      ]}
+                    >
+                      {voice.charAt(0).toUpperCase() + voice.slice(1)}
+                    </Text>
+                  </Pressable>
+                  <Pressable
+                    accessibilityLabel={`Preview ${voice} voice`}
+                    onPress={() => previewVoice(voice)}
+                    hitSlop={8}
+                  >
+                    <Text
+                      style={[
+                        styles.previewIcon,
+                        selectedVoice === voice && styles.voiceOptionTextSelected,
+                      ]}
+                    >
+                      ▶
+                    </Text>
+                  </Pressable>
+                </View>
               ))}
             </View>
           </ScrollView>
@@ -492,10 +531,14 @@ const styles = StyleSheet.create({
     backgroundColor: "#151915",
     paddingHorizontal: 14,
     paddingVertical: 9,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 9,
   },
   voiceOptionSelected: { backgroundColor: "#b7f34a", borderColor: "#b7f34a" },
   voiceOptionText: { color: "#a1a8a0", fontSize: 12, fontWeight: "700" },
   voiceOptionTextSelected: { color: "#11150d" },
+  previewIcon: { color: "#778077", fontSize: 10 },
   orb: {
     width: 150,
     height: 150,

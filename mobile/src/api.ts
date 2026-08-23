@@ -113,3 +113,9 @@ export async function sendMessage(sessionId: string, content: string): Promise<v
     body: JSON.stringify({ type: "chat", sessionId, content }),
   });
 }
+
+export async function getRealtimeToken(): Promise<string> {
+  const result = await api<{ value: string }>("/api/voice/realtime-token", { method: "POST" });
+  if (!result.value) throw new Error("Realtime token was missing from the server response");
+  return result.value;
+}

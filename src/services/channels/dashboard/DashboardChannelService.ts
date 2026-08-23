@@ -33,6 +33,7 @@ import { SessionRouterService } from "../../../routers/SessionRouterService.js";
 import { SkillRouterService } from "../../../routers/SkillRouterService.js";
 import { SystemContentRouterService } from "../../../routers/SystemContentRouterService.js";
 import { TraceRouterService } from "../../../routers/TraceRouterService.js";
+import { VoiceRouterService } from "../../../routers/VoiceRouterService.js";
 import express from "express";
 import http from "node:http";
 const createServer = http.createServer.bind(http);
@@ -130,6 +131,7 @@ export class DashboardChannelService implements ChannelService {
     app.use("/api/ask", await new AskApiRouterService().createRouter(x));
 
     app.use("/api/chat", await new DashboardChatRouterService().createRouter(x));
+    app.use("/api/voice", await new VoiceRouterService().createRouter(x));
 
     app.use("/api/apps", await new AppRouterService().createRouter(x));
 

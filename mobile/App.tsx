@@ -2,6 +2,7 @@ import { StatusBar } from "expo-status-bar";
 import { useCallback, useEffect, useState } from "react";
 import { ChatScreen } from "./src/ChatScreen";
 import { LoginScreen } from "./src/LoginScreen";
+import { VoiceScreen } from "./src/VoiceScreen";
 import { checkAuth, loadToken, logout, saveToken, VITO_URL } from "./src/api";
 import {
   ActivityIndicator,
@@ -21,11 +22,12 @@ type HealthState =
   | { kind: "online"; checkedAt: Date }
   | { kind: "offline"; message: string; checkedAt: Date };
 
-type Screen = "home" | "chat" | "more";
+type Screen = "home" | "chat" | "voice" | "more";
 
 const navigation: Array<{ id: Screen; label: string; icon: string }> = [
   { id: "home", label: "Home", icon: "⌂" },
   { id: "chat", label: "Chat", icon: "●" },
+  { id: "voice", label: "Voice", icon: "◉" },
   { id: "more", label: "More", icon: "•••" },
 ];
 
@@ -97,6 +99,8 @@ export default function App() {
       <Home health={health} checkHealth={checkHealth} />
     ) : screen === "chat" ? (
       <ChatScreen onUnauthorized={unauthorized} />
+    ) : screen === "voice" ? (
+      <VoiceScreen onUnauthorized={unauthorized} />
     ) : (
       <ComingSoon
         eyebrow="PARITY PLAN"
@@ -112,7 +116,7 @@ export default function App() {
       <StatusBar style="light" />
       <View style={[styles.shell, desktop && styles.shellDesktop]}>
         {desktop && <Navigation screen={screen} setScreen={setScreen} desktop />}
-        {screen === "chat" ? (
+        {screen === "chat" || screen === "voice" ? (
           <View style={[styles.content, styles.chatContent, desktop && styles.contentDesktop]}>
             <View style={[styles.page, styles.chatPage]}>{content}</View>
           </View>

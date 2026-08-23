@@ -10,7 +10,8 @@
       "supportsTablet": true,
       "bundleIdentifier": "com.phouse.vito",
       "infoPlist": {
-        "ITSAppUsesNonExemptEncryption": false
+        "ITSAppUsesNonExemptEncryption": false,
+        "NSMicrophoneUsageDescription": "Vito uses the microphone for live voice conversations."
       }
     },
     "android": {
@@ -25,7 +26,7 @@
     "web": {
       "favicon": "./assets/favicon.png"
     },
-    "plugins": ["expo-secure-store"],
+    "plugins": ["expo-secure-store", "@config-plugins/react-native-webrtc"],
     "extra": {
       "eas": {
         "projectId": "fc800553-bd47-452e-8144-1c31566f5d40"

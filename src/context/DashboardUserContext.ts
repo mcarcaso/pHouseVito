@@ -26,6 +26,7 @@ const dashboardDependencyKeys = [
   "appsDir",
   "attachmentsDir",
   "vitoService",
+  "voiceService",
   "appProcessService",
   "dashboardAuthService",
   "channelRegistryService",
@@ -40,6 +41,7 @@ const dashboardDependencyKeys = [
   "sessionStore",
   "skillStore",
   "messageStore",
+  "voiceTaskStore",
   "traceStore",
   "traceEventStore",
 ] as const;

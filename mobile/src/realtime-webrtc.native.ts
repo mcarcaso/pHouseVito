@@ -7,6 +7,7 @@ import {
 
 export interface VoiceConnection {
   setMuted(muted: boolean): void;
+  sendEvent(event: unknown): void;
   close(): void;
 }
 
@@ -42,6 +43,9 @@ export async function connectRealtime(
       stream.getAudioTracks().forEach((track) => {
         track.enabled = !muted;
       });
+    },
+    sendEvent(event) {
+      channel.send(JSON.stringify(event));
     },
     close() {
       channel.close();

@@ -123,12 +123,72 @@ export async function sendMessage(sessionId: string, content: string): Promise<v
 
 export async function persistVoiceEvent(
   sessionId: string,
-  kind: "user" | "assistant" | "usage",
+  kind: "user" | "assistant" | "usage" | "session_end",
   content: string,
 ): Promise<void> {
   await api("/api/voice/event", {
     method: "POST",
     body: JSON.stringify({ sessionId, kind, content }),
+  });
+}
+
+export interface VoiceSession {
+  id: string;
+  alias: string | null;
+  created_at: number;
+  last_active_at: number;
+}
+
+export interface VoiceSessionDetail {
+  session: VoiceSession;
+  messages: Message[];
+  durationMs: number | null;
+  usage: unknown[];
+}
+
+export async function getVoiceSessions(): Promise<VoiceSession[]> {
+  return await api<VoiceSession[]>("/api/voice/sessions");
+}
+
+export async function getVoiceSession(id: string): Promise<VoiceSessionDetail | null> {
+  return await api<VoiceSessionDetail | null>(`/api/voice/sessions/${encodeURIComponent(id)}`);
+}
+
+export interface VoiceTask {
+  id: string;
+  status: "queued" | "running" | "completed" | "failed" | "cancelled";
+  result: string | null;
+  error: string | null;
+}
+
+export async function getVoiceContext(): Promise<unknown> {
+  return await api("/api/voice/context");
+}
+
+export async function searchVoiceMemory(
+  query: string,
+  mode: "hybrid" | "semantic" | "exact" = "hybrid",
+): Promise<unknown> {
+  return await api("/api/voice/memory-search", {
+    method: "POST",
+    body: JSON.stringify({ query, mode }),
+  });
+}
+
+export async function startVoiceTask(sessionId: string, question: string): Promise<VoiceTask> {
+  return await api<VoiceTask>("/api/voice/tasks", {
+    method: "POST",
+    body: JSON.stringify({ sessionId, question }),
+  });
+}
+
+export async function getVoiceTask(id: string): Promise<VoiceTask | null> {
+  return await api<VoiceTask | null>(`/api/voice/tasks/${encodeURIComponent(id)}`);
+}
+
+export async function cancelVoiceTask(id: string): Promise<VoiceTask> {
+  return await api<VoiceTask>(`/api/voice/tasks/${encodeURIComponent(id)}/cancel`, {
+    method: "POST",
   });
 }
 

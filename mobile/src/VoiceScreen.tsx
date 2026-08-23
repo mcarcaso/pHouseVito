@@ -1,4 +1,4 @@
-import { useCallback, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { setAudioModeAsync } from "expo-audio";
 import {
   ActivityIndicator,
@@ -9,7 +9,18 @@ import {
   Text,
   View,
 } from "react-native";
-import { getRealtimeToken, persistVoiceEvent } from "./api";
+import {
+  cancelVoiceTask,
+  getRealtimeToken,
+  getVoiceContext,
+  getVoiceSession,
+  getVoiceSessions,
+  getVoiceTask,
+  persistVoiceEvent,
+  searchVoiceMemory,
+  startVoiceTask,
+  type VoiceSession,
+} from "./api";
 import { connectRealtime, type VoiceConnection } from "./realtime-webrtc";
 
 type VoiceState = "idle" | "connecting" | "listening" | "speaking" | "error";
@@ -24,6 +35,9 @@ interface RealtimeEvent {
   delta?: string;
   error?: { message?: string };
   response?: { usage?: unknown };
+  name?: string;
+  call_id?: string;
+  arguments?: string;
 }
 
 export function VoiceScreen({ onUnauthorized }: { onUnauthorized: () => void }) {
@@ -32,10 +46,52 @@ export function VoiceScreen({ onUnauthorized }: { onUnauthorized: () => void }) 
   const [audioRoute, setAudioRoute] = useState<"speaker" | "earpiece">("speaker");
   const [error, setError] = useState<string | null>(null);
   const [transcript, setTranscript] = useState<TranscriptLine[]>([]);
+  const [history, setHistory] = useState<VoiceSession[]>([]);
+  const [sessionSummary, setSessionSummary] = useState<string | null>(null);
   const connectionRef = useRef<VoiceConnection | null>(null);
   const assistantDraftRef = useRef("");
   const lineIdRef = useRef(0);
   const sessionIdRef = useRef(`voice:${Date.now()}`);
+
+  const loadHistory = useCallback(async () => {
+    try {
+      setHistory(await getVoiceSessions());
+    } catch {
+      // Voice history is secondary to the live connection.
+    }
+  }, []);
+
+  useEffect(() => {
+    void loadHistory();
+  }, [loadHistory]);
+
+  const openHistory = useCallback(async (id: string) => {
+    const detail = await getVoiceSession(id);
+    if (!detail) return;
+    setTranscript(
+      detail.messages
+        .filter((message) => message.type === "user" || message.type === "assistant")
+        .map((message) => ({
+          id: ++lineIdRef.current,
+          role: message.type === "user" ? ("Mike" as const) : ("Vito" as const),
+          text: message.content,
+        })),
+    );
+    const seconds = detail.durationMs ? Math.round(detail.durationMs / 1_000) : null;
+    const tokens = detail.usage.reduce<number>((total, usage) => {
+      if (!usage || typeof usage !== "object" || !("total_tokens" in usage)) return total;
+      const value = (usage as { total_tokens?: unknown }).total_tokens;
+      return total + (typeof value === "number" ? value : 0);
+    }, 0);
+    setSessionSummary(
+      [
+        seconds === null ? null : `${seconds}s`,
+        tokens > 0 ? `${tokens.toLocaleString()} tokens` : `${detail.usage.length} usage record(s)`,
+      ]
+        .filter(Boolean)
+        .join(" · "),
+    );
+  }, []);
 
   const addLine = useCallback((role: "Mike" | "Vito", text: string) => {
     const clean = text.trim();
@@ -49,12 +105,88 @@ export function VoiceScreen({ onUnauthorized }: { onUnauthorized: () => void }) 
   }, []);
 
   const stop = useCallback(() => {
+    const startedAt = Number(sessionIdRef.current.slice("voice:".length));
+    if (Number.isFinite(startedAt)) {
+      void persistVoiceEvent(
+        sessionIdRef.current,
+        "session_end",
+        JSON.stringify({ durationMs: Math.max(0, Date.now() - startedAt) }),
+      ).catch(() => undefined);
+    }
     connectionRef.current?.close();
     connectionRef.current = null;
     assistantDraftRef.current = "";
     setMuted(false);
     setState("idle");
+    void loadHistory();
+  }, [loadHistory]);
+
+  const sendToolResult = useCallback((callId: string, result: unknown) => {
+    connectionRef.current?.sendEvent({
+      type: "conversation.item.create",
+      item: {
+        type: "function_call_output",
+        call_id: callId,
+        output: JSON.stringify(result),
+      },
+    });
+    connectionRef.current?.sendEvent({ type: "response.create" });
   }, []);
+
+  const waitForTask = useCallback(async (id: string) => {
+    for (let attempt = 0; attempt < 300; attempt += 1) {
+      await new Promise((resolve) => setTimeout(resolve, 2_000));
+      const task = await getVoiceTask(id);
+      if (!task || task.status === "queued" || task.status === "running") continue;
+      connectionRef.current?.sendEvent({
+        type: "conversation.item.create",
+        item: {
+          type: "message",
+          role: "system",
+          content: [
+            {
+              type: "input_text",
+              text:
+                task.status === "completed"
+                  ? `Vito task ${id} completed: ${task.result ?? "No result"}`
+                  : `Vito task ${id} ended with status ${task.status}: ${task.error ?? "No details"}`,
+            },
+          ],
+        },
+      });
+      connectionRef.current?.sendEvent({ type: "response.create" });
+      return;
+    }
+  }, []);
+
+  const executeTool = useCallback(
+    async (name: string, callId: string, rawArguments?: string) => {
+      let args: Record<string, unknown> = {};
+      try {
+        args = rawArguments ? (JSON.parse(rawArguments) as Record<string, unknown>) : {};
+        let result: unknown;
+        if (name === "get_vito_context") result = await getVoiceContext();
+        else if (name === "search_memory") {
+          result = await searchVoiceMemory(
+            String(args.query ?? ""),
+            args.mode === "semantic" || args.mode === "exact" ? args.mode : "hybrid",
+          );
+        } else if (name === "ask_vito_async") {
+          const task = await startVoiceTask(sessionIdRef.current, String(args.question ?? ""));
+          result = { taskId: task.id, status: task.status, message: "Vito is working on it." };
+          void waitForTask(task.id);
+        } else if (name === "get_task") result = await getVoiceTask(String(args.id ?? ""));
+        else if (name === "cancel_task") result = await cancelVoiceTask(String(args.id ?? ""));
+        else throw new Error(`Unknown tool: ${name}`);
+        sendToolResult(callId, result);
+      } catch (cause) {
+        sendToolResult(callId, {
+          error: cause instanceof Error ? cause.message : "Voice tool failed",
+        });
+      }
+    },
+    [sendToolResult, waitForTask],
+  );
 
   const handleEvent = useCallback(
     (raw: unknown) => {
@@ -91,12 +223,15 @@ export function VoiceScreen({ onUnauthorized }: { onUnauthorized: () => void }) 
         addLine("Vito", event.transcript ?? assistantDraftRef.current);
         assistantDraftRef.current = "";
       }
+      if (event.type === "response.function_call_arguments.done" && event.name && event.call_id) {
+        void executeTool(event.name, event.call_id, event.arguments);
+      }
       if (event.type === "error") {
         setError(event.error?.message ?? "OpenAI Realtime reported an error");
         setState("error");
       }
     },
-    [addLine],
+    [addLine, executeTool],
   );
 
   const start = async () => {
@@ -104,6 +239,7 @@ export function VoiceScreen({ onUnauthorized }: { onUnauthorized: () => void }) 
     setState("connecting");
     setError(null);
     setTranscript([]);
+    setSessionSummary(null);
     try {
       sessionIdRef.current = `voice:${Date.now()}`;
       if (Platform.OS !== "web") {
@@ -159,7 +295,7 @@ export function VoiceScreen({ onUnauthorized }: { onUnauthorized: () => void }) 
       <Text style={styles.eyebrow}>OPENAI REALTIME MINI</Text>
       <Text style={styles.title}>Live voice</Text>
       <Text style={styles.subtitle}>
-        A direct speech-to-speech test. Memory and Vito tools come next.
+        Fluid conversation backed by Vito memory, durable tasks, and saved transcripts.
       </Text>
 
       <View
@@ -210,6 +346,33 @@ export function VoiceScreen({ onUnauthorized }: { onUnauthorized: () => void }) 
       </View>
 
       <ScrollView style={styles.transcript} contentContainerStyle={styles.transcriptContent}>
+        {!active && history.length > 0 && (
+          <View style={styles.historyBlock}>
+            <Text style={styles.historyTitle}>RECENT VOICE SESSIONS</Text>
+            <ScrollView horizontal showsHorizontalScrollIndicator={false}>
+              <View style={styles.historyRow}>
+                {history.slice(0, 8).map((session) => (
+                  <Pressable
+                    key={session.id}
+                    onPress={() => void openHistory(session.id)}
+                    style={styles.historyCard}
+                  >
+                    <Text style={styles.historyDate}>
+                      {new Date(session.created_at).toLocaleDateString()}
+                    </Text>
+                    <Text style={styles.historyTime}>
+                      {new Date(session.created_at).toLocaleTimeString([], {
+                        hour: "numeric",
+                        minute: "2-digit",
+                      })}
+                    </Text>
+                  </Pressable>
+                ))}
+              </View>
+            </ScrollView>
+          </View>
+        )}
+        {sessionSummary && <Text style={styles.summary}>{sessionSummary}</Text>}
         {transcript.map((line) => (
           <View key={line.id} style={styles.line}>
             <Text style={styles.role}>{line.role}</Text>
@@ -305,6 +468,20 @@ const styles = StyleSheet.create({
   secondaryText: { color: "#d8ddd7", fontSize: 14, fontWeight: "700" },
   transcript: { width: "100%", marginTop: 30, borderTopWidth: 1, borderTopColor: "#252a25" },
   transcriptContent: { paddingVertical: 16, gap: 13 },
+  historyBlock: { gap: 10, marginBottom: 4 },
+  historyTitle: { color: "#727a72", fontSize: 9, fontWeight: "800", letterSpacing: 1.2 },
+  historyRow: { flexDirection: "row", gap: 9 },
+  historyCard: {
+    minWidth: 112,
+    backgroundColor: "#151915",
+    borderColor: "#2b312b",
+    borderWidth: 1,
+    borderRadius: 12,
+    padding: 12,
+  },
+  historyDate: { color: "#d7dbd6", fontSize: 12, fontWeight: "700" },
+  historyTime: { color: "#7f877f", fontSize: 11, marginTop: 3 },
+  summary: { color: "#97a096", fontSize: 11, textAlign: "center" },
   line: {
     padding: 14,
     borderRadius: 14,

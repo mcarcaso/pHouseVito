@@ -21,12 +21,14 @@ import type { SecretService } from "../services/secrets/SecretService.js";
 import type { ServerLifecycleService } from "../services/server/ServerLifecycleService.js";
 import type { SessionService } from "../services/sessions/SessionService.js";
 import type { VitoService } from "../services/vito/VitoService.js";
+import type { VoiceService } from "../services/voice/VoiceService.js";
 import type { MessageStore } from "../stores/messages/MessageStore.js";
 import type { PiSessionStore } from "../stores/pi-sessions/PiSessionStore.js";
 import type { SessionStore } from "../stores/sessions/SessionStore.js";
 import type { SkillStore } from "../stores/skills/SkillStore.js";
 import type { TraceEventStore } from "../stores/traces/TraceEventStore.js";
 import type { TraceStore } from "../stores/traces/TraceStore.js";
+import type { VoiceTaskStore } from "../stores/voice/VoiceTaskStore.js";
 
 // Context accessors are the intentional casting boundary for opaque scopes.
 export const xDashboardUser = (x: Context): DashboardUser =>
@@ -54,6 +56,7 @@ export const xDriveDir = (x: Context): string => x.get("driveDir") as string;
 export const xAppsDir = (x: Context): string => x.get("appsDir") as string;
 export const xAttachmentsDir = (x: Context): string => x.get("attachmentsDir") as string;
 export const xVitoService = (x: Context): VitoService => x.get("vitoService") as VitoService;
+export const xVoiceService = (x: Context): VoiceService => x.get("voiceService") as VoiceService;
 export const xAppProcessService = (x: Context): AppProcessService =>
   x.get("appProcessService") as AppProcessService;
 export const xAskApiService = (x: Context): AskApiService =>
@@ -85,6 +88,8 @@ export const xPiSessionStore = (x: Context): PiSessionStore =>
 export const xSessionStore = (x: Context): SessionStore => x.get("sessionStore") as SessionStore;
 export const xSkillStore = (x: Context): SkillStore => x.get("skillStore") as SkillStore;
 export const xMessageStore = (x: Context): MessageStore => x.get("messageStore") as MessageStore;
+export const xVoiceTaskStore = (x: Context): VoiceTaskStore =>
+  x.get("voiceTaskStore") as VoiceTaskStore;
 export const xTraceStore = (x: Context): TraceStore => x.get("traceStore") as TraceStore;
 export const xTraceEventStore = (x: Context): TraceEventStore =>
   x.get("traceEventStore") as TraceEventStore;

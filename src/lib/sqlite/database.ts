@@ -47,6 +47,19 @@ export function createDatabase(dbPath: string): Database.Database {
     CREATE INDEX IF NOT EXISTS idx_messages_compacted ON messages(compacted);
     CREATE INDEX IF NOT EXISTS idx_messages_timestamp ON messages(timestamp);
     CREATE INDEX IF NOT EXISTS idx_sessions_last_active ON sessions(last_active_at);
+
+    CREATE TABLE IF NOT EXISTS voice_tasks (
+      id TEXT PRIMARY KEY,
+      voice_session_id TEXT NOT NULL,
+      question TEXT NOT NULL,
+      status TEXT NOT NULL CHECK(status IN ('queued', 'running', 'completed', 'failed', 'cancelled')),
+      result TEXT,
+      error TEXT,
+      created_at INTEGER NOT NULL,
+      updated_at INTEGER NOT NULL,
+      FOREIGN KEY (voice_session_id) REFERENCES sessions(id)
+    );
+    CREATE INDEX IF NOT EXISTS idx_voice_tasks_session ON voice_tasks(voice_session_id, created_at);
   `);
 
   // Migrations for existing databases

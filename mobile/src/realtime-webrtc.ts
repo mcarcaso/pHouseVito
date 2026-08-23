@@ -1,5 +1,6 @@
 export interface VoiceConnection {
   setMuted(muted: boolean): void;
+  sendEvent(event: unknown): void;
   close(): void;
 }
 

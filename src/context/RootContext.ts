@@ -17,6 +17,7 @@ import { FileSecretService } from "../services/secrets/FileSecretService.js";
 import { DefaultSessionService } from "../services/sessions/DefaultSessionService.js";
 import { DefaultServerLifecycleService } from "../services/server/DefaultServerLifecycleService.js";
 import { FileVitoService } from "../services/vito/FileVitoService.js";
+import { DefaultVoiceService } from "../services/voice/DefaultVoiceService.js";
 import { FileAppStore } from "../stores/apps/FileAppStore.js";
 import { FileAttachmentStore } from "../stores/attachments/FileAttachmentStore.js";
 import { FileDriveStore } from "../stores/drive/FileDriveStore.js";
@@ -28,6 +29,8 @@ import { SqliteSessionStore } from "../stores/sessions/SqliteSessionStore.js";
 import { FileSkillStore } from "../stores/skills/FileSkillStore.js";
 import { FileTraceEventStore } from "../stores/traces/FileTraceEventStore.js";
 import { FileTraceStore } from "../stores/traces/FileTraceStore.js";
+import { SqliteVoiceTaskStore } from "../stores/voice/SqliteVoiceTaskStore.js";
+import { xAskApiService } from "../lib/x.js";
 import { ObjectContext } from "./ObjectContext.js";
 import type { Context } from "./Context.js";
 
@@ -61,6 +64,7 @@ export function RootContext(args: RootContextArgs): Context {
     appsDir: () => args.appsDir ?? join(args.userDir, "apps"),
     attachmentsDir: () => args.attachmentsDir ?? resolve(process.cwd(), "data", "attachments"),
     vitoService: () => new FileVitoService(),
+    voiceService: (x) => new DefaultVoiceService(xAskApiService(x)),
     fileService: () => new FileSystemFileService(),
     inboundAttachmentService: () => new DriveInboundAttachmentService(),
     appProcessService: () => new Pm2AppProcessService(),
@@ -85,6 +89,7 @@ export function RootContext(args: RootContextArgs): Context {
     sessionStore: () => new SqliteSessionStore(),
     skillStore: () => new FileSkillStore(),
     messageStore: () => new SqliteMessageStore(),
+    voiceTaskStore: () => new SqliteVoiceTaskStore(),
     traceStore: () => new FileTraceStore(),
     traceEventStore: () => new FileTraceEventStore(),
   });

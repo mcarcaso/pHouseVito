@@ -4,10 +4,9 @@ import { ChatScreen } from "./src/ChatScreen";
 import { LoginScreen } from "./src/LoginScreen";
 import { operationAreas, OperationsScreen, type OperationArea } from "./src/OperationsScreen";
 import { VoiceScreen } from "./src/VoiceScreen";
-import { checkAuth, loadToken, logout, saveToken, VITO_URL } from "./src/api";
+import { checkAuth, loadToken, logout, saveToken } from "./src/api";
 import {
   ActivityIndicator,
-  Linking,
   Platform,
   Pressable,
   SafeAreaView,
@@ -18,50 +17,22 @@ import {
   View,
 } from "react-native";
 
-type HealthState =
-  | { kind: "loading" }
-  | { kind: "online"; checkedAt: Date }
-  | { kind: "offline"; message: string; checkedAt: Date };
-
-type Screen = "home" | "chat" | "voice" | "more";
+type Screen = "chat" | "voice" | "more";
 
 const navigation: Array<{ id: Screen; label: string; icon: string }> = [
-  { id: "home", label: "Home", icon: "⌂" },
   { id: "chat", label: "Chat", icon: "●" },
   { id: "voice", label: "Voice", icon: "◉" },
-  { id: "more", label: "Operations", icon: "•••" },
+  { id: "more", label: "More", icon: "•••" },
 ];
 
 export default function App() {
   const [screen, setScreen] = useState<Screen>("chat");
   const [operationArea, setOperationArea] = useState<OperationArea | null>(null);
-  const [health, setHealth] = useState<HealthState>({ kind: "loading" });
   const [authState, setAuthState] = useState<"loading" | "authenticated" | "login">("loading");
   const { width } = useWindowDimensions();
   const desktop = width >= 760;
 
-  const checkHealth = useCallback(async () => {
-    setHealth({ kind: "loading" });
-    try {
-      const response = await fetch(
-        `${VITO_URL}/api/health`,
-        Platform.OS === "web" ? { mode: "no-cors" } : undefined,
-      );
-      // Browser development runs on Metro's port and receives an opaque
-      // no-CORS response from Vito. A resolved request still confirms reachability.
-      if (response.type !== "opaque" && !response.ok) throw new Error(`HTTP ${response.status}`);
-      setHealth({ kind: "online", checkedAt: new Date() });
-    } catch (error) {
-      setHealth({
-        kind: "offline",
-        message: error instanceof Error ? error.message : "Connection failed",
-        checkedAt: new Date(),
-      });
-    }
-  }, []);
-
   useEffect(() => {
-    void checkHealth();
     void (async () => {
       await loadToken();
       try {
@@ -71,7 +42,7 @@ export default function App() {
         setAuthState("login");
       }
     })();
-  }, [checkHealth]);
+  }, []);
 
   const unauthorized = useCallback(() => {
     void saveToken(null);
@@ -97,9 +68,7 @@ export default function App() {
   }
 
   const content =
-    screen === "home" ? (
-      <Home health={health} checkHealth={checkHealth} />
-    ) : screen === "chat" ? (
+    screen === "chat" ? (
       <ChatScreen onUnauthorized={unauthorized} />
     ) : screen === "voice" ? (
       <VoiceScreen onUnauthorized={unauthorized} />
@@ -206,64 +175,6 @@ function Navigation({
   );
 }
 
-function Home({ health, checkHealth }: { health: HealthState; checkHealth: () => Promise<void> }) {
-  const online = health.kind === "online";
-  return (
-    <View>
-      <Text style={styles.eyebrow}>VITO MOBILE</Text>
-      <Text style={styles.title}>The family business,{"\n"}now in your pocket.</Text>
-      <Text style={styles.subtitle}>
-        One shared native and web companion for chat, live voice, memory, apps, configuration, and
-        Vito operations.
-      </Text>
-
-      <View style={styles.card}>
-        <View style={styles.cardHeader}>
-          <View>
-            <Text style={styles.cardLabel}>HOME SERVER</Text>
-            <Text style={styles.cardTitle}>Vito connection</Text>
-          </View>
-          <View style={[styles.statusPill, online ? styles.statusOnline : styles.statusNeutral]}>
-            {health.kind === "loading" ? (
-              <ActivityIndicator size="small" color="#a3a3a3" />
-            ) : (
-              <>
-                <View style={[styles.statusDot, online ? styles.dotOnline : styles.dotOffline]} />
-                <Text style={[styles.statusText, online && styles.statusTextOnline]}>
-                  {online ? "Online" : "Offline"}
-                </Text>
-              </>
-            )}
-          </View>
-        </View>
-        <View style={styles.rule} />
-        <Text style={styles.endpointLabel}>ENDPOINT</Text>
-        <Text style={styles.endpoint} numberOfLines={1}>
-          {VITO_URL}
-        </Text>
-        {health.kind === "offline" && <Text style={styles.errorText}>{health.message}</Text>}
-        {health.kind !== "loading" && (
-          <Text style={styles.checkedText}>Checked {health.checkedAt.toLocaleTimeString()}</Text>
-        )}
-        <View style={styles.actions}>
-          <Button title="Check again" onPress={() => void checkHealth()} />
-          <Button title="Open companion" secondary onPress={() => void Linking.openURL(VITO_URL)} />
-        </View>
-      </View>
-
-      <View style={styles.smallCard}>
-        <Text style={styles.smallCardNumber}>✓</Text>
-        <View style={styles.smallCardBody}>
-          <Text style={styles.smallCardTitle}>Native update verified</Text>
-          <Text style={styles.smallCardText}>
-            Delivered remotely through EAS Update · August 23
-          </Text>
-        </View>
-      </View>
-    </View>
-  );
-}
-
 function MoreMenu({
   onSelect,
   onLogout,
@@ -287,36 +198,6 @@ function MoreMenu({
       <Pressable onPress={onLogout} style={styles.logoutButton}>
         <Text style={styles.logoutText}>Sign out</Text>
       </Pressable>
-    </View>
-  );
-}
-
-function ComingSoon({
-  eyebrow,
-  title,
-  body,
-  action,
-  onAction,
-}: {
-  eyebrow: string;
-  title: string;
-  body: string;
-  action: string;
-  onAction: () => void;
-}) {
-  return (
-    <View>
-      <Text style={styles.eyebrow}>{eyebrow}</Text>
-      <Text style={styles.title}>{title}</Text>
-      <Text style={styles.subtitle}>{body}</Text>
-      <View style={styles.comingCard}>
-        <Text style={styles.comingMark}>V</Text>
-        <Text style={styles.comingTitle}>Under construction</Text>
-        <Text style={styles.comingText}>
-          The current dashboard remains operational while this surface earns parity.
-        </Text>
-        <Button title={action} onPress={onAction} />
-      </View>
     </View>
   );
 }

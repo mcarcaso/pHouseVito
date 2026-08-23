@@ -26,7 +26,12 @@ describe("InMemoryDashboardAuthService", () => {
       assert.equal(setup.status, "success");
       if (setup.status !== "success") return;
       assert.ok(setup.password.length > 0);
+      assert.ok(setup.token.length > 0);
       assert.match(setup.cookie, /^session=.*; HttpOnly; Path=\/; SameSite=Lax; Max-Age=604800$/);
+      assert.deepEqual(service.getStatus(x, undefined, `Bearer ${setup.token}`), {
+        authenticated: true,
+        passwordSet: true,
+      });
       assert.deepEqual(service.getStatus(x, setup.cookie), {
         authenticated: true,
         passwordSet: true,
@@ -68,8 +73,9 @@ describe("InMemoryDashboardAuthService", () => {
       assert.equal(success.status, "success");
       if (success.status !== "success") return;
       assert.match(success.cookie, / SameSite=Lax; Secure; Max-Age=604800$/);
+      assert.equal(service.isAuthenticated(x, undefined, `Bearer ${success.token}`), true);
       const logoutCookie = service.logout(x, {
-        cookieHeader: success.cookie,
+        authorizationHeader: `Bearer ${success.token}`,
         host: "example.com",
       });
       assert.equal(service.isAuthenticated(x, success.cookie), false);

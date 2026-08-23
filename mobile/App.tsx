@@ -1,5 +1,8 @@
 import { StatusBar } from "expo-status-bar";
 import { useCallback, useEffect, useState } from "react";
+import { ChatScreen } from "./src/ChatScreen";
+import { LoginScreen } from "./src/LoginScreen";
+import { checkAuth, loadToken, logout, saveToken, VITO_URL } from "./src/api";
 import {
   ActivityIndicator,
   Linking,
@@ -12,11 +15,6 @@ import {
   useWindowDimensions,
   View,
 } from "react-native";
-
-const VITO_URL = (process.env.EXPO_PUBLIC_VITO_URL ?? "https://theworstproductions.com").replace(
-  /\/$/,
-  "",
-);
 
 type HealthState =
   | { kind: "loading" }
@@ -32,8 +30,9 @@ const navigation: Array<{ id: Screen; label: string; icon: string }> = [
 ];
 
 export default function App() {
-  const [screen, setScreen] = useState<Screen>("home");
+  const [screen, setScreen] = useState<Screen>("chat");
   const [health, setHealth] = useState<HealthState>({ kind: "loading" });
+  const [authState, setAuthState] = useState<"loading" | "authenticated" | "login">("loading");
   const { width } = useWindowDimensions();
   const desktop = width >= 760;
 
@@ -59,26 +58,52 @@ export default function App() {
 
   useEffect(() => {
     void checkHealth();
+    void (async () => {
+      await loadToken();
+      try {
+        const status = await checkAuth();
+        setAuthState(status.authenticated ? "authenticated" : "login");
+      } catch {
+        setAuthState("login");
+      }
+    })();
   }, [checkHealth]);
+
+  const unauthorized = useCallback(() => {
+    void saveToken(null);
+    setAuthState("login");
+  }, []);
+
+  if (authState === "loading") {
+    return (
+      <SafeAreaView style={styles.loading}>
+        <StatusBar style="light" />
+        <ActivityIndicator color="#b7f34a" />
+      </SafeAreaView>
+    );
+  }
+
+  if (authState === "login") {
+    return (
+      <SafeAreaView style={styles.safeArea}>
+        <StatusBar style="light" />
+        <LoginScreen onSuccess={() => setAuthState("authenticated")} />
+      </SafeAreaView>
+    );
+  }
 
   const content =
     screen === "home" ? (
       <Home health={health} checkHealth={checkHealth} />
     ) : screen === "chat" ? (
-      <ComingSoon
-        eyebrow="FIRST DESTINATION"
-        title="Chat belongs here."
-        body="The next slice will connect native chat to Vito sessions, then add recording and live voice without compromising the existing dashboard."
-        action="Open current dashboard"
-        onAction={() => void Linking.openURL(`${VITO_URL}/chat`)}
-      />
+      <ChatScreen onUnauthorized={unauthorized} />
     ) : (
       <ComingSoon
         eyebrow="PARITY PLAN"
         title="One dashboard, every surface."
         body="Settings, jobs, apps, Drive, memory and server controls will move into this shared Expo application one capability at a time."
-        action="Open current dashboard"
-        onAction={() => void Linking.openURL(VITO_URL)}
+        action="Sign out"
+        onAction={() => void logout().finally(() => setAuthState("login"))}
       />
     );
 
@@ -87,9 +112,15 @@ export default function App() {
       <StatusBar style="light" />
       <View style={[styles.shell, desktop && styles.shellDesktop]}>
         {desktop && <Navigation screen={screen} setScreen={setScreen} desktop />}
-        <ScrollView contentContainerStyle={[styles.content, desktop && styles.contentDesktop]}>
-          <View style={styles.page}>{content}</View>
-        </ScrollView>
+        {screen === "chat" ? (
+          <View style={[styles.content, styles.chatContent, desktop && styles.contentDesktop]}>
+            <View style={[styles.page, styles.chatPage]}>{content}</View>
+          </View>
+        ) : (
+          <ScrollView contentContainerStyle={[styles.content, desktop && styles.contentDesktop]}>
+            <View style={styles.page}>{content}</View>
+          </ScrollView>
+        )}
         {!desktop && <Navigation screen={screen} setScreen={setScreen} />}
       </View>
     </SafeAreaView>
@@ -260,11 +291,14 @@ function Button({
 
 const styles = StyleSheet.create({
   safeArea: { flex: 1, backgroundColor: "#080a09" },
+  loading: { flex: 1, backgroundColor: "#080a09", alignItems: "center", justifyContent: "center" },
   shell: { flex: 1, backgroundColor: "#080a09" },
   shellDesktop: { flexDirection: "row" },
   content: { flexGrow: 1, padding: 22, paddingBottom: 116 },
+  chatContent: { flex: 1 },
   contentDesktop: { padding: 48, paddingBottom: 48 },
   page: { width: "100%", maxWidth: 860, alignSelf: "center" },
+  chatPage: { flex: 1 },
   sidebar: {
     width: 240,
     padding: 24,

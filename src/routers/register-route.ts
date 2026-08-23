@@ -139,7 +139,7 @@ function resolveRequestContext(
       "Dashboard password not set. Complete /api/auth/setup first.",
     );
   }
-  if (!authService.isAuthenticated(authX, req.headers.cookie)) {
+  if (!authService.isAuthenticated(authX, req.headers.cookie, req.headers.authorization)) {
     return authenticationFailure(res, 401, "Unauthorized");
   }
   return DashboardUserContext(rootX);

@@ -41,6 +41,22 @@ import { fileURLToPath } from "node:url";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
+function isPrivateDevelopmentOrigin(origin: string): boolean {
+  try {
+    const url = new URL(origin);
+    if (url.protocol !== "http:") return false;
+    return (
+      url.hostname === "localhost" ||
+      url.hostname === "127.0.0.1" ||
+      url.hostname.startsWith("192.168.") ||
+      url.hostname.startsWith("10.") ||
+      url.hostname.startsWith("100.")
+    );
+  } catch {
+    return false;
+  }
+}
+
 export class DashboardChannelService implements ChannelService {
   readonly name = "dashboard";
   readonly capabilities = {
@@ -56,6 +72,23 @@ export class DashboardChannelService implements ChannelService {
   private async setupExpress(x: Context, app: express.Express): Promise<void> {
     app.disable("x-powered-by");
     app.use(createHttpSecurityMiddleware(x));
+    app.use((req, res, next) => {
+      const origin = req.headers.origin;
+      if (!origin || !isPrivateDevelopmentOrigin(origin)) {
+        next();
+        return;
+      }
+      res.setHeader("Access-Control-Allow-Origin", origin);
+      res.setHeader("Access-Control-Allow-Credentials", "true");
+      res.setHeader("Access-Control-Allow-Headers", "Authorization, Content-Type");
+      res.setHeader("Access-Control-Allow-Methods", "GET, POST, PUT, PATCH, DELETE, OPTIONS");
+      res.setHeader("Vary", "Origin");
+      if (req.method === "OPTIONS") {
+        res.status(204).end();
+        return;
+      }
+      next();
+    });
 
     // Must precede body parsing so request bodies can stream to app processes.
     app.use(createAppProxyMiddleware(x));

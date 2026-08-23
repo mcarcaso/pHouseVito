@@ -22,7 +22,11 @@ export class DashboardAuthRouterService implements RouterService {
       },
       responseSchema: jsonResponseSchema,
       handler: (routeX, { data: _input, req, res }) => {
-        return xDashboardAuthService(routeX).getStatus(routeX, req.headers.cookie);
+        return xDashboardAuthService(routeX).getStatus(
+          routeX,
+          req.headers.cookie,
+          req.headers.authorization,
+        );
       },
     });
 
@@ -46,7 +50,7 @@ export class DashboardAuthRouterService implements RouterService {
           return;
         }
         res.setHeader("Set-Cookie", result.cookie);
-        return { ok: true, password: result.password };
+        return { ok: true, password: result.password, token: result.token };
       },
     });
 
@@ -82,7 +86,7 @@ export class DashboardAuthRouterService implements RouterService {
           return;
         }
         res.setHeader("Set-Cookie", result.cookie);
-        return { ok: true };
+        return { ok: true, token: result.token };
       },
     });
 
@@ -100,6 +104,7 @@ export class DashboardAuthRouterService implements RouterService {
       handler: (routeX, { data: _input, req, res }) => {
         const cookie = xDashboardAuthService(routeX).logout(routeX, {
           cookieHeader: req.headers.cookie,
+          authorizationHeader: req.headers.authorization,
           host: req.headers.host,
         });
         res.setHeader("Set-Cookie", cookie);

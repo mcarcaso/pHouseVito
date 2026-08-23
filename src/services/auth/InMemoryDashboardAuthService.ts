@@ -48,16 +48,19 @@ export class InMemoryDashboardAuthService implements DashboardAuthService {
     return Boolean(xSecretService(x).get(x, "DASHBOARD_PASSWORD_HASH"));
   }
 
-  isAuthenticated(_x: Context, cookieHeader?: string): boolean {
-    const sessionId = parseCookie(cookieHeader, "session");
+  isAuthenticated(_x: Context, cookieHeader?: string, authorizationHeader?: string): boolean {
+    const bearer = authorizationHeader?.startsWith("Bearer ")
+      ? authorizationHeader.slice(7)
+      : undefined;
+    const sessionId = bearer || parseCookie(cookieHeader, "session");
     const session = this.sessions.get(sessionId);
     return Boolean(session && session.expires > Date.now());
   }
 
-  getStatus(x: Context, cookieHeader?: string): DashboardAuthStatus {
+  getStatus(x: Context, cookieHeader?: string, authorizationHeader?: string): DashboardAuthStatus {
     const passwordSet = this.isPasswordSet(x);
     return {
-      authenticated: passwordSet && this.isAuthenticated(x, cookieHeader),
+      authenticated: passwordSet && this.isAuthenticated(x, cookieHeader, authorizationHeader),
       passwordSet,
     };
   }
@@ -74,6 +77,7 @@ export class InMemoryDashboardAuthService implements DashboardAuthService {
       status: "success",
       password,
       cookie: buildSessionCookie(sessionId, SESSION_TTL_MS / 1000, args.host),
+      token: sessionId,
     };
   }
 
@@ -93,11 +97,18 @@ export class InMemoryDashboardAuthService implements DashboardAuthService {
     return {
       status: "success",
       cookie: buildSessionCookie(sessionId, SESSION_TTL_MS / 1000, args.host),
+      token: sessionId,
     };
   }
 
-  logout(_x: Context, args: { cookieHeader?: string; host?: string }): string {
-    const sessionId = parseCookie(args.cookieHeader, "session");
+  logout(
+    _x: Context,
+    args: { cookieHeader?: string; authorizationHeader?: string; host?: string },
+  ): string {
+    const bearer = args.authorizationHeader?.startsWith("Bearer ")
+      ? args.authorizationHeader.slice(7)
+      : undefined;
+    const sessionId = bearer || parseCookie(args.cookieHeader, "session");
     if (sessionId) this.sessions.delete(sessionId);
     return buildSessionCookie("", 0, args.host);
   }

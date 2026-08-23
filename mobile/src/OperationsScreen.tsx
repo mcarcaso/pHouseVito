@@ -62,6 +62,125 @@ function pretty(value: unknown) {
   return JSON.stringify(value, null, 2);
 }
 
+function extractMessageText(content: unknown): string {
+  if (typeof content === "string") return content;
+  if (!Array.isArray(content)) return "";
+  return content
+    .flatMap((block) => {
+      if (!block || typeof block !== "object") return [];
+      const value = block as Record<string, unknown>;
+      if (typeof value.text === "string") return [value.text];
+      if (typeof value.thinking === "string") return [value.thinking];
+      if (value.type === "tool_use") return [`[tool: ${String(value.name ?? "unknown")}]`];
+      if (value.type === "tool_result")
+        return [`[tool result] ${typeof value.content === "string" ? value.content : ""}`];
+      return [];
+    })
+    .join("\n\n");
+}
+
+function StructuredRows({ data, kind }: { data: unknown; kind: "traces" | "pi" }) {
+  const [expanded, setExpanded] = useState<Set<number>>(new Set());
+  const lines =
+    data && typeof data === "object" && Array.isArray((data as { lines?: unknown[] }).lines)
+      ? (data as { lines: unknown[] }).lines
+      : [];
+  const toggle = (index: number) =>
+    setExpanded((current) => {
+      const next = new Set(current);
+      if (next.has(index)) next.delete(index);
+      else next.add(index);
+      return next;
+    });
+
+  return (
+    <View style={styles.structuredList}>
+      {lines.map((line, index) => {
+        const record = (line ?? {}) as Record<string, unknown>;
+        const type = String(record.type ?? "unknown");
+        const isOpen = expanded.has(index);
+        let badge = type;
+        let title = "";
+        let body = "";
+        let tint = styles.eventNeutral;
+
+        if (kind === "pi" && type === "message") {
+          const message = (record.message ?? {}) as Record<string, unknown>;
+          badge = String(message.role ?? "message");
+          title =
+            typeof record.timestamp === "string"
+              ? new Date(record.timestamp).toLocaleTimeString()
+              : "";
+          body = extractMessageText(message.content);
+          tint =
+            badge === "user"
+              ? styles.eventUser
+              : badge === "assistant"
+                ? styles.eventAssistant
+                : styles.eventTool;
+        } else if (kind === "traces" && (type === "raw_event" || type === "normalized_event")) {
+          const event = record.event;
+          const eventRecord =
+            event && typeof event === "object" ? (event as Record<string, unknown>) : {};
+          badge = type === "raw_event" ? "raw" : "normalized";
+          title = String(eventRecord.type ?? eventRecord.kind ?? "event");
+          body = typeof event === "string" ? event : pretty(event);
+          tint = type === "raw_event" ? styles.eventNeutral : styles.eventAssistant;
+        } else if (type === "header" || type === "session") {
+          title = String(record.model ?? record.id ?? record.session_id ?? "Session metadata");
+          body = pretty(record);
+        } else if (type === "user_message" || type === "prompt") {
+          title = type === "user_message" ? "Mike" : "Prompt";
+          body = String(record.content ?? "");
+          tint = type === "user_message" ? styles.eventUser : styles.eventNeutral;
+        } else if (type === "model_change") {
+          title = `${String(record.provider ?? "")}/${String(record.modelId ?? "")}`;
+          tint = styles.eventAssistant;
+        } else if (type === "compaction" || type === "branch_summary") {
+          title = String(record.summary ?? "").slice(0, 140);
+          body = String(record.summary ?? "");
+          tint = styles.eventTool;
+        } else if (type === "footer") {
+          title = `${String(record.duration_ms ?? 0)}ms · ${String(record.tool_calls ?? 0)} tool calls`;
+          body = pretty(record);
+          tint = record.success === false ? styles.eventError : styles.eventTool;
+        } else {
+          title = String(record.kind ?? record.name ?? record.timestamp ?? "Event");
+          body = pretty(record);
+        }
+
+        const preview = body.replace(/\s+/g, " ").trim().slice(0, 180);
+        return (
+          <Pressable
+            key={`${type}-${index}`}
+            onPress={() => toggle(index)}
+            style={[styles.eventCard, tint]}
+          >
+            <View style={styles.eventHeader}>
+              <Text style={styles.eventBadge}>{badge}</Text>
+              <Text style={styles.eventTitle} numberOfLines={1}>
+                {title || preview || "Event"}
+              </Text>
+              <Text style={styles.eventChevron}>{isOpen ? "▾" : "›"}</Text>
+            </View>
+            {!isOpen && preview && (
+              <Text style={styles.eventPreview} numberOfLines={2}>
+                {preview}
+              </Text>
+            )}
+            {isOpen && (
+              <Text selectable style={styles.eventBody}>
+                {body || pretty(record)}
+              </Text>
+            )}
+          </Pressable>
+        );
+      })}
+      {lines.length === 0 && <Text style={styles.emptyText}>No rows in this page.</Text>}
+    </View>
+  );
+}
+
 function labelFor(value: unknown, index: number): string {
   if (!value || typeof value !== "object") return String(value);
   const row = value as Record<string, unknown>;
@@ -392,13 +511,7 @@ export function OperationsScreen({
           </Pressable>
         </View>
 
-        {selected !== undefined && (
-          <View style={styles.jsonCard}>
-            <Text selectable style={styles.json}>
-              {pretty(selected)}
-            </Text>
-          </View>
-        )}
+        {selected !== undefined && <StructuredRows data={selected} kind={detailTarget.area} />}
       </View>
     );
   }
@@ -951,6 +1064,42 @@ const styles = StyleSheet.create({
   inlineActions: { flexDirection: "row", gap: 10, flexWrap: "wrap", justifyContent: "flex-end" },
   link: { color: "#b7f34a", fontSize: 12, fontWeight: "800" },
   deleteLink: { color: "#ff8d8d", fontSize: 12, fontWeight: "800" },
+  structuredList: { gap: 9 },
+  eventCard: { borderWidth: 1, borderRadius: 13, padding: 12 },
+  eventNeutral: { backgroundColor: "#151914", borderColor: "#30362d" },
+  eventUser: { backgroundColor: "#101b24", borderColor: "#244760" },
+  eventAssistant: { backgroundColor: "#191329", borderColor: "#43306b" },
+  eventTool: { backgroundColor: "#102019", borderColor: "#28523b" },
+  eventError: { backgroundColor: "#251313", borderColor: "#713b3b" },
+  eventHeader: { flexDirection: "row", alignItems: "center", gap: 8 },
+  eventBadge: {
+    color: "#b7f34a",
+    backgroundColor: "#252b23",
+    borderRadius: 7,
+    overflow: "hidden",
+    paddingHorizontal: 7,
+    paddingVertical: 3,
+    fontSize: 10,
+    fontWeight: "800",
+    fontFamily: "monospace",
+  },
+  eventTitle: {
+    color: "#e6eae3",
+    flex: 1,
+    fontSize: 12,
+    fontWeight: "700",
+    fontFamily: "monospace",
+  },
+  eventChevron: { color: "#7d857b", fontSize: 18 },
+  eventPreview: { color: "#929a8f", fontSize: 12, lineHeight: 17, marginTop: 8 },
+  eventBody: {
+    color: "#c4cbc1",
+    fontSize: 11,
+    lineHeight: 17,
+    marginTop: 10,
+    fontFamily: "monospace",
+  },
+  emptyText: { color: "#858d82", textAlign: "center", padding: 24 },
   jsonCard: {
     backgroundColor: "#10130f",
     borderRadius: 14,

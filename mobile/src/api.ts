@@ -115,7 +115,15 @@ export async function sendMessage(sessionId: string, content: string): Promise<v
 }
 
 export async function getRealtimeToken(): Promise<string> {
-  const result = await api<{ value: string }>("/api/voice/realtime-token", { method: "POST" });
-  if (!result.value) throw new Error("Realtime token was missing from the server response");
+  const result = await api<unknown>("/api/voice/realtime-token", { method: "POST" });
+  if (
+    !result ||
+    typeof result !== "object" ||
+    !("value" in result) ||
+    typeof result.value !== "string" ||
+    !result.value
+  ) {
+    throw new Error("Voice endpoint is unavailable. Restart Vito to activate the backend changes.");
+  }
   return result.value;
 }

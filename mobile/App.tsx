@@ -33,7 +33,13 @@ import { LoginScreen } from "./src/LoginScreen";
 import { operationAreas, OperationsScreen, type OperationArea } from "./src/OperationsScreen";
 import { VoiceScreen } from "./src/VoiceScreen";
 import { checkAuth, loadToken, logout, saveToken } from "./src/api";
-import { VitoThemeProvider, useThemeStyles, useVitoTheme, type VitoTheme } from "./src/theme";
+import {
+  DESKTOP_BREAKPOINT,
+  VitoThemeProvider,
+  useThemeStyles,
+  useVitoTheme,
+  type VitoTheme,
+} from "./src/theme";
 
 type ChatStackParamList = {
   ChatList: undefined;
@@ -365,7 +371,7 @@ function MainTabs({
 }) {
   const styles = useThemeStyles(createStyles);
   const { width } = useWindowDimensions();
-  const desktop = width >= 760;
+  const desktop = width >= DESKTOP_BREAKPOINT;
   return (
     <Tabs.Navigator
       initialRouteName="Chat"

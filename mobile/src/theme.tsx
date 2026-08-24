@@ -1,6 +1,8 @@
 import { createContext, useContext, useMemo, type ReactNode } from "react";
 import type { ImageStyle, TextStyle, ViewStyle } from "react-native";
 
+export const DESKTOP_BREAKPOINT = 1180;
+
 export type VitoThemeName = "ledger-dark";
 
 export type VitoTheme = {

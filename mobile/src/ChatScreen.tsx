@@ -24,7 +24,7 @@ import {
 } from "@vito/client";
 import { driveFileSource } from "./api";
 import { MarkdownText } from "./MarkdownText";
-import { useThemeStyles, useVitoTheme, type VitoTheme } from "./theme";
+import { DESKTOP_BREAKPOINT, useThemeStyles, useVitoTheme, type VitoTheme } from "./theme";
 
 const DEFAULT_SESSION = "dashboard:default";
 const FILTER_KEY = "vito-chat-display-filters";
@@ -149,7 +149,7 @@ export function ChatScreen({
 }) {
   const styles = useThemeStyles(createStyles);
   const { width } = useWindowDimensions();
-  const desktop = width >= 760;
+  const desktop = width >= DESKTOP_BREAKPOINT;
   const [localSessionId, setLocalSessionId] = useState<string | null>(
     desktop ? DEFAULT_SESSION : null,
   );
@@ -548,7 +548,7 @@ function MessageAttachments({ attachments }: { attachments: MessageAttachment[] 
 function MessageRow({ message }: { message: Message }) {
   const styles = useThemeStyles(createStyles);
   const { width } = useWindowDimensions();
-  const desktop = width >= 760;
+  const desktop = width >= DESKTOP_BREAKPOINT;
   if (message.type === "thought")
     return (
       <View style={styles.thoughtCard}>

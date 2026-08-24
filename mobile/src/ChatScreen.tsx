@@ -561,7 +561,9 @@ function MessageRow({ message }: { message: Message }) {
             })}
           </Text>
         </View>
-        <MarkdownText variant="chat">{cleanContent(message.content)}</MarkdownText>
+        <View style={styles.thoughtBody}>
+          <MarkdownText variant="chat">{cleanContent(message.content)}</MarkdownText>
+        </View>
       </View>
     );
   if (message.type === "tool_start" || message.type === "tool_end") {
@@ -786,6 +788,7 @@ const createStyles = (theme: VitoTheme) =>
     thoughtLabel: { color: theme.colors.accent, fontSize: 10, fontWeight: "900", letterSpacing: 1 },
     toolLabel: { color: theme.colors.info, fontSize: 10, fontWeight: "900", letterSpacing: 1 },
     toolResponseLabel: { color: theme.colors.success },
+    thoughtBody: { marginTop: theme.space.sm },
     specialTime: {
       flexShrink: 1,
       color: theme.colors.textMuted,

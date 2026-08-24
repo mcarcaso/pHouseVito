@@ -227,18 +227,6 @@ function AppContent() {
                       />
                     )
                   : undefined,
-              headerSearchBarOptions:
-                Platform.OS === "web"
-                  ? undefined
-                  : {
-                      placeholder: "Search memory",
-                      hideWhenScrolling: false,
-                      obscureBackgroundDuringPresentation: false,
-                      onSearchButtonPress: (event) => {
-                        const query = event.nativeEvent.text.trim();
-                        if (query) navigation.navigate("MemoryResults", { query });
-                      },
-                    },
             })}
           />
           <RootStack.Screen
@@ -383,24 +371,46 @@ function WebStackHeader({
 
 function RootMemoryScreen({ navigation }: { navigation: RootNavigation }) {
   const styles = useThemeStyles(createStyles);
+  const theme = useVitoTheme();
+  const [query, setQuery] = useState("");
+  const openResults = () => {
+    const value = query.trim();
+    if (value) navigation.navigate("MemoryResults", { query: value });
+  };
   return (
-    <ScrollView
-      automaticallyAdjustContentInsets
-      contentInsetAdjustmentBehavior={Platform.OS === "ios" ? "automatic" : "never"}
-      automaticallyAdjustKeyboardInsets
-      automaticallyAdjustsScrollIndicatorInsets
-      keyboardDismissMode="interactive"
-      keyboardShouldPersistTaps="handled"
-      contentContainerStyle={styles.fullScreenOperation}
-    >
-      <OperationsScreen
-        initialArea="memory"
-        showAreaTabs={false}
-        hideMemorySearch
-        onUnauthorized={() => navigation.navigate("Main", { screen: "More" })}
-        onMemorySearch={(query) => navigation.navigate("MemoryResults", { query })}
-      />
-    </ScrollView>
+    <View style={styles.rootOperation}>
+      {Platform.OS !== "web" && (
+        <View style={styles.nativeMemorySearch}>
+          <Ionicons name="search-outline" size={17} color={theme.colors.accent} />
+          <TextInput
+            value={query}
+            onChangeText={setQuery}
+            onSubmitEditing={openResults}
+            placeholder="Search memory"
+            placeholderTextColor={theme.colors.textMuted}
+            returnKeyType="search"
+            style={styles.nativeMemorySearchInput}
+          />
+        </View>
+      )}
+      <ScrollView
+        automaticallyAdjustContentInsets
+        contentInsetAdjustmentBehavior={Platform.OS === "ios" ? "automatic" : "never"}
+        automaticallyAdjustKeyboardInsets
+        automaticallyAdjustsScrollIndicatorInsets
+        keyboardDismissMode="interactive"
+        keyboardShouldPersistTaps="handled"
+        contentContainerStyle={styles.fullScreenOperation}
+      >
+        <OperationsScreen
+          initialArea="memory"
+          showAreaTabs={false}
+          hideMemorySearch
+          onUnauthorized={() => navigation.navigate("Main", { screen: "More" })}
+          onMemorySearch={(value) => navigation.navigate("MemoryResults", { query: value })}
+        />
+      </ScrollView>
+    </View>
   );
 }
 

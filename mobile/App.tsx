@@ -213,6 +213,7 @@ function AppContent() {
               const title = operationAreas.find((item) => item.id === area)?.label ?? "";
               return {
                 headerShown: true,
+                headerTransparent: false,
                 title: area === "memory" ? "" : title,
                 headerBackTitle: "More",
                 headerStyle: { backgroundColor: theme.colors.canvas },
@@ -236,6 +237,8 @@ function AppContent() {
                   area === "memory"
                     ? {
                         placeholder: "Search memory",
+                        hideWhenScrolling: false,
+                        obscureBackgroundDuringPresentation: false,
                         onSearchButtonPress: (event) => {
                           const query = event.nativeEvent.text.trim();
                           if (query) navigation.navigate("MemoryResults", { query });
@@ -250,6 +253,7 @@ function AppContent() {
             component={MemoryResultsScreen}
             options={({ navigation }) => ({
               headerShown: true,
+              headerTransparent: false,
               title: "",
               headerBackTitle: "Memory",
               headerStyle: { backgroundColor: theme.colors.canvas },
@@ -363,7 +367,12 @@ function RootOperationScreen({
   const styles = useThemeStyles(createStyles);
   const area = route.params.area;
   return (
-    <ScrollView contentContainerStyle={styles.fullScreenOperation}>
+    <ScrollView
+      automaticallyAdjustContentInsets
+      contentInsetAdjustmentBehavior={Platform.OS === "ios" ? "automatic" : "never"}
+      automaticallyAdjustsScrollIndicatorInsets
+      contentContainerStyle={styles.fullScreenOperation}
+    >
       <OperationsScreen
         initialArea={area}
         showAreaTabs={false}
@@ -404,7 +413,12 @@ function MemoryResultsScreen({
 }) {
   const styles = useThemeStyles(createStyles);
   return (
-    <ScrollView contentContainerStyle={styles.fullScreenOperation}>
+    <ScrollView
+      automaticallyAdjustContentInsets
+      contentInsetAdjustmentBehavior={Platform.OS === "ios" ? "automatic" : "never"}
+      automaticallyAdjustsScrollIndicatorInsets
+      contentContainerStyle={styles.fullScreenOperation}
+    >
       <OperationsScreen
         initialArea="memory"
         initialMemoryQuery={route.params.query}

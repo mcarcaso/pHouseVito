@@ -13,6 +13,7 @@ import {
   View,
 } from "react-native";
 import { api, VITO_URL } from "./api";
+import { MarkdownText } from "./MarkdownText";
 import { useThemeStyles, useVitoTheme, type VitoTheme } from "./theme";
 
 export type OperationArea =
@@ -1258,9 +1259,7 @@ export function OperationsScreen({
         data !== null &&
         data !== undefined &&
         typeof data === "object" && (
-          <Text selectable style={styles.profileContent}>
-            {String((data as { content?: unknown }).content ?? "")}
-          </Text>
+          <MarkdownText>{String((data as { content?: unknown }).content ?? "")}</MarkdownText>
         )}
       {!loading &&
         !rows &&
@@ -1403,11 +1402,6 @@ const createStyles = (theme: VitoTheme) =>
     },
     booleanControlOn: { backgroundColor: theme.colors.accentSurface },
     booleanText: { color: theme.colors.text, fontSize: 12, fontWeight: "800", textAlign: "center" },
-    profileContent: {
-      color: theme.colors.textSecondary,
-      fontSize: 14,
-      lineHeight: 22,
-    },
     detailProse: {
       color: theme.colors.textSecondary,
       fontSize: 14,

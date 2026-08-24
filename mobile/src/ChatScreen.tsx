@@ -20,6 +20,7 @@ import {
   type VitoMessage as Message,
   type VitoSession as Session,
 } from "@vito/client";
+import { MarkdownText } from "./MarkdownText";
 import { useThemeStyles, useVitoTheme, type VitoTheme } from "./theme";
 
 const DEFAULT_SESSION = "dashboard:default";
@@ -398,7 +399,7 @@ function MessageRow({ message }: { message: Message }) {
             })}
           </Text>
         </View>
-        <Text style={styles.thoughtText}>{cleanContent(message.content)}</Text>
+        <MarkdownText variant="chat">{cleanContent(message.content)}</MarkdownText>
       </View>
     );
   if (message.type === "tool_start" || message.type === "tool_end") {
@@ -422,9 +423,9 @@ function MessageRow({ message }: { message: Message }) {
   return (
     <View style={[styles.messageRow, user && styles.userRow]}>
       <View style={[styles.bubble, user ? styles.userBubble : styles.assistantBubble]}>
-        <Text style={[styles.messageText, user && styles.userMessageText]}>
+        <MarkdownText variant="chat" tone={user ? "onAccent" : "default"}>
           {cleanContent(message.content)}
-        </Text>
+        </MarkdownText>
       </View>
     </View>
   );
@@ -575,8 +576,6 @@ const createStyles = (theme: VitoTheme) =>
     },
     assistantBubble: { backgroundColor: theme.colors.separator, borderBottomLeftRadius: 5 },
     userBubble: { backgroundColor: theme.colors.accent, borderBottomRightRadius: 5 },
-    messageText: { color: theme.colors.text, fontSize: 15, lineHeight: 20 },
-    userMessageText: { color: theme.colors.accentText },
     thoughtCard: {
       maxWidth: "88%",
       alignSelf: "flex-start",
@@ -614,13 +613,6 @@ const createStyles = (theme: VitoTheme) =>
       fontSize: 9,
       fontWeight: "700",
       textTransform: "uppercase",
-    },
-    thoughtText: {
-      color: theme.colors.textSecondary,
-      fontSize: 12,
-      lineHeight: 17,
-      marginTop: theme.space.sm,
-      fontFamily: Platform.select({ ios: "Menlo", android: "monospace", default: "monospace" }),
     },
     toolText: {
       color: theme.colors.textSecondary,

@@ -28,6 +28,7 @@ export type VitoTheme = {
     dangerSurface: string;
   };
   space: {
+    none: number;
     xxs: number;
     xs: number;
     sm: number;
@@ -73,6 +74,7 @@ export const themes: Record<VitoThemeName, VitoTheme> = {
       dangerSurface: "#251313",
     },
     space: {
+      none: 0,
       xxs: 2,
       xs: 4,
       sm: 8,

@@ -40,6 +40,7 @@ type MainTabParamList = {
   Voice: undefined;
   More: undefined;
   Memory: undefined;
+  Profile: undefined;
   Skills: undefined;
   Jobs: undefined;
   Apps: undefined;
@@ -66,6 +67,7 @@ const MoreStack = createNativeStackNavigator<{ MoreHome: undefined }>();
 
 const routeForArea: Record<OperationArea, MainRouteName> = {
   memory: "Memory",
+  profile: "Profile",
   skills: "Skills",
   jobs: "Jobs",
   apps: "Apps",
@@ -91,6 +93,11 @@ const operationMeta: Record<
   }
 > = {
   memory: { icon: "git-branch-outline", description: "Search and recall", group: "Intelligence" },
+  profile: {
+    icon: "person-outline",
+    description: "Stable facts and preferences",
+    group: "Intelligence",
+  },
   skills: { icon: "construct-outline", description: "Capabilities", group: "Intelligence" },
   jobs: { icon: "time-outline", description: "Schedules and routines", group: "Automation" },
   apps: { icon: "grid-outline", description: "Tools and services", group: "Automation" },
@@ -125,6 +132,7 @@ const linking: LinkingOptions<RootStackParamList> = {
           Voice: "voice",
           More: "more",
           Memory: "memory",
+          Profile: "profile",
           Skills: "skills",
           Jobs: "jobs",
           Apps: "apps",
@@ -261,6 +269,7 @@ function AppContent() {
                     ? () => (
                         <WebStackHeader
                           onBack={() => navigation.goBack()}
+                          title={area === "memory" ? undefined : title}
                           onSearch={
                             area === "memory"
                               ? (query) => navigation.navigate("MemoryResults", { query })
@@ -348,9 +357,11 @@ function MainTabs({
 function WebStackHeader({
   onBack,
   onSearch,
+  title,
 }: {
   onBack: () => void;
   onSearch?: (query: string) => void;
+  title?: string;
 }) {
   const styles = useThemeStyles(createStyles);
   const theme = useVitoTheme();
@@ -360,6 +371,7 @@ function WebStackHeader({
       <Pressable accessibilityLabel="Back" onPress={onBack} style={styles.webBackButton}>
         <Ionicons name="chevron-back" size={24} color={theme.colors.accent} />
       </Pressable>
+      {title && <Text style={styles.webHeaderTitle}>{title}</Text>}
       {onSearch && (
         <View style={styles.webHeaderSearch}>
           <Ionicons name="search-outline" size={17} color={theme.colors.accent} />
@@ -444,6 +456,7 @@ function RootOperationScreen({
         <OperationsScreen
           initialArea={area}
           showAreaTabs={false}
+          hideScreenTitle
           onUnauthorized={() => navigation.navigate("Main", { screen: "More" })}
           hideMemorySearch={area === "memory"}
           onMemorySearch={area === "memory" ? openResults : undefined}
@@ -791,6 +804,7 @@ const createStyles = (theme: VitoTheme) =>
       alignItems: "flex-start",
       justifyContent: "center",
     },
+    webHeaderTitle: { color: theme.colors.text, fontSize: 16, fontWeight: "700" },
     webHeaderSearch: {
       flex: 1,
       maxWidth: 820,

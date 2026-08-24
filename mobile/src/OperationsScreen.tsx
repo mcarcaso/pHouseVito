@@ -17,6 +17,7 @@ import { useThemeStyles, useVitoTheme, type VitoTheme } from "./theme";
 
 export type OperationArea =
   | "memory"
+  | "profile"
   | "skills"
   | "jobs"
   | "apps"
@@ -31,6 +32,7 @@ export type OperationArea =
 
 export const operationAreas: Array<{ id: OperationArea; label: string; icon: string }> = [
   { id: "memory", label: "Memory", icon: "🧠" },
+  { id: "profile", label: "Profile", icon: "◯" },
   { id: "skills", label: "Skills", icon: "🛠️" },
   { id: "jobs", label: "Jobs", icon: "⏰" },
   { id: "apps", label: "Apps", icon: "🚀" },
@@ -46,6 +48,7 @@ export const operationAreas: Array<{ id: OperationArea; label: string; icon: str
 
 const paths: Record<OperationArea, string> = {
   memory: "/api/memory/embeddings/stats",
+  profile: "/api/memory/profile",
   skills: "/api/skills",
   jobs: "/api/cron/jobs",
   apps: "/api/apps",
@@ -423,6 +426,7 @@ export function OperationsScreen({
   initialMemoryQuery,
   onMemorySearch,
   hideMemorySearch = false,
+  hideScreenTitle = false,
 }: {
   onUnauthorized: () => void;
   initialArea?: OperationArea;
@@ -432,6 +436,7 @@ export function OperationsScreen({
   initialMemoryQuery?: string;
   onMemorySearch?: (query: string) => void;
   hideMemorySearch?: boolean;
+  hideScreenTitle?: boolean;
 }) {
   const styles = useThemeStyles(createStyles);
   const theme = useVitoTheme();
@@ -776,7 +781,7 @@ export function OperationsScreen({
 
   return (
     <View style={[styles.root, area === "memory" && styles.memoryRoot]}>
-      {(area !== "memory" || onBack) && (
+      {!hideScreenTitle && (area !== "memory" || onBack) && (
         <View style={[styles.titleRow, onBack && styles.compactTitleRow]}>
           {onBack && (
             <Pressable onPress={onBack} style={styles.backButton}>
@@ -813,7 +818,7 @@ export function OperationsScreen({
         </ScrollView>
       )}
 
-      {area !== "memory" && (
+      {area !== "memory" && area !== "profile" && (
         <View style={styles.toolbar}>
           <View />
           <Pressable onPress={() => void load()} style={styles.smallButton}>
@@ -834,13 +839,6 @@ export function OperationsScreen({
             returnKeyType="search"
             style={styles.memorySearchInput}
           />
-          <Pressable
-            accessibilityLabel="Open profile"
-            onPress={async () => setSelected(await api("/api/memory/profile"))}
-            style={styles.memoryTextAction}
-          >
-            <Text style={styles.memoryTextActionLabel}>Profile</Text>
-          </Pressable>
         </View>
       )}
 
@@ -1255,9 +1253,21 @@ export function OperationsScreen({
       )}
 
       {!loading && !rows && area === "memory" && <MemoryOverview value={data} />}
-      {!loading && !rows && area !== "memory" && area !== "settings" && area !== "system" && (
-        <StructuredDetail value={data} />
-      )}
+      {!loading &&
+        area === "profile" &&
+        data !== null &&
+        data !== undefined &&
+        typeof data === "object" && (
+          <Text selectable style={styles.profileContent}>
+            {String((data as { content?: unknown }).content ?? "")}
+          </Text>
+        )}
+      {!loading &&
+        !rows &&
+        area !== "memory" &&
+        area !== "profile" &&
+        area !== "settings" &&
+        area !== "system" && <StructuredDetail value={data} />}
     </View>
   );
 }
@@ -1282,8 +1292,6 @@ const createStyles = (theme: VitoTheme) =>
       fontSize: 15,
       paddingVertical: theme.space.md,
     },
-    memoryTextAction: { paddingVertical: theme.space.md, paddingLeft: theme.space.md },
-    memoryTextActionLabel: { color: theme.colors.accent, fontSize: 12, fontWeight: "700" },
     memorySummary: {
       flexDirection: "row",
       flexWrap: "wrap",
@@ -1395,6 +1403,11 @@ const createStyles = (theme: VitoTheme) =>
     },
     booleanControlOn: { backgroundColor: theme.colors.accentSurface },
     booleanText: { color: theme.colors.text, fontSize: 12, fontWeight: "800", textAlign: "center" },
+    profileContent: {
+      color: theme.colors.textSecondary,
+      fontSize: 14,
+      lineHeight: 22,
+    },
     detailProse: {
       color: theme.colors.textSecondary,
       fontSize: 14,

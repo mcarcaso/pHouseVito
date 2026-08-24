@@ -81,6 +81,23 @@ export const vitoTokenStore = {
   set: saveToken,
 };
 
+export function driveFileSource(
+  path: string,
+): { uri: string; headers?: { Authorization: string } } | undefined {
+  const marker = "/user/drive/";
+  const markerIndex = path.indexOf(marker);
+  if (markerIndex < 0) return undefined;
+  const relativePath = path
+    .slice(markerIndex + marker.length)
+    .split("/")
+    .map(encodeURIComponent)
+    .join("/");
+  return {
+    uri: `${VITO_URL}/api/drive/file/${relativePath}`,
+    ...(authToken ? { headers: { Authorization: `Bearer ${authToken}` } } : {}),
+  };
+}
+
 export async function api<T>(path: string, init?: RequestInit): Promise<T> {
   const headers = new Headers(init?.headers);
   headers.set("Accept", "application/json");

@@ -3,6 +3,7 @@ import { FontAwesome6, Ionicons } from "@expo/vector-icons";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   ActivityIndicator,
+  Image,
   KeyboardAvoidingView,
   Platform,
   Pressable,
@@ -21,6 +22,7 @@ import {
   type VitoMessage as Message,
   type VitoSession as Session,
 } from "@vito/client";
+import { driveFileSource } from "./api";
 import { MarkdownText } from "./MarkdownText";
 import { useThemeStyles, useVitoTheme, type VitoTheme } from "./theme";
 
@@ -28,15 +30,42 @@ const DEFAULT_SESSION = "dashboard:default";
 const FILTER_KEY = "vito-chat-display-filters";
 
 type Filters = { thoughts: boolean; tools: boolean };
+type MessageAttachment = {
+  type: string;
+  path: string;
+  filename?: string;
+  mimeType?: string;
+};
+type MessageBody = { text: string; attachments: MessageAttachment[] };
 
-function cleanContent(content: string): string {
+function unpackContent(content: string): MessageBody {
   try {
     const parsed = JSON.parse(content) as unknown;
-    if (typeof parsed === "string") return parsed;
-    return JSON.stringify(parsed, null, 2);
+    if (typeof parsed === "string") return { text: parsed, attachments: [] };
+    if (parsed && typeof parsed === "object") {
+      const envelope = parsed as { text?: unknown; attachments?: unknown };
+      if (typeof envelope.text === "string") {
+        const attachments = Array.isArray(envelope.attachments)
+          ? envelope.attachments.filter((item): item is MessageAttachment =>
+              Boolean(
+                item &&
+                typeof item === "object" &&
+                typeof (item as MessageAttachment).type === "string" &&
+                typeof (item as MessageAttachment).path === "string",
+              ),
+            )
+          : [];
+        return { text: envelope.text, attachments };
+      }
+    }
+    return { text: JSON.stringify(parsed, null, 2), attachments: [] };
   } catch {
-    return content;
+    return { text: content, attachments: [] };
   }
+}
+
+function cleanContent(content: string): string {
+  return unpackContent(content).text;
 }
 
 function compactToolContent(content: string): { title: string; detail: string } {
@@ -426,6 +455,96 @@ function MenuToggle({
   );
 }
 
+function MessageImage({
+  source,
+  label,
+}: {
+  source: { uri: string; headers?: { Authorization: string } };
+  label: string;
+}) {
+  const styles = useThemeStyles(createStyles);
+  const theme = useVitoTheme();
+  const [aspectRatio, setAspectRatio] = useState(4 / 3);
+  const [resolvedSource, setResolvedSource] = useState<typeof source | undefined>(
+    Platform.OS === "web" ? undefined : source,
+  );
+  const [failed, setFailed] = useState(false);
+  const authorization = source.headers?.Authorization;
+  useEffect(() => {
+    if (Platform.OS !== "web") {
+      setResolvedSource(source);
+      return;
+    }
+    let active = true;
+    let objectUrl: string | undefined;
+    void fetch(source.uri, {
+      headers: authorization ? { Authorization: authorization } : undefined,
+    })
+      .then(async (response) => {
+        if (!response.ok) throw new Error(`Attachment request failed (${response.status})`);
+        objectUrl = URL.createObjectURL(await response.blob());
+        if (active) setResolvedSource({ uri: objectUrl });
+      })
+      .catch(() => {
+        if (active) setFailed(true);
+      });
+    return () => {
+      active = false;
+      if (objectUrl) URL.revokeObjectURL(objectUrl);
+    };
+  }, [authorization, source.uri]);
+  if (failed) return <Text style={styles.attachmentError}>Couldn’t load {label}</Text>;
+  if (!resolvedSource)
+    return <ActivityIndicator color={theme.colors.accent} style={styles.attachmentLoader} />;
+  return (
+    <Image
+      accessibilityLabel={label}
+      source={resolvedSource}
+      resizeMode="contain"
+      onLoad={(event) => {
+        const dimensions = event.nativeEvent.source;
+        if (dimensions?.width > 0 && dimensions.height > 0)
+          setAspectRatio(dimensions.width / dimensions.height);
+      }}
+      style={[styles.attachmentImage, { aspectRatio }]}
+    />
+  );
+}
+
+function MessageAttachments({ attachments }: { attachments: MessageAttachment[] }) {
+  const styles = useThemeStyles(createStyles);
+  if (!attachments.length) return null;
+  return (
+    <View style={styles.attachments}>
+      {attachments.map((attachment, index) => {
+        const source = driveFileSource(attachment.path);
+        const key = `${attachment.path}:${index}`;
+        if (attachment.type === "image" && source)
+          return (
+            <MessageImage
+              key={key}
+              label={attachment.filename ?? "Attached image"}
+              source={source}
+            />
+          );
+        return (
+          <View key={key} style={styles.attachmentFile}>
+            <Ionicons name="document-outline" size={18} style={styles.attachmentFileIcon} />
+            <View style={styles.attachmentFileBody}>
+              <Text numberOfLines={1} style={styles.attachmentFileName}>
+                {attachment.filename ?? "Attachment"}
+              </Text>
+              {attachment.mimeType && (
+                <Text style={styles.attachmentFileType}>{attachment.mimeType}</Text>
+              )}
+            </View>
+          </View>
+        );
+      })}
+    </View>
+  );
+}
+
 function MessageRow({ message }: { message: Message }) {
   const styles = useThemeStyles(createStyles);
   const { width } = useWindowDimensions();
@@ -463,18 +582,23 @@ function MessageRow({ message }: { message: Message }) {
     );
   }
   const user = message.type === "user";
+  const body = unpackContent(message.content);
   return (
     <View style={[styles.messageRow, user && styles.userRow]}>
       <View
         style={[
           styles.bubble,
           desktop && styles.desktopBubble,
+          desktop && body.attachments.length > 0 && styles.desktopAttachmentBubble,
           user ? styles.userBubble : styles.assistantBubble,
         ]}
       >
-        <MarkdownText variant="chat" tone={user ? "onAccent" : "default"}>
-          {cleanContent(message.content)}
-        </MarkdownText>
+        {body.text && (
+          <MarkdownText variant="chat" tone={user ? "onAccent" : "default"}>
+            {body.text}
+          </MarkdownText>
+        )}
+        <MessageAttachments attachments={body.attachments} />
       </View>
     </View>
   );
@@ -607,7 +731,29 @@ const createStyles = (theme: VitoTheme) =>
       paddingVertical: theme.space.sm,
     },
     desktopBubble: { maxWidth: 680 },
+    desktopAttachmentBubble: { width: 480 },
     assistantBubble: { backgroundColor: theme.colors.separator, borderBottomLeftRadius: 5 },
+    attachments: { gap: theme.space.sm, marginTop: theme.space.sm },
+    attachmentLoader: { marginVertical: theme.space.xl },
+    attachmentError: { color: theme.colors.danger, fontSize: 12 },
+    attachmentImage: {
+      width: "100%",
+      maxHeight: 420,
+      borderRadius: theme.radius.md,
+      backgroundColor: theme.colors.canvas,
+    },
+    attachmentFile: {
+      flexDirection: "row",
+      alignItems: "center",
+      gap: theme.space.sm,
+      paddingVertical: theme.space.sm,
+      borderTopWidth: StyleSheet.hairlineWidth,
+      borderTopColor: theme.colors.separatorStrong,
+    },
+    attachmentFileIcon: { color: theme.colors.accent },
+    attachmentFileBody: { flex: 1, minWidth: 0 },
+    attachmentFileName: { color: theme.colors.text, fontSize: 13, fontWeight: "700" },
+    attachmentFileType: { color: theme.colors.textMuted, fontSize: 11, marginTop: theme.space.xxs },
     userBubble: { backgroundColor: theme.colors.accent, borderBottomRightRadius: 5 },
     thoughtCard: {
       maxWidth: "88%",

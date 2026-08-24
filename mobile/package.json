@@ -1,8 +1,10 @@
 {
   "name": "mobile",
   "version": "1.0.0",
-  "main": "index.ts",
+  "main": "index.tsx",
   "dependencies": {
+    "@tanstack/react-query": "^5.101.4",
+    "@vito/client": "file:../packages/vito-client",
     "@config-plugins/react-native-webrtc": "^13.0.0",
     "@expo/metro-runtime": "~6.1.2",
     "expo": "~54.0.37",
@@ -18,7 +20,8 @@
     "react-dom": "19.1.0",
     "react-native": "0.81.5",
     "react-native-web": "^0.21.2",
-    "react-native-webrtc": "^124.0.8"
+    "react-native-webrtc": "^124.0.8",
+    "zod": "^3.25.76"
   },
   "devDependencies": {
     "@expo/ngrok": "^4.1.3",

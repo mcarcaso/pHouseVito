@@ -12,7 +12,14 @@ import {
   useWindowDimensions,
   View,
 } from "react-native";
-import { ApiError, getMessages, getSessions, sendMessage, type Message, type Session } from "./api";
+import {
+  ApiError,
+  useSendChatMessage,
+  useSessionMessages,
+  useSessions,
+  type VitoMessage as Message,
+  type VitoSession as Session,
+} from "@vito/client";
 
 const DEFAULT_SESSION = "dashboard:default";
 const FILTER_KEY = "vito-chat-display-filters";
@@ -87,39 +94,21 @@ async function saveFilters(filters: Filters): Promise<void> {
 export function ChatScreen({ onUnauthorized }: { onUnauthorized: () => void }) {
   const { width } = useWindowDimensions();
   const desktop = width >= 760;
-  const [sessions, setSessions] = useState<Session[]>([]);
   const [sessionId, setSessionId] = useState<string | null>(desktop ? DEFAULT_SESSION : null);
-  const [messages, setMessages] = useState<Message[]>([]);
   const [filters, setFilters] = useState<Filters>({ thoughts: true, tools: true });
   const [filtersReady, setFiltersReady] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
   const [input, setInput] = useState("");
-  const [loading, setLoading] = useState(false);
-  const [sending, setSending] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const [localError, setLocalError] = useState<string | null>(null);
   const scrollRef = useRef<ScrollView>(null);
 
   const handleError = useCallback(
     (cause: unknown) => {
       if (cause instanceof ApiError && cause.status === 401) onUnauthorized();
-      else setError(cause instanceof Error ? cause.message : "Request failed");
+      else setLocalError(cause instanceof Error ? cause.message : "Request failed");
     },
     [onUnauthorized],
   );
-
-  const refreshSessions = useCallback(async () => {
-    try {
-      setSessions(await getSessions());
-    } catch (cause) {
-      handleError(cause);
-    }
-  }, [handleError]);
-
-  useEffect(() => {
-    void refreshSessions();
-    const timer = setInterval(() => void refreshSessions(), 5000);
-    return () => clearInterval(timer);
-  }, [refreshSessions]);
 
   useEffect(() => {
     void loadFilters().then((value) => {
@@ -136,47 +125,38 @@ export function ChatScreen({ onUnauthorized }: { onUnauthorized: () => void }) {
     if (desktop && !sessionId) setSessionId(DEFAULT_SESSION);
   }, [desktop, sessionId]);
 
-  const refresh = useCallback(
-    async (quiet = false) => {
-      if (!sessionId || !filtersReady) return;
-      if (!quiet) setLoading(true);
-      try {
-        setMessages(await getMessages(sessionId, filters));
-        setError(null);
-      } catch (cause) {
-        handleError(cause);
-      } finally {
-        if (!quiet) setLoading(false);
-      }
-    },
-    [filters, filtersReady, handleError, sessionId],
-  );
-
-  useEffect(() => {
-    void refresh();
-    const timer = setInterval(() => void refresh(true), 3000);
-    return () => clearInterval(timer);
-  }, [refresh]);
-
+  const sessionsQuery = useSessions({ refetchInterval: 5_000 });
+  const sessions = sessionsQuery.data ?? [];
+  const messagesQuery = useSessionMessages(filtersReady ? sessionId : null, {
+    limit: 100,
+    hideThoughts: !filters.thoughts,
+    hideTools: !filters.tools,
+    refetchInterval: 3_000,
+  });
+  const messages = messagesQuery.data?.messages ?? [];
+  const sendMessage = useSendChatMessage();
   const selectedSession = useMemo(
     () => sessions.find((session) => session.id === sessionId),
     [sessionId, sessions],
   );
 
+  useEffect(() => {
+    const cause = sessionsQuery.error ?? messagesQuery.error;
+    if (cause) handleError(cause);
+  }, [handleError, messagesQuery.error, sessionsQuery.error]);
+
   const send = async () => {
     const content = input.trim();
-    if (!content || sending || !sessionId) return;
+    if (!content || sendMessage.isPending || !sessionId) return;
     setInput("");
-    setSending(true);
-    setError(null);
+    setLocalError(null);
     try {
-      await sendMessage(sessionId, content);
-      await refresh(true);
+      await sendMessage.mutateAsync({ sessionId, content });
+      await messagesQuery.refetch();
     } catch (cause) {
       setInput(content);
+      setLocalError(cause instanceof Error ? cause.message : "Request failed");
       handleError(cause);
-    } finally {
-      setSending(false);
     }
   };
 
@@ -184,12 +164,12 @@ export function ChatScreen({ onUnauthorized }: { onUnauthorized: () => void }) {
     <Conversation
       session={selectedSession ?? { id: sessionId, channel: "dashboard", last_active_at: 0 }}
       messages={messages}
-      loading={loading}
+      loading={messagesQuery.isLoading}
       filters={filters}
       menuOpen={menuOpen}
       input={input}
-      sending={sending}
-      error={error}
+      sending={sendMessage.isPending}
+      error={localError}
       scrollRef={scrollRef}
       onBack={
         desktop

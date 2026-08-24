@@ -76,6 +76,11 @@ export async function saveToken(token: string | null): Promise<void> {
   }
 }
 
+export const vitoTokenStore = {
+  get: async () => authToken ?? (await loadToken()),
+  set: saveToken,
+};
+
 export async function api<T>(path: string, init?: RequestInit): Promise<T> {
   const headers = new Headers(init?.headers);
   headers.set("Accept", "application/json");

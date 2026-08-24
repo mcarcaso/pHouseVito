@@ -10,24 +10,21 @@ import {
   TextInput,
   View,
 } from "react-native";
-import { login } from "./api";
+import { useLogin } from "@vito/client";
 
 export function LoginScreen({ onSuccess }: { onSuccess: () => void }) {
   const [password, setPassword] = useState("");
-  const [busy, setBusy] = useState(false);
+  const login = useLogin();
   const [error, setError] = useState<string | null>(null);
 
   const submit = async () => {
-    if (!password || busy) return;
-    setBusy(true);
+    if (!password || login.isPending) return;
     setError(null);
     try {
-      await login(password);
+      await login.mutateAsync(password);
       onSuccess();
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : "Login failed");
-    } finally {
-      setBusy(false);
     }
   };
 
@@ -63,15 +60,15 @@ export function LoginScreen({ onSuccess }: { onSuccess: () => void }) {
           />
           {error && <Text style={styles.error}>{error}</Text>}
           <Pressable
-            disabled={!password || busy}
+            disabled={!password || login.isPending}
             onPress={() => void submit()}
             style={({ pressed }) => [
               styles.button,
-              (!password || busy) && styles.disabled,
+              (!password || login.isPending) && styles.disabled,
               pressed && styles.pressed,
             ]}
           >
-            {busy ? (
+            {login.isPending ? (
               <ActivityIndicator color="#11150d" />
             ) : (
               <Text style={styles.buttonText}>Sign in</Text>

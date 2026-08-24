@@ -375,7 +375,7 @@ function MemoryOverview({ value }: { value: unknown }) {
       {sessions.length > 0 && (
         <View>
           <View style={styles.flatSectionHeader}>
-            <Text style={styles.flatSectionTitle}>Recent sessions</Text>
+            <Text style={styles.flatSectionTitle}>Recently indexed</Text>
           </View>
           {sessions.map((session, index) => {
             const row = session as Record<string, unknown>;
@@ -389,7 +389,6 @@ function MemoryOverview({ value }: { value: unknown }) {
                     {`${displayValue(row.count)} passages · ${displayValue(row.first_day)} – ${displayValue(row.last_day)}`}
                   </Text>
                 </View>
-                <Text style={styles.flatChevron}>›</Text>
               </View>
             );
           })}
@@ -1265,7 +1264,7 @@ export function OperationsScreen({
 
 const createStyles = (theme: VitoTheme) =>
   StyleSheet.create({
-    root: { paddingBottom: theme.space.giant },
+    root: {},
     memoryRoot: { width: "100%", maxWidth: 820, alignSelf: "center" },
     memorySearchRow: {
       height: 50,
@@ -1304,7 +1303,7 @@ const createStyles = (theme: VitoTheme) =>
     },
     flatSectionTitle: { color: theme.colors.text, fontSize: 13, fontWeight: "700" },
     flatRow: {
-      minHeight: 70,
+      minHeight: 58,
       flexDirection: "row",
       alignItems: "center",
       gap: theme.space.lg,
@@ -1312,7 +1311,6 @@ const createStyles = (theme: VitoTheme) =>
       borderBottomColor: theme.colors.separator,
     },
     flatRowMain: { flex: 1 },
-    flatChevron: { color: theme.colors.textMuted, fontSize: 18 },
     eyebrow: { color: theme.colors.accent, fontSize: 11, fontWeight: "800", letterSpacing: 2 },
     statGrid: {
       flexDirection: "row",

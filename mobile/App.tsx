@@ -696,7 +696,7 @@ const createStyles = (theme: VitoTheme) =>
       paddingVertical: theme.space.huge,
     },
     rootOperation: { flex: 1, backgroundColor: theme.colors.canvas },
-    fullScreenOperation: { flexGrow: 1, padding: theme.space.xl, paddingBottom: theme.space.huge },
+    fullScreenOperation: { flexGrow: 1, padding: theme.space.xl, paddingBottom: theme.space.xl },
     nativeMemorySearch: {
       height: 50,
       flexDirection: "row",

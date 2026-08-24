@@ -60,10 +60,10 @@ function sessionName(session: Session): string {
   return session.alias?.trim() || session.id;
 }
 
-function ChannelIcon({ channel, compact = false }: { channel: string; compact?: boolean }) {
+function ChannelIcon({ channel }: { channel: string }) {
   const styles = useThemeStyles(createStyles);
   const theme = useVitoTheme();
-  const size = compact ? 12 : 19;
+  const size = 19;
   if (channel === "discord" || channel === "telegram")
     return (
       <FontAwesome6
@@ -77,7 +77,7 @@ function ChannelIcon({ channel, compact = false }: { channel: string; compact?: 
   if (channel === "voice") return <Ionicons name="mic" size={size} color={theme.colors.accent} />;
   if (channel === "direct" || channel === "api")
     return <Ionicons name="terminal-outline" size={size} color={theme.colors.accent} />;
-  return <Text style={compact ? styles.miniAvatarText : styles.avatarText}>V</Text>;
+  return <Text style={styles.avatarText}>V</Text>;
 }
 
 function relativeTime(timestamp: number): string {
@@ -329,23 +329,22 @@ function Conversation({
           disabled={!onBack}
           style={styles.headerButton}
         >
-          <Text style={[styles.backText, !onBack && styles.hidden]}>‹</Text>
+          <Ionicons
+            name="chevron-back"
+            size={27}
+            color={theme.colors.accent}
+            style={!onBack ? styles.hidden : undefined}
+          />
         </Pressable>
-        <View style={styles.conversationIdentity}>
-          <View style={styles.miniAvatar}>
-            <ChannelIcon channel={session.channel} compact />
-          </View>
-          <Text style={styles.conversationTitle} numberOfLines={1}>
-            {sessionName(session)}
-          </Text>
-          <Text style={styles.conversationChannel}>{session.channel}</Text>
-        </View>
+        <Text style={styles.conversationTitle} numberOfLines={1}>
+          {sessionName(session)}
+        </Text>
         <Pressable
           accessibilityLabel="Conversation options"
           onPress={onMenu}
           style={styles.headerButton}
         >
-          <Text style={styles.moreText}>•••</Text>
+          <Ionicons name="ellipsis-horizontal" size={23} color={theme.colors.accent} />
         </Pressable>
       </View>
       {menuOpen && (
@@ -523,43 +522,26 @@ const createStyles = (theme: VitoTheme) =>
       overflow: "hidden",
     },
     conversationHeader: {
-      height: 62,
+      height: 50,
       flexDirection: "row",
       alignItems: "center",
       borderBottomWidth: 1,
       borderBottomColor: theme.colors.separator,
       backgroundColor: theme.colors.sidebar,
     },
-    headerButton: { width: 58, height: 58, alignItems: "center", justifyContent: "center" },
-    backText: { color: theme.colors.accent, fontSize: 40, lineHeight: 42, fontWeight: "300" },
+    headerButton: { width: 50, height: 50, alignItems: "center", justifyContent: "center" },
     hidden: { opacity: 0 },
-    moreText: { color: theme.colors.accent, fontSize: 17, letterSpacing: 1.5 },
-    conversationIdentity: { flex: 1, alignItems: "center" },
-    miniAvatar: {
-      width: 27,
-      height: 27,
-      borderRadius: 14,
-      backgroundColor: theme.colors.accentSurface,
-      alignItems: "center",
-      justifyContent: "center",
-    },
-    miniAvatarText: { color: theme.colors.accent, fontSize: 10, fontWeight: "900" },
     conversationTitle: {
+      flex: 1,
       color: theme.colors.text,
-      fontSize: 13,
+      fontSize: 16,
       fontWeight: "700",
-      maxWidth: "92%",
-      marginTop: theme.space.xxs,
-    },
-    conversationChannel: {
-      color: theme.colors.textMuted,
-      fontSize: 9,
-      textTransform: "capitalize",
+      textAlign: "center",
     },
     menu: {
       position: "absolute",
       zIndex: 20,
-      top: 54,
+      top: 50,
       right: 10,
       width: 218,
       paddingHorizontal: theme.space.lg,

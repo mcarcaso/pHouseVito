@@ -16,6 +16,7 @@ export interface VoiceTaskRow {
 export interface VoiceTaskStore {
   create(x: Context, row: VoiceTaskRow): VoiceTaskRow;
   get(x: Context, id: string): VoiceTaskRow | null;
+  listBySession(x: Context, sessionId: string): VoiceTaskRow[];
   update(
     x: Context,
     id: string,

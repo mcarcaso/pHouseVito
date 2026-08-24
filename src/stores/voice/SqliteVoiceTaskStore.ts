@@ -30,6 +30,12 @@ export class SqliteVoiceTaskStore implements VoiceTaskStore {
     );
   }
 
+  listBySession(x: Context, sessionId: string): VoiceTaskRow[] {
+    return xDb(x)
+      .prepare("SELECT * FROM voice_tasks WHERE voice_session_id = ? ORDER BY created_at ASC")
+      .all(sessionId) as VoiceTaskRow[];
+  }
+
   update(
     x: Context,
     id: string,

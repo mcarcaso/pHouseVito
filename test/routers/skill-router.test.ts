@@ -81,6 +81,29 @@ describe("skill router", () => {
     );
   });
 
+  it("reads one skill-scoped file", async () => {
+    const response = await fetch(`${baseUrl}/api/skills/example/file?path=SKILL.md`);
+    assert.equal(response.status, 200);
+    const result = z
+      .object({
+        name: z.string(),
+        size: z.number(),
+        content: z.string().nullable(),
+        binary: z.boolean(),
+      })
+      .parse(await response.json());
+    assert.equal(result.name, "SKILL.md");
+    assert.match(result.content ?? "", /# Example/);
+    assert.equal(result.binary, false);
+  });
+
+  it("rejects paths outside the selected skill", async () => {
+    const response = await fetch(
+      `${baseUrl}/api/skills/example/file?path=${encodeURIComponent("../other.txt")}`,
+    );
+    assert.equal(response.status, 400);
+  });
+
   it("returns 404 for unknown skills", async () => {
     const response = await fetch(`${baseUrl}/api/skills/missing/files`);
     assert.equal(response.status, 404);

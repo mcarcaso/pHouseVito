@@ -19,11 +19,12 @@ const root = mkdtempSync(join(tmpdir(), "vito-file-router-"));
 const attachmentsDir = join(root, "attachments");
 const x = dashboardRouterContext({
   attachmentsDir: () => attachmentsDir,
+  driveDir: () => root,
   attachmentStore: () => new FileAttachmentStore(),
   fileService: () => new FileSystemFileService(),
 });
 const app = express();
-app.use("/api/file", await new FileRouterService().createRouter(x));
+app.use("/api/media", await new FileRouterService().createRouter(x));
 app.use("/api/attachments", await new AttachmentUploadRouterService().createRouter(x));
 app.use("/attachments", await new AttachmentFileRouterService().createRouter(x));
 
@@ -51,13 +52,22 @@ describe("file and attachment routers", () => {
   it("serves filesystem files with existing headers", async () => {
     const path = join(root, "document.pdf");
     writeFileSync(path, "pdf");
-    assert.equal((await fetch(`${baseUrl}/api/file`)).status, 400);
+    assert.equal((await fetch(`${baseUrl}/api/media`)).status, 400);
     assert.equal(
-      (await fetch(`${baseUrl}/api/file?path=${encodeURIComponent(join(root, "missing"))}`)).status,
+      (await fetch(`${baseUrl}/api/media?path=${encodeURIComponent(join(root, "missing"))}`))
+        .status,
       404,
     );
+    assert.equal(
+      (
+        await fetch(
+          `${baseUrl}/api/media?path=${encodeURIComponent(join(root, "..", "secret.json"))}`,
+        )
+      ).status,
+      403,
+    );
 
-    const response = await fetch(`${baseUrl}/api/file?path=${encodeURIComponent(path)}`);
+    const response = await fetch(`${baseUrl}/api/media?path=${encodeURIComponent(path)}`);
     assert.equal(response.status, 200);
     assert.equal(response.headers.get("content-type"), "application/pdf");
     assert.equal(response.headers.get("content-disposition"), 'inline; filename="document.pdf"');

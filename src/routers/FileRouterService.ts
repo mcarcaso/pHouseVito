@@ -1,9 +1,10 @@
 import express from "express";
 import type { Router } from "express";
+import { isAbsolute, relative, resolve } from "node:path";
 import { z } from "zod";
 import type { Context } from "../context/Context.js";
 import type { RouterService } from "./RouterService.js";
-import { xFileService } from "../lib/x.js";
+import { xDriveDir, xFileService } from "../lib/x.js";
 import { emptyRouteSchema, unknownRouteSchema, registerStreamRoute } from "./register-route.js";
 
 const fileQuerySchema = z.object({ path: z.unknown().optional() }).passthrough();
@@ -26,7 +27,16 @@ export class FileRouterService implements RouterService {
           res.status(400).json({ error: "path query parameter required" });
           return;
         }
-        const file = xFileService(routeX).read(routeX, query.path);
+        const driveRoot = resolve(xDriveDir(routeX));
+        const requestedPath = isAbsolute(query.path)
+          ? resolve(query.path)
+          : resolve(driveRoot, query.path);
+        const relativePath = relative(driveRoot, requestedPath);
+        if (relativePath.startsWith("..") || isAbsolute(relativePath)) {
+          res.status(403).json({ error: "File is outside the Drive directory" });
+          return;
+        }
+        const file = xFileService(routeX).read(routeX, requestedPath);
         if (!file) {
           res.status(404).json({ error: "File not found" });
           return;

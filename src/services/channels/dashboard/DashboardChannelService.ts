@@ -126,7 +126,7 @@ export class DashboardChannelService implements ChannelService {
 
     app.use("/api/memory", await new MemoryRouterService().createRouter(x));
 
-    app.use("/api/file", await new FileRouterService().createRouter(x));
+    app.use("/api/media", await new FileRouterService().createRouter(x));
     app.use("/api/attachments", await new AttachmentUploadRouterService().createRouter(x));
 
     app.use("/api/ask", await new AskApiRouterService().createRouter(x));

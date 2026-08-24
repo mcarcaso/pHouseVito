@@ -70,7 +70,7 @@ export class DefaultVoiceService implements VoiceService {
           audio: {
             input: {
               transcription: { model: "gpt-4o-mini-transcribe" },
-              turn_detection: { type: "semantic_vad", eagerness: "low" },
+              turn_detection: { type: "semantic_vad", eagerness: "medium" },
             },
             output: { voice },
           },
@@ -95,10 +95,22 @@ export class DefaultVoiceService implements VoiceService {
         created_at: now,
         last_active_at: now,
         config: "{}",
-        alias: `Voice — ${new Date(now).toLocaleString("en-CA")}`,
+        alias:
+          event.kind === "user"
+            ? event.content.slice(0, 80)
+            : `Voice — ${new Date(now).toLocaleString("en-CA")}`,
       });
     } else {
-      sessions.update(x, { id: event.sessionId, changes: { last_active_at: now } });
+      const current = sessions.list(x, { ids: [event.sessionId] })[0];
+      sessions.update(x, {
+        id: event.sessionId,
+        changes: {
+          last_active_at: now,
+          ...(event.kind === "user" && current?.alias?.startsWith("Voice —")
+            ? { alias: event.content.slice(0, 80) }
+            : {}),
+        },
+      });
     }
     xMessageStore(x).create(x, {
       session_id: event.sessionId,
@@ -134,7 +146,13 @@ export class DefaultVoiceService implements VoiceService {
         // Retain malformed historical metadata only in the raw message list.
       }
     }
-    return { session, messages, durationMs, usage };
+    return {
+      session,
+      messages,
+      durationMs,
+      usage,
+      tasks: xVoiceTaskStore(x).listBySession(x, sessionId),
+    };
   }
 
   getContext(x: Context) {

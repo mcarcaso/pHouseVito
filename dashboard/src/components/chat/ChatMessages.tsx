@@ -256,10 +256,10 @@ export default function ChatMessages({ messages }: { messages: ParsedMessage[] }
                   const extension = filePath.split(".").pop()?.toLowerCase();
                   const imageExtensions = ["jpg", "jpeg", "png", "gif", "webp", "svg", "bmp"];
                   if (extension && imageExtensions.includes(extension)) {
-                    return `![image](/api/file?path=${encodedPath})`;
+                    return `![image](/api/media?path=${encodedPath})`;
                   } else {
                     const filename = filePath.split("/").pop() || "file";
-                    return `[\ud83d\udcce ${filename}](/api/file?path=${encodedPath})`;
+                    return `[\ud83d\udcce ${filename}](/api/media?path=${encodedPath})`;
                   }
                 })}
               </ReactMarkdown>

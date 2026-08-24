@@ -20,7 +20,7 @@ const rules: RenderRules = {
                 ? styles.strong
                 : styles.text;
     return (
-      <Text key={node.key} selectable style={style}>
+      <Text key={node.key} selectable style={[styles.text, style]}>
         {node.content}
       </Text>
     );
@@ -80,7 +80,11 @@ export function MarkdownText({
         variant === "chat" && styles.bodyChat,
         tone === "onAccent" && styles.bodyOnAccent,
       ]),
-      text: StyleSheet.flatten([styles.text, tone === "onAccent" && styles.textOnAccent]),
+      text: StyleSheet.flatten([
+        styles.text,
+        variant === "chat" && styles.textChat,
+        tone === "onAccent" && styles.textOnAccent,
+      ]),
       paragraph: StyleSheet.flatten([styles.paragraph, variant === "chat" && styles.paragraphChat]),
       heading1: StyleSheet.flatten([
         styles.heading1,
@@ -116,9 +120,10 @@ export function MarkdownText({
 const createStyles = (theme: VitoTheme) =>
   StyleSheet.create({
     body: { color: theme.colors.textSecondary, fontSize: 14, lineHeight: 21 },
-    bodyChat: { fontSize: 15, lineHeight: 22 },
+    bodyChat: { fontSize: 15, lineHeight: 24 },
     bodyOnAccent: { color: theme.colors.accentText },
-    text: { color: theme.colors.textSecondary },
+    text: { color: theme.colors.textSecondary, lineHeight: 21, flexShrink: 1, minWidth: 0 },
+    textChat: { lineHeight: 24 },
     textOnAccent: { color: theme.colors.accentText },
     paragraph: {
       width: "100%",
@@ -176,7 +181,7 @@ const createStyles = (theme: VitoTheme) =>
     list_item: {
       flexDirection: "row",
       alignItems: "flex-start",
-      marginBottom: theme.space.xxs,
+      marginBottom: theme.space.xs,
     },
     bullet_list_icon: {
       color: theme.colors.accent,

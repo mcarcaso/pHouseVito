@@ -6,15 +6,78 @@ const privateWebOrigin =
     ? globalThis.location.origin
     : undefined;
 
-export const VITO_URL = (
+const DEFAULT_VITO_URL = (
   process.env.EXPO_PUBLIC_VITO_URL ??
   privateWebOrigin ??
   "https://theworstproductions.com"
 ).replace(/\/$/, "");
+export let VITO_URL = DEFAULT_VITO_URL;
 
-const TOKEN_KEY = "vito-dashboard-token";
+const AGENT_URL_KEY = "vito-agent-url";
+const RECENT_AGENTS_KEY = "vito-recent-agents";
+const LEGACY_TOKEN_KEY = "vito-dashboard-token";
 const VOICE_KEY = "vito-realtime-voice";
 let authToken: string | null = null;
+const urlListeners = new Set<(url: string) => void>();
+
+function storage() {
+  return {
+    get: (key: string) =>
+      Platform.OS === "web"
+        ? Promise.resolve(globalThis.localStorage?.getItem(key) ?? null)
+        : SecureStore.getItemAsync(key),
+    set: (key: string, value: string) =>
+      Platform.OS === "web"
+        ? Promise.resolve(globalThis.localStorage?.setItem(key, value))
+        : SecureStore.setItemAsync(key, value),
+    remove: (key: string) =>
+      Platform.OS === "web"
+        ? Promise.resolve(globalThis.localStorage?.removeItem(key))
+        : SecureStore.deleteItemAsync(key),
+  };
+}
+function tokenKey(url = VITO_URL) {
+  let hash = 2166136261;
+  for (const char of url) hash = Math.imul(hash ^ char.charCodeAt(0), 16777619);
+  return `vito-token-${(hash >>> 0).toString(16)}`;
+}
+export function normalizeAgentUrl(input: string) {
+  const candidate = input.trim().replace(/\/$/, "");
+  const parsed = new URL(candidate.includes("://") ? candidate : `https://${candidate}`);
+  if (parsed.protocol !== "https:" && parsed.hostname !== "localhost")
+    throw new Error("Agent URL must use HTTPS");
+  return parsed.origin;
+}
+export async function loadAgentUrl() {
+  VITO_URL = (await storage().get(AGENT_URL_KEY)) || DEFAULT_VITO_URL;
+  return VITO_URL;
+}
+export async function setAgentUrl(input: string) {
+  const next = normalizeAgentUrl(input);
+  VITO_URL = next;
+  await storage().set(AGENT_URL_KEY, next);
+  const recent = await getRecentAgents();
+  await storage().set(
+    RECENT_AGENTS_KEY,
+    JSON.stringify([next, ...recent.filter((url) => url !== next)].slice(0, 6)),
+  );
+  authToken = null;
+  urlListeners.forEach((listener) => listener(next));
+  return next;
+}
+export async function getRecentAgents(): Promise<string[]> {
+  try {
+    return JSON.parse((await storage().get(RECENT_AGENTS_KEY)) || "[]") as string[];
+  } catch {
+    return [];
+  }
+}
+export function subscribeAgentUrl(listener: (url: string) => void) {
+  urlListeners.add(listener);
+  return () => {
+    urlListeners.delete(listener);
+  };
+}
 
 export const REALTIME_VOICES = [
   "marin",
@@ -57,23 +120,18 @@ export class ApiError extends Error {
 }
 
 export async function loadToken(): Promise<string | null> {
-  authToken =
-    Platform.OS === "web"
-      ? (globalThis.localStorage?.getItem(TOKEN_KEY) ?? null)
-      : await SecureStore.getItemAsync(TOKEN_KEY);
+  authToken = await storage().get(tokenKey());
+  if (!authToken && VITO_URL === DEFAULT_VITO_URL) {
+    authToken = await storage().get(LEGACY_TOKEN_KEY);
+    if (authToken) await storage().set(tokenKey(), authToken);
+  }
   return authToken;
 }
 
 export async function saveToken(token: string | null): Promise<void> {
   authToken = token;
-  if (Platform.OS === "web") {
-    if (token) globalThis.localStorage?.setItem(TOKEN_KEY, token);
-    else globalThis.localStorage?.removeItem(TOKEN_KEY);
-  } else if (token) {
-    await SecureStore.setItemAsync(TOKEN_KEY, token);
-  } else {
-    await SecureStore.deleteItemAsync(TOKEN_KEY);
-  }
+  if (token) await storage().set(tokenKey(), token);
+  else await storage().remove(tokenKey());
 }
 
 export const vitoTokenStore = {
@@ -206,6 +264,16 @@ export interface VoiceSessionDetail {
   messages: Message[];
   durationMs: number | null;
   usage: unknown[];
+  tasks: Array<{
+    id: string;
+    voice_session_id: string;
+    question: string;
+    status: "queued" | "running" | "completed" | "failed" | "cancelled";
+    result: string | null;
+    error: string | null;
+    created_at: number;
+    updated_at: number;
+  }>;
 }
 
 export async function getVoiceSessions(): Promise<VoiceSession[]> {

@@ -1,13 +1,15 @@
 import { registerRootComponent } from "expo";
-import { createElement } from "react";
+import { createElement, useEffect, useState } from "react";
 import { VitoClientProvider } from "@vito/client";
 import App from "./App";
-import { VITO_URL, vitoTokenStore } from "./src/api";
+import { subscribeAgentUrl, VITO_URL, vitoTokenStore } from "./src/api";
 
 function Root() {
+  const [baseUrl, setBaseUrl] = useState(VITO_URL);
+  useEffect(() => subscribeAgentUrl(setBaseUrl), []);
   return createElement(
     VitoClientProvider,
-    { options: { baseUrl: VITO_URL, tokenStore: vitoTokenStore } },
+    { key: baseUrl, options: { baseUrl, tokenStore: vitoTokenStore } },
     createElement(App),
   );
 }

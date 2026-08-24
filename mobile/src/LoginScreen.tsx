@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import {
   ActivityIndicator,
   KeyboardAvoidingView,
@@ -10,24 +10,33 @@ import {
   TextInput,
   View,
 } from "react-native";
-import { useLogin } from "@vito/client";
+import { getRecentAgents, login, setAgentUrl, VITO_URL } from "./api";
 import { useThemeStyles, useVitoTheme, type VitoTheme } from "./theme";
 
 export function LoginScreen({ onSuccess }: { onSuccess: () => void }) {
   const styles = useThemeStyles(createStyles);
   const theme = useVitoTheme();
+  const [url, setUrl] = useState(VITO_URL);
+  const [recent, setRecent] = useState<string[]>([]);
   const [password, setPassword] = useState("");
-  const login = useLogin();
+  const [pending, setPending] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  useEffect(() => {
+    void getRecentAgents().then(setRecent);
+  }, []);
 
   const submit = async () => {
-    if (!password || login.isPending) return;
+    if (!password || !url.trim() || pending) return;
+    setPending(true);
     setError(null);
     try {
-      await login.mutateAsync(password);
+      await setAgentUrl(url);
+      await login(password);
       onSuccess();
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : "Login failed");
+    } finally {
+      setPending(false);
     }
   };
 
@@ -48,11 +57,41 @@ export function LoginScreen({ onSuccess }: { onSuccess: () => void }) {
           </View>
           <Text style={styles.eyebrow}>PRIVATE ACCESS</Text>
           <Text style={styles.title}>Welcome back,{"\n"}boss.</Text>
-          <Text style={styles.body}>Use your existing Vito dashboard password.</Text>
+          <Text style={styles.body}>
+            Connect to your agent using its URL and dashboard password.
+          </Text>
+          <Text style={styles.fieldLabel}>AGENT URL</Text>
+          <TextInput
+            autoCapitalize="none"
+            autoCorrect={false}
+            keyboardType="url"
+            textContentType="URL"
+            autoComplete="url"
+            returnKeyType="next"
+            placeholder="https://your-agent.example.com"
+            placeholderTextColor={theme.colors.textMuted}
+            value={url}
+            onChangeText={setUrl}
+            style={styles.input}
+          />
+          {recent.length > 1 && (
+            <View style={styles.recent}>
+              {recent.map((agent) => (
+                <Pressable key={agent} onPress={() => setUrl(agent)}>
+                  <Text numberOfLines={1} style={styles.recentItem}>
+                    {agent}
+                  </Text>
+                </Pressable>
+              ))}
+            </View>
+          )}
+          <Text style={styles.fieldLabel}>PASSWORD</Text>
           <TextInput
             autoCapitalize="none"
             autoCorrect={false}
             secureTextEntry
+            textContentType="password"
+            autoComplete="current-password"
             returnKeyType="go"
             placeholder="Dashboard password"
             placeholderTextColor={theme.colors.textMuted}
@@ -63,15 +102,15 @@ export function LoginScreen({ onSuccess }: { onSuccess: () => void }) {
           />
           {error && <Text style={styles.error}>{error}</Text>}
           <Pressable
-            disabled={!password || login.isPending}
+            disabled={!password || !url.trim() || pending}
             onPress={() => void submit()}
             style={({ pressed }) => [
               styles.button,
-              (!password || login.isPending) && styles.disabled,
+              (!password || !url.trim() || pending) && styles.disabled,
               pressed && styles.pressed,
             ]}
           >
-            {login.isPending ? (
+            {pending ? (
               <ActivityIndicator color={theme.colors.accentText} />
             ) : (
               <Text style={styles.buttonText}>Sign in</Text>
@@ -118,6 +157,16 @@ const createStyles = (theme: VitoTheme) =>
       marginTop: theme.space.lg,
       marginBottom: theme.space.xxxl,
     },
+    fieldLabel: {
+      color: theme.colors.textMuted,
+      fontSize: 9,
+      fontWeight: "800",
+      letterSpacing: 1.2,
+      marginBottom: theme.space.sm,
+      marginTop: theme.space.md,
+    },
+    recent: { gap: theme.space.xs, marginTop: theme.space.sm },
+    recentItem: { color: theme.colors.accent, fontSize: 11 },
     input: {
       minHeight: 54,
       borderRadius: 13,

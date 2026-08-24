@@ -13,6 +13,7 @@ export interface VoiceSessionDetail {
   messages: MessageRow[];
   durationMs: number | null;
   usage: unknown[];
+  tasks: VoiceTaskRow[];
 }
 
 export interface VoiceService {

@@ -1,10 +1,13 @@
 import * as DocumentPicker from "expo-document-picker";
 import * as FileSystem from "expo-file-system/legacy";
-import { useCallback, useEffect, useState } from "react";
+import { Ionicons } from "@expo/vector-icons";
+import Swipeable from "react-native-gesture-handler/Swipeable";
+import { useCallback, useEffect, useState, type ReactNode } from "react";
 import {
   ActivityIndicator,
   Alert,
   Linking,
+  Platform,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -26,6 +29,7 @@ export type OperationArea =
   | "traces"
   | "pi"
   | "settings"
+  | "theme"
   | "secrets"
   | "system"
   | "server"
@@ -41,6 +45,7 @@ export const operationAreas: Array<{ id: OperationArea; label: string; icon: str
   { id: "traces", label: "Traces", icon: "🔍" },
   { id: "pi", label: "Pi sessions", icon: "🧵" },
   { id: "settings", label: "Settings", icon: "⚙️" },
+  { id: "theme", label: "Theme", icon: "🎨" },
   { id: "secrets", label: "Secrets", icon: "🔑" },
   { id: "system", label: "System", icon: "📄" },
   { id: "server", label: "Server", icon: "🖥️" },
@@ -57,6 +62,7 @@ const paths: Record<OperationArea, string> = {
   traces: "/api/logs?limit=100",
   pi: "/api/pi-sessions?includeContent=false",
   settings: "/api/config",
+  theme: "/api/config",
   secrets: "/api/secrets",
   system: "/api/soul",
   server: "/api/server/status",
@@ -75,27 +81,97 @@ function extractMessageText(content: unknown): string {
       if (!block || typeof block !== "object") return [];
       const value = block as Record<string, unknown>;
       if (typeof value.text === "string") return [value.text];
-      if (typeof value.thinking === "string") return [value.thinking];
-      if (value.type === "tool_use") return [`[tool: ${String(value.name ?? "unknown")}]`];
-      if (value.type === "tool_result")
-        return [`[tool result] ${typeof value.content === "string" ? value.content : ""}`];
+      if (typeof value.thinking === "string") return [];
+      if (value.type === "tool_use" || value.type === "toolCall") {
+        const input = value.input ?? value.arguments;
+        return [
+          `[tool call: ${String(value.name ?? "unknown")}]${input === undefined ? "" : `\n${pretty(input)}`}`,
+        ];
+      }
+      if (value.type === "tool_result" || value.type === "toolResult")
+        return [
+          `[tool result] ${typeof value.content === "string" ? value.content : pretty(value.content)}`,
+        ];
       return [];
     })
     .join("\n\n");
 }
 
-function StructuredRows({ data, kind }: { data: unknown; kind: "traces" | "pi" }) {
+function extractThinkingText(content: unknown): string {
+  if (!Array.isArray(content)) return "";
+  return content
+    .flatMap((block) => {
+      if (!block || typeof block !== "object") return [];
+      const thinking = (block as Record<string, unknown>).thinking;
+      return typeof thinking === "string" ? [thinking] : [];
+    })
+    .join("\n\n");
+}
+
+function PiSessionDeleteContainer({
+  children,
+  label,
+  onDelete,
+}: {
+  children: ReactNode;
+  label: string;
+  onDelete: () => void;
+}) {
   const styles = useThemeStyles(createStyles);
-  const [expanded, setExpanded] = useState<Set<number>>(new Set());
+  const theme = useVitoTheme();
+  if (Platform.OS === "web")
+    return (
+      <View style={styles.desktopDeleteContainer}>
+        {children}
+        <Pressable
+          accessibilityLabel={`Delete ${label}`}
+          onPress={onDelete}
+          style={styles.desktopDeleteButton}
+        >
+          <Ionicons name="trash-outline" size={16} color={theme.colors.danger} />
+        </Pressable>
+      </View>
+    );
+  return (
+    <Swipeable
+      containerStyle={styles.swipeContainer}
+      overshootRight={false}
+      renderRightActions={() => (
+        <Pressable
+          accessibilityLabel={`Delete ${label}`}
+          onPress={onDelete}
+          style={styles.swipeDelete}
+        >
+          <Ionicons name="trash-outline" size={19} color="#fff" />
+          <Text style={styles.swipeDeleteText}>Delete</Text>
+        </Pressable>
+      )}
+    >
+      {children}
+    </Swipeable>
+  );
+}
+
+function StructuredRows({
+  data,
+  kind,
+  showRaw = false,
+}: {
+  data: unknown;
+  kind: "traces" | "pi";
+  showRaw?: boolean;
+}) {
+  const styles = useThemeStyles(createStyles);
+  const [expanded, setExpanded] = useState<Set<string>>(new Set());
   const lines =
     data && typeof data === "object" && Array.isArray((data as { lines?: unknown[] }).lines)
       ? (data as { lines: unknown[] }).lines
       : [];
-  const toggle = (index: number) =>
+  const toggle = (key: string) =>
     setExpanded((current) => {
       const next = new Set(current);
-      if (next.has(index)) next.delete(index);
-      else next.add(index);
+      if (next.has(key)) next.delete(key);
+      else next.add(key);
       return next;
     });
 
@@ -104,26 +180,46 @@ function StructuredRows({ data, kind }: { data: unknown; kind: "traces" | "pi" }
       {lines.map((line, index) => {
         const record = (line ?? {}) as Record<string, unknown>;
         const type = String(record.type ?? "unknown");
-        const isOpen = expanded.has(index);
+        const rowKey = `${index}:main`;
+        const isOpen = expanded.has(rowKey);
         let badge = type;
         let title = "";
         let body = "";
         let tint = styles.eventNeutral;
+        let thoughtBody = "";
 
         if (kind === "pi" && type === "message") {
           const message = (record.message ?? {}) as Record<string, unknown>;
-          badge = String(message.role ?? "message");
-          title =
+          const role = String(message.role ?? "message");
+          const content = Array.isArray(message.content) ? message.content : [];
+          const toolCalls = content.filter((block): block is Record<string, unknown> =>
+            Boolean(
+              block &&
+              typeof block === "object" &&
+              ((block as Record<string, unknown>).type === "toolCall" ||
+                (block as Record<string, unknown>).type === "tool_use"),
+            ),
+          );
+          const timestamp =
             typeof record.timestamp === "string"
               ? new Date(record.timestamp).toLocaleTimeString()
               : "";
+
+          if (toolCalls.length) {
+            badge = "tool call";
+            title = toolCalls.map((call) => String(call.name ?? "unknown")).join(", ");
+            tint = styles.eventTool;
+          } else if (role === "toolResult" || role === "tool") {
+            badge = "tool result";
+            title = String(message.toolName ?? timestamp);
+            tint = styles.eventTool;
+          } else {
+            badge = role;
+            title = timestamp;
+            tint = role === "user" ? styles.eventUser : styles.eventAssistant;
+          }
           body = extractMessageText(message.content);
-          tint =
-            badge === "user"
-              ? styles.eventUser
-              : badge === "assistant"
-                ? styles.eventAssistant
-                : styles.eventTool;
+          thoughtBody = extractThinkingText(message.content);
         } else if (kind === "traces" && (type === "raw_event" || type === "normalized_event")) {
           const event = record.event;
           const eventRecord =
@@ -156,30 +252,65 @@ function StructuredRows({ data, kind }: { data: unknown; kind: "traces" | "pi" }
         }
 
         const preview = body.replace(/\s+/g, " ").trim().slice(0, 180);
+        const thoughtKey = `${index}:thought`;
+        const thoughtOpen = expanded.has(thoughtKey);
+        const thoughtPreview = thoughtBody.replace(/\s+/g, " ").trim().slice(0, 180);
+        const showMain = Boolean(body) || !thoughtBody;
         return (
-          <Pressable
-            key={`${type}-${index}`}
-            onPress={() => toggle(index)}
-            style={[styles.eventCard, tint]}
-          >
-            <View style={styles.eventHeader}>
-              <Text style={styles.eventBadge}>{badge}</Text>
-              <Text style={styles.eventTitle} numberOfLines={1}>
-                {title || preview || "Event"}
-              </Text>
-              <Text style={styles.eventChevron}>{isOpen ? "▾" : "›"}</Text>
-            </View>
-            {!isOpen && preview && (
-              <Text style={styles.eventPreview} numberOfLines={2}>
-                {preview}
-              </Text>
+          <View key={`${type}-${index}`} style={styles.eventGroup}>
+            {!!thoughtBody && (
+              <Pressable
+                onPress={() => toggle(thoughtKey)}
+                style={[styles.eventCard, styles.eventThought]}
+              >
+                <View style={styles.eventHeader}>
+                  <Text style={styles.eventBadge}>thought</Text>
+                  <Text style={styles.eventTitle} numberOfLines={1}>
+                    {thoughtPreview || "Reasoning"}
+                  </Text>
+                  <Text style={styles.eventChevron}>{thoughtOpen ? "▾" : "›"}</Text>
+                </View>
+                {!thoughtOpen && (
+                  <Text style={styles.eventPreview} numberOfLines={2}>
+                    {thoughtPreview}
+                  </Text>
+                )}
+                {thoughtOpen && (
+                  <Text selectable style={styles.eventBody}>
+                    {thoughtBody}
+                  </Text>
+                )}
+              </Pressable>
             )}
-            {isOpen && (
-              <Text selectable style={styles.eventBody}>
-                {body || pretty(record)}
-              </Text>
+            {showMain && (
+              <Pressable onPress={() => toggle(rowKey)} style={[styles.eventCard, tint]}>
+                <View style={styles.eventHeader}>
+                  <Text style={styles.eventBadge}>{badge}</Text>
+                  <Text style={styles.eventTitle} numberOfLines={1}>
+                    {title || preview || "Event"}
+                  </Text>
+                  <Text style={styles.eventChevron}>{isOpen ? "▾" : "›"}</Text>
+                </View>
+                {!isOpen && preview && (
+                  <Text style={styles.eventPreview} numberOfLines={2}>
+                    {preview}
+                  </Text>
+                )}
+                {isOpen && (
+                  <>
+                    <Text selectable style={styles.eventBody}>
+                      {body || pretty(record)}
+                    </Text>
+                    {showRaw && kind === "pi" && (
+                      <Text selectable style={styles.eventRaw}>
+                        {pretty(record)}
+                      </Text>
+                    )}
+                  </>
+                )}
+              </Pressable>
             )}
-          </Pressable>
+          </View>
         );
       })}
       {lines.length === 0 && <Text style={styles.emptyText}>No rows in this page.</Text>}
@@ -210,7 +341,15 @@ function displayValue(value: unknown): string {
   return pretty(value);
 }
 
-function StructuredDetail({ value }: { value: unknown }) {
+function formatBytes(value: unknown): string {
+  const bytes = Number(value);
+  if (!Number.isFinite(bytes)) return "";
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+}
+
+export function StructuredDetail({ value }: { value: unknown }) {
   const styles = useThemeStyles(createStyles);
   if (typeof value === "string")
     return (
@@ -424,20 +563,38 @@ export function OperationsScreen({
   showAreaTabs = true,
   onBack,
   onDetailOpen,
+  onOpenStructuredDetail,
+  onOpenItem,
+  onOpenDriveDirectory,
+  initialDetail,
+  initialShowRaw = false,
   initialMemoryQuery,
+  initialDrivePath = "",
+  initialMemoryMode = "hybrid",
+  initialMemoryLimit = 10,
   onMemorySearch,
   hideMemorySearch = false,
   hideScreenTitle = false,
+  hideRefreshToolbar = false,
 }: {
   onUnauthorized: () => void;
   initialArea?: OperationArea;
   showAreaTabs?: boolean;
   onBack?: () => void;
   onDetailOpen?: () => void;
+  onOpenStructuredDetail?: (area: "traces" | "pi", id: string) => void;
+  onOpenItem?: (area: "apps" | "providers", id: string) => void;
+  onOpenDriveDirectory?: (path: string) => void;
+  initialDetail?: { area: "traces" | "pi"; id: string };
+  initialShowRaw?: boolean;
   initialMemoryQuery?: string;
-  onMemorySearch?: (query: string) => void;
+  initialDrivePath?: string;
+  initialMemoryMode?: "hybrid" | "embedding" | "bm25";
+  initialMemoryLimit?: number;
+  onMemorySearch?: (query: string, mode: "hybrid" | "embedding" | "bm25", limit: number) => void;
   hideMemorySearch?: boolean;
   hideScreenTitle?: boolean;
+  hideRefreshToolbar?: boolean;
 }) {
   const styles = useThemeStyles(createStyles);
   const theme = useVitoTheme();
@@ -448,16 +605,19 @@ export function OperationsScreen({
     area: "traces" | "pi";
     id: string;
     offset: number;
-  } | null>(null);
+  } | null>(initialDetail ? { ...initialDetail, offset: 0 } : null);
   const [loading, setLoading] = useState(false);
   const [detailLoading, setDetailLoading] = useState(false);
+  const [hasOlderDetailRows, setHasOlderDetailRows] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [query, setQuery] = useState(initialMemoryQuery ?? "");
+  const [memoryMode, setMemoryMode] = useState<"hybrid" | "embedding" | "bm25">(initialMemoryMode);
+  const [memoryLimit, setMemoryLimit] = useState(String(initialMemoryLimit));
+  const [showMemoryAdvanced, setShowMemoryAdvanced] = useState(false);
+  const [showPiRaw, setShowPiRaw] = useState(initialShowRaw);
   const [editor, setEditor] = useState("");
-  const [drivePath, setDrivePath] = useState("");
+  const [drivePath, setDrivePath] = useState(initialDrivePath);
   const [command, setCommand] = useState("");
-  const [secretKey, setSecretKey] = useState("");
-  const [secretValue, setSecretValue] = useState("");
   const [siteFolder, setSiteFolder] = useState("");
   const [providerPrompt, setProviderPrompt] = useState("");
   const [activeProvider, setActiveProvider] = useState<string | null>(null);
@@ -469,9 +629,13 @@ export function OperationsScreen({
     setError(null);
     setSelected(undefined);
     try {
+      if (area === "memory" && !initialMemoryQuery) {
+        setData(undefined);
+        return;
+      }
       const path =
         area === "memory" && initialMemoryQuery
-          ? `/api/memory/embeddings/search?q=${encodeURIComponent(initialMemoryQuery)}&mode=hybrid&limit=10`
+          ? `/api/memory/embeddings/search?q=${encodeURIComponent(initialMemoryQuery)}&mode=${memoryMode}&limit=${Math.max(1, Math.min(50, Number(memoryLimit) || 10))}`
           : area === "drive"
             ? `/api/drive/ls?path=${encodeURIComponent(drivePath)}`
             : paths[area];
@@ -489,7 +653,7 @@ export function OperationsScreen({
     } finally {
       setLoading(false);
     }
-  }, [area, drivePath, initialMemoryQuery, onUnauthorized]);
+  }, [area, drivePath, initialMemoryQuery, memoryLimit, memoryMode, onUnauthorized]);
 
   useEffect(() => void load(), [load]);
   useEffect(() => {
@@ -519,15 +683,16 @@ export function OperationsScreen({
 
   const searchMemory = async () => {
     if (!query.trim()) return;
+    const limit = Math.max(1, Math.min(50, Number(memoryLimit) || 10));
     if (onMemorySearch) {
-      onMemorySearch(query.trim());
+      onMemorySearch(query.trim(), memoryMode, limit);
       return;
     }
     setLoading(true);
     try {
       setData(
         await api(
-          `/api/memory/embeddings/search?q=${encodeURIComponent(query.trim())}&mode=hybrid&limit=10`,
+          `/api/memory/embeddings/search?q=${encodeURIComponent(query.trim())}&mode=${memoryMode}&limit=${limit}`,
         ),
       );
     } catch (cause) {
@@ -546,7 +711,10 @@ export function OperationsScreen({
     return labelFor(row, index);
   };
 
-  const loadDetailPage = async (target: { area: "traces" | "pi"; id: string; offset: number }) => {
+  const loadDetailPage = async (
+    target: { area: "traces" | "pi"; id: string; offset: number },
+    prepend = false,
+  ) => {
     setDetailTarget(target);
     setDetailLoading(true);
     setError(null);
@@ -555,11 +723,21 @@ export function OperationsScreen({
         target.area === "traces"
           ? encodeURIComponent(target.id)
           : target.id.split("/").map(encodeURIComponent).join("/");
-      setSelected(
-        await api(
-          `/api/${target.area === "traces" ? "logs" : "pi-sessions"}/${encoded}?offset=${target.offset}&limit=50&order=newest`,
-        ),
+      const page = await api<{ lines?: unknown[] }>(
+        `/api/${target.area === "traces" ? "logs" : "pi-sessions"}/${encoded}?offset=${target.offset}&limit=50&order=newest`,
       );
+      setHasOlderDetailRows((page.lines?.length ?? 0) === 50);
+      if (prepend) {
+        setSelected((current: unknown) => {
+          const currentLines =
+            current &&
+            typeof current === "object" &&
+            Array.isArray((current as { lines?: unknown[] }).lines)
+              ? (current as { lines: unknown[] }).lines
+              : [];
+          return { ...page, lines: [...(page.lines ?? []), ...currentLines] };
+        });
+      } else setSelected(page);
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : "Could not load details");
     } finally {
@@ -567,11 +745,24 @@ export function OperationsScreen({
     }
   };
 
+  useEffect(() => setShowPiRaw(initialShowRaw), [initialShowRaw]);
+
+  useEffect(() => {
+    if (initialDetail) void loadDetailPage({ ...initialDetail, offset: 0 });
+    // The route owns changes to the initial detail identity.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [initialDetail?.area, initialDetail?.id]);
+
   const openRow = async (row: unknown, index: number) => {
     const name = rowIdentifier(row, index);
     setError(null);
     if (area === "traces" || area === "pi") {
-      await loadDetailPage({ area, id: name, offset: 0 });
+      if (onOpenStructuredDetail) onOpenStructuredDetail(area, name);
+      else await loadDetailPage({ area, id: name, offset: 0 });
+      return;
+    }
+    if ((area === "apps" || area === "providers") && onOpenItem) {
+      onOpenItem(area, name);
       return;
     }
     setDetailLoading(true);
@@ -609,15 +800,6 @@ export function OperationsScreen({
     } catch {
       setError("The command must be valid JSON");
     }
-  };
-
-  const saveSecret = () => {
-    if (!secretKey.trim() || !secretValue) return;
-    void mutate(`/api/secrets/${encodeURIComponent(secretKey.trim())}`, "PUT", {
-      value: secretValue,
-    });
-    setSecretKey("");
-    setSecretValue("");
   };
 
   const uploadDriveFile = async () => {
@@ -699,26 +881,38 @@ export function OperationsScreen({
   if (detailTarget) {
     return (
       <View style={styles.root}>
-        <View style={styles.titleRow}>
-          <Pressable
-            onPress={() => {
-              setSelected(undefined);
-              setDetailTarget(null);
-              setError(null);
-            }}
-            style={styles.backButton}
-          >
-            <Text style={styles.backText}>‹</Text>
-          </Pressable>
-          <View style={styles.detailHeading}>
-            <Text style={styles.title}>
-              {detailTarget.area === "traces" ? "Trace details" : "Pi session"}
-            </Text>
-            <Text style={styles.detailId} numberOfLines={1}>
-              {detailTarget.id}
-            </Text>
+        {!initialDetail && (
+          <View style={styles.titleRow}>
+            <Pressable
+              onPress={() => {
+                setSelected(undefined);
+                setDetailTarget(null);
+                setError(null);
+              }}
+              style={styles.backButton}
+            >
+              <Text style={styles.backText}>‹</Text>
+            </Pressable>
+            <View style={styles.detailHeading}>
+              <Text style={styles.title}>
+                {detailTarget.area === "traces" ? "Trace details" : "Pi session"}
+              </Text>
+              <Text style={styles.detailId} numberOfLines={1}>
+                {detailTarget.id}
+              </Text>
+            </View>
+            {detailTarget.area === "pi" && (
+              <Pressable
+                onPress={() => setShowPiRaw((value) => !value)}
+                style={[styles.rawToggle, showPiRaw && styles.rawToggleActive]}
+              >
+                <Text style={[styles.rawToggleText, showPiRaw && styles.rawToggleTextActive]}>
+                  RAW
+                </Text>
+              </Pressable>
+            )}
           </View>
-        </View>
+        )}
 
         {error && <Text style={styles.error}>{error}</Text>}
         {detailLoading && (
@@ -728,34 +922,27 @@ export function OperationsScreen({
           </View>
         )}
 
-        <View style={styles.pageControls}>
-          <Pressable
-            disabled={detailTarget.offset === 0 || detailLoading}
-            onPress={() =>
-              void loadDetailPage({
-                ...detailTarget,
-                offset: Math.max(0, detailTarget.offset - 50),
-              })
-            }
-            style={styles.smallButton}
-          >
-            <Text style={styles.smallButtonText}>Newer 50</Text>
-          </Pressable>
-          <Text style={styles.pageText}>
-            Rows {detailTarget.offset + 1}–{detailTarget.offset + 50}
-          </Text>
-          <Pressable
-            disabled={detailLoading}
-            onPress={() =>
-              void loadDetailPage({ ...detailTarget, offset: detailTarget.offset + 50 })
-            }
-            style={styles.smallButton}
-          >
-            <Text style={styles.smallButtonText}>Older 50</Text>
-          </Pressable>
-        </View>
+        {hasOlderDetailRows && selected !== undefined && (
+          <View style={styles.loadMoreSeparator}>
+            <View style={styles.loadMoreRule} />
+            <Pressable
+              disabled={detailLoading}
+              onPress={() =>
+                void loadDetailPage({ ...detailTarget, offset: detailTarget.offset + 50 }, true)
+              }
+              style={styles.loadMoreButton}
+            >
+              <Text style={styles.loadMoreText}>
+                {detailLoading ? "Loading…" : "Load 50 older rows"}
+              </Text>
+            </Pressable>
+            <View style={styles.loadMoreRule} />
+          </View>
+        )}
 
-        {selected !== undefined && <StructuredRows data={selected} kind={detailTarget.area} />}
+        {selected !== undefined && (
+          <StructuredRows data={selected} kind={detailTarget.area} showRaw={showPiRaw} />
+        )}
       </View>
     );
   }
@@ -776,6 +963,70 @@ export function OperationsScreen({
           <Text style={styles.title}>Details</Text>
         </View>
         <StructuredDetail value={selected} />
+      </View>
+    );
+  }
+
+  if (area === "memory" && !initialMemoryQuery) {
+    return (
+      <View style={[styles.root, styles.memoryRoot, styles.memoryLanding]}>
+        <Text style={styles.memoryLandingTitle}>Search memory</Text>
+        <Text style={styles.memoryLandingSubtitle}>Find conversations by meaning or keyword.</Text>
+        <View style={styles.memoryLandingSearch}>
+          <Text style={styles.memorySearchIcon}>⌕</Text>
+          <TextInput
+            autoFocus
+            value={query}
+            onChangeText={setQuery}
+            onSubmitEditing={() => void searchMemory()}
+            placeholder="What do you want to remember?"
+            placeholderTextColor={theme.colors.textMuted}
+            returnKeyType="search"
+            style={styles.memorySearchInput}
+          />
+          <Pressable onPress={() => void searchMemory()} style={styles.memorySearchButton}>
+            <Text style={styles.memorySearchButtonText}>Search</Text>
+          </Pressable>
+        </View>
+        <Pressable onPress={() => setShowMemoryAdvanced((value) => !value)}>
+          <Text style={styles.memoryAdvancedToggle}>
+            {showMemoryAdvanced ? "Hide advanced" : "Advanced"}
+          </Text>
+        </Pressable>
+        {showMemoryAdvanced && (
+          <View style={styles.memoryAdvancedPanel}>
+            <View style={styles.memoryModeRow}>
+              {(["hybrid", "embedding", "bm25"] as const).map((mode) => (
+                <Pressable
+                  key={mode}
+                  onPress={() => setMemoryMode(mode)}
+                  style={[
+                    styles.memoryModeButton,
+                    memoryMode === mode && styles.memoryModeButtonActive,
+                  ]}
+                >
+                  <Text
+                    style={[
+                      styles.memoryModeText,
+                      memoryMode === mode && styles.memoryModeTextActive,
+                    ]}
+                  >
+                    {mode === "bm25" ? "BM25" : mode[0].toUpperCase() + mode.slice(1)}
+                  </Text>
+                </Pressable>
+              ))}
+            </View>
+            <View style={styles.memoryLimitRow}>
+              <Text style={styles.memoryLimitLabel}>Result limit</Text>
+              <TextInput
+                value={memoryLimit}
+                onChangeText={setMemoryLimit}
+                keyboardType="number-pad"
+                style={styles.memoryLimitInput}
+              />
+            </View>
+          </View>
+        )}
       </View>
     );
   }
@@ -819,11 +1070,19 @@ export function OperationsScreen({
         </ScrollView>
       )}
 
-      {area !== "memory" && area !== "profile" && (
+      {!hideRefreshToolbar && area !== "memory" && area !== "profile" && (
         <View style={styles.toolbar}>
           <View />
-          <Pressable onPress={() => void load()} style={styles.smallButton}>
-            <Text style={styles.smallButtonText}>Refresh</Text>
+          <Pressable
+            accessibilityLabel="Refresh"
+            onPress={() => void load()}
+            style={area === "pi" ? styles.iconButton : styles.smallButton}
+          >
+            {area === "pi" ? (
+              <Ionicons name="refresh" size={18} color={theme.colors.textSecondary} />
+            ) : (
+              <Text style={styles.smallButtonText}>Refresh</Text>
+            )}
           </Pressable>
         </View>
       )}
@@ -895,31 +1154,6 @@ export function OperationsScreen({
             <Text style={styles.primaryText}>
               {editingJob ? `Update ${editingJob}` : "Create job"}
             </Text>
-          </Pressable>
-        </View>
-      )}
-
-      {area === "secrets" && (
-        <View style={styles.editorBlock}>
-          <TextInput
-            value={secretKey}
-            onChangeText={setSecretKey}
-            autoCapitalize="none"
-            placeholder="Secret key"
-            placeholderTextColor={theme.colors.textMuted}
-            style={styles.input}
-          />
-          <TextInput
-            value={secretValue}
-            onChangeText={setSecretValue}
-            secureTextEntry
-            autoCapitalize="none"
-            placeholder="Secret value"
-            placeholderTextColor={theme.colors.textMuted}
-            style={styles.input}
-          />
-          <Pressable onPress={saveSecret} style={styles.primaryButton}>
-            <Text style={styles.primaryText}>Save secret</Text>
           </Pressable>
         </View>
       )}
@@ -1017,6 +1251,7 @@ export function OperationsScreen({
             const name = labelFor(row, index);
             const identifier = rowIdentifier(row, index);
             const memoryResult = area === "memory" && typeof record.text === "string";
+            const piSession = area === "pi" && typeof record.rel === "string";
             const title = memoryResult ? String(record.alias ?? record.session_id ?? name) : name;
             const context = memoryResult ? displayValue(record.context) : "";
             const memoryKey = String(record.id ?? `${record.session_id ?? "memory"}-${index}`);
@@ -1026,7 +1261,61 @@ export function OperationsScreen({
                 key={`${name}-${index}`}
                 style={[styles.card, memoryResult && styles.memoryResultRow]}
               >
-                {memoryResult ? (
+                {piSession ? (
+                  <PiSessionDeleteContainer
+                    label={name}
+                    onDelete={() =>
+                      confirm(
+                        `Delete ${name}`,
+                        () =>
+                          void mutate(
+                            `/api/pi-sessions/${identifier.split("/").map(encodeURIComponent).join("/")}`,
+                            "DELETE",
+                          ),
+                      )
+                    }
+                  >
+                    <Pressable
+                      onPress={() => void openRow(row, index)}
+                      style={styles.piSessionMain}
+                    >
+                      <View style={styles.piSessionTop}>
+                        <Text style={styles.piSessionTitle} numberOfLines={1}>
+                          {String(record.alias || record.vitoSessionId || record.rel)}
+                        </Text>
+                        <Text style={styles.piSessionDate}>
+                          {new Date(Number(record.mtime)).toLocaleString()}
+                        </Text>
+                      </View>
+                      <View style={styles.piSessionMeta}>
+                        {!!record.lastModel && (
+                          <Text
+                            style={[styles.piSessionTag, styles.piSessionModel]}
+                            numberOfLines={1}
+                          >
+                            {String(record.lastModel)}
+                          </Text>
+                        )}
+                        {record.messageCount !== null && record.messageCount !== undefined && (
+                          <Text style={styles.piSessionTag}>
+                            {String(record.messageCount)} messages
+                          </Text>
+                        )}
+                        <Text style={styles.piSessionSize}>{formatBytes(record.size)}</Text>
+                      </View>
+                      {!!record.alias && !!record.vitoSessionId && (
+                        <Text style={styles.piSessionId} numberOfLines={1}>
+                          {String(record.vitoSessionId)}
+                        </Text>
+                      )}
+                      {!!record.lastUserMessage && (
+                        <Text style={styles.piSessionPreview} numberOfLines={2}>
+                          {String(record.lastUserMessage)}
+                        </Text>
+                      )}
+                    </Pressable>
+                  </PiSessionDeleteContainer>
+                ) : memoryResult ? (
                   <View style={styles.cardMain}>
                     <View style={styles.memoryHeader}>
                       <View style={styles.memoryIdentity}>
@@ -1057,6 +1346,28 @@ export function OperationsScreen({
                         {context}
                       </Text>
                     )}
+                    <View style={styles.memoryScores}>
+                      {Number(record.rrfScore) > 0 && (
+                        <Text style={[styles.memoryScore, styles.memoryScoreRrf]}>
+                          RRF {Number(record.rrfScore).toFixed(4)}
+                        </Text>
+                      )}
+                      {Number(record.embeddingScore) > 0 && (
+                        <Text style={[styles.memoryScore, styles.memoryScoreEmbedding]}>
+                          EMB {Number(record.embeddingScore).toFixed(3)}
+                        </Text>
+                      )}
+                      {Number(record.recencyFactor) > 0 && Number(record.recencyFactor) < 1 && (
+                        <Text style={[styles.memoryScore, styles.memoryScoreDecay]}>
+                          ×{Number(record.recencyFactor).toFixed(2)} decay
+                        </Text>
+                      )}
+                      {Number(record.bm25Score) > 0 && (
+                        <Text style={[styles.memoryScore, styles.memoryScoreBm25]}>
+                          BM25 {Number(record.bm25Score).toFixed(2)}
+                        </Text>
+                      )}
+                    </View>
                     {memoryExpanded && (
                       <View style={styles.memoryExpansion}>
                         <Text style={styles.memoryExpansionLabel}>Matching conversation</Text>
@@ -1123,7 +1434,6 @@ export function OperationsScreen({
                                 ? result.verificationUri
                                 : null;
                           if (url) await Linking.openURL(url);
-                          setSelected(result);
                         } catch (cause) {
                           setError(cause instanceof Error ? cause.message : "Login failed");
                         }
@@ -1176,20 +1486,7 @@ export function OperationsScreen({
                     </Pressable>
                   </View>
                 )}
-                {area === "secrets" && record.isSystem !== true && record.system !== true && (
-                  <Pressable
-                    onPress={() =>
-                      confirm(
-                        `Delete ${name}`,
-                        () =>
-                          void mutate(`/api/secrets/${encodeURIComponent(identifier)}`, "DELETE"),
-                      )
-                    }
-                  >
-                    <Text style={styles.deleteLink}>delete</Text>
-                  </Pressable>
-                )}
-                {(area === "traces" || area === "pi") && (
+                {area === "traces" && (
                   <Pressable
                     onPress={() =>
                       confirm(
@@ -1212,7 +1509,9 @@ export function OperationsScreen({
                     <Pressable
                       onPress={() =>
                         record.isDirectory === true || record.isDir === true
-                          ? setDrivePath(record.path as string)
+                          ? onOpenDriveDirectory
+                            ? onOpenDriveDirectory(record.path as string)
+                            : setDrivePath(record.path as string)
                           : void Linking.openURL(`${VITO_URL}/api/drive/file/${record.path}`)
                       }
                     >
@@ -1275,6 +1574,83 @@ const createStyles = (theme: VitoTheme) =>
   StyleSheet.create({
     root: {},
     memoryRoot: { width: "100%", maxWidth: 820, alignSelf: "center" },
+    memoryLanding: { flex: 1, justifyContent: "center", paddingBottom: 80 },
+    memoryLandingTitle: {
+      color: theme.colors.text,
+      fontSize: 28,
+      fontWeight: "800",
+      textAlign: "center",
+      letterSpacing: -0.8,
+    },
+    memoryLandingSubtitle: {
+      color: theme.colors.textMuted,
+      fontSize: 13,
+      textAlign: "center",
+      marginTop: theme.space.sm,
+      marginBottom: theme.space.xxl,
+    },
+    memoryLandingSearch: {
+      minHeight: 54,
+      flexDirection: "row",
+      alignItems: "center",
+      gap: theme.space.sm,
+      borderWidth: 1,
+      borderColor: theme.colors.separatorStrong,
+      borderRadius: 16,
+      backgroundColor: theme.colors.surface,
+      paddingLeft: theme.space.lg,
+      paddingRight: theme.space.xs,
+    },
+    memorySearchButton: {
+      backgroundColor: theme.colors.accent,
+      borderRadius: 12,
+      paddingHorizontal: theme.space.lg,
+      paddingVertical: theme.space.md,
+    },
+    memorySearchButtonText: { color: theme.colors.accentText, fontSize: 12, fontWeight: "800" },
+    memoryAdvancedToggle: {
+      color: theme.colors.textMuted,
+      fontSize: 11,
+      fontWeight: "700",
+      marginTop: theme.space.md,
+      textAlign: "center",
+    },
+    memoryAdvancedPanel: {
+      marginTop: theme.space.md,
+      borderTopWidth: 1,
+      borderTopColor: theme.colors.separator,
+      paddingTop: theme.space.md,
+      gap: theme.space.md,
+    },
+    memoryModeRow: { flexDirection: "row", justifyContent: "center", gap: theme.space.sm },
+    memoryModeButton: {
+      borderWidth: 1,
+      borderColor: theme.colors.separatorStrong,
+      borderRadius: 99,
+      paddingHorizontal: theme.space.md,
+      paddingVertical: theme.space.sm,
+    },
+    memoryModeButtonActive: {
+      backgroundColor: theme.colors.accent,
+      borderColor: theme.colors.accent,
+    },
+    memoryModeText: { color: theme.colors.textSecondary, fontSize: 11, fontWeight: "700" },
+    memoryModeTextActive: { color: theme.colors.accentText },
+    memoryLimitRow: {
+      flexDirection: "row",
+      alignItems: "center",
+      justifyContent: "center",
+      gap: theme.space.sm,
+    },
+    memoryLimitLabel: { color: theme.colors.textMuted, fontSize: 11 },
+    memoryLimitInput: {
+      width: 56,
+      color: theme.colors.text,
+      textAlign: "center",
+      borderBottomWidth: 1,
+      borderBottomColor: theme.colors.separatorStrong,
+      paddingVertical: theme.space.xs,
+    },
     memorySearchRow: {
       height: 50,
       flexDirection: "row",
@@ -1419,8 +1795,28 @@ const createStyles = (theme: VitoTheme) =>
       marginBottom: theme.space.xl,
     },
     compactTitleRow: { marginBottom: theme.space.xxl },
+    routedDetailToolbar: { marginBottom: theme.space.md },
 
-    detailHeading: { flex: 1 },
+    detailHeading: { flex: 1, minWidth: 0 },
+    rawToggle: {
+      height: 32,
+      justifyContent: "center",
+      paddingHorizontal: theme.space.sm,
+      borderRadius: 6,
+      borderWidth: 1,
+      borderColor: theme.colors.separatorStrong,
+    },
+    rawToggleActive: {
+      borderColor: theme.colors.accent,
+      backgroundColor: theme.colors.accentSurface,
+    },
+    rawToggleText: {
+      color: theme.colors.textMuted,
+      fontSize: 10,
+      fontWeight: "900",
+      letterSpacing: 0.8,
+    },
+    rawToggleTextActive: { color: theme.colors.accent },
     detailId: {
       color: theme.colors.textMuted,
       fontSize: 11,
@@ -1523,6 +1919,14 @@ const createStyles = (theme: VitoTheme) =>
       alignSelf: "flex-start",
     },
     smallButtonText: { color: theme.colors.textSecondary, fontWeight: "700", fontSize: 12 },
+    iconButton: {
+      width: 34,
+      height: 34,
+      alignItems: "center",
+      justifyContent: "center",
+      borderRadius: 8,
+      backgroundColor: theme.colors.surfaceRaised,
+    },
     primaryButton: {
       backgroundColor: theme.colors.accent,
       borderRadius: 11,
@@ -1547,14 +1951,22 @@ const createStyles = (theme: VitoTheme) =>
       paddingVertical: theme.space.xl,
     },
     loadingText: { color: theme.colors.textSecondary, fontWeight: "700" },
-    pageControls: {
+    loadMoreSeparator: {
       flexDirection: "row",
       alignItems: "center",
-      justifyContent: "space-between",
-      gap: theme.space.sm,
+      gap: theme.space.md,
       marginBottom: theme.space.lg,
     },
-    pageText: { color: theme.colors.textMuted, fontSize: 11 },
+    loadMoreRule: { flex: 1, height: 1, backgroundColor: theme.colors.separator },
+    loadMoreButton: {
+      paddingHorizontal: theme.space.md,
+      paddingVertical: theme.space.sm,
+      borderRadius: 7,
+      borderWidth: 1,
+      borderColor: theme.colors.separatorStrong,
+      backgroundColor: theme.colors.surface,
+    },
+    loadMoreText: { color: theme.colors.textSecondary, fontSize: 11, fontWeight: "700" },
     error: { color: theme.colors.danger, marginVertical: theme.space.md },
     list: { gap: theme.space.sm },
     card: {
@@ -1577,6 +1989,51 @@ const createStyles = (theme: VitoTheme) =>
       paddingVertical: theme.space.lg,
     },
     cardMain: { flex: 1 },
+    swipeContainer: { flex: 1, minWidth: 0 },
+    desktopDeleteContainer: { flex: 1, minWidth: 0, position: "relative", paddingRight: 28 },
+    desktopDeleteButton: {
+      position: "absolute",
+      right: 0,
+      bottom: 0,
+      width: 28,
+      height: 28,
+      alignItems: "center",
+      justifyContent: "center",
+      borderRadius: 6,
+    },
+    swipeDelete: {
+      width: 88,
+      alignItems: "center",
+      justifyContent: "center",
+      gap: theme.space.xs,
+      marginLeft: theme.space.sm,
+      borderRadius: 10,
+      backgroundColor: theme.colors.danger,
+    },
+    swipeDeleteText: { color: "#fff", fontSize: 11, fontWeight: "800" },
+    piSessionMain: { flex: 1, minWidth: 0, gap: theme.space.sm },
+    piSessionTop: { flexDirection: "row", alignItems: "center", gap: theme.space.md },
+    piSessionTitle: { flex: 1, color: theme.colors.text, fontSize: 14, fontWeight: "800" },
+    piSessionDate: { color: theme.colors.textMuted, fontSize: 10 },
+    piSessionMeta: {
+      flexDirection: "row",
+      alignItems: "center",
+      gap: theme.space.sm,
+      flexWrap: "wrap",
+    },
+    piSessionTag: {
+      color: theme.colors.textMuted,
+      backgroundColor: theme.colors.surfaceRaised,
+      paddingHorizontal: theme.space.sm,
+      paddingVertical: theme.space.xxs,
+      borderRadius: 5,
+      fontSize: 10,
+      overflow: "hidden",
+    },
+    piSessionModel: { color: theme.colors.accent, maxWidth: 220 },
+    piSessionSize: { color: theme.colors.textMuted, fontSize: 10 },
+    piSessionId: { color: theme.colors.textMuted, fontSize: 10, fontFamily: "monospace" },
+    piSessionPreview: { color: theme.colors.textSecondary, fontSize: 12, lineHeight: 17 },
     cardTitle: { color: theme.colors.text, fontWeight: "800", fontSize: 14 },
     cardMeta: { color: theme.colors.textMuted, fontSize: 12, marginTop: theme.space.xs },
     memoryContext: {
@@ -1588,6 +2045,17 @@ const createStyles = (theme: VitoTheme) =>
       borderLeftWidth: 2,
       borderLeftColor: theme.colors.separatorStrong,
     },
+    memoryScores: {
+      flexDirection: "row",
+      flexWrap: "wrap",
+      gap: theme.space.md,
+      marginTop: theme.space.sm,
+    },
+    memoryScore: { fontFamily: "monospace", fontSize: 10, fontWeight: "700" },
+    memoryScoreRrf: { color: theme.colors.success },
+    memoryScoreEmbedding: { color: theme.colors.info },
+    memoryScoreDecay: { color: theme.colors.accent },
+    memoryScoreBm25: { color: theme.colors.warning },
     memoryExpansion: {
       marginTop: theme.space.md,
       paddingTop: theme.space.md,
@@ -1639,6 +2107,7 @@ const createStyles = (theme: VitoTheme) =>
     link: { color: theme.colors.accent, fontSize: 12, fontWeight: "800" },
     deleteLink: { color: theme.colors.danger, fontSize: 12, fontWeight: "800" },
     structuredList: { gap: theme.space.sm },
+    eventGroup: { gap: theme.space.sm },
     eventCard: { borderWidth: 1, borderRadius: 13, padding: theme.space.md },
     eventNeutral: {
       backgroundColor: theme.colors.surface,
@@ -1646,6 +2115,7 @@ const createStyles = (theme: VitoTheme) =>
     },
     eventUser: { backgroundColor: theme.colors.infoSurface, borderColor: theme.colors.info },
     eventAssistant: { backgroundColor: theme.colors.surfaceRaised, borderColor: theme.colors.info },
+    eventThought: { backgroundColor: theme.colors.surface, borderColor: theme.colors.accent },
     eventTool: { backgroundColor: theme.colors.successSurface, borderColor: theme.colors.success },
     eventError: { backgroundColor: theme.colors.dangerSurface, borderColor: theme.colors.danger },
     eventHeader: { flexDirection: "row", alignItems: "center", gap: theme.space.sm },
@@ -1679,6 +2149,16 @@ const createStyles = (theme: VitoTheme) =>
       fontSize: 11,
       lineHeight: 17,
       marginTop: theme.space.md,
+      fontFamily: "monospace",
+    },
+    eventRaw: {
+      color: theme.colors.textMuted,
+      fontSize: 10,
+      lineHeight: 15,
+      marginTop: theme.space.md,
+      padding: theme.space.md,
+      borderRadius: 8,
+      backgroundColor: theme.colors.canvas,
       fontFamily: "monospace",
     },
     emptyText: { color: theme.colors.textMuted, textAlign: "center", padding: theme.space.xxl },

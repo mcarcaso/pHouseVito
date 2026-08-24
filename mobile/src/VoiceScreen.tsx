@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { createAudioPlayer, setAudioModeAsync } from "expo-audio";
+import { setAudioModeAsync } from "expo-audio";
 import {
   ActivityIndicator,
   Platform,
@@ -17,30 +17,24 @@ import {
   getVoiceTask,
   loadRealtimeVoice,
   persistVoiceEvent,
-  REALTIME_VOICES,
-  saveRealtimeVoice,
   searchVoiceMemory,
   startVoiceTask,
   type RealtimeVoice,
   type VoiceSession,
+  type VoiceSessionDetail,
 } from "./api";
 import { connectRealtime, type VoiceConnection } from "./realtime-webrtc";
 import { useThemeStyles, useVitoTheme, type VitoTheme } from "./theme";
 
-const VOICE_PREVIEWS: Record<RealtimeVoice, number> = {
-  marin: require("../assets/voice-previews/marin.mp3"),
-  cedar: require("../assets/voice-previews/cedar.mp3"),
-  coral: require("../assets/voice-previews/coral.mp3"),
-  sage: require("../assets/voice-previews/sage.mp3"),
-  alloy: require("../assets/voice-previews/alloy.mp3"),
-  ash: require("../assets/voice-previews/ash.mp3"),
-  ballad: require("../assets/voice-previews/ballad.mp3"),
-  echo: require("../assets/voice-previews/echo.mp3"),
-  shimmer: require("../assets/voice-previews/shimmer.mp3"),
-  verse: require("../assets/voice-previews/verse.mp3"),
-};
+export type VoiceState = "idle" | "connecting" | "listening" | "speaking" | "error";
+export interface VoiceOverlayStatus {
+  state: VoiceState;
+  muted: boolean;
+  runningTasks: number;
+  completedTasks: number;
+  failedTasks: number;
+}
 
-type VoiceState = "idle" | "connecting" | "listening" | "speaking" | "error";
 interface TranscriptLine {
   id: number;
   role: "Mike" | "Vito";
@@ -70,7 +64,15 @@ interface RealtimeEvent {
   };
 }
 
-export function VoiceScreen({ onUnauthorized }: { onUnauthorized: () => void }) {
+export function VoiceScreen({
+  onUnauthorized,
+  onStatusChange,
+  onPastConversations,
+}: {
+  onUnauthorized: () => void;
+  onStatusChange?: (status: VoiceOverlayStatus) => void;
+  onPastConversations: () => void;
+}) {
   const styles = useThemeStyles(createStyles);
   const theme = useVitoTheme();
   const [state, setState] = useState<VoiceState>("idle");
@@ -81,13 +83,14 @@ export function VoiceScreen({ onUnauthorized }: { onUnauthorized: () => void }) 
   const [transcript, setTranscript] = useState<TranscriptLine[]>([]);
   const [history, setHistory] = useState<VoiceSession[]>([]);
   const [sessionSummary, setSessionSummary] = useState<string | null>(null);
+  const [selectedHistory, setSelectedHistory] = useState<VoiceSessionDetail | null>(null);
+  const [showHistory, setShowHistory] = useState(false);
   const [tasks, setTasks] = useState<VisibleTask[]>([]);
   const connectionRef = useRef<VoiceConnection | null>(null);
   const assistantDraftRef = useRef("");
   const lineIdRef = useRef(0);
   const sessionIdRef = useRef(`voice:${Date.now()}`);
   const handledToolCallsRef = useRef(new Set<string>());
-  const previewPlayerRef = useRef<ReturnType<typeof createAudioPlayer> | null>(null);
 
   const loadHistory = useCallback(async () => {
     try {
@@ -100,19 +103,26 @@ export function VoiceScreen({ onUnauthorized }: { onUnauthorized: () => void }) 
   useEffect(() => {
     void loadHistory();
     void loadRealtimeVoice().then(setSelectedVoice);
-    return () => previewPlayerRef.current?.remove();
   }, [loadHistory]);
 
-  const previewVoice = useCallback((voice: RealtimeVoice) => {
-    previewPlayerRef.current?.remove();
-    const player = createAudioPlayer(VOICE_PREVIEWS[voice]);
-    previewPlayerRef.current = player;
-    player.play();
-  }, []);
+  useEffect(() => {
+    onStatusChange?.({
+      state,
+      muted,
+      runningTasks: tasks.filter((task) => task.status === "queued" || task.status === "running")
+        .length,
+      completedTasks: tasks.filter((task) => task.status === "completed").length,
+      failedTasks: tasks.filter(
+        (task) =>
+          task.status === "failed" || task.status === "cancelled" || task.status === "timed_out",
+      ).length,
+    });
+  }, [muted, onStatusChange, state, tasks]);
 
   const openHistory = useCallback(async (id: string) => {
     const detail = await getVoiceSession(id);
     if (!detail) return;
+    setSelectedHistory(detail);
     setTranscript(
       detail.messages
         .filter((message) => message.type === "user" || message.type === "assistant")
@@ -128,6 +138,14 @@ export function VoiceScreen({ onUnauthorized }: { onUnauthorized: () => void }) 
       const value = (usage as { total_tokens?: unknown }).total_tokens;
       return total + (typeof value === "number" ? value : 0);
     }, 0);
+    setTasks(
+      (detail.tasks ?? []).map((task) => ({
+        id: task.id,
+        question: task.question,
+        status: task.status,
+        result: task.result,
+      })),
+    );
     setSessionSummary(
       [
         seconds === null ? null : `${seconds}s`,
@@ -326,15 +344,18 @@ export function VoiceScreen({ onUnauthorized }: { onUnauthorized: () => void }) 
     [addLine, executeTool],
   );
 
-  const start = async () => {
+  const start = async (resume?: VoiceSessionDetail | null) => {
     if (state !== "idle" && state !== "error") return;
     setState("connecting");
     setError(null);
-    setTranscript([]);
-    setTasks([]);
-    setSessionSummary(null);
+    if (!resume) {
+      setTranscript([]);
+      setTasks([]);
+      setSessionSummary(null);
+      setSelectedHistory(null);
+    }
     try {
-      sessionIdRef.current = `voice:${Date.now()}`;
+      sessionIdRef.current = resume?.session.id ?? `voice:${Date.now()}`;
       handledToolCallsRef.current.clear();
       if (Platform.OS !== "web") {
         await setAudioModeAsync({
@@ -347,15 +368,68 @@ export function VoiceScreen({ onUnauthorized }: { onUnauthorized: () => void }) 
         setAudioRoute("speaker");
       }
       const token = await getRealtimeToken(selectedVoice);
-      connectionRef.current = await connectRealtime(
+      let opened = false;
+      let hydrated = false;
+      const hydrate = () => {
+        if (!resume || !connectionRef.current || hydrated) return;
+        hydrated = true;
+        const turns = resume.messages
+          .filter((message) => message.type === "user" || message.type === "assistant")
+          .slice(-30);
+        for (const message of turns) {
+          connectionRef.current.sendEvent({
+            type: "conversation.item.create",
+            item: {
+              type: "message",
+              role: message.type === "user" ? "user" : "assistant",
+              content: [
+                {
+                  type: message.type === "user" ? "input_text" : "output_text",
+                  text: message.content,
+                },
+              ],
+            },
+          });
+        }
+        if ((resume.tasks ?? []).length > 0) {
+          connectionRef.current.sendEvent({
+            type: "conversation.item.create",
+            item: {
+              type: "message",
+              role: "system",
+              content: [
+                {
+                  type: "input_text",
+                  text: `This is a resumed Vito voice conversation. Prior background tasks: ${JSON.stringify(
+                    (resume.tasks ?? []).map((task) => ({
+                      id: task.id,
+                      question: task.question,
+                      status: task.status,
+                      result: task.result,
+                      error: task.error,
+                    })),
+                  )}. Use completed results when Mike asks about them; do not announce them unsolicited.`,
+                },
+              ],
+            },
+          });
+        }
+      };
+      const connection = await connectRealtime(
         token,
         handleEvent,
-        () => setState("listening"),
+        () => {
+          opened = true;
+          setState("listening");
+          queueMicrotask(hydrate);
+        },
         () => {
           setError("The realtime data channel failed");
           setState("error");
         },
       );
+      connectionRef.current = connection;
+      if (opened) hydrate();
     } catch (cause) {
       stop();
       const message = cause instanceof Error ? cause.message : "Could not start voice mode";
@@ -386,84 +460,71 @@ export function VoiceScreen({ onUnauthorized }: { onUnauthorized: () => void }) 
   const active = state !== "idle" && state !== "error";
   return (
     <View style={styles.root}>
-      <Text style={styles.eyebrow}>OPENAI REALTIME 2.1 MINI · VITO BRAIN</Text>
-      <Text style={styles.title}>Live voice</Text>
-      <Text style={styles.subtitle}>
-        Fluid conversation backed by Vito memory, durable tasks, and saved transcripts.
-      </Text>
-
-      {!active && (
-        <View style={styles.voicePicker}>
-          <Text style={styles.voicePickerLabel}>VOICE</Text>
-          <ScrollView horizontal showsHorizontalScrollIndicator={false}>
-            <View style={styles.voiceOptions}>
-              {REALTIME_VOICES.map((voice) => (
-                <View
-                  key={voice}
-                  style={[
-                    styles.voiceOption,
-                    selectedVoice === voice && styles.voiceOptionSelected,
-                  ]}
-                >
-                  <Pressable
-                    onPress={() => {
-                      setSelectedVoice(voice);
-                      void saveRealtimeVoice(voice);
-                    }}
-                  >
-                    <Text
-                      style={[
-                        styles.voiceOptionText,
-                        selectedVoice === voice && styles.voiceOptionTextSelected,
-                      ]}
-                    >
-                      {voice.charAt(0).toUpperCase() + voice.slice(1)}
-                    </Text>
-                  </Pressable>
-                  <Pressable
-                    accessibilityLabel={`Preview ${voice} voice`}
-                    onPress={() => previewVoice(voice)}
-                    hitSlop={8}
-                  >
-                    <Text
-                      style={[
-                        styles.previewIcon,
-                        selectedVoice === voice && styles.voiceOptionTextSelected,
-                      ]}
-                    >
-                      ▶
-                    </Text>
-                  </Pressable>
-                </View>
-              ))}
-            </View>
-          </ScrollView>
-        </View>
-      )}
-
-      <View
-        style={[styles.orb, active && styles.orbActive, state === "speaking" && styles.orbSpeaking]}
-      >
-        {state === "connecting" ? (
-          <ActivityIndicator color={theme.colors.accentText} size="large" />
-        ) : (
-          <Text style={styles.orbMark}>V</Text>
-        )}
-      </View>
-      <Text style={styles.state}>
-        {state === "idle"
-          ? "Ready"
-          : state === "connecting"
-            ? "Connecting…"
-            : state === "speaking"
-              ? "Vito is speaking"
-              : state === "listening"
-                ? muted
+      {error && <Text style={styles.error}>{error}</Text>}
+      {!selectedHistory && !showHistory && (
+        <View style={styles.voiceStage}>
+          <Pressable
+            accessibilityLabel={active ? "End voice conversation" : "Start voice conversation"}
+            onPress={active ? stop : () => void start(null)}
+            style={[
+              styles.orb,
+              active && styles.orbActive,
+              state === "speaking" && styles.orbSpeaking,
+              state === "connecting" && styles.orbConnecting,
+            ]}
+          >
+            {state === "connecting" ? (
+              <ActivityIndicator color={theme.colors.accentText} size="large" />
+            ) : (
+              <Text style={[styles.orbMark, active && styles.orbMarkActive]}>
+                {active ? "■" : "V"}
+              </Text>
+            )}
+          </Pressable>
+          <Text style={styles.state}>
+            {active
+              ? state === "speaking"
+                ? "Speaking"
+                : muted
                   ? "Muted"
                   : "Listening"
-                : "Connection failed"}
-      </Text>
-      {error && <Text style={styles.error}>{error}</Text>}
+              : "Tap to start"}
+          </Text>
+          {active && (
+            <View style={styles.controls}>
+              <Pressable onPress={toggleMute} style={styles.secondaryButton}>
+                <Text style={styles.secondaryText}>{muted ? "Unmute" : "Mute"}</Text>
+              </Pressable>
+              {Platform.OS !== "web" && (
+                <Pressable onPress={() => void toggleAudioRoute()} style={styles.secondaryButton}>
+                  <Text style={styles.secondaryText}>
+                    {audioRoute === "speaker" ? "Earpiece" : "Speaker"}
+                  </Text>
+                </Pressable>
+              )}
+            </View>
+          )}
+        </View>
+      )}
+      {!active && !selectedHistory && (
+        <Pressable onPress={onPastConversations} style={styles.historyButton}>
+          <Text style={styles.historyButtonText}>Past conversations</Text>
+        </Pressable>
+      )}
+      {!active && selectedHistory && (
+        <Pressable
+          onPress={() => {
+            setSelectedHistory(null);
+            setTranscript([]);
+            setTasks([]);
+            setSessionSummary(null);
+            setShowHistory(true);
+          }}
+          style={styles.historyButton}
+        >
+          <Text style={styles.historyButtonText}>‹ Past conversations</Text>
+        </Pressable>
+      )}
 
       {tasks.length > 0 && (
         <View style={styles.taskStack}>
@@ -498,54 +559,38 @@ export function VoiceScreen({ onUnauthorized }: { onUnauthorized: () => void }) 
         </View>
       )}
 
-      <View style={styles.controls}>
-        {active && (
-          <>
-            <Pressable onPress={toggleMute} style={styles.secondaryButton}>
-              <Text style={styles.secondaryText}>{muted ? "Unmute" : "Mute"}</Text>
-            </Pressable>
-            {Platform.OS !== "web" && (
-              <Pressable onPress={() => void toggleAudioRoute()} style={styles.secondaryButton}>
-                <Text style={styles.secondaryText}>
-                  {audioRoute === "speaker" ? "Earpiece" : "Speaker"}
-                </Text>
-              </Pressable>
-            )}
-          </>
-        )}
-        <Pressable
-          onPress={active ? stop : () => void start()}
-          style={[styles.primaryButton, active && styles.stopButton]}
-        >
-          <Text style={styles.primaryText}>{active ? "End session" : "Start voice"}</Text>
+      {selectedHistory && !active && (
+        <Pressable onPress={() => void start(selectedHistory)} style={styles.resumeButton}>
+          <Text style={styles.resumeButtonText}>Resume conversation</Text>
         </Pressable>
-      </View>
-
+      )}
       <ScrollView style={styles.transcript} contentContainerStyle={styles.transcriptContent}>
-        {!active && history.length > 0 && (
+        {!active && showHistory && !selectedHistory && history.length > 0 && (
           <View style={styles.historyBlock}>
-            <Text style={styles.historyTitle}>RECENT VOICE SESSIONS</Text>
-            <ScrollView horizontal showsHorizontalScrollIndicator={false}>
-              <View style={styles.historyRow}>
-                {history.slice(0, 8).map((session) => (
-                  <Pressable
-                    key={session.id}
-                    onPress={() => void openHistory(session.id)}
-                    style={styles.historyCard}
-                  >
-                    <Text style={styles.historyDate}>
-                      {new Date(session.created_at).toLocaleDateString()}
-                    </Text>
-                    <Text style={styles.historyTime}>
-                      {new Date(session.created_at).toLocaleTimeString([], {
-                        hour: "numeric",
-                        minute: "2-digit",
-                      })}
-                    </Text>
-                  </Pressable>
-                ))}
-              </View>
-            </ScrollView>
+            <Text style={styles.historyTitle}>RECENT CONVERSATIONS</Text>
+            {history.slice(0, 8).map((session) => (
+              <Pressable
+                key={session.id}
+                onPress={() => void openHistory(session.id)}
+                style={styles.historyListRow}
+              >
+                <View style={styles.historyListCopy}>
+                  <Text style={styles.historyListTitle} numberOfLines={1}>
+                    {session.alias?.startsWith("Voice —")
+                      ? "Voice conversation"
+                      : (session.alias ?? "Voice conversation")}
+                  </Text>
+                  <Text style={styles.historyTime}>
+                    {new Date(session.created_at).toLocaleDateString()} ·{" "}
+                    {new Date(session.created_at).toLocaleTimeString([], {
+                      hour: "numeric",
+                      minute: "2-digit",
+                    })}
+                  </Text>
+                </View>
+                <Text style={styles.historyChevron}>›</Text>
+              </Pressable>
+            ))}
           </View>
         )}
         {sessionSummary && <Text style={styles.summary}>{sessionSummary}</Text>}
@@ -562,7 +607,8 @@ export function VoiceScreen({ onUnauthorized }: { onUnauthorized: () => void }) 
 
 const createStyles = (theme: VitoTheme) =>
   StyleSheet.create({
-    root: { flex: 1, alignItems: "center" },
+    root: { flex: 1, width: "100%", alignItems: "center" },
+    voiceStage: { flex: 1, minHeight: 390, alignItems: "center", justifyContent: "center" },
     eyebrow: {
       alignSelf: "flex-start",
       color: theme.colors.accent,
@@ -586,6 +632,13 @@ const createStyles = (theme: VitoTheme) =>
       marginTop: theme.space.sm,
       maxWidth: 500,
     },
+    backToHistory: {
+      color: theme.colors.accent,
+      fontSize: 12,
+      fontWeight: "700",
+      marginTop: theme.space.md,
+    },
+    connecting: { marginTop: theme.space.xl },
     voicePicker: { width: "100%", marginTop: theme.space.xxl, gap: theme.space.sm },
     voicePickerLabel: {
       color: theme.colors.textMuted,
@@ -610,24 +663,25 @@ const createStyles = (theme: VitoTheme) =>
     voiceOptionTextSelected: { color: theme.colors.accentText },
     previewIcon: { color: theme.colors.textMuted, fontSize: 10 },
     orb: {
-      width: 150,
-      height: 150,
-      borderRadius: 75,
+      width: 196,
+      height: 196,
+      borderRadius: 98,
       backgroundColor: theme.colors.surfaceRaised,
       alignItems: "center",
       justifyContent: "center",
-      marginTop: theme.space.huge,
       borderWidth: 1,
       borderColor: theme.colors.separatorStrong,
     },
     orbActive: { backgroundColor: theme.colors.accent, borderColor: theme.colors.accent },
+    orbConnecting: { opacity: 0.8 },
     orbSpeaking: {
       transform: [{ scale: 1.07 }],
       shadowColor: theme.colors.accent,
       shadowOpacity: 0.4,
       shadowRadius: 28,
     },
-    orbMark: { color: theme.colors.accentText, fontSize: 50, fontWeight: "900" },
+    orbMark: { color: theme.colors.accent, fontSize: 58, fontWeight: "900" },
+    orbMarkActive: { color: theme.colors.accentText, fontSize: 30 },
     state: {
       color: theme.colors.textSecondary,
       fontSize: 15,
@@ -660,6 +714,22 @@ const createStyles = (theme: VitoTheme) =>
       fontWeight: "700",
       marginTop: theme.space.sm,
     },
+    historyButton: {
+      minHeight: 48,
+      alignItems: "center",
+      justifyContent: "center",
+      paddingHorizontal: theme.space.xl,
+      marginBottom: theme.space.md,
+    },
+    historyButtonText: { color: theme.colors.accent, fontSize: 13, fontWeight: "800" },
+    resumeButton: {
+      backgroundColor: theme.colors.accent,
+      borderRadius: 12,
+      paddingHorizontal: theme.space.xl,
+      paddingVertical: theme.space.md,
+      marginTop: theme.space.lg,
+    },
+    resumeButtonText: { color: theme.colors.accentText, fontSize: 13, fontWeight: "800" },
     controls: {
       flexDirection: "row",
       flexWrap: "wrap",
@@ -704,6 +774,17 @@ const createStyles = (theme: VitoTheme) =>
       letterSpacing: 1.2,
     },
     historyRow: { flexDirection: "row", gap: theme.space.sm },
+    historyListRow: {
+      minHeight: 62,
+      flexDirection: "row",
+      alignItems: "center",
+      borderBottomWidth: 1,
+      borderBottomColor: theme.colors.separator,
+      paddingVertical: theme.space.md,
+    },
+    historyListCopy: { flex: 1, minWidth: 0 },
+    historyListTitle: { color: theme.colors.text, fontSize: 13, fontWeight: "700" },
+    historyChevron: { color: theme.colors.textMuted, fontSize: 24 },
     historyCard: {
       minWidth: 112,
       backgroundColor: theme.colors.surface,

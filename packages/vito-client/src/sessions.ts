@@ -72,6 +72,14 @@ export function useSessionMessages(sessionId: string | null, args?: MessageQuery
   });
 }
 
+export function useLoadSessionMessages() {
+  const client = useVitoClient();
+  return useMutation({
+    mutationFn: ({ sessionId, ...args }: MessageQuery & { sessionId: string }) =>
+      requestJson(client, messageUrl(sessionId, args), messagePageSchema),
+  });
+}
+
 export function useUpdateSessionAlias() {
   const client = useVitoClient();
   const queryClient = useQueryClient();

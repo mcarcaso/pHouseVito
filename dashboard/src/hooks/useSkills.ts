@@ -1,6 +1,6 @@
 import { useQuery } from "@tanstack/react-query";
 import { z } from "zod";
-import { requestJson, requestText } from "../lib/api-client";
+import { requestJson } from "../lib/api-client";
 const skillSchema = z.object({
   name: z.string(),
   description: z.string(),
@@ -24,10 +24,20 @@ export function useSkillFiles(name: string | null) {
     enabled: name !== null,
   });
 }
-export function useSkillFile(path: string | null) {
+const skillFileContentSchema = z.object({
+  name: z.string(),
+  size: z.number(),
+  content: z.string().nullable(),
+  binary: z.boolean(),
+});
+export function useSkillFile(skillName: string | null, path: string | null) {
   return useQuery({
-    queryKey: ["files", path],
-    queryFn: () => requestText(`/api/file?path=${encodeURIComponent(path ?? "")}`),
-    enabled: path !== null,
+    queryKey: ["skills", skillName, "file", path],
+    queryFn: () =>
+      requestJson(
+        `/api/skills/${encodeURIComponent(skillName ?? "")}/file?path=${encodeURIComponent(path ?? "")}`,
+        skillFileContentSchema,
+      ),
+    enabled: skillName !== null && path !== null,
   });
 }

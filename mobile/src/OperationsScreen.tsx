@@ -432,6 +432,7 @@ export function OperationsScreen({
   const [providerPrompt, setProviderPrompt] = useState("");
   const [activeProvider, setActiveProvider] = useState<string | null>(null);
   const [editingJob, setEditingJob] = useState<string | null>(null);
+  const [expandedMemory, setExpandedMemory] = useState<Set<string>>(new Set());
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -977,17 +978,45 @@ export function OperationsScreen({
               ? [record.day, record.alias ?? record.session_id].filter(Boolean).join(" · ")
               : name;
             const context = memoryResult ? displayValue(record.context) : "";
+            const memoryKey = String(record.id ?? `${record.session_id ?? "memory"}-${index}`);
+            const memoryExpanded = memoryResult && expandedMemory.has(memoryKey);
             return (
               <View key={`${name}-${index}`} style={styles.card}>
-                <Pressable onPress={() => void openRow(row, index)} style={styles.cardMain}>
+                <Pressable
+                  onPress={() => {
+                    if (!memoryResult) void openRow(row, index);
+                    else
+                      setExpandedMemory((current) => {
+                        const next = new Set(current);
+                        if (next.has(memoryKey)) next.delete(memoryKey);
+                        else next.add(memoryKey);
+                        return next;
+                      });
+                  }}
+                  style={styles.cardMain}
+                >
                   <Text style={styles.cardTitle}>{title || name}</Text>
                   {memoryResult ? (
                     <>
                       {context && context !== "—" && (
-                        <Text style={styles.memoryContext} numberOfLines={3}>
+                        <Text
+                          style={styles.memoryContext}
+                          numberOfLines={memoryExpanded ? undefined : 3}
+                        >
                           {context}
                         </Text>
                       )}
+                      {memoryExpanded && (
+                        <View style={styles.memoryExpansion}>
+                          <Text style={styles.memoryExpansionLabel}>Matching conversation</Text>
+                          <Text selectable style={styles.memoryExpansionText}>
+                            {String(record.text)}
+                          </Text>
+                        </View>
+                      )}
+                      <Text style={styles.memoryExpandHint}>
+                        {memoryExpanded ? "Show less" : "Show conversation"}
+                      </Text>
                     </>
                   ) : (
                     <Text style={styles.cardMeta} numberOfLines={2}>
@@ -1365,6 +1394,17 @@ const styles = StyleSheet.create({
     borderLeftWidth: 2,
     borderLeftColor: "#536548",
   },
+  memoryExpansion: { marginTop: 12, paddingTop: 11, borderTopWidth: 1, borderTopColor: "#30362e" },
+  memoryExpansionLabel: {
+    color: "#7f897b",
+    fontSize: 9,
+    fontWeight: "900",
+    textTransform: "uppercase",
+    letterSpacing: 1,
+    marginBottom: 7,
+  },
+  memoryExpansionText: { color: "#d9ddd7", fontSize: 12, lineHeight: 19, fontFamily: "monospace" },
+  memoryExpandHint: { color: "#b7f34a", fontSize: 10, fontWeight: "800", marginTop: 10 },
   inlineActions: { flexDirection: "row", gap: 10, flexWrap: "wrap", justifyContent: "flex-end" },
   link: { color: "#b7f34a", fontSize: 12, fontWeight: "800" },
   deleteLink: { color: "#ff8d8d", fontSize: 12, fontWeight: "800" },

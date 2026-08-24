@@ -139,9 +139,17 @@ export async function getSessions(): Promise<Session[]> {
   return api<Session[]>("/api/sessions");
 }
 
-export async function getMessages(sessionId: string): Promise<Message[]> {
+export async function getMessages(
+  sessionId: string,
+  filters: { thoughts: boolean; tools: boolean } = { thoughts: true, tools: true },
+): Promise<Message[]> {
+  const query = new URLSearchParams({
+    limit: "100",
+    hideThoughts: String(!filters.thoughts),
+    hideTools: String(!filters.tools),
+  });
   const result = await api<{ messages: Message[] }>(
-    `/api/sessions/${encodeURIComponent(sessionId)}/messages?limit=50&hideThoughts=true&hideTools=true`,
+    `/api/sessions/${encodeURIComponent(sessionId)}/messages?${query}`,
   );
   return result.messages;
 }

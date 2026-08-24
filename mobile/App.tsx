@@ -20,9 +20,9 @@ import {
 type Screen = "chat" | "voice" | "more";
 
 const navigation: Array<{ id: Screen; label: string; icon: string }> = [
-  { id: "chat", label: "Chat", icon: "💬" },
-  { id: "voice", label: "Voice", icon: "🎙️" },
-  { id: "more", label: "More", icon: "🧰" },
+  { id: "chat", label: "Chat", icon: "●" },
+  { id: "voice", label: "Voice", icon: "◉" },
+  { id: "more", label: "More", icon: "•••" },
 ];
 
 export default function App() {
@@ -101,7 +101,11 @@ export default function App() {
       <StatusBar style="light" />
       <View style={[styles.shell, desktop && styles.shellDesktop]}>
         {desktop && <Navigation screen={screen} setScreen={setScreen} desktop />}
-        {screen === "chat" || screen === "voice" ? (
+        {screen === "chat" ? (
+          <View style={[styles.content, styles.fullChatContent]}>
+            <View style={[styles.page, styles.fullChatPage]}>{content}</View>
+          </View>
+        ) : screen === "voice" ? (
           <View style={[styles.content, styles.chatContent, desktop && styles.contentDesktop]}>
             <View style={[styles.page, styles.chatPage]}>{content}</View>
           </View>
@@ -231,13 +235,15 @@ function Button({
 const styles = StyleSheet.create({
   safeArea: { flex: 1, backgroundColor: "#080a09" },
   loading: { flex: 1, backgroundColor: "#080a09", alignItems: "center", justifyContent: "center" },
-  shell: { flex: 1, backgroundColor: "#080a09" },
+  shell: { flex: 1, minHeight: 0, overflow: "hidden", backgroundColor: "#080a09" },
   shellDesktop: { flexDirection: "row" },
   content: { flexGrow: 1, padding: 22, paddingBottom: 116 },
   chatContent: { flex: 1 },
+  fullChatContent: { flex: 1, padding: 0, paddingBottom: Platform.OS === "ios" ? 76 : 64 },
   contentDesktop: { padding: 48, paddingBottom: 48 },
   page: { width: "100%", maxWidth: 860, alignSelf: "center" },
   chatPage: { flex: 1 },
+  fullChatPage: { flex: 1, width: "100%" },
   sidebar: {
     width: 240,
     padding: 24,

@@ -1,4 +1,5 @@
 import * as SecureStore from "expo-secure-store";
+import { FontAwesome6, Ionicons } from "@expo/vector-icons";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   ActivityIndicator,
@@ -59,11 +60,24 @@ function sessionName(session: Session): string {
   return session.alias?.trim() || session.id;
 }
 
-function channelIcon(channel: string): string {
-  return (
-    { dashboard: "V", discord: "D", telegram: "T", voice: "◉", direct: "A", api: "A" }[channel] ??
-    "V"
-  );
+function ChannelIcon({ channel, compact = false }: { channel: string; compact?: boolean }) {
+  const styles = useThemeStyles(createStyles);
+  const theme = useVitoTheme();
+  const size = compact ? 12 : 19;
+  if (channel === "discord" || channel === "telegram")
+    return (
+      <FontAwesome6
+        accessibilityElementsHidden
+        importantForAccessibility="no-hide-descendants"
+        name={channel}
+        size={size}
+        color={theme.colors.accent}
+      />
+    );
+  if (channel === "voice") return <Ionicons name="mic" size={size} color={theme.colors.accent} />;
+  if (channel === "direct" || channel === "api")
+    return <Ionicons name="terminal-outline" size={size} color={theme.colors.accent} />;
+  return <Text style={compact ? styles.miniAvatarText : styles.avatarText}>V</Text>;
 }
 
 function relativeTime(timestamp: number): string {
@@ -245,7 +259,7 @@ function SessionList({
             style={[styles.sessionRow, selectedId === session.id && styles.sessionRowActive]}
           >
             <View style={styles.avatar}>
-              <Text style={styles.avatarText}>{channelIcon(session.channel)}</Text>
+              <ChannelIcon channel={session.channel} />
             </View>
             <View style={styles.sessionBody}>
               <View style={styles.sessionTop}>
@@ -319,7 +333,7 @@ function Conversation({
         </Pressable>
         <View style={styles.conversationIdentity}>
           <View style={styles.miniAvatar}>
-            <Text style={styles.miniAvatarText}>{channelIcon(session.channel)}</Text>
+            <ChannelIcon channel={session.channel} compact />
           </View>
           <Text style={styles.conversationTitle} numberOfLines={1}>
             {sessionName(session)}

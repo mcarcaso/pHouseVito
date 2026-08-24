@@ -26,7 +26,9 @@ export class DefaultVoiceService implements VoiceService {
     if (!apiKey) throw new Error("OpenAI API key is not configured");
     const today = new Date().toLocaleDateString("en-CA");
     const soul = xVitoService(x).getSoul(x).trim();
+    const profile = xMemoryService(x).getProfile(x)?.trim() ?? "";
     const personality = soul ? `\n\n<personality>\n${soul}\n</personality>` : "";
+    const userProfile = profile ? `\n\n<user_profile>\n${profile}\n</user_profile>` : "";
     const response = await fetch("https://api.openai.com/v1/realtime/client_secrets", {
       method: "POST",
       headers: {
@@ -37,63 +39,30 @@ export class DefaultVoiceService implements VoiceService {
       body: JSON.stringify({
         session: {
           type: "realtime",
-          model: "gpt-realtime-2.1",
-          instructions: `You are Vito, Mike Carcasole's concise personal voice assistant. Today is ${today}. Speak naturally, warmly, and directly. Keep answers brief unless Mike asks for detail. Use the available Vito tools when personal context, memory, durable reasoning, or an external action is needed. Realtime itself cannot modify apps, files, playlists, calendars, messages, or other external state. Any requested external action must be delegated through ask_vito_async. Acknowledge that it was queued; never say an action is done unless a completed task result explicitly confirms success. For references such as yesterday, last night, last time, or an explicit date, resolve the local date and pass the narrowest appropriate startDate/endDate range so candidates are constrained before ranking. Omit date ranges for durable facts such as names, relationships, identity, or preferences. Keep the query faithful to Mike's words; do not inject guessed subjects such as health anxiety unless he mentioned them. For stable personal facts such as names, relationships, preferences, or identity, use get_vito_context first. Mike is the authenticated owner; answer personal facts from his profile or memory directly rather than refusing merely because they are personal. If Mike corrects or narrows the subject, search again rather than relying on the previous result. For ambiguous personal-history questions that require connecting related entities, recommendations, or actions across separate conversations, skip repeated shallow searches and call ask_vito_async immediately. For other personal-history questions, never conclude that no memory exists merely because one or two searches were inconclusive. Before giving up, call ask_vito_async with Mike's original question plus the failed search terms so authoritative Vito can inspect exact message history, semantic memory, related entities, and available tools. The tool returns a task ID immediately so conversation can continue. Acknowledge that Vito is investigating, but never poll the task or repeatedly mention it. The companion will silently add the completed result to context and show completion in the UI; discuss it when Mike asks. Before using tools, give at most one short acknowledgment. If additional tool calls are needed, perform them silently without repeating phrases such as 'let me check' or narrating each search. Never infer a personal fact from an unrelated result, and never claim a tool result before receiving it.${personality}`,
+          model: "gpt-realtime-2.1-mini",
+          instructions: `You are Vito, Mike Carcasole's concise personal voice companion. Today is ${today}. Speak naturally, warmly, and directly. Keep answers brief unless Mike asks for detail. Your stable knowledge of Mike is provided in user_profile; answer directly from it when possible. For anything requiring conversation history, uncertain recall, deeper reasoning, current information, a skill, or an external action, create a Vito task using Mike's complete natural-language request. Creating a task returns immediately so conversation can continue. Acknowledge it once, never poll automatically, and never claim an action completed from a queued response. The companion shows task status and silently adds completed results to your context. Only call get_vito_task when Mike explicitly asks you to check a task. Completed task responses contain the final answer or verified result only; do not ask for private reasoning or intermediate tool chatter. Mike is the authenticated owner and may ask about his own profile. Consequential communication with real people still requires explicit confirmation before creating the task. Never fabricate memory, tool use, or completion.${personality}${userProfile}`,
           tools: [
             {
               type: "function",
-              name: "get_vito_context",
-              description: "Load Mike's durable profile and recent voice sessions.",
-              parameters: { type: "object", properties: {}, additionalProperties: false },
-            },
-            {
-              type: "function",
-              name: "search_memory",
+              name: "create_vito_task",
               description:
-                "Search Vito's durable conversation memory. Use date ranges only when Mike asks about a particular time; omit them for durable personal facts.",
+                "Create background authoritative Vito reasoning or tool work—including memory research and external actions—and immediately return a task ID so conversation can continue.",
               parameters: {
                 type: "object",
-                properties: {
-                  query: {
-                    type: "string",
-                    description: "Mike's question, preserving his actual subject terms.",
-                  },
-                  startDate: {
-                    type: "string",
-                    description:
-                      "Optional inclusive local start date in YYYY-MM-DD. Use for explicit or relative time questions.",
-                  },
-                  endDate: {
-                    type: "string",
-                    description:
-                      "Optional inclusive local end date in YYYY-MM-DD. For one day, equal startDate.",
-                  },
-                  mode: {
-                    type: "string",
-                    enum: ["hybrid", "semantic", "exact"],
-                    description:
-                      "Optional retrieval mode. Hybrid is the default; exact favors literal terms.",
-                  },
-                  limit: {
-                    type: "integer",
-                    minimum: 1,
-                    maximum: 10,
-                    description: "Optional result count; defaults to 5.",
-                  },
-                },
-                required: ["query"],
+                properties: { question: { type: "string" } },
+                required: ["question"],
                 additionalProperties: false,
               },
             },
             {
               type: "function",
-              name: "ask_vito_async",
+              name: "get_vito_task",
               description:
-                "Start background authoritative Vito reasoning or tool work—including external actions—and immediately return a task ID so conversation can continue. The companion tracks completion; never poll it automatically and never claim completion from the initial queued response.",
+                "Get a task's status or final response. Call only when Mike explicitly asks to check that task.",
               parameters: {
                 type: "object",
-                properties: { question: { type: "string" } },
-                required: ["question"],
+                properties: { id: { type: "string" } },
+                required: ["id"],
                 additionalProperties: false,
               },
             },

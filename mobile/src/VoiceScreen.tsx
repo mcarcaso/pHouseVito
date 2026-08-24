@@ -10,7 +10,6 @@ import {
   View,
 } from "react-native";
 import {
-  cancelVoiceTask,
   getRealtimeToken,
   getVoiceContext,
   getVoiceSession,
@@ -230,7 +229,7 @@ export function VoiceScreen({ onUnauthorized }: { onUnauthorized: () => void }) 
             endDate: typeof args.endDate === "string" ? args.endDate : undefined,
             limit: typeof args.limit === "number" ? args.limit : undefined,
           });
-        } else if (name === "ask_vito_async") {
+        } else if (name === "create_vito_task") {
           const question = String(args.question ?? "");
           const task = await startVoiceTask(sessionIdRef.current, question);
           setTasks((current) => [
@@ -243,9 +242,9 @@ export function VoiceScreen({ onUnauthorized }: { onUnauthorized: () => void }) 
             status: task.status,
             message: "Vito is investigating in the background. Conversation can continue.",
           };
-        } else if (name === "get_task") result = await getVoiceTask(String(args.id ?? ""));
-        else if (name === "cancel_task") result = await cancelVoiceTask(String(args.id ?? ""));
-        else throw new Error(`Unknown tool: ${name}`);
+        } else if (name === "get_vito_task") {
+          result = await getVoiceTask(String(args.id ?? ""));
+        } else throw new Error(`Unknown tool: ${name}`);
         void persistVoiceEvent(
           sessionIdRef.current,
           "usage",
@@ -380,7 +379,7 @@ export function VoiceScreen({ onUnauthorized }: { onUnauthorized: () => void }) 
   const active = state !== "idle" && state !== "error";
   return (
     <View style={styles.root}>
-      <Text style={styles.eyebrow}>OPENAI REALTIME 2.1</Text>
+      <Text style={styles.eyebrow}>OPENAI REALTIME 2.1 MINI · VITO BRAIN</Text>
       <Text style={styles.title}>Live voice</Text>
       <Text style={styles.subtitle}>
         Fluid conversation backed by Vito memory, durable tasks, and saved transcripts.

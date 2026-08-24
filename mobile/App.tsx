@@ -6,6 +6,10 @@ import {
 } from "@react-navigation/native";
 import { createBottomTabNavigator, type BottomTabBarProps } from "@react-navigation/bottom-tabs";
 import {
+  SafeAreaProvider,
+  SafeAreaView as ContextSafeAreaView,
+} from "react-native-safe-area-context";
+import {
   createNativeStackNavigator,
   type NativeStackNavigationProp,
 } from "@react-navigation/native-stack";
@@ -57,6 +61,7 @@ type RootStackParamList = {
 type RootNavigation = NativeStackNavigationProp<RootStackParamList>;
 const RootStack = createNativeStackNavigator<RootStackParamList>();
 const Tabs = createBottomTabNavigator<MainTabParamList>();
+const MoreStack = createNativeStackNavigator<{ MoreHome: undefined }>();
 
 const routeForArea: Record<OperationArea, MainRouteName> = {
   memory: "Memory",
@@ -140,9 +145,11 @@ const linking: LinkingOptions<RootStackParamList> = {
 
 export default function App() {
   return (
-    <VitoThemeProvider>
-      <AppContent />
-    </VitoThemeProvider>
+    <SafeAreaProvider>
+      <VitoThemeProvider>
+        <AppContent />
+      </VitoThemeProvider>
+    </SafeAreaProvider>
   );
 }
 
@@ -282,15 +289,23 @@ function MainTabs({
         lazy: false,
       }}
     >
-      <Tabs.Screen name="Chat">{() => <ChatScreen onUnauthorized={onUnauthorized} />}</Tabs.Screen>
-      <Tabs.Screen name="Voice">
+      <Tabs.Screen name="Chat">
         {() => (
-          <ScreenFrame desktop={desktop}>
-            <VoiceScreen onUnauthorized={onUnauthorized} />
-          </ScreenFrame>
+          <TabSafeArea desktop={desktop}>
+            <ChatScreen onUnauthorized={onUnauthorized} />
+          </TabSafeArea>
         )}
       </Tabs.Screen>
-      <Tabs.Screen name="More" component={MoreMenu} />
+      <Tabs.Screen name="Voice">
+        {() => (
+          <TabSafeArea desktop={desktop}>
+            <ScreenFrame desktop={desktop}>
+              <VoiceScreen onUnauthorized={onUnauthorized} />
+            </ScreenFrame>
+          </TabSafeArea>
+        )}
+      </Tabs.Screen>
+      <Tabs.Screen name="More">{() => <MoreStackScreen desktop={desktop} />}</Tabs.Screen>
       {(Object.entries(areaForRoute) as Array<[MainRouteName, OperationArea]>).map(
         ([route, area]) => (
           <Tabs.Screen key={route} name={route}>
@@ -362,6 +377,24 @@ function RootOperationScreen({
   );
 }
 
+function MoreStackScreen({ desktop }: { desktop: boolean }) {
+  const theme = useVitoTheme();
+  return (
+    <MoreStack.Navigator
+      screenOptions={{
+        headerShown: !desktop,
+        headerStyle: { backgroundColor: theme.colors.canvas },
+        headerTintColor: theme.colors.text,
+        headerTitleStyle: { fontSize: 16, fontWeight: "700" },
+        headerShadowVisible: false,
+        contentStyle: { backgroundColor: theme.colors.canvas },
+      }}
+    >
+      <MoreStack.Screen name="MoreHome" component={MoreMenu} options={{ title: "More" }} />
+    </MoreStack.Navigator>
+  );
+}
+
 function MemoryResultsScreen({
   route,
   navigation,
@@ -379,6 +412,15 @@ function MemoryResultsScreen({
         onUnauthorized={() => navigation.navigate("Main", { screen: "More" })}
       />
     </ScrollView>
+  );
+}
+
+function TabSafeArea({ desktop, children }: { desktop: boolean; children: React.ReactNode }) {
+  const styles = useThemeStyles(createStyles);
+  return (
+    <ContextSafeAreaView edges={desktop ? [] : ["top"]} style={styles.tabSafeArea}>
+      {children}
+    </ContextSafeAreaView>
   );
 }
 
@@ -622,6 +664,7 @@ const createStyles = (theme: VitoTheme) =>
     tabItemActive: {},
     tabIcon: { color: theme.colors.textMuted, height: 22 },
     tabLabel: { color: theme.colors.textMuted, fontSize: 10, fontWeight: "700" },
+    tabSafeArea: { flex: 1, backgroundColor: theme.colors.canvas },
     screenFrame: { flexGrow: 1, padding: theme.space.xl, paddingBottom: theme.space.xxxl },
     screenFrameDesktop: { padding: theme.space.xxxl },
     screenPage: { width: "100%", maxWidth: 900, alignSelf: "center" },

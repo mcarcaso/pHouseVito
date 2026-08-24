@@ -982,43 +982,45 @@ export function OperationsScreen({
             const memoryExpanded = memoryResult && expandedMemory.has(memoryKey);
             return (
               <View key={`${name}-${index}`} style={styles.card}>
-                <Pressable
-                  onPress={() => {
-                    if (!memoryResult) void openRow(row, index);
-                    else
-                      setExpandedMemory((current) => {
-                        const next = new Set(current);
-                        if (next.has(memoryKey)) next.delete(memoryKey);
-                        else next.add(memoryKey);
-                        return next;
-                      });
-                  }}
-                  style={styles.cardMain}
-                >
-                  <Text style={styles.cardTitle}>{title || name}</Text>
-                  {memoryResult ? (
-                    <>
-                      {context && context !== "—" && (
-                        <Text
-                          style={styles.memoryContext}
-                          numberOfLines={memoryExpanded ? undefined : 3}
-                        >
-                          {context}
+                {memoryResult ? (
+                  <View style={styles.cardMain}>
+                    <Text style={styles.cardTitle}>{title || name}</Text>
+                    {context && context !== "—" && (
+                      <Text
+                        selectable
+                        style={styles.memoryContext}
+                        numberOfLines={memoryExpanded ? undefined : 3}
+                      >
+                        {context}
+                      </Text>
+                    )}
+                    {memoryExpanded && (
+                      <View style={styles.memoryExpansion}>
+                        <Text style={styles.memoryExpansionLabel}>Matching conversation</Text>
+                        <Text selectable style={styles.memoryExpansionText}>
+                          {String(record.text)}
                         </Text>
-                      )}
-                      {memoryExpanded && (
-                        <View style={styles.memoryExpansion}>
-                          <Text style={styles.memoryExpansionLabel}>Matching conversation</Text>
-                          <Text selectable style={styles.memoryExpansionText}>
-                            {String(record.text)}
-                          </Text>
-                        </View>
-                      )}
+                      </View>
+                    )}
+                    <Pressable
+                      onPress={() =>
+                        setExpandedMemory((current) => {
+                          const next = new Set(current);
+                          if (next.has(memoryKey)) next.delete(memoryKey);
+                          else next.add(memoryKey);
+                          return next;
+                        })
+                      }
+                      style={styles.memoryExpandButton}
+                    >
                       <Text style={styles.memoryExpandHint}>
                         {memoryExpanded ? "Show less" : "Show conversation"}
                       </Text>
-                    </>
-                  ) : (
+                    </Pressable>
+                  </View>
+                ) : (
+                  <Pressable onPress={() => void openRow(row, index)} style={styles.cardMain}>
+                    <Text style={styles.cardTitle}>{title || name}</Text>
                     <Text style={styles.cardMeta} numberOfLines={2}>
                       {String(
                         record.description ??
@@ -1029,8 +1031,8 @@ export function OperationsScreen({
                           "View details",
                       )}
                     </Text>
-                  )}
-                </Pressable>
+                  </Pressable>
+                )}
                 {area === "apps" && (
                   <View style={styles.inlineActions}>
                     {(["start", "stop", "restart"] as const).map((action) => (
@@ -1404,7 +1406,15 @@ const styles = StyleSheet.create({
     marginBottom: 7,
   },
   memoryExpansionText: { color: "#d9ddd7", fontSize: 12, lineHeight: 19, fontFamily: "monospace" },
-  memoryExpandHint: { color: "#b7f34a", fontSize: 10, fontWeight: "800", marginTop: 10 },
+  memoryExpandButton: {
+    alignSelf: "flex-start",
+    marginTop: 10,
+    paddingHorizontal: 11,
+    paddingVertical: 7,
+    borderRadius: 14,
+    backgroundColor: "#25301e",
+  },
+  memoryExpandHint: { color: "#b7f34a", fontSize: 10, fontWeight: "800" },
   inlineActions: { flexDirection: "row", gap: 10, flexWrap: "wrap", justifyContent: "flex-end" },
   link: { color: "#b7f34a", fontSize: 12, fontWeight: "800" },
   deleteLink: { color: "#ff8d8d", fontSize: 12, fontWeight: "800" },

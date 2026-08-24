@@ -988,9 +988,6 @@ export function OperationsScreen({
                           {context}
                         </Text>
                       )}
-                      <Text style={styles.memoryExcerpt} numberOfLines={5}>
-                        {String(record.text)}
-                      </Text>
                     </>
                   ) : (
                     <Text style={styles.cardMeta} numberOfLines={2}>
@@ -1368,7 +1365,6 @@ const styles = StyleSheet.create({
     borderLeftWidth: 2,
     borderLeftColor: "#536548",
   },
-  memoryExcerpt: { color: "#858d82", fontSize: 12, lineHeight: 18, marginTop: 9 },
   inlineActions: { flexDirection: "row", gap: 10, flexWrap: "wrap", justifyContent: "flex-end" },
   link: { color: "#b7f34a", fontSize: 12, fontWeight: "800" },
   deleteLink: { color: "#ff8d8d", fontSize: 12, fontWeight: "800" },

@@ -25,6 +25,17 @@ const rules: RenderRules = {
       </Text>
     );
   },
+  paragraph: (node: ASTNode, children, parents, styles) => (
+    <View
+      key={node.key}
+      style={[
+        styles.paragraph,
+        parents.some((parent) => parent.type === "list_item") && styles.paragraphInList,
+      ]}
+    >
+      {children}
+    </View>
+  ),
   code_block: (node: ASTNode, _children, _parents, styles) => (
     <View key={node.key} style={styles.codeBlock}>
       <Text selectable style={styles.codeText}>
@@ -100,7 +111,7 @@ export function MarkdownText({
 const createStyles = (theme: VitoTheme) =>
   StyleSheet.create({
     body: { color: theme.colors.textSecondary, fontSize: 14, lineHeight: 21 },
-    bodyChat: { fontSize: 15, lineHeight: 20 },
+    bodyChat: { fontSize: 15, lineHeight: 22 },
     bodyOnAccent: { color: theme.colors.accentText },
     text: { color: theme.colors.textSecondary },
     textOnAccent: { color: theme.colors.accentText },
@@ -112,7 +123,8 @@ const createStyles = (theme: VitoTheme) =>
       marginTop: theme.space.none,
       marginBottom: theme.space.md,
     },
-    paragraphChat: { marginBottom: theme.space.none },
+    paragraphChat: { marginBottom: theme.space.sm },
+    paragraphInList: { marginBottom: theme.space.none },
     heading1: {
       color: theme.colors.text,
       fontSize: 22,

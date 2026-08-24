@@ -231,9 +231,6 @@ function SessionList({
 }) {
   return (
     <View style={styles.listRoot}>
-      <View style={styles.listHeader}>
-        <Text style={styles.listTitle}>Chats</Text>
-      </View>
       <ScrollView contentContainerStyle={styles.sessionList}>
         {sessions.map((session) => (
           <Pressable
@@ -441,17 +438,7 @@ const styles = StyleSheet.create({
   desktopRoot: { flex: 1, flexDirection: "row", backgroundColor: "#090b09" },
   desktopConversation: { flex: 1, borderLeftWidth: 1, borderLeftColor: "#252925" },
   listRoot: { flex: 1, backgroundColor: "#0a0c0a" },
-  listHeader: {
-    height: 62,
-    paddingHorizontal: 18,
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    borderBottomWidth: 1,
-    borderBottomColor: "#202420",
-  },
-  listTitle: { color: "#f4f5f2", fontSize: 30, fontWeight: "800", letterSpacing: -1.1 },
-  sessionList: { paddingLeft: 14 },
+  sessionList: { paddingLeft: 14, paddingTop: 6 },
   listLoader: { marginTop: 80 },
   sessionRow: {
     minHeight: 76,

@@ -972,20 +972,38 @@ export function OperationsScreen({
             const record = (row ?? {}) as Record<string, unknown>;
             const name = labelFor(row, index);
             const identifier = rowIdentifier(row, index);
+            const memoryResult = area === "memory" && typeof record.text === "string";
+            const title = memoryResult
+              ? [record.day, record.alias ?? record.session_id].filter(Boolean).join(" · ")
+              : name;
+            const context = memoryResult ? displayValue(record.context) : "";
             return (
               <View key={`${name}-${index}`} style={styles.card}>
                 <Pressable onPress={() => void openRow(row, index)} style={styles.cardMain}>
-                  <Text style={styles.cardTitle}>{name}</Text>
-                  <Text style={styles.cardMeta} numberOfLines={2}>
-                    {String(
-                      record.description ??
-                        record.status ??
-                        record.day ??
-                        record.channel ??
-                        record.type ??
-                        "View details",
-                    )}
-                  </Text>
+                  <Text style={styles.cardTitle}>{title || name}</Text>
+                  {memoryResult ? (
+                    <>
+                      {context && context !== "—" && (
+                        <Text style={styles.memoryContext} numberOfLines={3}>
+                          {context}
+                        </Text>
+                      )}
+                      <Text style={styles.memoryExcerpt} numberOfLines={5}>
+                        {String(record.text)}
+                      </Text>
+                    </>
+                  ) : (
+                    <Text style={styles.cardMeta} numberOfLines={2}>
+                      {String(
+                        record.description ??
+                          record.status ??
+                          record.day ??
+                          record.channel ??
+                          record.type ??
+                          "View details",
+                      )}
+                    </Text>
+                  )}
                 </Pressable>
                 {area === "apps" && (
                   <View style={styles.inlineActions}>
@@ -1341,6 +1359,16 @@ const styles = StyleSheet.create({
   cardMain: { flex: 1 },
   cardTitle: { color: "#f0f3ed", fontWeight: "800", fontSize: 14 },
   cardMeta: { color: "#858d82", fontSize: 12, marginTop: 4 },
+  memoryContext: {
+    color: "#b8c2b3",
+    fontSize: 12,
+    lineHeight: 17,
+    marginTop: 7,
+    paddingLeft: 9,
+    borderLeftWidth: 2,
+    borderLeftColor: "#536548",
+  },
+  memoryExcerpt: { color: "#858d82", fontSize: 12, lineHeight: 18, marginTop: 9 },
   inlineActions: { flexDirection: "row", gap: 10, flexWrap: "wrap", justifyContent: "flex-end" },
   link: { color: "#b7f34a", fontSize: 12, fontWeight: "800" },
   deleteLink: { color: "#ff8d8d", fontSize: 12, fontWeight: "800" },

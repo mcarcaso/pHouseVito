@@ -42,7 +42,7 @@ export function VitoClientProvider({
   queryClient,
 }: {
   options: VitoClientOptions;
-  children: ReactNode;
+  children?: ReactNode;
   queryClient?: QueryClient;
 }) {
   const [client] = useState(() => queryClient ?? createVitoQueryClient());

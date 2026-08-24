@@ -1,7 +1,7 @@
 {
   "name": "mobile",
   "version": "1.0.0",
-  "main": "index.tsx",
+  "main": "index.ts",
   "dependencies": {
     "@tanstack/react-query": "^5.101.4",
     "@vito/client": "file:../packages/vito-client",

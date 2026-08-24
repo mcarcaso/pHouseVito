@@ -9,6 +9,7 @@ import {
   createNativeStackNavigator,
   type NativeStackNavigationProp,
 } from "@react-navigation/native-stack";
+import { Ionicons } from "@expo/vector-icons";
 import { StatusBar } from "expo-status-bar";
 import { useCallback, useEffect, useState } from "react";
 import {
@@ -71,14 +72,39 @@ const routeForArea: Record<OperationArea, MainRouteName> = {
 const areaForRoute = Object.fromEntries(
   Object.entries(routeForArea).map(([area, route]) => [route, area]),
 ) as Partial<Record<MainRouteName, OperationArea>>;
-const labels: Record<MainRouteName, { label: string; icon: string }> = {
-  Chat: { label: "Chat", icon: "●" },
-  Voice: { label: "Voice", icon: "◉" },
-  More: { label: "More", icon: "•••" },
+type IconName = React.ComponentProps<typeof Ionicons>["name"];
+const operationMeta: Record<
+  OperationArea,
+  {
+    icon: IconName;
+    description: string;
+    group: "Intelligence" | "Automation" | "Operations" | "Vito";
+  }
+> = {
+  memory: { icon: "git-branch-outline", description: "Search and recall", group: "Intelligence" },
+  skills: { icon: "construct-outline", description: "Capabilities", group: "Intelligence" },
+  jobs: { icon: "time-outline", description: "Schedules and routines", group: "Automation" },
+  apps: { icon: "grid-outline", description: "Tools and services", group: "Automation" },
+  drive: { icon: "folder-outline", description: "Files and sites", group: "Operations" },
+  traces: { icon: "search-outline", description: "Execution history", group: "Operations" },
+  pi: { icon: "terminal-outline", description: "Runtime state", group: "Operations" },
+  settings: { icon: "settings-outline", description: "Behavior and models", group: "Vito" },
+  secrets: { icon: "key-outline", description: "Credentials", group: "Vito" },
+  system: { icon: "document-text-outline", description: "Soul and instructions", group: "Vito" },
+  server: { icon: "server-outline", description: "Service health", group: "Vito" },
+  providers: { icon: "cloud-outline", description: "Authentication", group: "Vito" },
+};
+const labels: Record<MainRouteName, { label: string; icon: IconName }> = {
+  Chat: { label: "Chat", icon: "chatbubble-outline" },
+  Voice: { label: "Voice", icon: "mic-outline" },
+  More: { label: "More", icon: "ellipsis-horizontal" },
   ...Object.fromEntries(
-    operationAreas.map((item) => [routeForArea[item.id], { label: item.label, icon: item.icon }]),
+    operationAreas.map((item) => [
+      routeForArea[item.id],
+      { label: item.label, icon: operationMeta[item.id].icon },
+    ]),
   ),
-} as Record<MainRouteName, { label: string; icon: string }>;
+} as Record<MainRouteName, { label: string; icon: IconName }>;
 
 const linking: LinkingOptions<RootStackParamList> = {
   prefixes: ["vito://", "https://mikes-mac-mini-1.tail1706d3.ts.net"],
@@ -275,34 +301,34 @@ function AdaptiveTabBar({
     return (
       <View style={styles.sidebar}>
         <View style={styles.brand}>
-          <View style={styles.brandMark}>
-            <Text style={styles.brandMarkText}>V</Text>
-          </View>
-          <View>
-            <Text style={styles.brandName}>Vito</Text>
-            <Text style={styles.brandCaption}>Personal operations</Text>
-          </View>
+          <Text style={styles.brandName}>Vito</Text>
+          <Text style={styles.brandDot}>.</Text>
         </View>
         <ScrollView contentContainerStyle={styles.desktopNavList}>
-          {visible
-            .filter((route) => route !== "More")
-            .map((route) => {
-              const item = labels[route];
-              return (
-                <Pressable
-                  key={route}
-                  onPress={() => navigation.navigate(route)}
-                  style={[styles.navItem, current === route && styles.navItemActive]}
-                >
-                  <Text style={[styles.navIcon, current === route && styles.activeText]}>
-                    {item.icon}
-                  </Text>
-                  <Text style={[styles.navLabel, current === route && styles.activeText]}>
-                    {item.label}
-                  </Text>
-                </Pressable>
-              );
-            })}
+          {(["Chat", "Voice"] as MainRouteName[]).map((route) => (
+            <DesktopNavItem key={route} route={route} current={current} navigation={navigation} />
+          ))}
+          {(["Intelligence", "Automation", "Operations", "Vito"] as const).map((group) => (
+            <View key={group}>
+              <Text style={styles.navSection}>{group}</Text>
+              {visible
+                .filter(
+                  (route) =>
+                    route !== "More" &&
+                    route !== "Chat" &&
+                    route !== "Voice" &&
+                    operationMeta[areaForRoute[route]!]?.group === group,
+                )
+                .map((route) => (
+                  <DesktopNavItem
+                    key={route}
+                    route={route}
+                    current={current}
+                    navigation={navigation}
+                  />
+                ))}
+            </View>
+          ))}
         </ScrollView>
         <Pressable onPress={onLogout} style={styles.signOut}>
           <Text style={styles.signOutText}>Sign out</Text>
@@ -321,7 +347,11 @@ function AdaptiveTabBar({
               onPress={() => navigation.navigate(route)}
               style={[styles.tabItem, active && styles.tabItemActive]}
             >
-              <Text style={[styles.tabIcon, active && styles.activeText]}>{item.icon}</Text>
+              <Ionicons
+                name={item.icon}
+                size={20}
+                style={[styles.tabIcon, active && styles.activeText]}
+              />
               <Text style={[styles.tabLabel, active && styles.activeText]}>{item.label}</Text>
             </Pressable>
           );
@@ -331,115 +361,144 @@ function AdaptiveTabBar({
   );
 }
 
+function DesktopNavItem({
+  route,
+  current,
+  navigation,
+}: {
+  route: MainRouteName;
+  current: MainRouteName;
+  navigation: BottomTabBarProps["navigation"];
+}) {
+  const item = labels[route];
+  const active = current === route;
+  return (
+    <Pressable onPress={() => navigation.navigate(route)} style={styles.navItem}>
+      <Ionicons name={item.icon} size={16} style={[styles.navIcon, active && styles.activeText]} />
+      <Text style={[styles.navLabel, active && styles.navLabelActive]}>{item.label}</Text>
+      {active && <View style={styles.navActiveDot} />}
+    </Pressable>
+  );
+}
+
 function MoreMenu() {
   const navigation = useNavigation<NativeStackNavigationProp<MainTabParamList>>();
   return (
     <ScrollView contentContainerStyle={styles.moreScreen}>
-      <View style={styles.moreGrid}>
-        {operationAreas.map((item) => (
-          <Pressable
-            key={item.id}
-            onPress={() => navigation.navigate(routeForArea[item.id])}
-            style={styles.moreCard}
-          >
-            <View style={styles.moreCardLabel}>
-              <Text style={styles.moreCardIcon}>{item.icon}</Text>
-              <Text style={styles.moreCardTitle}>{item.label}</Text>
-            </View>
-            <Text style={styles.moreArrow}>›</Text>
-          </Pressable>
-        ))}
-      </View>
+      {(["Intelligence", "Automation", "Operations", "Vito"] as const).map((group) => (
+        <View key={group} style={styles.moreSection}>
+          <Text style={styles.moreSectionLabel}>{group}</Text>
+          {operationAreas
+            .filter((item) => operationMeta[item.id].group === group)
+            .map((item) => {
+              const meta = operationMeta[item.id];
+              return (
+                <Pressable
+                  key={item.id}
+                  onPress={() => navigation.navigate(routeForArea[item.id])}
+                  style={styles.moreRow}
+                >
+                  <Ionicons name={meta.icon} size={18} style={styles.moreIcon} />
+                  <View style={styles.moreRowText}>
+                    <Text style={styles.moreTitle}>{item.label}</Text>
+                    <Text style={styles.moreDescription}>{meta.description}</Text>
+                  </View>
+                  <Ionicons name="chevron-forward" size={16} style={styles.moreChevron} />
+                </Pressable>
+              );
+            })}
+        </View>
+      ))}
     </ScrollView>
   );
 }
 
 const styles = StyleSheet.create({
-  safeArea: { flex: 1, backgroundColor: "#080a09" },
-  loading: { flex: 1, backgroundColor: "#080a09", alignItems: "center", justifyContent: "center" },
-  routeBackground: { backgroundColor: "#080a09" },
+  safeArea: { flex: 1, backgroundColor: "#0b0d0b" },
+  loading: { flex: 1, backgroundColor: "#0b0d0b", alignItems: "center", justifyContent: "center" },
+  routeBackground: { backgroundColor: "#0b0d0b" },
   sidebar: {
     width: 224,
     paddingHorizontal: 14,
     paddingTop: 18,
     paddingBottom: 14,
-    backgroundColor: "#0d100e",
+    backgroundColor: "#0f120f",
     borderRightWidth: 1,
-    borderRightColor: "#202421",
+    borderRightColor: "#1d211d",
   },
-  brand: {
+  brand: { flexDirection: "row", paddingHorizontal: 10, marginBottom: 24 },
+  brandName: { color: "#f0f2ed", fontSize: 19, fontWeight: "800" },
+  brandDot: { color: "#a3be8c", fontSize: 19, fontWeight: "800" },
+  desktopNavList: { paddingBottom: 10 },
+  navSection: {
+    color: "#7e877e",
+    fontSize: 9,
+    fontWeight: "800",
+    letterSpacing: 1.4,
+    textTransform: "uppercase",
+    marginTop: 18,
+    marginBottom: 6,
+    paddingHorizontal: 10,
+  },
+  navItem: {
+    minHeight: 36,
     flexDirection: "row",
     alignItems: "center",
     gap: 11,
-    paddingHorizontal: 8,
-    marginBottom: 18,
+    paddingHorizontal: 10,
   },
-  brandMark: {
-    width: 38,
-    height: 38,
-    borderRadius: 12,
-    backgroundColor: "#b7f34a",
-    alignItems: "center",
-    justifyContent: "center",
+  navIcon: { color: "#8d958d", width: 18 },
+  navLabel: { color: "#aeb4ad", fontWeight: "600", fontSize: 13 },
+  navLabelActive: { color: "#f0f2ed", fontWeight: "800" },
+  navActiveDot: {
+    marginLeft: "auto",
+    width: 5,
+    height: 5,
+    borderRadius: 3,
+    backgroundColor: "#a3be8c",
   },
-  brandMarkText: { color: "#11150d", fontWeight: "900", fontSize: 20 },
-  brandName: { color: "#f5f7f4", fontSize: 17, fontWeight: "800" },
-  brandCaption: {
-    color: "#6f776f",
-    fontSize: 8,
-    marginTop: 2,
-    textTransform: "uppercase",
-    letterSpacing: 0.8,
-  },
-  desktopNavList: { gap: 2, paddingBottom: 10 },
-  navItem: {
-    minHeight: 39,
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 10,
-    paddingHorizontal: 11,
-    borderRadius: 10,
-  },
-  navItemActive: { backgroundColor: "#1a2117" },
-  navIcon: { color: "#767d76", fontSize: 16, width: 24, textAlign: "center", fontWeight: "700" },
-  navLabel: { color: "#949b94", fontWeight: "600", fontSize: 13 },
-  activeText: { color: "#c5fb64" },
+  activeText: { color: "#a3be8c" },
   signOut: { padding: 10, alignItems: "center" },
   signOutText: { color: "#687068", fontSize: 11, fontWeight: "700" },
   tabBar: {
-    backgroundColor: "#0d100ef2",
+    backgroundColor: "#0f120ff5",
     borderTopWidth: 1,
-    borderTopColor: "#242824",
+    borderTopColor: "#292e29",
     paddingBottom: Platform.OS === "ios" ? 20 : 8,
     paddingTop: 7,
   },
   tabList: { flexDirection: "row", justifyContent: "space-around" },
-  tabItem: { minWidth: 78, alignItems: "center", gap: 3, paddingVertical: 5, borderRadius: 10 },
-  tabItemActive: { backgroundColor: "#171c15" },
-  tabIcon: { color: "#737a73", fontSize: 18, height: 22, fontWeight: "700" },
-  tabLabel: { color: "#737a73", fontSize: 10, fontWeight: "700" },
+  tabItem: { minWidth: 78, alignItems: "center", gap: 3, paddingVertical: 5 },
+  tabItemActive: {},
+  tabIcon: { color: "#7e877e", height: 22 },
+  tabLabel: { color: "#7e877e", fontSize: 10, fontWeight: "700" },
   screenFrame: { flexGrow: 1, padding: 20, paddingBottom: 30 },
   screenFrameDesktop: { padding: 32 },
   screenPage: { width: "100%", maxWidth: 900, alignSelf: "center" },
-  operationFrame: { flexGrow: 1, padding: 18, paddingBottom: 30 },
-  operationFrameDesktop: { padding: 28 },
-  fullScreenOperation: { flexGrow: 1, padding: 18, paddingBottom: 40 },
-  moreScreen: { flexGrow: 1, padding: 18, paddingBottom: 30 },
-  moreGrid: { flexDirection: "row", flexWrap: "wrap", gap: 10 },
-  moreCard: {
-    width: "48%",
-    minHeight: 78,
-    backgroundColor: "#151914",
-    borderWidth: 1,
-    borderColor: "#30362d",
-    borderRadius: 16,
-    padding: 14,
+  operationFrame: { flexGrow: 1, padding: 20, paddingBottom: 30 },
+  operationFrameDesktop: { paddingHorizontal: 64, paddingVertical: 54 },
+  fullScreenOperation: { flexGrow: 1, padding: 20, paddingBottom: 40 },
+  moreScreen: { flexGrow: 1, paddingHorizontal: 20, paddingTop: 24, paddingBottom: 90 },
+  moreSection: { marginBottom: 19 },
+  moreSectionLabel: {
+    color: "#a3be8c",
+    fontSize: 10,
+    fontWeight: "800",
+    letterSpacing: 1.4,
+    textTransform: "uppercase",
+    marginBottom: 5,
+  },
+  moreRow: {
+    minHeight: 58,
     flexDirection: "row",
     alignItems: "center",
-    justifyContent: "space-between",
+    gap: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: "#1d211d",
   },
-  moreCardLabel: { flex: 1, gap: 7 },
-  moreCardIcon: { fontSize: 22 },
-  moreCardTitle: { color: "#f3f5ef", fontWeight: "800", fontSize: 14 },
-  moreArrow: { color: "#b7f34a", fontSize: 24 },
+  moreIcon: { color: "#aeb6ad", width: 24 },
+  moreRowText: { flex: 1 },
+  moreTitle: { color: "#f0f2ed", fontSize: 14, fontWeight: "700" },
+  moreDescription: { color: "#7e877e", fontSize: 11, marginTop: 3 },
+  moreChevron: { color: "#687068" },
 });

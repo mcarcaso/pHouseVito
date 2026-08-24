@@ -356,31 +356,34 @@ function MemoryOverview({ value }: { value: unknown }) {
   const sessions = Array.isArray(record.sessions) ? record.sessions : [];
   return (
     <View>
-      <View style={styles.statGrid}>
-        {[
-          ["Chunks", record.totalChunks],
-          ["Sessions", record.totalSessions],
-          ["Days", record.totalDays],
-          ["Range", `${displayValue(record.oldestDay)} – ${displayValue(record.newestDay)}`],
-        ].map(([label, number]) => (
-          <View key={String(label)} style={styles.statCard}>
-            <Text style={styles.statValue}>{displayValue(number)}</Text>
-            <Text style={styles.statLabel}>{String(label)}</Text>
-          </View>
-        ))}
+      <View style={styles.memorySummary}>
+        <Text style={styles.memorySummaryPrimary}>
+          {displayValue(record.totalSessions)} sessions · {displayValue(record.totalChunks)}{" "}
+          passages
+        </Text>
+        <Text style={styles.memorySummarySecondary}>
+          {displayValue(record.totalDays)} days · {displayValue(record.oldestDay)} –{" "}
+          {displayValue(record.newestDay)}
+        </Text>
       </View>
       {sessions.length > 0 && (
-        <View style={styles.list}>
+        <View>
+          <View style={styles.flatSectionHeader}>
+            <Text style={styles.flatSectionTitle}>Recent sessions</Text>
+          </View>
           {sessions.map((session, index) => {
             const row = session as Record<string, unknown>;
             return (
-              <View key={String(row.session_id ?? index)} style={styles.card}>
-                <Text style={styles.cardTitle}>
-                  {String(row.alias ?? row.session_id ?? "Session")}
-                </Text>
-                <Text
-                  style={styles.cardMeta}
-                >{`${displayValue(row.count)} chunks · ${displayValue(row.first_day)} – ${displayValue(row.last_day)}`}</Text>
+              <View key={String(row.session_id ?? index)} style={styles.flatRow}>
+                <View style={styles.flatRowMain}>
+                  <Text style={styles.cardTitle}>
+                    {String(row.alias ?? row.session_id ?? "Session")}
+                  </Text>
+                  <Text style={styles.cardMeta} numberOfLines={1}>
+                    {`${displayValue(row.count)} passages · ${displayValue(row.first_day)} – ${displayValue(row.last_day)}`}
+                  </Text>
+                </View>
+                <Text style={styles.flatChevron}>›</Text>
               </View>
             );
           })}
@@ -764,35 +767,23 @@ export function OperationsScreen({
 
   return (
     <View style={[styles.root, area === "memory" && styles.memoryRoot]}>
-      <View style={styles.titleRow}>
-        {onBack && (
-          <Pressable onPress={onBack} style={styles.backButton}>
-            <Text style={styles.backText}>‹</Text>
-          </Pressable>
-        )}
-        <Text style={[styles.title, styles.screenTitle]}>
-          {showAreaTabs
-            ? "Run the family business."
-            : operationAreas.find((item) => item.id === area)?.label}
-        </Text>
-        {area === "memory" && (
-          <View style={styles.headerActions}>
-            <Pressable
-              onPress={async () => setSelected(await api("/api/memory/profile"))}
-              style={styles.headerTextButton}
-            >
-              <Text style={styles.headerTextButtonLabel}>Profile</Text>
+      {(area !== "memory" || onBack) && (
+        <View style={[styles.titleRow, onBack && styles.compactTitleRow]}>
+          {onBack && (
+            <Pressable onPress={onBack} style={styles.backButton}>
+              <Text style={styles.backText}>‹</Text>
             </Pressable>
-            <Pressable
-              accessibilityLabel="Refresh memory"
-              onPress={() => void load()}
-              style={styles.headerIconButton}
-            >
-              <Text style={styles.headerIcon}>↻</Text>
-            </Pressable>
-          </View>
-        )}
-      </View>
+          )}
+          {area !== "memory" && (
+            <Text style={[styles.title, styles.screenTitle]}>
+              {showAreaTabs
+                ? "Run the family business."
+                : operationAreas.find((item) => item.id === area)?.label}
+            </Text>
+          )}
+          {onBack && <Text style={styles.compactRouteLabel}>Search results</Text>}
+        </View>
+      )}
       {showAreaTabs && (
         <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.tabs}>
           <View style={styles.tabRow}>
@@ -823,18 +814,24 @@ export function OperationsScreen({
         </View>
       )}
 
-      {area === "memory" && (
-        <View style={styles.formRow}>
+      {area === "memory" && !initialMemoryQuery && (
+        <View style={styles.memorySearchRow}>
+          <Text style={styles.memorySearchIcon}>⌕</Text>
           <TextInput
             value={query}
             onChangeText={setQuery}
             onSubmitEditing={() => void searchMemory()}
             placeholder="Search memory"
-            placeholderTextColor="#687067"
-            style={styles.input}
+            placeholderTextColor="#7e877e"
+            returnKeyType="search"
+            style={styles.memorySearchInput}
           />
-          <Pressable onPress={() => void searchMemory()} style={styles.smallButton}>
-            <Text style={styles.smallButtonText}>Search</Text>
+          <Pressable
+            accessibilityLabel="Open profile"
+            onPress={async () => setSelected(await api("/api/memory/profile"))}
+            style={styles.memoryTextAction}
+          >
+            <Text style={styles.memoryTextActionLabel}>Profile</Text>
           </Pressable>
         </View>
       )}
@@ -1018,7 +1015,10 @@ export function OperationsScreen({
             const memoryKey = String(record.id ?? `${record.session_id ?? "memory"}-${index}`);
             const memoryExpanded = memoryResult && expandedMemory.has(memoryKey);
             return (
-              <View key={`${name}-${index}`} style={styles.card}>
+              <View
+                key={`${name}-${index}`}
+                style={[styles.card, memoryResult && styles.memoryResultRow]}
+              >
                 {memoryResult ? (
                   <View style={styles.cardMain}>
                     <View style={styles.memoryHeader}>
@@ -1256,8 +1256,49 @@ export function OperationsScreen({
 
 const styles = StyleSheet.create({
   root: { paddingBottom: 70 },
-  memoryRoot: { width: "100%", maxWidth: 1040, alignSelf: "center" },
-  eyebrow: { color: "#b7f34a", fontSize: 11, fontWeight: "800", letterSpacing: 2 },
+  memoryRoot: { width: "100%", maxWidth: 820, alignSelf: "center" },
+  memorySearchRow: {
+    height: 50,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 11,
+    borderBottomWidth: 1,
+    borderBottomColor: "#596159",
+    marginBottom: 38,
+  },
+  memorySearchIcon: { color: "#a3be8c", fontSize: 22 },
+  memorySearchInput: { flex: 1, color: "#f0f2ed", fontSize: 15, paddingVertical: 12 },
+  memoryTextAction: { paddingVertical: 10, paddingLeft: 12 },
+  memoryTextActionLabel: { color: "#a3be8c", fontSize: 12, fontWeight: "700" },
+  memorySummary: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    justifyContent: "space-between",
+    gap: 8,
+    paddingBottom: 11,
+    borderBottomWidth: 1,
+    borderBottomColor: "#292e29",
+  },
+  memorySummaryPrimary: { color: "#f0f2ed", fontSize: 12, fontWeight: "700" },
+  memorySummarySecondary: { color: "#7e877e", fontSize: 11 },
+  flatSectionHeader: {
+    paddingTop: 28,
+    paddingBottom: 10,
+    borderBottomWidth: 1,
+    borderBottomColor: "#292e29",
+  },
+  flatSectionTitle: { color: "#f0f2ed", fontSize: 13, fontWeight: "700" },
+  flatRow: {
+    minHeight: 70,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 16,
+    borderBottomWidth: 1,
+    borderBottomColor: "#1d211d",
+  },
+  flatRowMain: { flex: 1 },
+  flatChevron: { color: "#7e877e", fontSize: 18 },
+  eyebrow: { color: "#a3be8c", fontSize: 11, fontWeight: "800", letterSpacing: 2 },
   statGrid: { flexDirection: "row", flexWrap: "wrap", gap: 10, marginBottom: 18 },
   statCard: {
     width: "48%",
@@ -1333,6 +1374,8 @@ const styles = StyleSheet.create({
     padding: 15,
   },
   titleRow: { flexDirection: "row", alignItems: "center", gap: 10, marginBottom: 18 },
+  compactTitleRow: { marginBottom: 22 },
+  compactRouteLabel: { color: "#a2a9a1", fontSize: 13, fontWeight: "700" },
   detailHeading: { flex: 1 },
   detailId: { color: "#858d82", fontSize: 11, fontFamily: "monospace", marginTop: 3 },
   title: { color: "#f3f5ef", fontSize: 30, fontWeight: "800", marginTop: 8 },
@@ -1455,6 +1498,15 @@ const styles = StyleSheet.create({
     alignItems: "center",
     gap: 12,
   },
+  memoryResultRow: {
+    backgroundColor: "transparent",
+    borderWidth: 0,
+    borderBottomWidth: 1,
+    borderBottomColor: "#1d211d",
+    borderRadius: 0,
+    paddingHorizontal: 0,
+    paddingVertical: 15,
+  },
   cardMain: { flex: 1 },
   cardTitle: { color: "#f0f3ed", fontWeight: "800", fontSize: 14 },
   cardMeta: { color: "#858d82", fontSize: 12, marginTop: 4 },
@@ -1482,15 +1534,13 @@ const styles = StyleSheet.create({
   memoryDay: { color: "#eef1eb", fontSize: 13, fontWeight: "800" },
   memorySession: { color: "#747d72", fontSize: 10, fontFamily: "monospace", marginTop: 3 },
   memoryExpandButton: {
-    width: 30,
-    height: 30,
+    width: 36,
+    height: 36,
     flexShrink: 0,
-    borderRadius: 15,
     alignItems: "center",
     justifyContent: "center",
-    backgroundColor: "#25301e",
   },
-  memoryExpandIcon: { color: "#b7f34a", fontSize: 19, fontWeight: "700", lineHeight: 21 },
+  memoryExpandIcon: { color: "#a3be8c", fontSize: 19, fontWeight: "700", lineHeight: 21 },
   inlineActions: { flexDirection: "row", gap: 10, flexWrap: "wrap", justifyContent: "flex-end" },
   link: { color: "#b7f34a", fontSize: 12, fontWeight: "800" },
   deleteLink: { color: "#ff8d8d", fontSize: 12, fontWeight: "800" },

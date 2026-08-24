@@ -13,6 +13,7 @@ import {
   View,
 } from "react-native";
 import { api, VITO_URL } from "./api";
+import { useThemeStyles, useVitoTheme, type VitoTheme } from "./theme";
 
 export type OperationArea =
   | "memory"
@@ -80,6 +81,7 @@ function extractMessageText(content: unknown): string {
 }
 
 function StructuredRows({ data, kind }: { data: unknown; kind: "traces" | "pi" }) {
+  const styles = useThemeStyles(createStyles);
   const [expanded, setExpanded] = useState<Set<number>>(new Set());
   const lines =
     data && typeof data === "object" && Array.isArray((data as { lines?: unknown[] }).lines)
@@ -205,6 +207,7 @@ function displayValue(value: unknown): string {
 }
 
 function StructuredDetail({ value }: { value: unknown }) {
+  const styles = useThemeStyles(createStyles);
   if (typeof value === "string")
     return (
       <Text selectable style={styles.detailProse}>
@@ -267,6 +270,7 @@ function ConfigFields({
   path?: string[];
   onUpdate: (path: string[], value: unknown) => void;
 }) {
+  const styles = useThemeStyles(createStyles);
   if (!value || typeof value !== "object" || Array.isArray(value)) return null;
   return (
     <View style={styles.configFields}>
@@ -333,6 +337,7 @@ function StructuredConfigEditor({
   editor: string;
   onChange: (value: string) => void;
 }) {
+  const styles = useThemeStyles(createStyles);
   let value: unknown;
   try {
     value = JSON.parse(editor);
@@ -352,6 +357,7 @@ function StructuredConfigEditor({
 }
 
 function MemoryOverview({ value }: { value: unknown }) {
+  const styles = useThemeStyles(createStyles);
   const record = (value ?? {}) as Record<string, unknown>;
   const sessions = Array.isArray(record.sessions) ? record.sessions : [];
   return (
@@ -426,6 +432,8 @@ export function OperationsScreen({
   initialMemoryQuery?: string;
   onMemorySearch?: (query: string) => void;
 }) {
+  const styles = useThemeStyles(createStyles);
+  const theme = useVitoTheme();
   const [area, setArea] = useState<OperationArea>(initialArea);
   const [data, setData] = useState<unknown>();
   const [selected, setSelected] = useState<unknown>();
@@ -708,7 +716,7 @@ export function OperationsScreen({
         {error && <Text style={styles.error}>{error}</Text>}
         {detailLoading && (
           <View style={styles.loadingRow}>
-            <ActivityIndicator color="#b7f34a" />
+            <ActivityIndicator color={theme.colors.accent} />
             <Text style={styles.loadingText}>Loading selected rows…</Text>
           </View>
         )}
@@ -822,7 +830,7 @@ export function OperationsScreen({
             onChangeText={setQuery}
             onSubmitEditing={() => void searchMemory()}
             placeholder="Search memory"
-            placeholderTextColor="#7e877e"
+            placeholderTextColor={theme.colors.textMuted}
             returnKeyType="search"
             style={styles.memorySearchInput}
           />
@@ -842,7 +850,7 @@ export function OperationsScreen({
             value={providerPrompt}
             onChangeText={setProviderPrompt}
             placeholder="OAuth prompt or authorization code"
-            placeholderTextColor="#687067"
+            placeholderTextColor={theme.colors.textMuted}
             style={styles.input}
           />
           <View style={styles.formRow}>
@@ -881,7 +889,7 @@ export function OperationsScreen({
             value={command}
             onChangeText={setCommand}
             placeholder='New job JSON, e.g. {"name":"...","schedule":"...","prompt":"...","session":"dashboard:default"}'
-            placeholderTextColor="#687067"
+            placeholderTextColor={theme.colors.textMuted}
             style={[styles.input, styles.commandEditor]}
           />
           <Pressable onPress={runCommand} style={styles.primaryButton}>
@@ -899,7 +907,7 @@ export function OperationsScreen({
             onChangeText={setSecretKey}
             autoCapitalize="none"
             placeholder="Secret key"
-            placeholderTextColor="#687067"
+            placeholderTextColor={theme.colors.textMuted}
             style={styles.input}
           />
           <TextInput
@@ -908,7 +916,7 @@ export function OperationsScreen({
             secureTextEntry
             autoCapitalize="none"
             placeholder="Secret value"
-            placeholderTextColor="#687067"
+            placeholderTextColor={theme.colors.textMuted}
             style={styles.input}
           />
           <Pressable onPress={saveSecret} style={styles.primaryButton}>
@@ -923,7 +931,7 @@ export function OperationsScreen({
             value={drivePath}
             onChangeText={setDrivePath}
             placeholder="Drive path"
-            placeholderTextColor="#687067"
+            placeholderTextColor={theme.colors.textMuted}
             style={styles.input}
           />
           <Pressable onPress={() => void load()} style={styles.smallButton}>
@@ -939,7 +947,7 @@ export function OperationsScreen({
           value={siteFolder}
           onChangeText={setSiteFolder}
           placeholder="Optional site folder (selects a ZIP)"
-          placeholderTextColor="#687067"
+          placeholderTextColor={theme.colors.textMuted}
           style={[styles.input, styles.driveFolder]}
         />
       )}
@@ -977,7 +985,7 @@ export function OperationsScreen({
       {error && <Text style={styles.error}>{error}</Text>}
       {(loading || detailLoading) && (
         <View style={styles.loadingRow}>
-          <ActivityIndicator color="#b7f34a" />
+          <ActivityIndicator color={theme.colors.accent} />
           <Text style={styles.loadingText}>
             {detailLoading ? "Loading selected rows…" : "Loading…"}
           </Text>
@@ -1254,346 +1262,439 @@ export function OperationsScreen({
   );
 }
 
-const styles = StyleSheet.create({
-  root: { paddingBottom: 70 },
-  memoryRoot: { width: "100%", maxWidth: 820, alignSelf: "center" },
-  memorySearchRow: {
-    height: 50,
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 11,
-    borderBottomWidth: 1,
-    borderBottomColor: "#596159",
-    marginBottom: 38,
-  },
-  memorySearchIcon: { color: "#a3be8c", fontSize: 22 },
-  memorySearchInput: { flex: 1, color: "#f0f2ed", fontSize: 15, paddingVertical: 12 },
-  memoryTextAction: { paddingVertical: 10, paddingLeft: 12 },
-  memoryTextActionLabel: { color: "#a3be8c", fontSize: 12, fontWeight: "700" },
-  memorySummary: {
-    flexDirection: "row",
-    flexWrap: "wrap",
-    justifyContent: "space-between",
-    gap: 8,
-    paddingBottom: 11,
-    borderBottomWidth: 1,
-    borderBottomColor: "#292e29",
-  },
-  memorySummaryPrimary: { color: "#f0f2ed", fontSize: 12, fontWeight: "700" },
-  memorySummarySecondary: { color: "#7e877e", fontSize: 11 },
-  flatSectionHeader: {
-    paddingTop: 28,
-    paddingBottom: 10,
-    borderBottomWidth: 1,
-    borderBottomColor: "#292e29",
-  },
-  flatSectionTitle: { color: "#f0f2ed", fontSize: 13, fontWeight: "700" },
-  flatRow: {
-    minHeight: 70,
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 16,
-    borderBottomWidth: 1,
-    borderBottomColor: "#1d211d",
-  },
-  flatRowMain: { flex: 1 },
-  flatChevron: { color: "#7e877e", fontSize: 18 },
-  eyebrow: { color: "#a3be8c", fontSize: 11, fontWeight: "800", letterSpacing: 2 },
-  statGrid: { flexDirection: "row", flexWrap: "wrap", gap: 10, marginBottom: 18 },
-  statCard: {
-    width: "48%",
-    minHeight: 90,
-    borderRadius: 15,
-    padding: 15,
-    backgroundColor: "#151914",
-    borderWidth: 1,
-    borderColor: "#2b3228",
-    justifyContent: "center",
-  },
-  statValue: { color: "#eef2e9", fontSize: 21, fontWeight: "800" },
-  statLabel: {
-    color: "#788075",
-    fontSize: 10,
-    fontWeight: "800",
-    textTransform: "uppercase",
-    letterSpacing: 1,
-    marginTop: 5,
-  },
-  fieldList: { gap: 1 },
-  fieldRow: { paddingVertical: 12, borderBottomWidth: 1, borderBottomColor: "#252a25" },
-  fieldLabel: {
-    color: "#798178",
-    fontSize: 10,
-    fontWeight: "800",
-    textTransform: "uppercase",
-    letterSpacing: 0.8,
-    marginBottom: 5,
-  },
-  fieldValue: { color: "#e1e5df", fontSize: 14, lineHeight: 20 },
-  detailList: { gap: 10 },
-  detailGroup: {
-    backgroundColor: "#121512",
-    borderWidth: 1,
-    borderColor: "#292e29",
-    borderRadius: 14,
-    padding: 14,
-    marginTop: 8,
-  },
-  detailGroupTitle: {
-    color: "#b9e877",
-    fontSize: 11,
-    fontWeight: "800",
-    textTransform: "uppercase",
-    letterSpacing: 0.8,
-    marginBottom: 8,
-  },
-  detailValue: { color: "#e1e5df", fontSize: 14 },
-  configFields: { gap: 10 },
-  configGroup: { borderLeftWidth: 2, borderLeftColor: "#36432f", paddingLeft: 12, marginTop: 8 },
-  configGroupTitle: { color: "#c6ee88", fontSize: 14, fontWeight: "800", marginBottom: 10 },
-  configField: { gap: 5 },
-  configMultiline: { minHeight: 90, textAlignVertical: "top" },
-  booleanControl: {
-    alignSelf: "flex-start",
-    minWidth: 62,
-    paddingHorizontal: 14,
-    paddingVertical: 8,
-    borderRadius: 16,
-    backgroundColor: "#343a34",
-  },
-  booleanControlOn: { backgroundColor: "#456528" },
-  booleanText: { color: "#e7eee2", fontSize: 12, fontWeight: "800", textAlign: "center" },
-  detailProse: {
-    color: "#d9ddd7",
-    fontSize: 14,
-    lineHeight: 22,
-    backgroundColor: "#121512",
-    borderWidth: 1,
-    borderColor: "#292e29",
-    borderRadius: 14,
-    padding: 15,
-  },
-  titleRow: { flexDirection: "row", alignItems: "center", gap: 10, marginBottom: 18 },
-  compactTitleRow: { marginBottom: 22 },
-  compactRouteLabel: { color: "#a2a9a1", fontSize: 13, fontWeight: "700" },
-  detailHeading: { flex: 1 },
-  detailId: { color: "#858d82", fontSize: 11, fontFamily: "monospace", marginTop: 3 },
-  title: { color: "#f3f5ef", fontSize: 30, fontWeight: "800", marginTop: 8 },
-  screenTitle: { flex: 1 },
-  headerActions: { flexDirection: "row", alignItems: "center", gap: 7, marginTop: 6 },
-  headerTextButton: {
-    height: 36,
-    paddingHorizontal: 12,
-    borderRadius: 18,
-    backgroundColor: "#20271d",
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  headerTextButtonLabel: { color: "#c8d1c3", fontSize: 11, fontWeight: "800" },
-  headerIconButton: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
-    backgroundColor: "#20271d",
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  headerIcon: { color: "#b7f34a", fontSize: 20, fontWeight: "800" },
-  resultCount: {
-    color: "#6f786c",
-    fontSize: 10,
-    fontWeight: "800",
-    textTransform: "uppercase",
-    letterSpacing: 1,
-    marginTop: 14,
-    marginBottom: 4,
-  },
-  backButton: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
-    backgroundColor: "#252b23",
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  backText: { color: "#b7f34a", fontSize: 30, lineHeight: 31 },
-  tabs: { marginHorizontal: -4, marginBottom: 20 },
-  tabRow: { flexDirection: "row", gap: 8, paddingHorizontal: 4 },
-  tab: {
-    borderWidth: 1,
-    borderColor: "#30362d",
-    borderRadius: 99,
-    paddingHorizontal: 14,
-    paddingVertical: 9,
-  },
-  tabActive: { backgroundColor: "#b7f34a", borderColor: "#b7f34a" },
-  tabText: { color: "#aab0a7", fontSize: 13, fontWeight: "700" },
-  tabTextActive: { color: "#11150d" },
-  toolbar: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    gap: 12,
-    marginBottom: 12,
-  },
-  section: { color: "#f3f5ef", fontSize: 18, fontWeight: "800" },
-  formRow: { flexDirection: "row", flexWrap: "wrap", gap: 8, marginBottom: 14 },
-  input: {
-    flex: 1,
-    color: "#f3f5ef",
-    backgroundColor: "#151914",
-    borderWidth: 1,
-    borderColor: "#30362d",
-    borderRadius: 12,
-    padding: 12,
-  },
-  editorBlock: { gap: 10 },
-  editor: { minHeight: 360, fontFamily: "monospace", fontSize: 12, textAlignVertical: "top" },
-  driveFolder: { marginBottom: 14 },
-  commandEditor: {
-    minHeight: 110,
-    fontFamily: "monospace",
-    fontSize: 12,
-    textAlignVertical: "top",
-  },
-  smallButton: {
-    backgroundColor: "#252b23",
-    borderRadius: 10,
-    paddingHorizontal: 13,
-    paddingVertical: 10,
-    alignSelf: "flex-start",
-  },
-  smallButtonText: { color: "#dce2d7", fontWeight: "700", fontSize: 12 },
-  primaryButton: {
-    backgroundColor: "#b7f34a",
-    borderRadius: 11,
-    paddingHorizontal: 16,
-    paddingVertical: 12,
-    alignSelf: "flex-start",
-  },
-  primaryText: { color: "#11150d", fontWeight: "800" },
-  dangerButton: { borderWidth: 1, borderColor: "#7f3838", borderRadius: 11, padding: 12 },
-  dangerText: { color: "#ff9e9e", fontWeight: "800" },
-  actionRow: { marginBottom: 14 },
-  loader: { margin: 24 },
-  loadingRow: { flexDirection: "row", alignItems: "center", gap: 10, paddingVertical: 18 },
-  loadingText: { color: "#aab0a7", fontWeight: "700" },
-  pageControls: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    gap: 8,
-    marginBottom: 14,
-  },
-  pageText: { color: "#858d82", fontSize: 11 },
-  error: { color: "#ff9e9e", marginVertical: 10 },
-  list: { gap: 9 },
-  card: {
-    backgroundColor: "#151914",
-    borderWidth: 1,
-    borderColor: "#292f27",
-    borderRadius: 14,
-    padding: 13,
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 12,
-  },
-  memoryResultRow: {
-    backgroundColor: "transparent",
-    borderWidth: 0,
-    borderBottomWidth: 1,
-    borderBottomColor: "#1d211d",
-    borderRadius: 0,
-    paddingHorizontal: 0,
-    paddingVertical: 15,
-  },
-  cardMain: { flex: 1 },
-  cardTitle: { color: "#f0f3ed", fontWeight: "800", fontSize: 14 },
-  cardMeta: { color: "#858d82", fontSize: 12, marginTop: 4 },
-  memoryContext: {
-    color: "#b8c2b3",
-    fontSize: 12,
-    lineHeight: 17,
-    marginTop: 7,
-    paddingLeft: 9,
-    borderLeftWidth: 2,
-    borderLeftColor: "#536548",
-  },
-  memoryExpansion: { marginTop: 12, paddingTop: 11, borderTopWidth: 1, borderTopColor: "#30362e" },
-  memoryExpansionLabel: {
-    color: "#7f897b",
-    fontSize: 9,
-    fontWeight: "900",
-    textTransform: "uppercase",
-    letterSpacing: 1,
-    marginBottom: 7,
-  },
-  memoryExpansionText: { color: "#d9ddd7", fontSize: 12, lineHeight: 19, fontFamily: "monospace" },
-  memoryHeader: { flexDirection: "row", alignItems: "center", gap: 10 },
-  memoryIdentity: { flex: 1, minWidth: 0 },
-  memoryDay: { color: "#eef1eb", fontSize: 13, fontWeight: "800" },
-  memorySession: { color: "#747d72", fontSize: 10, fontFamily: "monospace", marginTop: 3 },
-  memoryExpandButton: {
-    width: 36,
-    height: 36,
-    flexShrink: 0,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  memoryExpandIcon: { color: "#a3be8c", fontSize: 19, fontWeight: "700", lineHeight: 21 },
-  inlineActions: { flexDirection: "row", gap: 10, flexWrap: "wrap", justifyContent: "flex-end" },
-  link: { color: "#b7f34a", fontSize: 12, fontWeight: "800" },
-  deleteLink: { color: "#ff8d8d", fontSize: 12, fontWeight: "800" },
-  structuredList: { gap: 9 },
-  eventCard: { borderWidth: 1, borderRadius: 13, padding: 12 },
-  eventNeutral: { backgroundColor: "#151914", borderColor: "#30362d" },
-  eventUser: { backgroundColor: "#101b24", borderColor: "#244760" },
-  eventAssistant: { backgroundColor: "#191329", borderColor: "#43306b" },
-  eventTool: { backgroundColor: "#102019", borderColor: "#28523b" },
-  eventError: { backgroundColor: "#251313", borderColor: "#713b3b" },
-  eventHeader: { flexDirection: "row", alignItems: "center", gap: 8 },
-  eventBadge: {
-    color: "#b7f34a",
-    backgroundColor: "#252b23",
-    borderRadius: 7,
-    overflow: "hidden",
-    paddingHorizontal: 7,
-    paddingVertical: 3,
-    fontSize: 10,
-    fontWeight: "800",
-    fontFamily: "monospace",
-  },
-  eventTitle: {
-    color: "#e6eae3",
-    flex: 1,
-    fontSize: 12,
-    fontWeight: "700",
-    fontFamily: "monospace",
-  },
-  eventChevron: { color: "#7d857b", fontSize: 18 },
-  eventPreview: { color: "#929a8f", fontSize: 12, lineHeight: 17, marginTop: 8 },
-  eventBody: {
-    color: "#c4cbc1",
-    fontSize: 11,
-    lineHeight: 17,
-    marginTop: 10,
-    fontFamily: "monospace",
-  },
-  emptyText: { color: "#858d82", textAlign: "center", padding: 24 },
-  jsonCard: {
-    backgroundColor: "#10130f",
-    borderRadius: 14,
-    padding: 14,
-    borderWidth: 1,
-    borderColor: "#292f27",
-  },
-  json: { color: "#b8c0b5", fontFamily: "monospace", fontSize: 11, lineHeight: 17 },
-  detail: {
-    marginTop: 18,
-    backgroundColor: "#10130f",
-    borderRadius: 14,
-    padding: 14,
-    borderWidth: 1,
-    borderColor: "#3a4236",
-  },
-});
+const createStyles = (theme: VitoTheme) =>
+  StyleSheet.create({
+    root: { paddingBottom: theme.space.giant },
+    memoryRoot: { width: "100%", maxWidth: 820, alignSelf: "center" },
+    memorySearchRow: {
+      height: 50,
+      flexDirection: "row",
+      alignItems: "center",
+      gap: theme.space.md,
+      borderBottomWidth: 1,
+      borderBottomColor: theme.colors.separatorStrong,
+      marginBottom: theme.space.huge,
+    },
+    memorySearchIcon: { color: theme.colors.accent, fontSize: 22 },
+    memorySearchInput: {
+      flex: 1,
+      color: theme.colors.text,
+      fontSize: 15,
+      paddingVertical: theme.space.md,
+    },
+    memoryTextAction: { paddingVertical: theme.space.md, paddingLeft: theme.space.md },
+    memoryTextActionLabel: { color: theme.colors.accent, fontSize: 12, fontWeight: "700" },
+    memorySummary: {
+      flexDirection: "row",
+      flexWrap: "wrap",
+      justifyContent: "space-between",
+      gap: theme.space.sm,
+      paddingBottom: theme.space.md,
+      borderBottomWidth: 1,
+      borderBottomColor: theme.colors.separator,
+    },
+    memorySummaryPrimary: { color: theme.colors.text, fontSize: 12, fontWeight: "700" },
+    memorySummarySecondary: { color: theme.colors.textMuted, fontSize: 11 },
+    flatSectionHeader: {
+      paddingTop: theme.space.xxxl,
+      paddingBottom: theme.space.md,
+      borderBottomWidth: 1,
+      borderBottomColor: theme.colors.separator,
+    },
+    flatSectionTitle: { color: theme.colors.text, fontSize: 13, fontWeight: "700" },
+    flatRow: {
+      minHeight: 70,
+      flexDirection: "row",
+      alignItems: "center",
+      gap: theme.space.lg,
+      borderBottomWidth: 1,
+      borderBottomColor: theme.colors.separator,
+    },
+    flatRowMain: { flex: 1 },
+    flatChevron: { color: theme.colors.textMuted, fontSize: 18 },
+    eyebrow: { color: theme.colors.accent, fontSize: 11, fontWeight: "800", letterSpacing: 2 },
+    statGrid: {
+      flexDirection: "row",
+      flexWrap: "wrap",
+      gap: theme.space.md,
+      marginBottom: theme.space.xl,
+    },
+    statCard: {
+      width: "48%",
+      minHeight: 90,
+      borderRadius: 15,
+      padding: theme.space.lg,
+      backgroundColor: theme.colors.surface,
+      borderWidth: 1,
+      borderColor: theme.colors.separator,
+      justifyContent: "center",
+    },
+    statValue: { color: theme.colors.text, fontSize: 21, fontWeight: "800" },
+    statLabel: {
+      color: theme.colors.textMuted,
+      fontSize: 10,
+      fontWeight: "800",
+      textTransform: "uppercase",
+      letterSpacing: 1,
+      marginTop: theme.space.xs,
+    },
+    fieldList: { gap: theme.space.xxs },
+    fieldRow: {
+      paddingVertical: theme.space.md,
+      borderBottomWidth: 1,
+      borderBottomColor: theme.colors.separator,
+    },
+    fieldLabel: {
+      color: theme.colors.textMuted,
+      fontSize: 10,
+      fontWeight: "800",
+      textTransform: "uppercase",
+      letterSpacing: 0.8,
+      marginBottom: theme.space.xs,
+    },
+    fieldValue: { color: theme.colors.textSecondary, fontSize: 14, lineHeight: 20 },
+    detailList: { gap: theme.space.md },
+    detailGroup: {
+      backgroundColor: theme.colors.surface,
+      borderWidth: 1,
+      borderColor: theme.colors.separator,
+      borderRadius: 14,
+      padding: theme.space.lg,
+      marginTop: theme.space.sm,
+    },
+    detailGroupTitle: {
+      color: theme.colors.accent,
+      fontSize: 11,
+      fontWeight: "800",
+      textTransform: "uppercase",
+      letterSpacing: 0.8,
+      marginBottom: theme.space.sm,
+    },
+    detailValue: { color: theme.colors.textSecondary, fontSize: 14 },
+    configFields: { gap: theme.space.md },
+    configGroup: {
+      borderLeftWidth: 2,
+      borderLeftColor: theme.colors.separatorStrong,
+      paddingLeft: theme.space.md,
+      marginTop: theme.space.sm,
+    },
+    configGroupTitle: {
+      color: theme.colors.accent,
+      fontSize: 14,
+      fontWeight: "800",
+      marginBottom: theme.space.md,
+    },
+    configField: { gap: theme.space.xs },
+    configMultiline: { minHeight: 90, textAlignVertical: "top" },
+    booleanControl: {
+      alignSelf: "flex-start",
+      minWidth: 62,
+      paddingHorizontal: theme.space.lg,
+      paddingVertical: theme.space.sm,
+      borderRadius: 16,
+      backgroundColor: theme.colors.surfaceRaised,
+    },
+    booleanControlOn: { backgroundColor: theme.colors.accentSurface },
+    booleanText: { color: theme.colors.text, fontSize: 12, fontWeight: "800", textAlign: "center" },
+    detailProse: {
+      color: theme.colors.textSecondary,
+      fontSize: 14,
+      lineHeight: 22,
+      backgroundColor: theme.colors.surface,
+      borderWidth: 1,
+      borderColor: theme.colors.separator,
+      borderRadius: 14,
+      padding: theme.space.lg,
+    },
+    titleRow: {
+      flexDirection: "row",
+      alignItems: "center",
+      gap: theme.space.md,
+      marginBottom: theme.space.xl,
+    },
+    compactTitleRow: { marginBottom: theme.space.xxl },
+    compactRouteLabel: { color: theme.colors.textSecondary, fontSize: 13, fontWeight: "700" },
+    detailHeading: { flex: 1 },
+    detailId: {
+      color: theme.colors.textMuted,
+      fontSize: 11,
+      fontFamily: "monospace",
+      marginTop: theme.space.xs,
+    },
+    title: { color: theme.colors.text, fontSize: 30, fontWeight: "800", marginTop: theme.space.sm },
+    screenTitle: { flex: 1 },
+    headerActions: {
+      flexDirection: "row",
+      alignItems: "center",
+      gap: theme.space.sm,
+      marginTop: theme.space.sm,
+    },
+    headerTextButton: {
+      height: 36,
+      paddingHorizontal: theme.space.md,
+      borderRadius: 18,
+      backgroundColor: theme.colors.accentSurface,
+      alignItems: "center",
+      justifyContent: "center",
+    },
+    headerTextButtonLabel: { color: theme.colors.textSecondary, fontSize: 11, fontWeight: "800" },
+    headerIconButton: {
+      width: 36,
+      height: 36,
+      borderRadius: 18,
+      backgroundColor: theme.colors.accentSurface,
+      alignItems: "center",
+      justifyContent: "center",
+    },
+    headerIcon: { color: theme.colors.accent, fontSize: 20, fontWeight: "800" },
+    resultCount: {
+      color: theme.colors.textMuted,
+      fontSize: 10,
+      fontWeight: "800",
+      textTransform: "uppercase",
+      letterSpacing: 1,
+      marginTop: theme.space.lg,
+      marginBottom: theme.space.xs,
+    },
+    backButton: {
+      width: 36,
+      height: 36,
+      borderRadius: 18,
+      backgroundColor: theme.colors.surfaceRaised,
+      alignItems: "center",
+      justifyContent: "center",
+    },
+    backText: { color: theme.colors.accent, fontSize: 30, lineHeight: 31 },
+    tabs: { marginHorizontal: -4, marginBottom: theme.space.xl },
+    tabRow: { flexDirection: "row", gap: theme.space.sm, paddingHorizontal: theme.space.xs },
+    tab: {
+      borderWidth: 1,
+      borderColor: theme.colors.separatorStrong,
+      borderRadius: 99,
+      paddingHorizontal: theme.space.lg,
+      paddingVertical: theme.space.sm,
+    },
+    tabActive: { backgroundColor: theme.colors.accent, borderColor: theme.colors.accent },
+    tabText: { color: theme.colors.textSecondary, fontSize: 13, fontWeight: "700" },
+    tabTextActive: { color: theme.colors.accentText },
+    toolbar: {
+      flexDirection: "row",
+      alignItems: "center",
+      justifyContent: "space-between",
+      gap: theme.space.md,
+      marginBottom: theme.space.md,
+    },
+    section: { color: theme.colors.text, fontSize: 18, fontWeight: "800" },
+    formRow: {
+      flexDirection: "row",
+      flexWrap: "wrap",
+      gap: theme.space.sm,
+      marginBottom: theme.space.lg,
+    },
+    input: {
+      flex: 1,
+      color: theme.colors.text,
+      backgroundColor: theme.colors.surface,
+      borderWidth: 1,
+      borderColor: theme.colors.separatorStrong,
+      borderRadius: 12,
+      padding: theme.space.md,
+    },
+    editorBlock: { gap: theme.space.md },
+    editor: { minHeight: 360, fontFamily: "monospace", fontSize: 12, textAlignVertical: "top" },
+    driveFolder: { marginBottom: theme.space.lg },
+    commandEditor: {
+      minHeight: 110,
+      fontFamily: "monospace",
+      fontSize: 12,
+      textAlignVertical: "top",
+    },
+    smallButton: {
+      backgroundColor: theme.colors.surfaceRaised,
+      borderRadius: 10,
+      paddingHorizontal: theme.space.md,
+      paddingVertical: theme.space.md,
+      alignSelf: "flex-start",
+    },
+    smallButtonText: { color: theme.colors.textSecondary, fontWeight: "700", fontSize: 12 },
+    primaryButton: {
+      backgroundColor: theme.colors.accent,
+      borderRadius: 11,
+      paddingHorizontal: theme.space.lg,
+      paddingVertical: theme.space.md,
+      alignSelf: "flex-start",
+    },
+    primaryText: { color: theme.colors.accentText, fontWeight: "800" },
+    dangerButton: {
+      borderWidth: 1,
+      borderColor: theme.colors.danger,
+      borderRadius: 11,
+      padding: theme.space.md,
+    },
+    dangerText: { color: theme.colors.danger, fontWeight: "800" },
+    actionRow: { marginBottom: theme.space.lg },
+    loader: { margin: theme.space.xxl },
+    loadingRow: {
+      flexDirection: "row",
+      alignItems: "center",
+      gap: theme.space.md,
+      paddingVertical: theme.space.xl,
+    },
+    loadingText: { color: theme.colors.textSecondary, fontWeight: "700" },
+    pageControls: {
+      flexDirection: "row",
+      alignItems: "center",
+      justifyContent: "space-between",
+      gap: theme.space.sm,
+      marginBottom: theme.space.lg,
+    },
+    pageText: { color: theme.colors.textMuted, fontSize: 11 },
+    error: { color: theme.colors.danger, marginVertical: theme.space.md },
+    list: { gap: theme.space.sm },
+    card: {
+      backgroundColor: theme.colors.surface,
+      borderWidth: 1,
+      borderColor: theme.colors.separator,
+      borderRadius: 14,
+      padding: theme.space.md,
+      flexDirection: "row",
+      alignItems: "center",
+      gap: theme.space.md,
+    },
+    memoryResultRow: {
+      backgroundColor: "transparent",
+      borderWidth: 0,
+      borderBottomWidth: 1,
+      borderBottomColor: theme.colors.separator,
+      borderRadius: 0,
+      paddingHorizontal: theme.space.xxs,
+      paddingVertical: theme.space.lg,
+    },
+    cardMain: { flex: 1 },
+    cardTitle: { color: theme.colors.text, fontWeight: "800", fontSize: 14 },
+    cardMeta: { color: theme.colors.textMuted, fontSize: 12, marginTop: theme.space.xs },
+    memoryContext: {
+      color: theme.colors.textSecondary,
+      fontSize: 12,
+      lineHeight: 17,
+      marginTop: theme.space.sm,
+      paddingLeft: theme.space.sm,
+      borderLeftWidth: 2,
+      borderLeftColor: theme.colors.separatorStrong,
+    },
+    memoryExpansion: {
+      marginTop: theme.space.md,
+      paddingTop: theme.space.md,
+      borderTopWidth: 1,
+      borderTopColor: theme.colors.separator,
+    },
+    memoryExpansionLabel: {
+      color: theme.colors.textMuted,
+      fontSize: 9,
+      fontWeight: "900",
+      textTransform: "uppercase",
+      letterSpacing: 1,
+      marginBottom: theme.space.sm,
+    },
+    memoryExpansionText: {
+      color: theme.colors.textSecondary,
+      fontSize: 12,
+      lineHeight: 19,
+      fontFamily: "monospace",
+    },
+    memoryHeader: { flexDirection: "row", alignItems: "center", gap: theme.space.md },
+    memoryIdentity: { flex: 1, minWidth: 0 },
+    memoryDay: { color: theme.colors.text, fontSize: 13, fontWeight: "800" },
+    memorySession: {
+      color: theme.colors.textMuted,
+      fontSize: 10,
+      fontFamily: "monospace",
+      marginTop: theme.space.xs,
+    },
+    memoryExpandButton: {
+      width: 36,
+      height: 36,
+      flexShrink: 0,
+      alignItems: "center",
+      justifyContent: "center",
+    },
+    memoryExpandIcon: {
+      color: theme.colors.accent,
+      fontSize: 19,
+      fontWeight: "700",
+      lineHeight: 21,
+    },
+    inlineActions: {
+      flexDirection: "row",
+      gap: theme.space.md,
+      flexWrap: "wrap",
+      justifyContent: "flex-end",
+    },
+    link: { color: theme.colors.accent, fontSize: 12, fontWeight: "800" },
+    deleteLink: { color: theme.colors.danger, fontSize: 12, fontWeight: "800" },
+    structuredList: { gap: theme.space.sm },
+    eventCard: { borderWidth: 1, borderRadius: 13, padding: theme.space.md },
+    eventNeutral: {
+      backgroundColor: theme.colors.surface,
+      borderColor: theme.colors.separatorStrong,
+    },
+    eventUser: { backgroundColor: theme.colors.infoSurface, borderColor: theme.colors.info },
+    eventAssistant: { backgroundColor: theme.colors.surfaceRaised, borderColor: theme.colors.info },
+    eventTool: { backgroundColor: theme.colors.successSurface, borderColor: theme.colors.success },
+    eventError: { backgroundColor: theme.colors.dangerSurface, borderColor: theme.colors.danger },
+    eventHeader: { flexDirection: "row", alignItems: "center", gap: theme.space.sm },
+    eventBadge: {
+      color: theme.colors.accent,
+      backgroundColor: theme.colors.surfaceRaised,
+      borderRadius: 7,
+      overflow: "hidden",
+      paddingHorizontal: theme.space.sm,
+      paddingVertical: theme.space.xs,
+      fontSize: 10,
+      fontWeight: "800",
+      fontFamily: "monospace",
+    },
+    eventTitle: {
+      color: theme.colors.text,
+      flex: 1,
+      fontSize: 12,
+      fontWeight: "700",
+      fontFamily: "monospace",
+    },
+    eventChevron: { color: theme.colors.textMuted, fontSize: 18 },
+    eventPreview: {
+      color: theme.colors.textSecondary,
+      fontSize: 12,
+      lineHeight: 17,
+      marginTop: theme.space.sm,
+    },
+    eventBody: {
+      color: theme.colors.textSecondary,
+      fontSize: 11,
+      lineHeight: 17,
+      marginTop: theme.space.md,
+      fontFamily: "monospace",
+    },
+    emptyText: { color: theme.colors.textMuted, textAlign: "center", padding: theme.space.xxl },
+    jsonCard: {
+      backgroundColor: theme.colors.canvas,
+      borderRadius: 14,
+      padding: theme.space.lg,
+      borderWidth: 1,
+      borderColor: theme.colors.separator,
+    },
+    json: {
+      color: theme.colors.textSecondary,
+      fontFamily: "monospace",
+      fontSize: 11,
+      lineHeight: 17,
+    },
+    detail: {
+      marginTop: theme.space.xl,
+      backgroundColor: theme.colors.canvas,
+      borderRadius: 14,
+      padding: theme.space.lg,
+      borderWidth: 1,
+      borderColor: theme.colors.separatorStrong,
+    },
+  });

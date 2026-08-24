@@ -28,6 +28,7 @@ import { LoginScreen } from "./src/LoginScreen";
 import { operationAreas, OperationsScreen, type OperationArea } from "./src/OperationsScreen";
 import { VoiceScreen } from "./src/VoiceScreen";
 import { checkAuth, loadToken, logout, saveToken } from "./src/api";
+import { VitoThemeProvider, useThemeStyles, useVitoTheme, type VitoTheme } from "./src/theme";
 
 type MainTabParamList = {
   Chat: undefined;
@@ -135,6 +136,16 @@ const linking: LinkingOptions<RootStackParamList> = {
 };
 
 export default function App() {
+  return (
+    <VitoThemeProvider>
+      <AppContent />
+    </VitoThemeProvider>
+  );
+}
+
+function AppContent() {
+  const styles = useThemeStyles(createStyles);
+  const theme = useVitoTheme();
   const [authState, setAuthState] = useState<"loading" | "authenticated" | "login">("loading");
   useEffect(() => {
     void (async () => {
@@ -154,20 +165,20 @@ export default function App() {
   if (authState === "loading")
     return (
       <SafeAreaView style={styles.loading}>
-        <StatusBar style="light" />
-        <ActivityIndicator color="#b7f34a" />
+        <StatusBar style={theme.dark ? "light" : "dark"} />
+        <ActivityIndicator color={theme.colors.accent} />
       </SafeAreaView>
     );
   if (authState === "login")
     return (
       <SafeAreaView style={styles.safeArea}>
-        <StatusBar style="light" />
+        <StatusBar style={theme.dark ? "light" : "dark"} />
         <LoginScreen onSuccess={() => setAuthState("authenticated")} />
       </SafeAreaView>
     );
   return (
     <SafeAreaView style={styles.safeArea}>
-      <StatusBar style="light" />
+      <StatusBar style={theme.dark ? "light" : "dark"} />
       <NavigationContainer linking={linking}>
         <RootStack.Navigator
           screenOptions={{
@@ -198,6 +209,7 @@ function MainTabs({
   onUnauthorized: () => void;
   onLogout: () => void;
 }) {
+  const styles = useThemeStyles(createStyles);
   const { width } = useWindowDimensions();
   const desktop = width >= 760;
   return (
@@ -239,6 +251,7 @@ function MemoryResultsScreen({
   route: { params: { query: string } };
   navigation: RootNavigation;
 }) {
+  const styles = useThemeStyles(createStyles);
   return (
     <ScrollView contentContainerStyle={styles.fullScreenOperation}>
       <OperationsScreen
@@ -253,6 +266,7 @@ function MemoryResultsScreen({
 }
 
 function ScreenFrame({ desktop, children }: { desktop: boolean; children: React.ReactNode }) {
+  const styles = useThemeStyles(createStyles);
   return (
     <ScrollView contentContainerStyle={[styles.screenFrame, desktop && styles.screenFrameDesktop]}>
       <View style={styles.screenPage}>{children}</View>
@@ -268,6 +282,7 @@ function OperationRoute({
   desktop: boolean;
   onUnauthorized: () => void;
 }) {
+  const styles = useThemeStyles(createStyles);
   const root = useNavigation<RootNavigation>();
   return (
     <ScrollView
@@ -292,6 +307,7 @@ function AdaptiveTabBar({
   desktop,
   onLogout,
 }: BottomTabBarProps & { desktop: boolean; onLogout: () => void }) {
+  const styles = useThemeStyles(createStyles);
   const current = state.routeNames[state.index] as MainRouteName;
   const visible = desktop
     ? (state.routeNames as MainRouteName[])
@@ -370,6 +386,7 @@ function DesktopNavItem({
   current: MainRouteName;
   navigation: BottomTabBarProps["navigation"];
 }) {
+  const styles = useThemeStyles(createStyles);
   const item = labels[route];
   const active = current === route;
   return (
@@ -382,6 +399,7 @@ function DesktopNavItem({
 }
 
 function MoreMenu() {
+  const styles = useThemeStyles(createStyles);
   const navigation = useNavigation<NativeStackNavigationProp<MainTabParamList>>();
   return (
     <ScrollView contentContainerStyle={styles.moreScreen}>
@@ -413,92 +431,115 @@ function MoreMenu() {
   );
 }
 
-const styles = StyleSheet.create({
-  safeArea: { flex: 1, backgroundColor: "#0b0d0b" },
-  loading: { flex: 1, backgroundColor: "#0b0d0b", alignItems: "center", justifyContent: "center" },
-  routeBackground: { backgroundColor: "#0b0d0b" },
-  sidebar: {
-    width: 224,
-    paddingHorizontal: 14,
-    paddingTop: 18,
-    paddingBottom: 14,
-    backgroundColor: "#0f120f",
-    borderRightWidth: 1,
-    borderRightColor: "#1d211d",
-  },
-  brand: { flexDirection: "row", paddingHorizontal: 10, marginBottom: 24 },
-  brandName: { color: "#f0f2ed", fontSize: 19, fontWeight: "800" },
-  brandDot: { color: "#a3be8c", fontSize: 19, fontWeight: "800" },
-  desktopNavList: { paddingBottom: 10 },
-  navSection: {
-    color: "#7e877e",
-    fontSize: 9,
-    fontWeight: "800",
-    letterSpacing: 1.4,
-    textTransform: "uppercase",
-    marginTop: 18,
-    marginBottom: 6,
-    paddingHorizontal: 10,
-  },
-  navItem: {
-    minHeight: 36,
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 11,
-    paddingHorizontal: 10,
-  },
-  navIcon: { color: "#8d958d", width: 18 },
-  navLabel: { color: "#aeb4ad", fontWeight: "600", fontSize: 13 },
-  navLabelActive: { color: "#f0f2ed", fontWeight: "800" },
-  navActiveDot: {
-    marginLeft: "auto",
-    width: 5,
-    height: 5,
-    borderRadius: 3,
-    backgroundColor: "#a3be8c",
-  },
-  activeText: { color: "#a3be8c" },
-  signOut: { padding: 10, alignItems: "center" },
-  signOutText: { color: "#687068", fontSize: 11, fontWeight: "700" },
-  tabBar: {
-    backgroundColor: "#0f120ff5",
-    borderTopWidth: 1,
-    borderTopColor: "#292e29",
-    paddingBottom: Platform.OS === "ios" ? 20 : 8,
-    paddingTop: 7,
-  },
-  tabList: { flexDirection: "row", justifyContent: "space-around" },
-  tabItem: { minWidth: 78, alignItems: "center", gap: 3, paddingVertical: 5 },
-  tabItemActive: {},
-  tabIcon: { color: "#7e877e", height: 22 },
-  tabLabel: { color: "#7e877e", fontSize: 10, fontWeight: "700" },
-  screenFrame: { flexGrow: 1, padding: 20, paddingBottom: 30 },
-  screenFrameDesktop: { padding: 32 },
-  screenPage: { width: "100%", maxWidth: 900, alignSelf: "center" },
-  operationFrame: { flexGrow: 1, padding: 20, paddingBottom: 30 },
-  operationFrameDesktop: { paddingHorizontal: 64, paddingVertical: 54 },
-  fullScreenOperation: { flexGrow: 1, padding: 20, paddingBottom: 40 },
-  moreScreen: { flexGrow: 1, paddingHorizontal: 20, paddingTop: 24, paddingBottom: 90 },
-  moreSection: { marginBottom: 19 },
-  moreSectionLabel: {
-    color: "#a3be8c",
-    fontSize: 10,
-    fontWeight: "800",
-    letterSpacing: 1.4,
-    textTransform: "uppercase",
-    marginBottom: 5,
-  },
-  moreRow: {
-    minHeight: 58,
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 12,
-    borderBottomWidth: 1,
-    borderBottomColor: "#1d211d",
-  },
-  moreIcon: { color: "#aeb6ad", width: 24 },
-  moreRowText: { flex: 1 },
-  moreTitle: { color: "#f0f2ed", fontSize: 14, fontWeight: "700" },
-  moreDescription: { color: "#7e877e", fontSize: 11, marginTop: 3 },
-  moreChevron: { color: "#687068" },
-});
+const createStyles = (theme: VitoTheme) =>
+  StyleSheet.create({
+    safeArea: { flex: 1, backgroundColor: theme.colors.canvas },
+    loading: {
+      flex: 1,
+      backgroundColor: theme.colors.canvas,
+      alignItems: "center",
+      justifyContent: "center",
+    },
+    routeBackground: { backgroundColor: theme.colors.canvas },
+    sidebar: {
+      width: 224,
+      paddingHorizontal: theme.space.lg,
+      paddingTop: theme.space.xl,
+      paddingBottom: theme.space.lg,
+      backgroundColor: theme.colors.sidebar,
+      borderRightWidth: 1,
+      borderRightColor: theme.colors.separator,
+    },
+    brand: {
+      flexDirection: "row",
+      paddingHorizontal: theme.space.md,
+      marginBottom: theme.space.xxl,
+    },
+    brandName: { color: theme.colors.text, fontSize: 19, fontWeight: "800" },
+    brandDot: { color: theme.colors.accent, fontSize: 19, fontWeight: "800" },
+    desktopNavList: { paddingBottom: theme.space.md },
+    navSection: {
+      color: theme.colors.textMuted,
+      fontSize: 9,
+      fontWeight: "800",
+      letterSpacing: 1.4,
+      textTransform: "uppercase",
+      marginTop: theme.space.xl,
+      marginBottom: theme.space.sm,
+      paddingHorizontal: theme.space.md,
+    },
+    navItem: {
+      minHeight: 36,
+      flexDirection: "row",
+      alignItems: "center",
+      gap: theme.space.md,
+      paddingHorizontal: theme.space.md,
+    },
+    navIcon: { color: theme.colors.textMuted, width: 18 },
+    navLabel: { color: theme.colors.textSecondary, fontWeight: "600", fontSize: 13 },
+    navLabelActive: { color: theme.colors.text, fontWeight: "800" },
+    navActiveDot: {
+      marginLeft: "auto",
+      width: 5,
+      height: 5,
+      borderRadius: 3,
+      backgroundColor: theme.colors.accent,
+    },
+    activeText: { color: theme.colors.accent },
+    signOut: { padding: theme.space.md, alignItems: "center" },
+    signOutText: { color: theme.colors.textMuted, fontSize: 11, fontWeight: "700" },
+    tabBar: {
+      backgroundColor: theme.colors.sidebar,
+      borderTopWidth: 1,
+      borderTopColor: theme.colors.separator,
+      paddingBottom: Platform.OS === "ios" ? 20 : 8,
+      paddingTop: theme.space.sm,
+    },
+    tabList: { flexDirection: "row", justifyContent: "space-around" },
+    tabItem: {
+      minWidth: 78,
+      alignItems: "center",
+      gap: theme.space.xs,
+      paddingVertical: theme.space.xs,
+    },
+    tabItemActive: {},
+    tabIcon: { color: theme.colors.textMuted, height: 22 },
+    tabLabel: { color: theme.colors.textMuted, fontSize: 10, fontWeight: "700" },
+    screenFrame: { flexGrow: 1, padding: theme.space.xl, paddingBottom: theme.space.xxxl },
+    screenFrameDesktop: { padding: theme.space.xxxl },
+    screenPage: { width: "100%", maxWidth: 900, alignSelf: "center" },
+    operationFrame: { flexGrow: 1, padding: theme.space.xl, paddingBottom: theme.space.xxxl },
+    operationFrameDesktop: {
+      paddingHorizontal: theme.space.giant,
+      paddingVertical: theme.space.huge,
+    },
+    fullScreenOperation: { flexGrow: 1, padding: theme.space.xl, paddingBottom: theme.space.huge },
+    moreScreen: {
+      flexGrow: 1,
+      paddingHorizontal: theme.space.xl,
+      paddingTop: theme.space.xxl,
+      paddingBottom: theme.space.giant,
+    },
+    moreSection: { marginBottom: theme.space.xl },
+    moreSectionLabel: {
+      color: theme.colors.accent,
+      fontSize: 10,
+      fontWeight: "800",
+      letterSpacing: 1.4,
+      textTransform: "uppercase",
+      marginBottom: theme.space.xs,
+    },
+    moreRow: {
+      minHeight: 58,
+      flexDirection: "row",
+      alignItems: "center",
+      gap: theme.space.md,
+      borderBottomWidth: 1,
+      borderBottomColor: theme.colors.separator,
+    },
+    moreIcon: { color: theme.colors.textSecondary, width: 24 },
+    moreRowText: { flex: 1 },
+    moreTitle: { color: theme.colors.text, fontSize: 14, fontWeight: "700" },
+    moreDescription: { color: theme.colors.textMuted, fontSize: 11, marginTop: theme.space.xs },
+    moreChevron: { color: theme.colors.textMuted },
+  });

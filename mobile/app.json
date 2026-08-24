@@ -36,7 +36,8 @@
           "enableBackgroundRecording": true,
           "microphonePermission": "Vito uses the microphone for live voice conversations."
         }
-      ]
+      ],
+      "expo-font"
     ],
     "extra": {
       "eas": {

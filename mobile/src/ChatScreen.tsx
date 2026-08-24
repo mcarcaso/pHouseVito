@@ -20,6 +20,7 @@ import {
   type VitoMessage as Message,
   type VitoSession as Session,
 } from "@vito/client";
+import { useThemeStyles, useVitoTheme, type VitoTheme } from "./theme";
 
 const DEFAULT_SESSION = "dashboard:default";
 const FILTER_KEY = "vito-chat-display-filters";
@@ -92,6 +93,7 @@ async function saveFilters(filters: Filters): Promise<void> {
 }
 
 export function ChatScreen({ onUnauthorized }: { onUnauthorized: () => void }) {
+  const styles = useThemeStyles(createStyles);
   const { width } = useWindowDimensions();
   const desktop = width >= 760;
   const [sessionId, setSessionId] = useState<string | null>(desktop ? DEFAULT_SESSION : null);
@@ -211,6 +213,8 @@ function SessionList({
   selectedId: string | null;
   onSelect: (id: string) => void;
 }) {
+  const styles = useThemeStyles(createStyles);
+  const theme = useVitoTheme();
   return (
     <View style={styles.listRoot}>
       <ScrollView contentContainerStyle={styles.sessionList}>
@@ -237,7 +241,9 @@ function SessionList({
             </View>
           </Pressable>
         ))}
-        {!sessions.length && <ActivityIndicator color="#aee95a" style={styles.listLoader} />}
+        {!sessions.length && (
+          <ActivityIndicator color={theme.colors.accent} style={styles.listLoader} />
+        )}
       </ScrollView>
     </View>
   );
@@ -274,6 +280,8 @@ function Conversation({
   onInput: (value: string) => void;
   onSend: () => void;
 }) {
+  const styles = useThemeStyles(createStyles);
+  const theme = useVitoTheme();
   return (
     <KeyboardAvoidingView
       style={styles.conversationRoot}
@@ -319,7 +327,7 @@ function Conversation({
         onContentSizeChange={() => scrollRef.current?.scrollToEnd({ animated: false })}
       >
         {loading ? (
-          <ActivityIndicator color="#aee95a" style={styles.loader} />
+          <ActivityIndicator color={theme.colors.accent} style={styles.loader} />
         ) : messages.length ? (
           messages.map((message) => <MessageRow key={message.id} message={message} />)
         ) : (
@@ -335,7 +343,7 @@ function Conversation({
           value={input}
           onChangeText={onInput}
           placeholder="Message Vito"
-          placeholderTextColor="#6f756f"
+          placeholderTextColor={theme.colors.textMuted}
           multiline
           maxLength={12000}
           style={styles.input}
@@ -345,7 +353,11 @@ function Conversation({
           onPress={onSend}
           style={[styles.send, (!input.trim() || sending) && styles.sendDisabled]}
         >
-          {sending ? <ActivityIndicator color="#10140d" /> : <Text style={styles.sendText}>↑</Text>}
+          {sending ? (
+            <ActivityIndicator color={theme.colors.accentText} />
+          ) : (
+            <Text style={styles.sendText}>↑</Text>
+          )}
         </Pressable>
       </View>
     </KeyboardAvoidingView>
@@ -361,6 +373,7 @@ function MenuToggle({
   value: boolean;
   onValue: (value: boolean) => void;
 }) {
+  const styles = useThemeStyles(createStyles);
   return (
     <Pressable onPress={() => onValue(!value)} style={styles.menuRow}>
       <Text style={styles.menuLabel}>{label}</Text>
@@ -372,6 +385,7 @@ function MenuToggle({
 }
 
 function MessageRow({ message }: { message: Message }) {
+  const styles = useThemeStyles(createStyles);
   if (message.type === "thought")
     return (
       <View style={styles.thoughtCard}>
@@ -416,215 +430,243 @@ function MessageRow({ message }: { message: Message }) {
   );
 }
 
-const styles = StyleSheet.create({
-  desktopRoot: { flex: 1, flexDirection: "row", backgroundColor: "#090b09" },
-  desktopList: { width: 340, flexShrink: 0 },
-  desktopConversation: { flex: 1, minWidth: 0, borderLeftWidth: 1, borderLeftColor: "#252925" },
-  listRoot: { flex: 1, backgroundColor: "#0a0c0a" },
-  sessionList: { paddingLeft: 14, paddingTop: 6 },
-  listLoader: { marginTop: 80 },
-  sessionRow: {
-    minHeight: 76,
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 12,
-    paddingRight: 12,
-  },
-  sessionRowActive: { backgroundColor: "#171c15" },
-  avatar: {
-    width: 48,
-    height: 48,
-    borderRadius: 24,
-    backgroundColor: "#283321",
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  avatarText: { color: "#c5f582", fontWeight: "800", fontSize: 17 },
-  sessionBody: {
-    flex: 1,
-    minWidth: 0,
-    alignSelf: "stretch",
-    justifyContent: "center",
-    borderBottomWidth: 1,
-    borderBottomColor: "#242724",
-  },
-  sessionTop: { flexDirection: "row", alignItems: "center", gap: 6 },
-  sessionName: { flex: 1, color: "#eef0ed", fontSize: 15, fontWeight: "700" },
-  sessionTime: { color: "#707770", fontSize: 11 },
-  chevron: { color: "#666d66", fontSize: 20 },
-  sessionPreview: { color: "#737a73", fontSize: 12, marginTop: 5 },
-  conversationRoot: { flex: 1, minHeight: 0, backgroundColor: "#090b09", overflow: "hidden" },
-  conversationHeader: {
-    height: 62,
-    flexDirection: "row",
-    alignItems: "center",
-    borderBottomWidth: 1,
-    borderBottomColor: "#252925",
-    backgroundColor: "#0d0f0d",
-  },
-  headerButton: { width: 58, height: 58, alignItems: "center", justifyContent: "center" },
-  backText: { color: "#b6ef59", fontSize: 40, lineHeight: 42, fontWeight: "300" },
-  hidden: { opacity: 0 },
-  moreText: { color: "#b6ef59", fontSize: 17, letterSpacing: 1.5 },
-  conversationIdentity: { flex: 1, alignItems: "center" },
-  miniAvatar: {
-    width: 27,
-    height: 27,
-    borderRadius: 14,
-    backgroundColor: "#293522",
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  miniAvatarText: { color: "#c6f580", fontSize: 10, fontWeight: "900" },
-  conversationTitle: {
-    color: "#f1f3ef",
-    fontSize: 13,
-    fontWeight: "700",
-    maxWidth: "92%",
-    marginTop: 2,
-  },
-  conversationChannel: { color: "#707770", fontSize: 9, textTransform: "capitalize" },
-  menu: {
-    position: "absolute",
-    zIndex: 20,
-    top: 54,
-    right: 10,
-    width: 218,
-    paddingHorizontal: 14,
-    borderRadius: 14,
-    backgroundColor: "#202320",
-    borderWidth: 1,
-    borderColor: "#3a3f3a",
-    shadowColor: "#000",
-    shadowOpacity: 0.45,
-    shadowRadius: 18,
-    shadowOffset: { width: 0, height: 8 },
-    elevation: 12,
-  },
-  menuRow: {
-    minHeight: 53,
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-  },
-  menuLabel: { color: "#f0f2ef", fontSize: 14, fontWeight: "600" },
-  menuRule: { height: 1, backgroundColor: "#363a36" },
-  toggleTrack: {
-    width: 44,
-    height: 26,
-    borderRadius: 14,
-    backgroundColor: "#484e48",
-    padding: 2,
-  },
-  toggleTrackOn: { backgroundColor: "#79b638" },
-  toggleThumb: {
-    width: 22,
-    height: 22,
-    borderRadius: 11,
-    backgroundColor: "#f4f5f2",
-  },
-  toggleThumbOn: { alignSelf: "flex-end" },
-  messages: { flex: 1, minHeight: 0 },
-  messageContent: {
-    paddingHorizontal: 12,
-    paddingVertical: 18,
-    gap: 7,
-    flexGrow: 1,
-    justifyContent: "flex-end",
-  },
-  loader: { marginVertical: 80 },
-  empty: { flex: 1, alignItems: "center", justifyContent: "center" },
-  emptyTitle: { color: "#cfd3ce", fontWeight: "700", fontSize: 16 },
-  emptyText: { color: "#6f766f", fontSize: 12, marginTop: 5 },
-  messageRow: { flexDirection: "row" },
-  userRow: { justifyContent: "flex-end" },
-  bubble: { maxWidth: "82%", borderRadius: 19, paddingHorizontal: 13, paddingVertical: 9 },
-  assistantBubble: { backgroundColor: "#242724", borderBottomLeftRadius: 5 },
-  userBubble: { backgroundColor: "#adeb58", borderBottomRightRadius: 5 },
-  messageText: { color: "#f0f2ef", fontSize: 15, lineHeight: 20 },
-  userMessageText: { color: "#10140c" },
-  thoughtCard: {
-    maxWidth: "88%",
-    alignSelf: "flex-start",
-    borderRadius: 13,
-    padding: 11,
-    backgroundColor: "#121512",
-    borderWidth: 1,
-    borderColor: "#3b4433",
-  },
-  toolCard: {
-    maxWidth: "92%",
-    alignSelf: "flex-start",
-    borderRadius: 13,
-    padding: 11,
-    backgroundColor: "#10171b",
-    borderWidth: 1,
-    borderColor: "#294656",
-  },
-  toolResponseCard: { backgroundColor: "#101816", borderColor: "#285046" },
-  specialHeader: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    gap: 12,
-  },
-  thoughtLabel: { color: "#b8e777", fontSize: 10, fontWeight: "900", letterSpacing: 1 },
-  toolLabel: { color: "#76c7ed", fontSize: 10, fontWeight: "900", letterSpacing: 1 },
-  toolResponseLabel: { color: "#69d8bd" },
-  specialTime: {
-    flexShrink: 1,
-    color: "#777f77",
-    fontSize: 9,
-    fontWeight: "700",
-    textTransform: "uppercase",
-  },
-  thoughtText: {
-    color: "#aeb5ae",
-    fontSize: 12,
-    lineHeight: 17,
-    marginTop: 7,
-    fontFamily: Platform.select({ ios: "Menlo", android: "monospace", default: "monospace" }),
-  },
-  toolText: {
-    color: "#a7b8bf",
-    fontSize: 11,
-    lineHeight: 16,
-    marginTop: 7,
-    fontFamily: Platform.select({ ios: "Menlo", android: "monospace", default: "monospace" }),
-  },
-  error: { color: "#ef827b", fontSize: 11, paddingHorizontal: 12, paddingVertical: 5 },
-  composer: {
-    flexDirection: "row",
-    alignItems: "flex-end",
-    gap: 7,
-    marginHorizontal: 10,
-    marginVertical: 8,
-    minHeight: 44,
-    paddingLeft: 14,
-    paddingRight: 5,
-    paddingVertical: 4,
-    borderRadius: 23,
-    borderWidth: 1,
-    borderColor: "#353a35",
-    backgroundColor: "#171a17",
-  },
-  input: {
-    flex: 1,
-    maxHeight: 112,
-    minHeight: 34,
-    color: "#f0f2ef",
-    fontSize: 15,
-    paddingTop: 7,
-    paddingBottom: 6,
-  },
-  send: {
-    width: 35,
-    height: 35,
-    borderRadius: 18,
-    backgroundColor: "#adeb58",
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  sendDisabled: { opacity: 0.32 },
-  sendText: { color: "#11150d", fontSize: 21, fontWeight: "900", lineHeight: 23 },
-});
+const createStyles = (theme: VitoTheme) =>
+  StyleSheet.create({
+    desktopRoot: { flex: 1, flexDirection: "row", backgroundColor: theme.colors.canvas },
+    desktopList: { width: 340, flexShrink: 0 },
+    desktopConversation: {
+      flex: 1,
+      minWidth: 0,
+      borderLeftWidth: 1,
+      borderLeftColor: theme.colors.separator,
+    },
+    listRoot: { flex: 1, backgroundColor: theme.colors.canvas },
+    sessionList: { paddingLeft: theme.space.lg, paddingTop: theme.space.sm },
+    listLoader: { marginTop: theme.space.giant },
+    sessionRow: {
+      minHeight: 76,
+      flexDirection: "row",
+      alignItems: "center",
+      gap: theme.space.md,
+      paddingRight: theme.space.md,
+    },
+    sessionRowActive: { backgroundColor: theme.colors.accentSurface },
+    avatar: {
+      width: 48,
+      height: 48,
+      borderRadius: 24,
+      backgroundColor: theme.colors.accentSurface,
+      alignItems: "center",
+      justifyContent: "center",
+    },
+    avatarText: { color: theme.colors.accent, fontWeight: "800", fontSize: 17 },
+    sessionBody: {
+      flex: 1,
+      minWidth: 0,
+      alignSelf: "stretch",
+      justifyContent: "center",
+      borderBottomWidth: 1,
+      borderBottomColor: theme.colors.separator,
+    },
+    sessionTop: { flexDirection: "row", alignItems: "center", gap: theme.space.sm },
+    sessionName: { flex: 1, color: theme.colors.text, fontSize: 15, fontWeight: "700" },
+    sessionTime: { color: theme.colors.textMuted, fontSize: 11 },
+    chevron: { color: theme.colors.textMuted, fontSize: 20 },
+    sessionPreview: { color: theme.colors.textMuted, fontSize: 12, marginTop: theme.space.xs },
+    conversationRoot: {
+      flex: 1,
+      minHeight: 0,
+      backgroundColor: theme.colors.canvas,
+      overflow: "hidden",
+    },
+    conversationHeader: {
+      height: 62,
+      flexDirection: "row",
+      alignItems: "center",
+      borderBottomWidth: 1,
+      borderBottomColor: theme.colors.separator,
+      backgroundColor: theme.colors.sidebar,
+    },
+    headerButton: { width: 58, height: 58, alignItems: "center", justifyContent: "center" },
+    backText: { color: theme.colors.accent, fontSize: 40, lineHeight: 42, fontWeight: "300" },
+    hidden: { opacity: 0 },
+    moreText: { color: theme.colors.accent, fontSize: 17, letterSpacing: 1.5 },
+    conversationIdentity: { flex: 1, alignItems: "center" },
+    miniAvatar: {
+      width: 27,
+      height: 27,
+      borderRadius: 14,
+      backgroundColor: theme.colors.accentSurface,
+      alignItems: "center",
+      justifyContent: "center",
+    },
+    miniAvatarText: { color: theme.colors.accent, fontSize: 10, fontWeight: "900" },
+    conversationTitle: {
+      color: theme.colors.text,
+      fontSize: 13,
+      fontWeight: "700",
+      maxWidth: "92%",
+      marginTop: theme.space.xxs,
+    },
+    conversationChannel: {
+      color: theme.colors.textMuted,
+      fontSize: 9,
+      textTransform: "capitalize",
+    },
+    menu: {
+      position: "absolute",
+      zIndex: 20,
+      top: 54,
+      right: 10,
+      width: 218,
+      paddingHorizontal: theme.space.lg,
+      borderRadius: 14,
+      backgroundColor: theme.colors.surfaceRaised,
+      borderWidth: 1,
+      borderColor: theme.colors.separatorStrong,
+      shadowColor: "#000",
+      shadowOpacity: 0.45,
+      shadowRadius: 18,
+      shadowOffset: { width: 0, height: 8 },
+      elevation: 12,
+    },
+    menuRow: {
+      minHeight: 53,
+      flexDirection: "row",
+      alignItems: "center",
+      justifyContent: "space-between",
+    },
+    menuLabel: { color: theme.colors.text, fontSize: 14, fontWeight: "600" },
+    menuRule: { height: 1, backgroundColor: theme.colors.separatorStrong },
+    toggleTrack: {
+      width: 44,
+      height: 26,
+      borderRadius: 14,
+      backgroundColor: theme.colors.surfaceRaised,
+      padding: theme.space.xxs,
+    },
+    toggleTrackOn: { backgroundColor: theme.colors.accent },
+    toggleThumb: {
+      width: 22,
+      height: 22,
+      borderRadius: 11,
+      backgroundColor: theme.colors.text,
+    },
+    toggleThumbOn: { alignSelf: "flex-end" },
+    messages: { flex: 1, minHeight: 0 },
+    messageContent: {
+      paddingHorizontal: theme.space.md,
+      paddingVertical: theme.space.xl,
+      gap: theme.space.sm,
+      flexGrow: 1,
+      justifyContent: "flex-end",
+    },
+    loader: { marginVertical: theme.space.giant },
+    empty: { flex: 1, alignItems: "center", justifyContent: "center" },
+    emptyTitle: { color: theme.colors.textSecondary, fontWeight: "700", fontSize: 16 },
+    emptyText: { color: theme.colors.textMuted, fontSize: 12, marginTop: theme.space.xs },
+    messageRow: { flexDirection: "row" },
+    userRow: { justifyContent: "flex-end" },
+    bubble: {
+      maxWidth: "82%",
+      borderRadius: 19,
+      paddingHorizontal: theme.space.md,
+      paddingVertical: theme.space.sm,
+    },
+    assistantBubble: { backgroundColor: theme.colors.separator, borderBottomLeftRadius: 5 },
+    userBubble: { backgroundColor: theme.colors.accent, borderBottomRightRadius: 5 },
+    messageText: { color: theme.colors.text, fontSize: 15, lineHeight: 20 },
+    userMessageText: { color: theme.colors.accentText },
+    thoughtCard: {
+      maxWidth: "88%",
+      alignSelf: "flex-start",
+      borderRadius: 13,
+      padding: theme.space.md,
+      backgroundColor: theme.colors.surface,
+      borderWidth: 1,
+      borderColor: theme.colors.separatorStrong,
+    },
+    toolCard: {
+      maxWidth: "92%",
+      alignSelf: "flex-start",
+      borderRadius: 13,
+      padding: theme.space.md,
+      backgroundColor: theme.colors.infoSurface,
+      borderWidth: 1,
+      borderColor: theme.colors.info,
+    },
+    toolResponseCard: {
+      backgroundColor: theme.colors.successSurface,
+      borderColor: theme.colors.success,
+    },
+    specialHeader: {
+      flexDirection: "row",
+      alignItems: "center",
+      justifyContent: "space-between",
+      gap: theme.space.md,
+    },
+    thoughtLabel: { color: theme.colors.accent, fontSize: 10, fontWeight: "900", letterSpacing: 1 },
+    toolLabel: { color: theme.colors.info, fontSize: 10, fontWeight: "900", letterSpacing: 1 },
+    toolResponseLabel: { color: theme.colors.success },
+    specialTime: {
+      flexShrink: 1,
+      color: theme.colors.textMuted,
+      fontSize: 9,
+      fontWeight: "700",
+      textTransform: "uppercase",
+    },
+    thoughtText: {
+      color: theme.colors.textSecondary,
+      fontSize: 12,
+      lineHeight: 17,
+      marginTop: theme.space.sm,
+      fontFamily: Platform.select({ ios: "Menlo", android: "monospace", default: "monospace" }),
+    },
+    toolText: {
+      color: theme.colors.textSecondary,
+      fontSize: 11,
+      lineHeight: 16,
+      marginTop: theme.space.sm,
+      fontFamily: Platform.select({ ios: "Menlo", android: "monospace", default: "monospace" }),
+    },
+    error: {
+      color: theme.colors.danger,
+      fontSize: 11,
+      paddingHorizontal: theme.space.md,
+      paddingVertical: theme.space.xs,
+    },
+    composer: {
+      flexDirection: "row",
+      alignItems: "flex-end",
+      gap: theme.space.sm,
+      marginHorizontal: theme.space.md,
+      marginVertical: theme.space.sm,
+      minHeight: 44,
+      paddingLeft: theme.space.lg,
+      paddingRight: theme.space.xs,
+      paddingVertical: theme.space.xs,
+      borderRadius: 23,
+      borderWidth: 1,
+      borderColor: theme.colors.separatorStrong,
+      backgroundColor: theme.colors.surface,
+    },
+    input: {
+      flex: 1,
+      maxHeight: 112,
+      minHeight: 34,
+      color: theme.colors.text,
+      fontSize: 15,
+      paddingTop: theme.space.sm,
+      paddingBottom: theme.space.sm,
+    },
+    send: {
+      width: 35,
+      height: 35,
+      borderRadius: 18,
+      backgroundColor: theme.colors.accent,
+      alignItems: "center",
+      justifyContent: "center",
+    },
+    sendDisabled: { opacity: 0.32 },
+    sendText: { color: theme.colors.accentText, fontSize: 21, fontWeight: "900", lineHeight: 23 },
+  });

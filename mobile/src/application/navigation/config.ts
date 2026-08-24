@@ -66,7 +66,7 @@ export const labels: Record<MainRouteName, { label: string; icon: IconName }> = 
 } as Record<MainRouteName, { label: string; icon: IconName }>;
 
 export const linking: LinkingOptions<RootStackParamList> = {
-  prefixes: ["vito://", "https://mikes-mac-mini-1.tail1706d3.ts.net"],
+  prefixes: ["rook://", "https://mikes-mac-mini-1.tail1706d3.ts.net"],
   config: {
     screens: {
       Main: {

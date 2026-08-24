@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import {
   ActivityIndicator,
+  Image,
   KeyboardAvoidingView,
   Platform,
   Pressable,
@@ -52,9 +53,7 @@ export function LoginScreen({ onSuccess }: { onSuccess: () => void }) {
         showsVerticalScrollIndicator={false}
       >
         <View style={styles.page}>
-          <View style={styles.mark}>
-            <Text style={styles.markText}>V</Text>
-          </View>
+          <Image source={require("../../../assets/icon.png")} style={styles.mark} />
           <Text style={styles.eyebrow}>PRIVATE ACCESS</Text>
           <Text style={styles.title}>Welcome back,{"\n"}boss.</Text>
           <Text style={styles.body}>
@@ -136,12 +135,8 @@ const createStyles = (theme: VitoTheme) =>
       width: 48,
       height: 48,
       borderRadius: 15,
-      backgroundColor: theme.colors.accent,
-      alignItems: "center",
-      justifyContent: "center",
       marginBottom: theme.space.xxxl,
     },
-    markText: { color: theme.colors.accentText, fontSize: 24, fontWeight: "900" },
     eyebrow: { color: theme.colors.accent, fontSize: 10, fontWeight: "800", letterSpacing: 2 },
     title: {
       color: theme.colors.text,

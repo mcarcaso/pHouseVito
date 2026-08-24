@@ -423,6 +423,7 @@ export function OperationsScreen({
   onDetailOpen,
   initialMemoryQuery,
   onMemorySearch,
+  hideMemorySearch = false,
 }: {
   onUnauthorized: () => void;
   initialArea?: OperationArea;
@@ -431,6 +432,7 @@ export function OperationsScreen({
   onDetailOpen?: () => void;
   initialMemoryQuery?: string;
   onMemorySearch?: (query: string) => void;
+  hideMemorySearch?: boolean;
 }) {
   const styles = useThemeStyles(createStyles);
   const theme = useVitoTheme();
@@ -821,7 +823,7 @@ export function OperationsScreen({
         </View>
       )}
 
-      {area === "memory" && !initialMemoryQuery && (
+      {area === "memory" && !initialMemoryQuery && !hideMemorySearch && (
         <View style={styles.memorySearchRow}>
           <Text style={styles.memorySearchIcon}>⌕</Text>
           <TextInput

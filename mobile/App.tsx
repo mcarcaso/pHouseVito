@@ -20,6 +20,7 @@ import {
   ScrollView,
   StyleSheet,
   Text,
+  TextInput,
   useWindowDimensions,
   View,
 } from "react-native";
@@ -179,7 +180,7 @@ function AppContent() {
       </SafeAreaView>
     );
   return (
-    <SafeAreaView style={styles.safeArea}>
+    <View style={styles.safeArea}>
       <StatusBar style={theme.dark ? "light" : "dark"} />
       <NavigationContainer linking={linking}>
         <RootStack.Navigator
@@ -197,11 +198,65 @@ function AppContent() {
               />
             )}
           </RootStack.Screen>
-          <RootStack.Screen name="Operation" component={RootOperationScreen} />
-          <RootStack.Screen name="MemoryResults" component={MemoryResultsScreen} />
+          <RootStack.Screen
+            name="Operation"
+            component={RootOperationScreen}
+            options={({ route, navigation }) => {
+              const area = route.params.area;
+              const title = operationAreas.find((item) => item.id === area)?.label ?? "";
+              return {
+                headerShown: true,
+                title: area === "memory" ? "" : title,
+                headerBackTitle: "More",
+                headerStyle: { backgroundColor: theme.colors.canvas },
+                headerTintColor: theme.colors.accent,
+                headerTitleStyle: { color: theme.colors.text },
+                headerShadowVisible: false,
+                header:
+                  Platform.OS === "web"
+                    ? () => (
+                        <WebStackHeader
+                          onBack={() => navigation.goBack()}
+                          onSearch={
+                            area === "memory"
+                              ? (query) => navigation.navigate("MemoryResults", { query })
+                              : undefined
+                          }
+                        />
+                      )
+                    : undefined,
+                headerSearchBarOptions:
+                  area === "memory"
+                    ? {
+                        placeholder: "Search memory",
+                        onSearchButtonPress: (event) => {
+                          const query = event.nativeEvent.text.trim();
+                          if (query) navigation.navigate("MemoryResults", { query });
+                        },
+                      }
+                    : undefined,
+              };
+            }}
+          />
+          <RootStack.Screen
+            name="MemoryResults"
+            component={MemoryResultsScreen}
+            options={({ navigation }) => ({
+              headerShown: true,
+              title: "",
+              headerBackTitle: "Memory",
+              headerStyle: { backgroundColor: theme.colors.canvas },
+              headerTintColor: theme.colors.accent,
+              headerShadowVisible: false,
+              header:
+                Platform.OS === "web"
+                  ? () => <WebStackHeader onBack={() => navigation.goBack()} />
+                  : undefined,
+            })}
+          />
         </RootStack.Navigator>
       </NavigationContainer>
-    </SafeAreaView>
+    </View>
   );
 }
 
@@ -247,6 +302,42 @@ function MainTabs({
   );
 }
 
+function WebStackHeader({
+  onBack,
+  onSearch,
+}: {
+  onBack: () => void;
+  onSearch?: (query: string) => void;
+}) {
+  const styles = useThemeStyles(createStyles);
+  const theme = useVitoTheme();
+  const [query, setQuery] = useState("");
+  return (
+    <View style={styles.webStackHeader}>
+      <Pressable accessibilityLabel="Back" onPress={onBack} style={styles.webBackButton}>
+        <Ionicons name="chevron-back" size={24} color={theme.colors.accent} />
+      </Pressable>
+      {onSearch && (
+        <View style={styles.webHeaderSearch}>
+          <Ionicons name="search-outline" size={17} color={theme.colors.accent} />
+          <TextInput
+            value={query}
+            onChangeText={setQuery}
+            onSubmitEditing={() => {
+              const value = query.trim();
+              if (value) onSearch(value);
+            }}
+            placeholder="Search memory"
+            placeholderTextColor={theme.colors.textMuted}
+            returnKeyType="search"
+            style={styles.webHeaderSearchInput}
+          />
+        </View>
+      )}
+    </View>
+  );
+}
+
 function RootOperationScreen({
   route,
   navigation,
@@ -262,7 +353,7 @@ function RootOperationScreen({
         initialArea={area}
         showAreaTabs={false}
         onUnauthorized={() => navigation.navigate("Main", { screen: "More" })}
-        onBack={() => navigation.goBack()}
+        hideMemorySearch={area === "memory"}
         onMemorySearch={
           area === "memory" ? (query) => navigation.navigate("MemoryResults", { query }) : undefined
         }
@@ -286,7 +377,6 @@ function MemoryResultsScreen({
         initialMemoryQuery={route.params.query}
         showAreaTabs={false}
         onUnauthorized={() => navigation.navigate("Main", { screen: "More" })}
-        onBack={() => navigation.goBack()}
       />
     </ScrollView>
   );
@@ -541,6 +631,38 @@ const createStyles = (theme: VitoTheme) =>
       paddingVertical: theme.space.huge,
     },
     fullScreenOperation: { flexGrow: 1, padding: theme.space.xl, paddingBottom: theme.space.huge },
+    webStackHeader: {
+      minHeight: 58,
+      flexDirection: "row",
+      alignItems: "center",
+      gap: theme.space.md,
+      paddingHorizontal: theme.space.xl,
+      backgroundColor: theme.colors.canvas,
+      borderBottomWidth: StyleSheet.hairlineWidth,
+      borderBottomColor: theme.colors.separator,
+    },
+    webBackButton: {
+      width: 36,
+      height: 44,
+      alignItems: "flex-start",
+      justifyContent: "center",
+    },
+    webHeaderSearch: {
+      flex: 1,
+      maxWidth: 820,
+      height: 44,
+      flexDirection: "row",
+      alignItems: "center",
+      gap: theme.space.md,
+      borderBottomWidth: StyleSheet.hairlineWidth,
+      borderBottomColor: theme.colors.separatorStrong,
+    },
+    webHeaderSearchInput: {
+      flex: 1,
+      color: theme.colors.text,
+      fontSize: 15,
+      paddingVertical: theme.space.md,
+    },
     moreScreen: {
       flexGrow: 1,
       paddingHorizontal: theme.space.xl,

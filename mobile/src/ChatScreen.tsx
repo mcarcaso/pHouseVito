@@ -345,6 +345,7 @@ function Conversation({
 }) {
   const styles = useThemeStyles(createStyles);
   const theme = useVitoTheme();
+  const [webInputHeight, setWebInputHeight] = useState(22);
   return (
     <KeyboardAvoidingView
       style={styles.conversationRoot}
@@ -409,7 +410,7 @@ function Conversation({
         )}
       </ScrollView>
       {error && <Text style={styles.error}>{error}</Text>}
-      <View style={styles.composer}>
+      <View style={[styles.composer, Platform.OS === "web" && styles.composerWeb]}>
         <TextInput
           value={input}
           onChangeText={onInput}
@@ -417,7 +418,15 @@ function Conversation({
           placeholderTextColor={theme.colors.textMuted}
           multiline
           maxLength={12000}
-          style={styles.input}
+          onContentSizeChange={(event) => {
+            if (Platform.OS === "web")
+              setWebInputHeight(Math.min(96, Math.max(22, event.nativeEvent.contentSize.height)));
+          }}
+          style={[
+            styles.input,
+            Platform.OS === "web" && styles.inputWeb,
+            Platform.OS === "web" && { height: webInputHeight },
+          ]}
         />
         <Pressable
           disabled={!input.trim() || sending}
@@ -427,7 +436,7 @@ function Conversation({
           {sending ? (
             <ActivityIndicator color={theme.colors.accentText} />
           ) : (
-            <Text style={styles.sendText}>↑</Text>
+            <Ionicons name="arrow-up" size={22} color={theme.colors.accentText} />
           )}
         </Pressable>
       </View>
@@ -824,6 +833,7 @@ const createStyles = (theme: VitoTheme) =>
       borderColor: theme.colors.separatorStrong,
       backgroundColor: theme.colors.surface,
     },
+    composerWeb: { alignItems: "center" },
     input: {
       flex: 1,
       maxHeight: 112,
@@ -832,6 +842,13 @@ const createStyles = (theme: VitoTheme) =>
       fontSize: 15,
       paddingTop: theme.space.sm,
       paddingBottom: theme.space.sm,
+    },
+    inputWeb: {
+      minHeight: 22,
+      lineHeight: 20,
+      paddingTop: theme.space.none,
+      paddingBottom: theme.space.none,
+      outlineWidth: 0,
     },
     send: {
       width: 35,
@@ -842,5 +859,4 @@ const createStyles = (theme: VitoTheme) =>
       justifyContent: "center",
     },
     sendDisabled: { opacity: 0.32 },
-    sendText: { color: theme.colors.accentText, fontSize: 21, fontWeight: "900", lineHeight: 23 },
   });

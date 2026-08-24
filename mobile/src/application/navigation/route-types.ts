@@ -1,6 +1,6 @@
 import type { NavigatorScreenParams } from "@react-navigation/native";
 import type { IdentityDocument } from "../../screens/identity/IdentityScreen";
-import type { OperationArea } from "../../screens/operations/OperationsScreen";
+import type { OperationArea } from "../../screens/operations/operation-catalog";
 
 export type ChatStackParamList = {
   ChatList: undefined;

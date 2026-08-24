@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { ActivityIndicator, ScrollView, StyleSheet, Text, View } from "react-native";
 import { api } from "../../services/api/client";
-import { StructuredDetail } from "./OperationsScreen";
+import { StructuredDetail } from "./structured-data";
 import { useThemeStyles, useVitoTheme, type VitoTheme } from "../../hooks/useVitoTheme";
 
 export function OperationItemDetailScreen({

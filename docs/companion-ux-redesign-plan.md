@@ -29,6 +29,31 @@ Use a graphite-and-sage palette instead of neon lime everywhere:
 
 Brand sage is reserved for selection, primary actions, and progress. Semantic colors communicate meaning. Remove emoji from desktop navigation and use one coherent icon family.
 
+### Anti-slop rules
+
+The interface must have a specific point of view: Vito is Mike's private personal operating layer, not a generic SaaS dashboard. Reject output that merely looks polished or statistically familiar.
+
+- No card grids as the default layout. Prefer flat lists, separators, hierarchy, and purpose-built spatial relationships.
+- No cards inside cards, ornamental containers, or a rounded rectangle around every concept.
+- No icons automatically placed inside tinted rounded squares. Icons may stand alone when their meaning is clear.
+- No gradients, glassmorphism, blurred glow, neon-on-black, decorative noise, fake depth, or "hacker" monospace styling.
+- No oversized marketing headlines, eyebrow labels, vague taglines, fake metrics, or dashboard theatre.
+- No pill-shaped control unless the object is genuinely a tag, compact filter, or binary segmented choice.
+- No excessive border radius. Use square/soft geometry intentionally; reserve stronger rounding for sheets, floating controls, and platform-native containers.
+- No identical spacing/radius treatment across unrelated controls.
+- No default three-column feature/card layouts.
+- No emoji as product iconography and no arbitrary icon for every line of text.
+- No excessive serif typography or a novelty display font pasted over generic layouts.
+- No meaningless animation. Motion must explain navigation, state, causality, or progress and respect reduced motion.
+- No raw database/admin language when a human label exists.
+- No redundant microcopy that restates the heading.
+- No tiny action clusters or modal dumping grounds.
+- No visual decoration without a product-specific reason.
+- Use the platform system font on native because it is native, not because it is the easiest default; web typography must remain compatible and intentionally tuned.
+- Every major composition must be justified by the task, content, and frequency of use rather than by a reusable dashboard template.
+
+Before implementation, critique each concept specifically for: cardocalypse, generic SaaS composition, over-rounding, decorative icon boxes, weak product specificity, templated typography, fake hierarchy, and unjustified empty space.
+
 ### Layout and interaction principles
 
 - Root stack above tabs; details and workflows cover tabs.

@@ -25,17 +25,22 @@ const rules: RenderRules = {
       </Text>
     );
   },
-  paragraph: (node: ASTNode, children, parents, styles) => (
-    <View
-      key={node.key}
-      style={[
-        styles.paragraph,
-        parents.some((parent) => parent.type === "list_item") && styles.paragraphInList,
-      ]}
-    >
-      {children}
-    </View>
-  ),
+  paragraph: (node: ASTNode, children, parents, styles) => {
+    const parent = parents.at(-1);
+    const lastChild = parent?.children.at(-1);
+    return (
+      <View
+        key={node.key}
+        style={[
+          styles.paragraph,
+          parents.some((item) => item.type === "list_item") && styles.paragraphInList,
+          lastChild?.key === node.key && styles.paragraphLast,
+        ]}
+      >
+        {children}
+      </View>
+    );
+  },
   code_block: (node: ASTNode, _children, _parents, styles) => (
     <View key={node.key} style={styles.codeBlock}>
       <Text selectable style={styles.codeText}>
@@ -125,6 +130,7 @@ const createStyles = (theme: VitoTheme) =>
     },
     paragraphChat: { marginBottom: theme.space.sm },
     paragraphInList: { marginBottom: theme.space.none },
+    paragraphLast: { marginBottom: theme.space.none },
     heading1: {
       color: theme.colors.text,
       fontSize: 22,

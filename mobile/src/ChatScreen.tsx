@@ -93,11 +93,29 @@ async function saveFilters(filters: Filters): Promise<void> {
   else await SecureStore.setItemAsync(FILTER_KEY, value);
 }
 
-export function ChatScreen({ onUnauthorized }: { onUnauthorized: () => void }) {
+export function ChatScreen({
+  onUnauthorized,
+  selectedSessionId,
+  onSelectSession,
+  onBack,
+}: {
+  onUnauthorized: () => void;
+  selectedSessionId?: string | null;
+  onSelectSession?: (session: Session) => void;
+  onBack?: () => void;
+}) {
   const styles = useThemeStyles(createStyles);
   const { width } = useWindowDimensions();
   const desktop = width >= 760;
-  const [sessionId, setSessionId] = useState<string | null>(desktop ? DEFAULT_SESSION : null);
+  const [localSessionId, setLocalSessionId] = useState<string | null>(
+    desktop ? DEFAULT_SESSION : null,
+  );
+  const controlled = selectedSessionId !== undefined;
+  const sessionId = controlled ? selectedSessionId : localSessionId;
+  const selectSession = (session: Session) => {
+    if (onSelectSession) onSelectSession(session);
+    else setLocalSessionId(session.id);
+  };
   const [filters, setFilters] = useState<Filters>({ thoughts: true, tools: true });
   const [filtersReady, setFiltersReady] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
@@ -125,8 +143,8 @@ export function ChatScreen({ onUnauthorized }: { onUnauthorized: () => void }) {
   }, [filters, filtersReady]);
 
   useEffect(() => {
-    if (desktop && !sessionId) setSessionId(DEFAULT_SESSION);
-  }, [desktop, sessionId]);
+    if (desktop && !sessionId && !controlled) setLocalSessionId(DEFAULT_SESSION);
+  }, [controlled, desktop, sessionId]);
 
   const sessionsQuery = useSessions({ refetchInterval: 5_000 });
   const sessions = sessionsQuery.data ?? [];
@@ -178,7 +196,8 @@ export function ChatScreen({ onUnauthorized }: { onUnauthorized: () => void }) {
         desktop
           ? undefined
           : () => {
-              setSessionId(null);
+              if (onBack) onBack();
+              else setLocalSessionId(null);
               setMenuOpen(false);
             }
       }
@@ -193,7 +212,7 @@ export function ChatScreen({ onUnauthorized }: { onUnauthorized: () => void }) {
     return (
       <View style={styles.desktopRoot}>
         <View style={styles.desktopList}>
-          <SessionList sessions={sessions} selectedId={sessionId} onSelect={setSessionId} />
+          <SessionList sessions={sessions} selectedId={sessionId} onSelect={selectSession} />
         </View>
         <View style={styles.desktopConversation}>{conversation}</View>
       </View>
@@ -201,7 +220,7 @@ export function ChatScreen({ onUnauthorized }: { onUnauthorized: () => void }) {
   }
 
   return (
-    conversation ?? <SessionList sessions={sessions} selectedId={null} onSelect={setSessionId} />
+    conversation ?? <SessionList sessions={sessions} selectedId={null} onSelect={selectSession} />
   );
 }
 
@@ -212,7 +231,7 @@ function SessionList({
 }: {
   sessions: Session[];
   selectedId: string | null;
-  onSelect: (id: string) => void;
+  onSelect: (session: Session) => void;
 }) {
   const styles = useThemeStyles(createStyles);
   const theme = useVitoTheme();
@@ -222,7 +241,7 @@ function SessionList({
         {sessions.map((session) => (
           <Pressable
             key={session.id}
-            onPress={() => onSelect(session.id)}
+            onPress={() => onSelect(session)}
             style={[styles.sessionRow, selectedId === session.id && styles.sessionRowActive]}
           >
             <View style={styles.avatar}>
@@ -290,7 +309,12 @@ function Conversation({
       keyboardVerticalOffset={8}
     >
       <View style={styles.conversationHeader}>
-        <Pressable onPress={onBack} disabled={!onBack} style={styles.headerButton}>
+        <Pressable
+          accessibilityLabel="Back to conversations"
+          onPress={onBack}
+          disabled={!onBack}
+          style={styles.headerButton}
+        >
           <Text style={[styles.backText, !onBack && styles.hidden]}>‹</Text>
         </Pressable>
         <View style={styles.conversationIdentity}>
@@ -302,7 +326,11 @@ function Conversation({
           </Text>
           <Text style={styles.conversationChannel}>{session.channel}</Text>
         </View>
-        <Pressable onPress={onMenu} style={styles.headerButton}>
+        <Pressable
+          accessibilityLabel="Conversation options"
+          onPress={onMenu}
+          style={styles.headerButton}
+        >
           <Text style={styles.moreText}>•••</Text>
         </Pressable>
       </View>

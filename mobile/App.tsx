@@ -35,8 +35,12 @@ import { VoiceScreen } from "./src/VoiceScreen";
 import { checkAuth, loadToken, logout, saveToken } from "./src/api";
 import { VitoThemeProvider, useThemeStyles, useVitoTheme, type VitoTheme } from "./src/theme";
 
+type ChatStackParamList = {
+  ChatList: undefined;
+  ChatConversation: { sessionId: string };
+};
 type MainTabParamList = {
-  Chat: undefined;
+  Chat: NavigatorScreenParams<ChatStackParamList> | undefined;
   Voice: undefined;
   More: undefined;
   Memory: undefined;
@@ -63,6 +67,7 @@ type RootStackParamList = {
 type RootNavigation = NativeStackNavigationProp<RootStackParamList>;
 const RootStack = createNativeStackNavigator<RootStackParamList>();
 const Tabs = createBottomTabNavigator<MainTabParamList>();
+const ChatStack = createNativeStackNavigator<ChatStackParamList>();
 const MoreStack = createNativeStackNavigator<{ MoreHome: undefined }>();
 
 const routeForArea: Record<OperationArea, MainRouteName> = {
@@ -128,7 +133,13 @@ const linking: LinkingOptions<RootStackParamList> = {
     screens: {
       Main: {
         screens: {
-          Chat: "chat",
+          Chat: {
+            path: "chat",
+            screens: {
+              ChatList: "",
+              ChatConversation: ":sessionId",
+            },
+          },
           Voice: "voice",
           More: "more",
           Memory: "memory",
@@ -304,6 +315,47 @@ function AppContent() {
   );
 }
 
+function ChatNavigator({
+  desktop,
+  onUnauthorized,
+}: {
+  desktop: boolean;
+  onUnauthorized: () => void;
+}) {
+  const styles = useThemeStyles(createStyles);
+  if (desktop) return <ChatScreen onUnauthorized={onUnauthorized} />;
+  return (
+    <ChatStack.Navigator
+      initialRouteName="ChatList"
+      screenOptions={{
+        headerShown: false,
+        contentStyle: styles.routeBackground,
+      }}
+    >
+      <ChatStack.Screen name="ChatList">
+        {({ navigation }) => (
+          <ChatScreen
+            onUnauthorized={onUnauthorized}
+            selectedSessionId={null}
+            onSelectSession={(session) =>
+              navigation.navigate("ChatConversation", { sessionId: session.id })
+            }
+          />
+        )}
+      </ChatStack.Screen>
+      <ChatStack.Screen name="ChatConversation">
+        {({ navigation, route }) => (
+          <ChatScreen
+            onUnauthorized={onUnauthorized}
+            selectedSessionId={route.params.sessionId}
+            onBack={() => navigation.goBack()}
+          />
+        )}
+      </ChatStack.Screen>
+    </ChatStack.Navigator>
+  );
+}
+
 function MainTabs({
   onUnauthorized,
   onLogout,
@@ -329,7 +381,7 @@ function MainTabs({
       <Tabs.Screen name="Chat">
         {() => (
           <TabSafeArea desktop={desktop}>
-            <ChatScreen onUnauthorized={onUnauthorized} />
+            <ChatNavigator desktop={desktop} onUnauthorized={onUnauthorized} />
           </TabSafeArea>
         )}
       </Tabs.Screen>

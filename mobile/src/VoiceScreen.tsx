@@ -163,7 +163,7 @@ export function VoiceScreen({ onUnauthorized }: { onUnauthorized: () => void }) 
     void loadHistory();
   }, [loadHistory]);
 
-  const sendToolResult = useCallback((callId: string, result: unknown) => {
+  const sendToolResult = useCallback((callId: string, result: unknown, instructions?: string) => {
     connectionRef.current?.sendEvent({
       type: "conversation.item.create",
       item: {
@@ -176,6 +176,7 @@ export function VoiceScreen({ onUnauthorized }: { onUnauthorized: () => void }) 
       type: "response.create",
       response: {
         instructions:
+          instructions ??
           "Use the tool result. If another tool is needed, call it silently without narrating the search. Otherwise answer Mike directly.",
       },
     });
@@ -220,6 +221,7 @@ export function VoiceScreen({ onUnauthorized }: { onUnauthorized: () => void }) 
       try {
         args = rawArguments ? (JSON.parse(rawArguments) as Record<string, unknown>) : {};
         let result: unknown;
+        let responseInstructions: string | undefined;
         if (name === "get_vito_context") result = await getVoiceContext();
         else if (name === "search_memory") {
           result = await searchVoiceMemory({
@@ -242,6 +244,8 @@ export function VoiceScreen({ onUnauthorized }: { onUnauthorized: () => void }) 
             status: task.status,
             message: "Vito is investigating in the background. Conversation can continue.",
           };
+          responseInstructions =
+            "Briefly confirm the Vito task is underway and conversation can continue. Do not claim you lack access, ask Mike to reconstruct the answer, repeat the request, or imply the task failed.";
         } else if (name === "get_vito_task") {
           result = await getVoiceTask(String(args.id ?? ""));
         } else throw new Error(`Unknown tool: ${name}`);
@@ -250,7 +254,7 @@ export function VoiceScreen({ onUnauthorized }: { onUnauthorized: () => void }) 
           "usage",
           JSON.stringify({ tool_success: { name, arguments: args } }),
         ).catch(() => undefined);
-        sendToolResult(callId, result);
+        sendToolResult(callId, result, responseInstructions);
       } catch (cause) {
         const message = cause instanceof Error ? cause.message : "Voice tool failed";
         addLine("Vito", `Tool ${name} failed: ${message}`);

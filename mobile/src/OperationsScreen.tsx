@@ -412,12 +412,16 @@ export function OperationsScreen({
   showAreaTabs = true,
   onBack,
   onDetailOpen,
+  initialMemoryQuery,
+  onMemorySearch,
 }: {
   onUnauthorized: () => void;
   initialArea?: OperationArea;
   showAreaTabs?: boolean;
   onBack?: () => void;
   onDetailOpen?: () => void;
+  initialMemoryQuery?: string;
+  onMemorySearch?: (query: string) => void;
 }) {
   const [area, setArea] = useState<OperationArea>(initialArea);
   const [data, setData] = useState<unknown>();
@@ -430,7 +434,7 @@ export function OperationsScreen({
   const [loading, setLoading] = useState(false);
   const [detailLoading, setDetailLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [query, setQuery] = useState("");
+  const [query, setQuery] = useState(initialMemoryQuery ?? "");
   const [editor, setEditor] = useState("");
   const [drivePath, setDrivePath] = useState("");
   const [command, setCommand] = useState("");
@@ -448,7 +452,11 @@ export function OperationsScreen({
     setSelected(undefined);
     try {
       const path =
-        area === "drive" ? `/api/drive/ls?path=${encodeURIComponent(drivePath)}` : paths[area];
+        area === "memory" && initialMemoryQuery
+          ? `/api/memory/embeddings/search?q=${encodeURIComponent(initialMemoryQuery)}&mode=hybrid&limit=10`
+          : area === "drive"
+            ? `/api/drive/ls?path=${encodeURIComponent(drivePath)}`
+            : paths[area];
       const result = await api<unknown>(path);
       setData(result);
       if (area === "settings") setEditor(pretty(result));
@@ -463,7 +471,7 @@ export function OperationsScreen({
     } finally {
       setLoading(false);
     }
-  }, [area, drivePath, onUnauthorized]);
+  }, [area, drivePath, initialMemoryQuery, onUnauthorized]);
 
   useEffect(() => void load(), [load]);
   useEffect(() => {
@@ -493,6 +501,10 @@ export function OperationsScreen({
 
   const searchMemory = async () => {
     if (!query.trim()) return;
+    if (onMemorySearch) {
+      onMemorySearch(query.trim());
+      return;
+    }
     setLoading(true);
     try {
       setData(

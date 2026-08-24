@@ -1,15 +1,16 @@
 import {
   NavigationContainer,
   type LinkingOptions,
+  type NavigatorScreenParams,
   useNavigation,
-  useNavigationContainerRef,
 } from "@react-navigation/native";
+import { createBottomTabNavigator, type BottomTabBarProps } from "@react-navigation/bottom-tabs";
 import {
   createNativeStackNavigator,
   type NativeStackNavigationProp,
 } from "@react-navigation/native-stack";
 import { StatusBar } from "expo-status-bar";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import {
   ActivityIndicator,
   Platform,
@@ -27,7 +28,7 @@ import { operationAreas, OperationsScreen, type OperationArea } from "./src/Oper
 import { VoiceScreen } from "./src/VoiceScreen";
 import { checkAuth, loadToken, logout, saveToken } from "./src/api";
 
-type RootStackParamList = {
+type MainTabParamList = {
   Chat: undefined;
   Voice: undefined;
   More: undefined;
@@ -44,12 +45,16 @@ type RootStackParamList = {
   Server: undefined;
   Providers: undefined;
 };
+type MainRouteName = keyof MainTabParamList;
+type RootStackParamList = {
+  Main: NavigatorScreenParams<MainTabParamList> | undefined;
+  MemoryResults: { query: string };
+};
+type RootNavigation = NativeStackNavigationProp<RootStackParamList>;
+const RootStack = createNativeStackNavigator<RootStackParamList>();
+const Tabs = createBottomTabNavigator<MainTabParamList>();
 
-type RouteName = keyof RootStackParamList;
-type Navigation = NativeStackNavigationProp<RootStackParamList>;
-const Stack = createNativeStackNavigator<RootStackParamList>();
-
-const routeForArea: Record<OperationArea, RouteName> = {
+const routeForArea: Record<OperationArea, MainRouteName> = {
   memory: "Memory",
   skills: "Skills",
   jobs: "Jobs",
@@ -65,30 +70,40 @@ const routeForArea: Record<OperationArea, RouteName> = {
 };
 const areaForRoute = Object.fromEntries(
   Object.entries(routeForArea).map(([area, route]) => [route, area]),
-) as Partial<Record<RouteName, OperationArea>>;
-const primaryRoutes: Array<{ route: RouteName; label: string; icon: string }> = [
-  { route: "Chat", label: "Chat", icon: "●" },
-  { route: "Voice", label: "Voice", icon: "◉" },
-];
+) as Partial<Record<MainRouteName, OperationArea>>;
+const labels: Record<MainRouteName, { label: string; icon: string }> = {
+  Chat: { label: "Chat", icon: "●" },
+  Voice: { label: "Voice", icon: "◉" },
+  More: { label: "More", icon: "•••" },
+  ...Object.fromEntries(
+    operationAreas.map((item) => [routeForArea[item.id], { label: item.label, icon: item.icon }]),
+  ),
+} as Record<MainRouteName, { label: string; icon: string }>;
+
 const linking: LinkingOptions<RootStackParamList> = {
   prefixes: ["vito://", "https://mikes-mac-mini-1.tail1706d3.ts.net"],
   config: {
     screens: {
-      Chat: "chat",
-      Voice: "voice",
-      More: "more",
-      Memory: "memory",
-      Skills: "skills",
-      Jobs: "jobs",
-      Apps: "apps",
-      Drive: "drive",
-      Traces: "traces",
-      PiSessions: "pi-sessions",
-      Settings: "settings",
-      Secrets: "secrets",
-      System: "system",
-      Server: "server",
-      Providers: "providers",
+      Main: {
+        screens: {
+          Chat: "chat",
+          Voice: "voice",
+          More: "more",
+          Memory: "memory",
+          Skills: "skills",
+          Jobs: "jobs",
+          Apps: "apps",
+          Drive: "drive",
+          Traces: "traces",
+          PiSessions: "pi-sessions",
+          Settings: "settings",
+          Secrets: "secrets",
+          System: "system",
+          Server: "server",
+          Providers: "providers",
+        },
+      },
+      MemoryResults: "memory/results/:query",
     },
   },
 };
@@ -110,7 +125,6 @@ export default function App() {
     void saveToken(null);
     setAuthState("login");
   }, []);
-
   if (authState === "loading")
     return (
       <SafeAreaView style={styles.loading}>
@@ -125,19 +139,33 @@ export default function App() {
         <LoginScreen onSuccess={() => setAuthState("authenticated")} />
       </SafeAreaView>
     );
-
   return (
     <SafeAreaView style={styles.safeArea}>
       <StatusBar style="light" />
-      <AuthenticatedApp
-        onUnauthorized={unauthorized}
-        onLogout={() => void logout().finally(() => setAuthState("login"))}
-      />
+      <NavigationContainer linking={linking}>
+        <RootStack.Navigator
+          screenOptions={{
+            headerShown: false,
+            animation: Platform.OS === "web" ? "none" : "slide_from_right",
+            contentStyle: styles.routeBackground,
+          }}
+        >
+          <RootStack.Screen name="Main">
+            {() => (
+              <MainTabs
+                onUnauthorized={unauthorized}
+                onLogout={() => void logout().finally(() => setAuthState("login"))}
+              />
+            )}
+          </RootStack.Screen>
+          <RootStack.Screen name="MemoryResults" component={MemoryResultsScreen} />
+        </RootStack.Navigator>
+      </NavigationContainer>
     </SafeAreaView>
   );
 }
 
-function AuthenticatedApp({
+function MainTabs({
   onUnauthorized,
   onLogout,
 }: {
@@ -146,62 +174,55 @@ function AuthenticatedApp({
 }) {
   const { width } = useWindowDimensions();
   const desktop = width >= 760;
-  const navigation = useNavigationContainerRef<RootStackParamList>();
-  const [current, setCurrent] = useState<RouteName>("Chat");
-  const navigate = (route: RouteName) => navigation.isReady() && navigation.navigate(route);
   return (
-    <NavigationContainer
-      ref={navigation}
-      linking={linking}
-      onReady={() => setCurrent((navigation.getCurrentRoute()?.name as RouteName) ?? "Chat")}
-      onStateChange={() => setCurrent((navigation.getCurrentRoute()?.name as RouteName) ?? "Chat")}
-    >
-      <View style={[styles.shell, desktop && styles.desktopShell]}>
-        {desktop && (
-          <DesktopNavigation current={current} onNavigate={navigate} onLogout={onLogout} />
-        )}
-        <View style={styles.routeContent}>
-          <Routes onUnauthorized={onUnauthorized} desktop={desktop} />
-        </View>
-        {!desktop && <MobileNavigation current={current} onNavigate={navigate} />}
-      </View>
-    </NavigationContainer>
-  );
-}
-
-function Routes({ onUnauthorized, desktop }: { onUnauthorized: () => void; desktop: boolean }) {
-  return (
-    <Stack.Navigator
+    <Tabs.Navigator
+      initialRouteName="Chat"
+      tabBar={(props) => <AdaptiveTabBar {...props} desktop={desktop} onLogout={onLogout} />}
       screenOptions={{
         headerShown: false,
-        animation: Platform.OS === "web" ? "none" : "slide_from_right",
-        contentStyle: styles.routeBackground,
+        sceneStyle: styles.routeBackground,
+        tabBarPosition: desktop ? "left" : "bottom",
+        animation: "none",
+        lazy: false,
       }}
     >
-      <Stack.Screen name="Chat">
-        {() => <ChatScreen onUnauthorized={onUnauthorized} />}
-      </Stack.Screen>
-      <Stack.Screen name="Voice">
+      <Tabs.Screen name="Chat">{() => <ChatScreen onUnauthorized={onUnauthorized} />}</Tabs.Screen>
+      <Tabs.Screen name="Voice">
         {() => (
           <ScreenFrame desktop={desktop}>
             <VoiceScreen onUnauthorized={onUnauthorized} />
           </ScreenFrame>
         )}
-      </Stack.Screen>
-      <Stack.Screen name="More">{() => <MoreMenu />}</Stack.Screen>
-      {(Object.entries(areaForRoute) as Array<[RouteName, OperationArea]>).map(([route, area]) => (
-        <Stack.Screen key={route} name={route}>
-          {({ navigation }) => (
-            <OperationRoute
-              area={area}
-              desktop={desktop}
-              onUnauthorized={onUnauthorized}
-              onBack={() => navigation.goBack()}
-            />
-          )}
-        </Stack.Screen>
-      ))}
-    </Stack.Navigator>
+      </Tabs.Screen>
+      <Tabs.Screen name="More" component={MoreMenu} />
+      {(Object.entries(areaForRoute) as Array<[MainRouteName, OperationArea]>).map(
+        ([route, area]) => (
+          <Tabs.Screen key={route} name={route}>
+            {() => <OperationRoute area={area} desktop={desktop} onUnauthorized={onUnauthorized} />}
+          </Tabs.Screen>
+        ),
+      )}
+    </Tabs.Navigator>
+  );
+}
+
+function MemoryResultsScreen({
+  route,
+  navigation,
+}: {
+  route: { params: { query: string } };
+  navigation: RootNavigation;
+}) {
+  return (
+    <ScrollView contentContainerStyle={styles.fullScreenOperation}>
+      <OperationsScreen
+        initialArea="memory"
+        initialMemoryQuery={route.params.query}
+        showAreaTabs={false}
+        onUnauthorized={() => navigation.navigate("Main", { screen: "More" })}
+        onBack={() => navigation.goBack()}
+      />
+    </ScrollView>
   );
 }
 
@@ -212,22 +233,18 @@ function ScreenFrame({ desktop, children }: { desktop: boolean; children: React.
     </ScrollView>
   );
 }
-
 function OperationRoute({
   area,
   desktop,
   onUnauthorized,
-  onBack,
 }: {
   area: OperationArea;
   desktop: boolean;
   onUnauthorized: () => void;
-  onBack: () => void;
 }) {
-  const scroll = useRef<ScrollView>(null);
+  const root = useNavigation<RootNavigation>();
   return (
     <ScrollView
-      ref={scroll}
       contentContainerStyle={[styles.operationFrame, desktop && styles.operationFrameDesktop]}
     >
       <OperationsScreen
@@ -235,82 +252,73 @@ function OperationRoute({
         initialArea={area}
         showAreaTabs={false}
         onUnauthorized={onUnauthorized}
-        onBack={desktop ? undefined : onBack}
-        onDetailOpen={() => scroll.current?.scrollTo({ y: 0, animated: false })}
+        onMemorySearch={
+          area === "memory" ? (query) => root.navigate("MemoryResults", { query }) : undefined
+        }
       />
     </ScrollView>
   );
 }
 
-function DesktopNavigation({
-  current,
-  onNavigate,
+function AdaptiveTabBar({
+  state,
+  navigation,
+  desktop,
   onLogout,
-}: {
-  current: RouteName;
-  onNavigate: (route: RouteName) => void;
-  onLogout: () => void;
-}) {
-  const items = [
-    ...primaryRoutes,
-    ...operationAreas.map((item) => ({
-      route: routeForArea[item.id],
-      label: item.label,
-      icon: item.icon,
-    })),
-  ];
-  return (
-    <View style={styles.sidebar}>
-      <View style={styles.brand}>
-        <View style={styles.brandMark}>
-          <Text style={styles.brandMarkText}>V</Text>
-        </View>
-        <View>
-          <Text style={styles.brandName}>Vito</Text>
-          <Text style={styles.brandCaption}>Personal operations</Text>
-        </View>
-      </View>
-      <ScrollView contentContainerStyle={styles.desktopNavList}>
-        {items.map((item) => (
-          <Pressable
-            key={item.route}
-            onPress={() => onNavigate(item.route)}
-            style={[styles.navItem, current === item.route && styles.navItemActive]}
-          >
-            <Text style={[styles.navIcon, current === item.route && styles.activeText]}>
-              {item.icon}
-            </Text>
-            <Text style={[styles.navLabel, current === item.route && styles.activeText]}>
-              {item.label}
-            </Text>
-          </Pressable>
-        ))}
-      </ScrollView>
-      <Pressable onPress={onLogout} style={styles.signOut}>
-        <Text style={styles.signOutText}>Sign out</Text>
-      </Pressable>
-    </View>
-  );
-}
-
-function MobileNavigation({
-  current,
-  onNavigate,
-}: {
-  current: RouteName;
-  onNavigate: (route: RouteName) => void;
-}) {
+}: BottomTabBarProps & { desktop: boolean; onLogout: () => void }) {
+  const current = state.routeNames[state.index] as MainRouteName;
+  const visible = desktop
+    ? (state.routeNames as MainRouteName[])
+    : (["Chat", "Voice", "More"] as MainRouteName[]);
   const moreActive = current === "More" || current in areaForRoute;
-  const items = [...primaryRoutes, { route: "More" as const, label: "More", icon: "•••" }];
+  if (desktop)
+    return (
+      <View style={styles.sidebar}>
+        <View style={styles.brand}>
+          <View style={styles.brandMark}>
+            <Text style={styles.brandMarkText}>V</Text>
+          </View>
+          <View>
+            <Text style={styles.brandName}>Vito</Text>
+            <Text style={styles.brandCaption}>Personal operations</Text>
+          </View>
+        </View>
+        <ScrollView contentContainerStyle={styles.desktopNavList}>
+          {visible
+            .filter((route) => route !== "More")
+            .map((route) => {
+              const item = labels[route];
+              return (
+                <Pressable
+                  key={route}
+                  onPress={() => navigation.navigate(route)}
+                  style={[styles.navItem, current === route && styles.navItemActive]}
+                >
+                  <Text style={[styles.navIcon, current === route && styles.activeText]}>
+                    {item.icon}
+                  </Text>
+                  <Text style={[styles.navLabel, current === route && styles.activeText]}>
+                    {item.label}
+                  </Text>
+                </Pressable>
+              );
+            })}
+        </ScrollView>
+        <Pressable onPress={onLogout} style={styles.signOut}>
+          <Text style={styles.signOutText}>Sign out</Text>
+        </Pressable>
+      </View>
+    );
   return (
     <View style={styles.tabBar}>
       <View style={styles.tabList}>
-        {items.map((item) => {
-          const active = item.route === "More" ? moreActive : current === item.route;
+        {visible.map((route) => {
+          const item = labels[route];
+          const active = route === "More" ? moreActive : current === route;
           return (
             <Pressable
-              key={item.route}
-              onPress={() => onNavigate(item.route)}
+              key={route}
+              onPress={() => navigation.navigate(route)}
               style={[styles.tabItem, active && styles.tabItemActive]}
             >
               <Text style={[styles.tabIcon, active && styles.activeText]}>{item.icon}</Text>
@@ -324,7 +332,7 @@ function MobileNavigation({
 }
 
 function MoreMenu() {
-  const navigation = useNavigation<Navigation>();
+  const navigation = useNavigation<NativeStackNavigationProp<MainTabParamList>>();
   return (
     <ScrollView contentContainerStyle={styles.moreScreen}>
       <View style={styles.moreGrid}>
@@ -349,9 +357,6 @@ function MoreMenu() {
 const styles = StyleSheet.create({
   safeArea: { flex: 1, backgroundColor: "#080a09" },
   loading: { flex: 1, backgroundColor: "#080a09", alignItems: "center", justifyContent: "center" },
-  shell: { flex: 1, minHeight: 0, overflow: "hidden", backgroundColor: "#080a09" },
-  desktopShell: { flexDirection: "row" },
-  routeContent: { flex: 1, minWidth: 0, minHeight: 0 },
   routeBackground: { backgroundColor: "#080a09" },
   sidebar: {
     width: 224,
@@ -407,19 +412,19 @@ const styles = StyleSheet.create({
     borderTopColor: "#242824",
     paddingBottom: Platform.OS === "ios" ? 20 : 8,
     paddingTop: 7,
-    zIndex: 30,
   },
   tabList: { flexDirection: "row", justifyContent: "space-around" },
   tabItem: { minWidth: 78, alignItems: "center", gap: 3, paddingVertical: 5, borderRadius: 10 },
   tabItemActive: { backgroundColor: "#171c15" },
   tabIcon: { color: "#737a73", fontSize: 18, height: 22, fontWeight: "700" },
   tabLabel: { color: "#737a73", fontSize: 10, fontWeight: "700" },
-  screenFrame: { flexGrow: 1, padding: 20, paddingBottom: 100 },
+  screenFrame: { flexGrow: 1, padding: 20, paddingBottom: 30 },
   screenFrameDesktop: { padding: 32 },
   screenPage: { width: "100%", maxWidth: 900, alignSelf: "center" },
-  operationFrame: { flexGrow: 1, padding: 18, paddingBottom: 100 },
+  operationFrame: { flexGrow: 1, padding: 18, paddingBottom: 30 },
   operationFrameDesktop: { padding: 28 },
-  moreScreen: { flexGrow: 1, padding: 18, paddingBottom: 100 },
+  fullScreenOperation: { flexGrow: 1, padding: 18, paddingBottom: 40 },
+  moreScreen: { flexGrow: 1, padding: 18, paddingBottom: 30 },
   moreGrid: { flexDirection: "row", flexWrap: "wrap", gap: 10 },
   moreCard: {
     width: "48%",

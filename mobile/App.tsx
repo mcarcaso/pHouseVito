@@ -50,6 +50,7 @@ type MainTabParamList = {
 type MainRouteName = keyof MainTabParamList;
 type RootStackParamList = {
   Main: NavigatorScreenParams<MainTabParamList> | undefined;
+  Operation: { area: OperationArea };
   MemoryResults: { query: string };
 };
 type RootNavigation = NativeStackNavigationProp<RootStackParamList>;
@@ -130,6 +131,7 @@ const linking: LinkingOptions<RootStackParamList> = {
           Providers: "providers",
         },
       },
+      Operation: "operation/:area",
       MemoryResults: "memory/results/:query",
     },
   },
@@ -195,6 +197,7 @@ function AppContent() {
               />
             )}
           </RootStack.Screen>
+          <RootStack.Screen name="Operation" component={RootOperationScreen} />
           <RootStack.Screen name="MemoryResults" component={MemoryResultsScreen} />
         </RootStack.Navigator>
       </NavigationContainer>
@@ -241,6 +244,30 @@ function MainTabs({
         ),
       )}
     </Tabs.Navigator>
+  );
+}
+
+function RootOperationScreen({
+  route,
+  navigation,
+}: {
+  route: { params: { area: OperationArea } };
+  navigation: RootNavigation;
+}) {
+  const styles = useThemeStyles(createStyles);
+  const area = route.params.area;
+  return (
+    <ScrollView contentContainerStyle={styles.fullScreenOperation}>
+      <OperationsScreen
+        initialArea={area}
+        showAreaTabs={false}
+        onUnauthorized={() => navigation.navigate("Main", { screen: "More" })}
+        onBack={() => navigation.goBack()}
+        onMemorySearch={
+          area === "memory" ? (query) => navigation.navigate("MemoryResults", { query }) : undefined
+        }
+      />
+    </ScrollView>
   );
 }
 
@@ -400,7 +427,7 @@ function DesktopNavItem({
 
 function MoreMenu() {
   const styles = useThemeStyles(createStyles);
-  const navigation = useNavigation<NativeStackNavigationProp<MainTabParamList>>();
+  const navigation = useNavigation<RootNavigation>();
   return (
     <ScrollView contentContainerStyle={styles.moreScreen}>
       {(["Intelligence", "Automation", "Operations", "Vito"] as const).map((group) => (
@@ -413,7 +440,7 @@ function MoreMenu() {
               return (
                 <Pressable
                   key={item.id}
-                  onPress={() => navigation.navigate(routeForArea[item.id])}
+                  onPress={() => navigation.navigate("Operation", { area: item.id })}
                   style={styles.moreRow}
                 >
                   <Ionicons name={meta.icon} size={18} style={styles.moreIcon} />

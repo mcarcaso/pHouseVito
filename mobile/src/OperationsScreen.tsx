@@ -782,14 +782,13 @@ export function OperationsScreen({
               <Text style={styles.backText}>‹</Text>
             </Pressable>
           )}
-          {area !== "memory" && (
+          {area !== "memory" && !onBack && (
             <Text style={[styles.title, styles.screenTitle]}>
               {showAreaTabs
                 ? "Run the family business."
                 : operationAreas.find((item) => item.id === area)?.label}
             </Text>
           )}
-          {onBack && <Text style={styles.compactRouteLabel}>Search results</Text>}
         </View>
       )}
       {showAreaTabs && (
@@ -1413,7 +1412,7 @@ const createStyles = (theme: VitoTheme) =>
       marginBottom: theme.space.xl,
     },
     compactTitleRow: { marginBottom: theme.space.xxl },
-    compactRouteLabel: { color: theme.colors.textSecondary, fontSize: 13, fontWeight: "700" },
+
     detailHeading: { flex: 1 },
     detailId: {
       color: theme.colors.textMuted,

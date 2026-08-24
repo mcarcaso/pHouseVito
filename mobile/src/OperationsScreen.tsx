@@ -984,7 +984,25 @@ export function OperationsScreen({
               <View key={`${name}-${index}`} style={styles.card}>
                 {memoryResult ? (
                   <View style={styles.cardMain}>
-                    <Text style={styles.cardTitle}>{title || name}</Text>
+                    <View style={styles.memoryHeader}>
+                      <Text style={[styles.cardTitle, styles.memoryTitle]}>{title || name}</Text>
+                      <Pressable
+                        accessibilityLabel={
+                          memoryExpanded ? "Collapse conversation" : "Expand conversation"
+                        }
+                        onPress={() =>
+                          setExpandedMemory((current) => {
+                            const next = new Set(current);
+                            if (next.has(memoryKey)) next.delete(memoryKey);
+                            else next.add(memoryKey);
+                            return next;
+                          })
+                        }
+                        style={styles.memoryExpandButton}
+                      >
+                        <Text style={styles.memoryExpandIcon}>{memoryExpanded ? "⌃" : "⌄"}</Text>
+                      </Pressable>
+                    </View>
                     {context && context !== "—" && (
                       <Text
                         selectable
@@ -1002,21 +1020,6 @@ export function OperationsScreen({
                         </Text>
                       </View>
                     )}
-                    <Pressable
-                      onPress={() =>
-                        setExpandedMemory((current) => {
-                          const next = new Set(current);
-                          if (next.has(memoryKey)) next.delete(memoryKey);
-                          else next.add(memoryKey);
-                          return next;
-                        })
-                      }
-                      style={styles.memoryExpandButton}
-                    >
-                      <Text style={styles.memoryExpandHint}>
-                        {memoryExpanded ? "Show less" : "Show conversation"}
-                      </Text>
-                    </Pressable>
                   </View>
                 ) : (
                   <Pressable onPress={() => void openRow(row, index)} style={styles.cardMain}>
@@ -1406,15 +1409,18 @@ const styles = StyleSheet.create({
     marginBottom: 7,
   },
   memoryExpansionText: { color: "#d9ddd7", fontSize: 12, lineHeight: 19, fontFamily: "monospace" },
+  memoryHeader: { flexDirection: "row", alignItems: "center", gap: 10 },
+  memoryTitle: { flex: 1 },
   memoryExpandButton: {
-    alignSelf: "flex-start",
-    marginTop: 10,
-    paddingHorizontal: 11,
-    paddingVertical: 7,
-    borderRadius: 14,
+    width: 30,
+    height: 30,
+    flexShrink: 0,
+    borderRadius: 15,
+    alignItems: "center",
+    justifyContent: "center",
     backgroundColor: "#25301e",
   },
-  memoryExpandHint: { color: "#b7f34a", fontSize: 10, fontWeight: "800" },
+  memoryExpandIcon: { color: "#b7f34a", fontSize: 18, fontWeight: "800", lineHeight: 20 },
   inlineActions: { flexDirection: "row", gap: 10, flexWrap: "wrap", justifyContent: "flex-end" },
   link: { color: "#b7f34a", fontSize: 12, fontWeight: "800" },
   deleteLink: { color: "#ff8d8d", fontSize: 12, fontWeight: "800" },

@@ -233,18 +233,6 @@ function AppContent() {
                         />
                       )
                     : undefined,
-                headerSearchBarOptions:
-                  area === "memory"
-                    ? {
-                        placeholder: "Search memory",
-                        hideWhenScrolling: false,
-                        obscureBackgroundDuringPresentation: false,
-                        onSearchButtonPress: (event) => {
-                          const query = event.nativeEvent.text.trim();
-                          if (query) navigation.navigate("MemoryResults", { query });
-                        },
-                      }
-                    : undefined,
               };
             }}
           />
@@ -365,24 +353,44 @@ function RootOperationScreen({
   navigation: RootNavigation;
 }) {
   const styles = useThemeStyles(createStyles);
+  const theme = useVitoTheme();
   const area = route.params.area;
+  const [query, setQuery] = useState("");
+  const openResults = (value: string) => {
+    const search = value.trim();
+    if (search) navigation.navigate("MemoryResults", { query: search });
+  };
   return (
-    <ScrollView
-      automaticallyAdjustContentInsets
-      contentInsetAdjustmentBehavior={Platform.OS === "ios" ? "automatic" : "never"}
-      automaticallyAdjustsScrollIndicatorInsets
-      contentContainerStyle={styles.fullScreenOperation}
-    >
-      <OperationsScreen
-        initialArea={area}
-        showAreaTabs={false}
-        onUnauthorized={() => navigation.navigate("Main", { screen: "More" })}
-        hideMemorySearch={area === "memory"}
-        onMemorySearch={
-          area === "memory" ? (query) => navigation.navigate("MemoryResults", { query }) : undefined
-        }
-      />
-    </ScrollView>
+    <View style={styles.rootOperation}>
+      {area === "memory" && Platform.OS !== "web" && (
+        <View style={styles.nativeMemorySearch}>
+          <Ionicons name="search-outline" size={17} color={theme.colors.accent} />
+          <TextInput
+            value={query}
+            onChangeText={setQuery}
+            onSubmitEditing={() => openResults(query)}
+            placeholder="Search memory"
+            placeholderTextColor={theme.colors.textMuted}
+            returnKeyType="search"
+            style={styles.nativeMemorySearchInput}
+          />
+        </View>
+      )}
+      <ScrollView
+        automaticallyAdjustContentInsets
+        contentInsetAdjustmentBehavior={Platform.OS === "ios" ? "automatic" : "never"}
+        automaticallyAdjustsScrollIndicatorInsets
+        contentContainerStyle={styles.fullScreenOperation}
+      >
+        <OperationsScreen
+          initialArea={area}
+          showAreaTabs={false}
+          onUnauthorized={() => navigation.navigate("Main", { screen: "More" })}
+          hideMemorySearch={area === "memory"}
+          onMemorySearch={area === "memory" ? openResults : undefined}
+        />
+      </ScrollView>
+    </View>
   );
 }
 
@@ -687,7 +695,23 @@ const createStyles = (theme: VitoTheme) =>
       paddingHorizontal: theme.space.giant,
       paddingVertical: theme.space.huge,
     },
+    rootOperation: { flex: 1, backgroundColor: theme.colors.canvas },
     fullScreenOperation: { flexGrow: 1, padding: theme.space.xl, paddingBottom: theme.space.huge },
+    nativeMemorySearch: {
+      height: 50,
+      flexDirection: "row",
+      alignItems: "center",
+      gap: theme.space.md,
+      marginHorizontal: theme.space.xl,
+      borderBottomWidth: StyleSheet.hairlineWidth,
+      borderBottomColor: theme.colors.separatorStrong,
+    },
+    nativeMemorySearchInput: {
+      flex: 1,
+      color: theme.colors.text,
+      fontSize: 15,
+      paddingVertical: theme.space.md,
+    },
     webStackHeader: {
       minHeight: 58,
       flexDirection: "row",

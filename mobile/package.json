@@ -3,10 +3,12 @@
   "version": "1.0.0",
   "main": "index.ts",
   "dependencies": {
-    "@tanstack/react-query": "^5.101.4",
-    "@vito/client": "file:../packages/vito-client",
     "@config-plugins/react-native-webrtc": "^13.0.0",
     "@expo/metro-runtime": "~6.1.2",
+    "@react-navigation/native": "^7.3.17",
+    "@react-navigation/native-stack": "^7.18.9",
+    "@tanstack/react-query": "^5.101.4",
+    "@vito/client": "file:../packages/vito-client",
     "expo": "~54.0.37",
     "expo-asset": "~12.0.13",
     "expo-audio": "~1.1.1",
@@ -19,6 +21,8 @@
     "react": "19.1.0",
     "react-dom": "19.1.0",
     "react-native": "0.81.5",
+    "react-native-safe-area-context": "~5.6.0",
+    "react-native-screens": "~4.16.0",
     "react-native-web": "^0.21.2",
     "react-native-webrtc": "^124.0.8",
     "zod": "^3.25.76"

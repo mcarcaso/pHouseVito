@@ -1,10 +1,15 @@
+import {
+  NavigationContainer,
+  type LinkingOptions,
+  useNavigation,
+  useNavigationContainerRef,
+} from "@react-navigation/native";
+import {
+  createNativeStackNavigator,
+  type NativeStackNavigationProp,
+} from "@react-navigation/native-stack";
 import { StatusBar } from "expo-status-bar";
-import { useCallback, useEffect, useState } from "react";
-import { ChatScreen } from "./src/ChatScreen";
-import { LoginScreen } from "./src/LoginScreen";
-import { operationAreas, OperationsScreen, type OperationArea } from "./src/OperationsScreen";
-import { VoiceScreen } from "./src/VoiceScreen";
-import { checkAuth, loadToken, logout, saveToken } from "./src/api";
+import { useCallback, useEffect, useRef, useState } from "react";
 import {
   ActivityIndicator,
   Platform,
@@ -16,22 +21,80 @@ import {
   useWindowDimensions,
   View,
 } from "react-native";
+import { ChatScreen } from "./src/ChatScreen";
+import { LoginScreen } from "./src/LoginScreen";
+import { operationAreas, OperationsScreen, type OperationArea } from "./src/OperationsScreen";
+import { VoiceScreen } from "./src/VoiceScreen";
+import { checkAuth, loadToken, logout, saveToken } from "./src/api";
 
-type Screen = "chat" | "voice" | "more";
+type RootStackParamList = {
+  Chat: undefined;
+  Voice: undefined;
+  More: undefined;
+  Memory: undefined;
+  Skills: undefined;
+  Jobs: undefined;
+  Apps: undefined;
+  Drive: undefined;
+  Traces: undefined;
+  PiSessions: undefined;
+  Settings: undefined;
+  Secrets: undefined;
+  System: undefined;
+  Server: undefined;
+  Providers: undefined;
+};
 
-const navigation: Array<{ id: Screen; label: string; icon: string }> = [
-  { id: "chat", label: "Chat", icon: "●" },
-  { id: "voice", label: "Voice", icon: "◉" },
-  { id: "more", label: "More", icon: "•••" },
+type RouteName = keyof RootStackParamList;
+type Navigation = NativeStackNavigationProp<RootStackParamList>;
+const Stack = createNativeStackNavigator<RootStackParamList>();
+
+const routeForArea: Record<OperationArea, RouteName> = {
+  memory: "Memory",
+  skills: "Skills",
+  jobs: "Jobs",
+  apps: "Apps",
+  drive: "Drive",
+  traces: "Traces",
+  pi: "PiSessions",
+  settings: "Settings",
+  secrets: "Secrets",
+  system: "System",
+  server: "Server",
+  providers: "Providers",
+};
+const areaForRoute = Object.fromEntries(
+  Object.entries(routeForArea).map(([area, route]) => [route, area]),
+) as Partial<Record<RouteName, OperationArea>>;
+const primaryRoutes: Array<{ route: RouteName; label: string; icon: string }> = [
+  { route: "Chat", label: "Chat", icon: "●" },
+  { route: "Voice", label: "Voice", icon: "◉" },
 ];
+const linking: LinkingOptions<RootStackParamList> = {
+  prefixes: ["vito://", "https://mikes-mac-mini-1.tail1706d3.ts.net"],
+  config: {
+    screens: {
+      Chat: "chat",
+      Voice: "voice",
+      More: "more",
+      Memory: "memory",
+      Skills: "skills",
+      Jobs: "jobs",
+      Apps: "apps",
+      Drive: "drive",
+      Traces: "traces",
+      PiSessions: "pi-sessions",
+      Settings: "settings",
+      Secrets: "secrets",
+      System: "system",
+      Server: "server",
+      Providers: "providers",
+    },
+  },
+};
 
 export default function App() {
-  const [screen, setScreen] = useState<Screen>("chat");
-  const [operationArea, setOperationArea] = useState<OperationArea | null>(null);
   const [authState, setAuthState] = useState<"loading" | "authenticated" | "login">("loading");
-  const { width } = useWindowDimensions();
-  const desktop = width >= 760;
-
   useEffect(() => {
     void (async () => {
       await loadToken();
@@ -43,157 +106,234 @@ export default function App() {
       }
     })();
   }, []);
-
   const unauthorized = useCallback(() => {
     void saveToken(null);
     setAuthState("login");
   }, []);
 
-  if (authState === "loading") {
+  if (authState === "loading")
     return (
       <SafeAreaView style={styles.loading}>
         <StatusBar style="light" />
         <ActivityIndicator color="#b7f34a" />
       </SafeAreaView>
     );
-  }
-
-  if (authState === "login") {
+  if (authState === "login")
     return (
       <SafeAreaView style={styles.safeArea}>
         <StatusBar style="light" />
         <LoginScreen onSuccess={() => setAuthState("authenticated")} />
       </SafeAreaView>
     );
-  }
-
-  const content =
-    screen === "chat" ? (
-      <ChatScreen onUnauthorized={unauthorized} />
-    ) : screen === "voice" ? (
-      <VoiceScreen onUnauthorized={unauthorized} />
-    ) : desktop ? (
-      <View>
-        <OperationsScreen onUnauthorized={unauthorized} />
-        <Button
-          title="Sign out"
-          secondary
-          onPress={() => void logout().finally(() => setAuthState("login"))}
-        />
-      </View>
-    ) : operationArea ? (
-      <OperationsScreen
-        key={operationArea}
-        onUnauthorized={unauthorized}
-        initialArea={operationArea}
-        showAreaTabs={false}
-        onBack={() => setOperationArea(null)}
-      />
-    ) : (
-      <MoreMenu
-        onSelect={setOperationArea}
-        onLogout={() => void logout().finally(() => setAuthState("login"))}
-      />
-    );
 
   return (
     <SafeAreaView style={styles.safeArea}>
       <StatusBar style="light" />
-      <View style={[styles.shell, desktop && styles.shellDesktop]}>
-        {desktop && <Navigation screen={screen} setScreen={setScreen} desktop />}
-        {screen === "chat" ? (
-          <View style={[styles.content, styles.fullChatContent]}>
-            <View style={[styles.page, styles.fullChatPage]}>{content}</View>
-          </View>
-        ) : screen === "voice" ? (
-          <View style={[styles.content, styles.chatContent, desktop && styles.contentDesktop]}>
-            <View style={[styles.page, styles.chatPage]}>{content}</View>
-          </View>
-        ) : (
-          <ScrollView contentContainerStyle={[styles.content, desktop && styles.contentDesktop]}>
-            <View style={styles.page}>{content}</View>
-          </ScrollView>
-        )}
-        {!desktop && (
-          <Navigation
-            screen={screen}
-            setScreen={(next) => {
-              if (next === "more") setOperationArea(null);
-              setScreen(next);
-            }}
-          />
-        )}
-      </View>
+      <AuthenticatedApp
+        onUnauthorized={unauthorized}
+        onLogout={() => void logout().finally(() => setAuthState("login"))}
+      />
     </SafeAreaView>
   );
 }
 
-function Navigation({
-  screen,
-  setScreen,
-  desktop = false,
+function AuthenticatedApp({
+  onUnauthorized,
+  onLogout,
 }: {
-  screen: Screen;
-  setScreen: (screen: Screen) => void;
-  desktop?: boolean;
+  onUnauthorized: () => void;
+  onLogout: () => void;
 }) {
+  const { width } = useWindowDimensions();
+  const desktop = width >= 760;
+  const navigation = useNavigationContainerRef<RootStackParamList>();
+  const [current, setCurrent] = useState<RouteName>("Chat");
+  const navigate = (route: RouteName) => navigation.isReady() && navigation.navigate(route);
   return (
-    <View style={desktop ? styles.sidebar : styles.tabBar}>
-      {desktop && (
-        <View style={styles.brand}>
-          <View style={styles.brandMark}>
-            <Text style={styles.brandMarkText}>V</Text>
-          </View>
-          <View>
-            <Text style={styles.brandName}>Vito</Text>
-            <Text style={styles.brandCaption}>Personal operations</Text>
-          </View>
+    <NavigationContainer
+      ref={navigation}
+      linking={linking}
+      onReady={() => setCurrent((navigation.getCurrentRoute()?.name as RouteName) ?? "Chat")}
+      onStateChange={() => setCurrent((navigation.getCurrentRoute()?.name as RouteName) ?? "Chat")}
+    >
+      <View style={[styles.shell, desktop && styles.desktopShell]}>
+        {desktop && (
+          <DesktopNavigation current={current} onNavigate={navigate} onLogout={onLogout} />
+        )}
+        <View style={styles.routeContent}>
+          <Routes onUnauthorized={onUnauthorized} desktop={desktop} />
         </View>
-      )}
-      <View style={desktop ? styles.navList : styles.tabList}>
-        {navigation.map((item) => {
-          const active = item.id === screen;
-          return (
-            <Pressable
-              accessibilityRole="button"
-              key={item.id}
-              onPress={() => setScreen(item.id)}
-              style={({ pressed }) => [
-                desktop ? styles.navItem : styles.tabItem,
-                active && (desktop ? styles.navItemActive : styles.tabItemActive),
-                pressed && styles.pressed,
-              ]}
-            >
-              <Text style={[styles.navIcon, active && styles.activeText]}>{item.icon}</Text>
-              <Text
-                style={[desktop ? styles.navLabel : styles.tabLabel, active && styles.activeText]}
-              >
-                {item.label}
-              </Text>
-            </Pressable>
-          );
-        })}
+        {!desktop && <MobileNavigation current={current} onNavigate={navigate} />}
       </View>
-      {desktop && <Text style={styles.sidebarFooter}>EXPO FOUNDATION · 0.1</Text>}
+    </NavigationContainer>
+  );
+}
+
+function Routes({ onUnauthorized, desktop }: { onUnauthorized: () => void; desktop: boolean }) {
+  return (
+    <Stack.Navigator
+      screenOptions={{
+        headerShown: false,
+        animation: Platform.OS === "web" ? "none" : "slide_from_right",
+        contentStyle: styles.routeBackground,
+      }}
+    >
+      <Stack.Screen name="Chat">
+        {() => <ChatScreen onUnauthorized={onUnauthorized} />}
+      </Stack.Screen>
+      <Stack.Screen name="Voice">
+        {() => (
+          <ScreenFrame desktop={desktop}>
+            <VoiceScreen onUnauthorized={onUnauthorized} />
+          </ScreenFrame>
+        )}
+      </Stack.Screen>
+      <Stack.Screen name="More">{() => <MoreMenu />}</Stack.Screen>
+      {(Object.entries(areaForRoute) as Array<[RouteName, OperationArea]>).map(([route, area]) => (
+        <Stack.Screen key={route} name={route}>
+          {({ navigation }) => (
+            <OperationRoute
+              area={area}
+              desktop={desktop}
+              onUnauthorized={onUnauthorized}
+              onBack={() => navigation.goBack()}
+            />
+          )}
+        </Stack.Screen>
+      ))}
+    </Stack.Navigator>
+  );
+}
+
+function ScreenFrame({ desktop, children }: { desktop: boolean; children: React.ReactNode }) {
+  return (
+    <ScrollView contentContainerStyle={[styles.screenFrame, desktop && styles.screenFrameDesktop]}>
+      <View style={styles.screenPage}>{children}</View>
+    </ScrollView>
+  );
+}
+
+function OperationRoute({
+  area,
+  desktop,
+  onUnauthorized,
+  onBack,
+}: {
+  area: OperationArea;
+  desktop: boolean;
+  onUnauthorized: () => void;
+  onBack: () => void;
+}) {
+  const scroll = useRef<ScrollView>(null);
+  return (
+    <ScrollView
+      ref={scroll}
+      contentContainerStyle={[styles.operationFrame, desktop && styles.operationFrameDesktop]}
+    >
+      <OperationsScreen
+        key={area}
+        initialArea={area}
+        showAreaTabs={false}
+        onUnauthorized={onUnauthorized}
+        onBack={desktop ? undefined : onBack}
+        onDetailOpen={() => scroll.current?.scrollTo({ y: 0, animated: false })}
+      />
+    </ScrollView>
+  );
+}
+
+function DesktopNavigation({
+  current,
+  onNavigate,
+  onLogout,
+}: {
+  current: RouteName;
+  onNavigate: (route: RouteName) => void;
+  onLogout: () => void;
+}) {
+  const items = [
+    ...primaryRoutes,
+    ...operationAreas.map((item) => ({
+      route: routeForArea[item.id],
+      label: item.label,
+      icon: item.icon,
+    })),
+  ];
+  return (
+    <View style={styles.sidebar}>
+      <View style={styles.brand}>
+        <View style={styles.brandMark}>
+          <Text style={styles.brandMarkText}>V</Text>
+        </View>
+        <View>
+          <Text style={styles.brandName}>Vito</Text>
+          <Text style={styles.brandCaption}>Personal operations</Text>
+        </View>
+      </View>
+      <ScrollView contentContainerStyle={styles.desktopNavList}>
+        {items.map((item) => (
+          <Pressable
+            key={item.route}
+            onPress={() => onNavigate(item.route)}
+            style={[styles.navItem, current === item.route && styles.navItemActive]}
+          >
+            <Text style={[styles.navIcon, current === item.route && styles.activeText]}>
+              {item.icon}
+            </Text>
+            <Text style={[styles.navLabel, current === item.route && styles.activeText]}>
+              {item.label}
+            </Text>
+          </Pressable>
+        ))}
+      </ScrollView>
+      <Pressable onPress={onLogout} style={styles.signOut}>
+        <Text style={styles.signOutText}>Sign out</Text>
+      </Pressable>
     </View>
   );
 }
 
-function MoreMenu({
-  onSelect,
-  onLogout,
+function MobileNavigation({
+  current,
+  onNavigate,
 }: {
-  onSelect: (area: OperationArea) => void;
-  onLogout: () => void;
+  current: RouteName;
+  onNavigate: (route: RouteName) => void;
 }) {
+  const moreActive = current === "More" || current in areaForRoute;
+  const items = [...primaryRoutes, { route: "More" as const, label: "More", icon: "•••" }];
   return (
-    <View>
-      <Text style={styles.eyebrow}>MORE</Text>
-      <Text style={styles.title}>Operations</Text>
-      <Text style={styles.subtitle}>Choose where you want to work.</Text>
+    <View style={styles.tabBar}>
+      <View style={styles.tabList}>
+        {items.map((item) => {
+          const active = item.route === "More" ? moreActive : current === item.route;
+          return (
+            <Pressable
+              key={item.route}
+              onPress={() => onNavigate(item.route)}
+              style={[styles.tabItem, active && styles.tabItemActive]}
+            >
+              <Text style={[styles.tabIcon, active && styles.activeText]}>{item.icon}</Text>
+              <Text style={[styles.tabLabel, active && styles.activeText]}>{item.label}</Text>
+            </Pressable>
+          );
+        })}
+      </View>
+    </View>
+  );
+}
+
+function MoreMenu() {
+  const navigation = useNavigation<Navigation>();
+  return (
+    <ScrollView contentContainerStyle={styles.moreScreen}>
       <View style={styles.moreGrid}>
         {operationAreas.map((item) => (
-          <Pressable key={item.id} onPress={() => onSelect(item.id)} style={styles.moreCard}>
+          <Pressable
+            key={item.id}
+            onPress={() => navigation.navigate(routeForArea[item.id])}
+            style={styles.moreCard}
+          >
             <View style={styles.moreCardLabel}>
               <Text style={styles.moreCardIcon}>{item.icon}</Text>
               <Text style={styles.moreCardTitle}>{item.label}</Text>
@@ -202,33 +342,7 @@ function MoreMenu({
           </Pressable>
         ))}
       </View>
-      <Pressable onPress={onLogout} style={styles.logoutButton}>
-        <Text style={styles.logoutText}>Sign out</Text>
-      </Pressable>
-    </View>
-  );
-}
-
-function Button({
-  title,
-  onPress,
-  secondary = false,
-}: {
-  title: string;
-  onPress: () => void;
-  secondary?: boolean;
-}) {
-  return (
-    <Pressable
-      onPress={onPress}
-      style={({ pressed }) => [
-        styles.button,
-        secondary && styles.buttonSecondary,
-        pressed && styles.pressed,
-      ]}
-    >
-      <Text style={[styles.buttonText, secondary && styles.buttonTextSecondary]}>{title}</Text>
-    </Pressable>
+    </ScrollView>
   );
 }
 
@@ -236,194 +350,91 @@ const styles = StyleSheet.create({
   safeArea: { flex: 1, backgroundColor: "#080a09" },
   loading: { flex: 1, backgroundColor: "#080a09", alignItems: "center", justifyContent: "center" },
   shell: { flex: 1, minHeight: 0, overflow: "hidden", backgroundColor: "#080a09" },
-  shellDesktop: { flexDirection: "row" },
-  content: { flexGrow: 1, padding: 22, paddingBottom: 116 },
-  chatContent: { flex: 1 },
-  fullChatContent: { flex: 1, padding: 0, paddingBottom: Platform.OS === "ios" ? 76 : 64 },
-  contentDesktop: { padding: 48, paddingBottom: 48 },
-  page: { width: "100%", maxWidth: 860, alignSelf: "center" },
-  chatPage: { flex: 1 },
-  fullChatPage: { flex: 1, width: "100%" },
+  desktopShell: { flexDirection: "row" },
+  routeContent: { flex: 1, minWidth: 0, minHeight: 0 },
+  routeBackground: { backgroundColor: "#080a09" },
   sidebar: {
-    width: 240,
-    padding: 24,
+    width: 224,
+    paddingHorizontal: 14,
+    paddingTop: 18,
+    paddingBottom: 14,
     backgroundColor: "#0d100e",
     borderRightWidth: 1,
     borderRightColor: "#202421",
   },
-  brand: { flexDirection: "row", alignItems: "center", gap: 12, marginBottom: 42 },
+  brand: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 11,
+    paddingHorizontal: 8,
+    marginBottom: 18,
+  },
   brandMark: {
-    width: 40,
-    height: 40,
+    width: 38,
+    height: 38,
     borderRadius: 12,
     backgroundColor: "#b7f34a",
     alignItems: "center",
     justifyContent: "center",
   },
-  brandMarkText: { color: "#11150d", fontWeight: "900", fontSize: 21 },
-  brandName: { color: "#f5f7f4", fontSize: 18, fontWeight: "800" },
+  brandMarkText: { color: "#11150d", fontWeight: "900", fontSize: 20 },
+  brandName: { color: "#f5f7f4", fontSize: 17, fontWeight: "800" },
   brandCaption: {
     color: "#6f776f",
-    fontSize: 10,
+    fontSize: 8,
     marginTop: 2,
     textTransform: "uppercase",
     letterSpacing: 0.8,
   },
-  navList: { gap: 7, flex: 1 },
+  desktopNavList: { gap: 2, paddingBottom: 10 },
   navItem: {
+    minHeight: 39,
     flexDirection: "row",
     alignItems: "center",
-    gap: 13,
-    paddingVertical: 12,
-    paddingHorizontal: 13,
-    borderRadius: 11,
+    gap: 10,
+    paddingHorizontal: 11,
+    borderRadius: 10,
   },
   navItemActive: { backgroundColor: "#1a2117" },
-  navIcon: { color: "#767d76", fontSize: 20, width: 28, textAlign: "center", fontWeight: "700" },
-  navLabel: { color: "#949b94", fontWeight: "600", fontSize: 14 },
+  navIcon: { color: "#767d76", fontSize: 16, width: 24, textAlign: "center", fontWeight: "700" },
+  navLabel: { color: "#949b94", fontWeight: "600", fontSize: 13 },
   activeText: { color: "#c5fb64" },
-  sidebarFooter: { color: "#485048", fontSize: 9, letterSpacing: 1.2 },
+  signOut: { padding: 10, alignItems: "center" },
+  signOutText: { color: "#687068", fontSize: 11, fontWeight: "700" },
   tabBar: {
-    position: "absolute",
-    bottom: 0,
-    left: 0,
-    right: 0,
     backgroundColor: "#0d100ef2",
     borderTopWidth: 1,
     borderTopColor: "#242824",
-    paddingBottom: Platform.OS === "ios" ? 24 : 10,
-    paddingTop: 8,
-    zIndex: 10,
+    paddingBottom: Platform.OS === "ios" ? 20 : 8,
+    paddingTop: 7,
+    zIndex: 30,
   },
   tabList: { flexDirection: "row", justifyContent: "space-around" },
-  tabItem: { minWidth: 78, alignItems: "center", gap: 3, paddingVertical: 6, borderRadius: 10 },
+  tabItem: { minWidth: 78, alignItems: "center", gap: 3, paddingVertical: 5, borderRadius: 10 },
   tabItemActive: { backgroundColor: "#171c15" },
+  tabIcon: { color: "#737a73", fontSize: 18, height: 22, fontWeight: "700" },
   tabLabel: { color: "#737a73", fontSize: 10, fontWeight: "700" },
-  pressed: { opacity: 0.68 },
-  eyebrow: {
-    color: "#a9e83a",
-    fontSize: 11,
-    fontWeight: "800",
-    letterSpacing: 2.1,
-    marginTop: 10,
-    marginBottom: 15,
-  },
-  title: {
-    color: "#f0f2ef",
-    fontSize: 42,
-    lineHeight: 47,
-    fontWeight: "800",
-    letterSpacing: -1.8,
-    maxWidth: 680,
-  },
-  subtitle: { color: "#899189", fontSize: 16, lineHeight: 25, marginTop: 18, maxWidth: 650 },
-  card: {
-    marginTop: 38,
-    padding: 22,
-    backgroundColor: "#111411",
-    borderWidth: 1,
-    borderColor: "#282d28",
-    borderRadius: 20,
-  },
-  cardHeader: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-    gap: 16,
-  },
-  cardLabel: { color: "#687068", fontSize: 10, letterSpacing: 1.5, fontWeight: "800" },
-  cardTitle: { color: "#e9ece8", fontSize: 21, fontWeight: "700", marginTop: 5 },
-  statusPill: {
-    minWidth: 86,
-    height: 34,
-    paddingHorizontal: 12,
-    borderRadius: 18,
-    flexDirection: "row",
-    gap: 7,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  statusOnline: { backgroundColor: "#162413" },
-  statusNeutral: { backgroundColor: "#202320" },
-  statusDot: { width: 7, height: 7, borderRadius: 4 },
-  dotOnline: { backgroundColor: "#a9e83a" },
-  dotOffline: { backgroundColor: "#ef6a62" },
-  statusText: { color: "#b7bcb7", fontSize: 12, fontWeight: "700" },
-  statusTextOnline: { color: "#c4f56b" },
-  rule: { height: 1, backgroundColor: "#252925", marginVertical: 20 },
-  endpointLabel: { color: "#626962", fontSize: 9, letterSpacing: 1.4, fontWeight: "800" },
-  endpoint: {
-    color: "#b9c0b9",
-    fontSize: 13,
-    marginTop: 7,
-    fontFamily: Platform.select({ ios: "Menlo", android: "monospace", default: "monospace" }),
-  },
-  checkedText: { color: "#5e655e", fontSize: 11, marginTop: 10 },
-  errorText: { color: "#ef827b", fontSize: 12, marginTop: 10 },
-  actions: { flexDirection: "row", flexWrap: "wrap", gap: 10, marginTop: 22 },
-  button: {
-    backgroundColor: "#b7f34a",
-    minHeight: 44,
-    paddingHorizontal: 18,
-    borderRadius: 11,
-    justifyContent: "center",
-    alignItems: "center",
-  },
-  buttonSecondary: { backgroundColor: "#202420", borderWidth: 1, borderColor: "#303630" },
-  buttonText: { color: "#11150d", fontWeight: "800", fontSize: 13 },
-  buttonTextSecondary: { color: "#d3d8d2" },
-  smallCard: {
-    marginTop: 14,
-    borderWidth: 1,
-    borderColor: "#202520",
-    borderRadius: 16,
-    padding: 18,
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 16,
-  },
-  smallCardNumber: { color: "#a9e83a", fontSize: 12, fontWeight: "800", letterSpacing: 1 },
-  smallCardBody: { flex: 1 },
-  smallCardTitle: { color: "#dce0dc", fontSize: 15, fontWeight: "700" },
+  screenFrame: { flexGrow: 1, padding: 20, paddingBottom: 100 },
+  screenFrameDesktop: { padding: 32 },
+  screenPage: { width: "100%", maxWidth: 900, alignSelf: "center" },
+  operationFrame: { flexGrow: 1, padding: 18, paddingBottom: 100 },
+  operationFrameDesktop: { padding: 28 },
+  moreScreen: { flexGrow: 1, padding: 18, paddingBottom: 100 },
   moreGrid: { flexDirection: "row", flexWrap: "wrap", gap: 10 },
   moreCard: {
     width: "48%",
-    minHeight: 82,
+    minHeight: 78,
     backgroundColor: "#151914",
     borderWidth: 1,
     borderColor: "#30362d",
     borderRadius: 16,
-    padding: 15,
+    padding: 14,
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
   },
-  moreCardLabel: { flex: 1, gap: 8 },
-  moreCardIcon: { fontSize: 24 },
-  moreCardTitle: { color: "#f3f5ef", fontWeight: "800", fontSize: 15 },
-  moreArrow: { color: "#b7f34a", fontSize: 26 },
-  logoutButton: { marginTop: 20, alignItems: "center", padding: 14 },
-  logoutText: { color: "#92998f", fontWeight: "700" },
-  smallCardText: { color: "#737b73", fontSize: 12, lineHeight: 18, marginTop: 4 },
-  comingCard: {
-    marginTop: 40,
-    padding: 28,
-    minHeight: 280,
-    borderRadius: 20,
-    backgroundColor: "#111411",
-    borderWidth: 1,
-    borderColor: "#282d28",
-    alignItems: "flex-start",
-    justifyContent: "center",
-  },
-  comingMark: { color: "#b7f34a", fontSize: 36, fontWeight: "900", marginBottom: 22 },
-  comingTitle: { color: "#eef1ed", fontSize: 22, fontWeight: "800" },
-  comingText: {
-    color: "#7f877f",
-    fontSize: 14,
-    lineHeight: 21,
-    marginTop: 9,
-    marginBottom: 24,
-    maxWidth: 500,
-  },
+  moreCardLabel: { flex: 1, gap: 7 },
+  moreCardIcon: { fontSize: 22 },
+  moreCardTitle: { color: "#f3f5ef", fontWeight: "800", fontSize: 14 },
+  moreArrow: { color: "#b7f34a", fontSize: 24 },
 });

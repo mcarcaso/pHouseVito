@@ -2,6 +2,7 @@
   "expo": {
     "name": "Vito",
     "slug": "vito-mobile",
+    "scheme": "vito",
     "version": "0.1.0",
     "orientation": "default",
     "icon": "./assets/icon.png",

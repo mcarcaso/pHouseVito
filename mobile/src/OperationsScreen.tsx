@@ -181,6 +181,207 @@ function StructuredRows({ data, kind }: { data: unknown; kind: "traces" | "pi" }
   );
 }
 
+function humanize(key: string): string {
+  return key
+    .replaceAll("_", " ")
+    .replace(/([a-z])([A-Z])/g, "$1 $2")
+    .replace(/^./, (letter) => letter.toUpperCase());
+}
+
+function displayValue(value: unknown): string {
+  if (value === null || value === undefined) return "—";
+  if (typeof value === "boolean") return value ? "Yes" : "No";
+  if (typeof value === "string") return value;
+  if (typeof value === "number") return value.toLocaleString();
+  return pretty(value);
+}
+
+function StructuredDetail({ value }: { value: unknown }) {
+  if (typeof value === "string")
+    return (
+      <Text selectable style={styles.detailProse}>
+        {value}
+      </Text>
+    );
+  if (Array.isArray(value))
+    return (
+      <View style={styles.detailList}>
+        {value.map((item, index) => (
+          <View key={index} style={styles.detailGroup}>
+            <Text style={styles.detailGroupTitle}>Item {index + 1}</Text>
+            <StructuredDetail value={item} />
+          </View>
+        ))}
+      </View>
+    );
+  if (!value || typeof value !== "object")
+    return <Text style={styles.detailValue}>{displayValue(value)}</Text>;
+  return (
+    <View style={styles.fieldList}>
+      {Object.entries(value as Record<string, unknown>).map(([key, field]) => {
+        const complex = field !== null && typeof field === "object";
+        return (
+          <View key={key} style={complex ? styles.detailGroup : styles.fieldRow}>
+            <Text style={complex ? styles.detailGroupTitle : styles.fieldLabel}>
+              {humanize(key)}
+            </Text>
+            {complex ? (
+              <StructuredDetail value={field} />
+            ) : (
+              <Text selectable style={styles.fieldValue}>
+                {displayValue(field)}
+              </Text>
+            )}
+          </View>
+        );
+      })}
+    </View>
+  );
+}
+
+function updatePath(value: unknown, path: string[], next: unknown): unknown {
+  if (path.length === 0) return next;
+  const [head, ...rest] = path;
+  const object =
+    value && typeof value === "object" && !Array.isArray(value)
+      ? { ...(value as Record<string, unknown>) }
+      : {};
+  object[head] = updatePath(object[head], rest, next);
+  return object;
+}
+
+function ConfigFields({
+  value,
+  path = [],
+  onUpdate,
+}: {
+  value: unknown;
+  path?: string[];
+  onUpdate: (path: string[], value: unknown) => void;
+}) {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return null;
+  return (
+    <View style={styles.configFields}>
+      {Object.entries(value as Record<string, unknown>).map(([key, field]) => {
+        const fieldPath = [...path, key];
+        if (field && typeof field === "object" && !Array.isArray(field))
+          return (
+            <View key={key} style={styles.configGroup}>
+              <Text style={styles.configGroupTitle}>{humanize(key)}</Text>
+              <ConfigFields value={field} path={fieldPath} onUpdate={onUpdate} />
+            </View>
+          );
+        const serialized = Array.isArray(field) ? pretty(field) : String(field ?? "");
+        return (
+          <View key={key} style={styles.configField}>
+            <Text style={styles.fieldLabel}>{humanize(key)}</Text>
+            {typeof field === "boolean" ? (
+              <Pressable
+                onPress={() => onUpdate(fieldPath, !field)}
+                style={[styles.booleanControl, field && styles.booleanControlOn]}
+              >
+                <Text style={styles.booleanText}>{field ? "On" : "Off"}</Text>
+              </Pressable>
+            ) : (
+              <TextInput
+                multiline={Array.isArray(field) || serialized.length > 80}
+                value={serialized}
+                onChangeText={(text) => {
+                  let next: unknown = text;
+                  if (
+                    typeof field === "number" &&
+                    text.trim() !== "" &&
+                    Number.isFinite(Number(text))
+                  )
+                    next = Number(text);
+                  else if (Array.isArray(field)) {
+                    try {
+                      next = JSON.parse(text);
+                    } catch {
+                      next = text;
+                    }
+                  }
+                  onUpdate(fieldPath, next);
+                }}
+                autoCapitalize="none"
+                autoCorrect={false}
+                style={[
+                  styles.input,
+                  (Array.isArray(field) || serialized.length > 80) && styles.configMultiline,
+                ]}
+              />
+            )}
+          </View>
+        );
+      })}
+    </View>
+  );
+}
+
+function StructuredConfigEditor({
+  editor,
+  onChange,
+}: {
+  editor: string;
+  onChange: (value: string) => void;
+}) {
+  let value: unknown;
+  try {
+    value = JSON.parse(editor);
+  } catch {
+    return (
+      <Text style={styles.error}>
+        Configuration is temporarily invalid. Correct it in the legacy dashboard.
+      </Text>
+    );
+  }
+  return (
+    <ConfigFields
+      value={value}
+      onUpdate={(path, next) => onChange(pretty(updatePath(value, path, next)))}
+    />
+  );
+}
+
+function MemoryOverview({ value }: { value: unknown }) {
+  const record = (value ?? {}) as Record<string, unknown>;
+  const sessions = Array.isArray(record.sessions) ? record.sessions : [];
+  return (
+    <View>
+      <View style={styles.statGrid}>
+        {[
+          ["Chunks", record.totalChunks],
+          ["Sessions", record.totalSessions],
+          ["Days", record.totalDays],
+          ["Range", `${displayValue(record.oldestDay)} – ${displayValue(record.newestDay)}`],
+        ].map(([label, number]) => (
+          <View key={String(label)} style={styles.statCard}>
+            <Text style={styles.statValue}>{displayValue(number)}</Text>
+            <Text style={styles.statLabel}>{String(label)}</Text>
+          </View>
+        ))}
+      </View>
+      {sessions.length > 0 && (
+        <View style={styles.list}>
+          {sessions.map((session, index) => {
+            const row = session as Record<string, unknown>;
+            return (
+              <View key={String(row.session_id ?? index)} style={styles.card}>
+                <Text style={styles.cardTitle}>
+                  {String(row.alias ?? row.session_id ?? "Session")}
+                </Text>
+                <Text
+                  style={styles.cardMeta}
+                >{`${displayValue(row.count)} chunks · ${displayValue(row.first_day)} – ${displayValue(row.last_day)}`}</Text>
+              </View>
+            );
+          })}
+        </View>
+      )}
+    </View>
+  );
+}
+
 function labelFor(value: unknown, index: number): string {
   if (!value || typeof value !== "object") return String(value);
   const row = value as Record<string, unknown>;
@@ -202,11 +403,13 @@ export function OperationsScreen({
   initialArea = "memory",
   showAreaTabs = true,
   onBack,
+  onDetailOpen,
 }: {
   onUnauthorized: () => void;
   initialArea?: OperationArea;
   showAreaTabs?: boolean;
   onBack?: () => void;
+  onDetailOpen?: () => void;
 }) {
   const [area, setArea] = useState<OperationArea>(initialArea);
   const [data, setData] = useState<unknown>();
@@ -254,6 +457,9 @@ export function OperationsScreen({
   }, [area, drivePath, onUnauthorized]);
 
   useEffect(() => void load(), [load]);
+  useEffect(() => {
+    if (selected !== undefined || detailTarget !== null) onDetailOpen?.();
+  }, [detailTarget, onDetailOpen, selected]);
 
   const mutate = async (path: string, method: string, body?: unknown) => {
     setLoading(true);
@@ -454,7 +660,6 @@ export function OperationsScreen({
   if (detailTarget) {
     return (
       <View style={styles.root}>
-        <Text style={styles.eyebrow}>COMPANION OPERATIONS</Text>
         <View style={styles.titleRow}>
           <Pressable
             onPress={() => {
@@ -516,9 +721,28 @@ export function OperationsScreen({
     );
   }
 
+  if (selected !== undefined) {
+    return (
+      <View style={styles.root}>
+        <View style={styles.titleRow}>
+          <Pressable
+            onPress={() => {
+              setSelected(undefined);
+              setError(null);
+            }}
+            style={styles.backButton}
+          >
+            <Text style={styles.backText}>‹</Text>
+          </Pressable>
+          <Text style={styles.title}>Details</Text>
+        </View>
+        <StructuredDetail value={selected} />
+      </View>
+    );
+  }
+
   return (
     <View style={styles.root}>
-      <Text style={styles.eyebrow}>COMPANION OPERATIONS</Text>
       <View style={styles.titleRow}>
         {onBack && (
           <Pressable onPress={onBack} style={styles.backButton}>
@@ -553,7 +777,7 @@ export function OperationsScreen({
       )}
 
       <View style={styles.toolbar}>
-        <Text style={styles.section}>{operationAreas.find((item) => item.id === area)?.label}</Text>
+        <View />
         <Pressable onPress={() => void load()} style={styles.smallButton}>
           <Text style={styles.smallButtonText}>Refresh</Text>
         </Pressable>
@@ -691,14 +915,18 @@ export function OperationsScreen({
 
       {(area === "settings" || area === "system") && (
         <View style={styles.editorBlock}>
-          <TextInput
-            multiline
-            value={editor}
-            onChangeText={setEditor}
-            autoCapitalize="none"
-            autoCorrect={false}
-            style={[styles.input, styles.editor]}
-          />
+          {area === "settings" ? (
+            <StructuredConfigEditor editor={editor} onChange={setEditor} />
+          ) : (
+            <TextInput
+              multiline
+              value={editor}
+              onChangeText={setEditor}
+              autoCapitalize="none"
+              autoCorrect={false}
+              style={[styles.input, styles.editor]}
+            />
+          )}
           <Pressable onPress={saveEditor} style={styles.primaryButton}>
             <Text style={styles.primaryText}>
               Save {area === "settings" ? "settings" : "SOUL.md"}
@@ -931,31 +1159,9 @@ export function OperationsScreen({
         </View>
       )}
 
-      {!loading && !rows && area !== "settings" && area !== "system" && (
-        <View style={styles.jsonCard}>
-          <Text selectable style={styles.json}>
-            {pretty(data)}
-          </Text>
-        </View>
-      )}
-
-      {selected !== undefined && (
-        <View style={styles.detail}>
-          <View style={styles.toolbar}>
-            <Text style={styles.section}>Details</Text>
-            <Pressable
-              onPress={() => {
-                setSelected(undefined);
-                setDetailTarget(null);
-              }}
-            >
-              <Text style={styles.link}>close</Text>
-            </Pressable>
-          </View>
-          <Text selectable style={styles.json}>
-            {pretty(selected)}
-          </Text>
-        </View>
+      {!loading && !rows && area === "memory" && <MemoryOverview value={data} />}
+      {!loading && !rows && area !== "memory" && area !== "settings" && area !== "system" && (
+        <StructuredDetail value={data} />
       )}
     </View>
   );
@@ -964,6 +1170,80 @@ export function OperationsScreen({
 const styles = StyleSheet.create({
   root: { paddingBottom: 70 },
   eyebrow: { color: "#b7f34a", fontSize: 11, fontWeight: "800", letterSpacing: 2 },
+  statGrid: { flexDirection: "row", flexWrap: "wrap", gap: 10, marginBottom: 18 },
+  statCard: {
+    width: "48%",
+    minHeight: 90,
+    borderRadius: 15,
+    padding: 15,
+    backgroundColor: "#151914",
+    borderWidth: 1,
+    borderColor: "#2b3228",
+    justifyContent: "center",
+  },
+  statValue: { color: "#eef2e9", fontSize: 21, fontWeight: "800" },
+  statLabel: {
+    color: "#788075",
+    fontSize: 10,
+    fontWeight: "800",
+    textTransform: "uppercase",
+    letterSpacing: 1,
+    marginTop: 5,
+  },
+  fieldList: { gap: 1 },
+  fieldRow: { paddingVertical: 12, borderBottomWidth: 1, borderBottomColor: "#252a25" },
+  fieldLabel: {
+    color: "#798178",
+    fontSize: 10,
+    fontWeight: "800",
+    textTransform: "uppercase",
+    letterSpacing: 0.8,
+    marginBottom: 5,
+  },
+  fieldValue: { color: "#e1e5df", fontSize: 14, lineHeight: 20 },
+  detailList: { gap: 10 },
+  detailGroup: {
+    backgroundColor: "#121512",
+    borderWidth: 1,
+    borderColor: "#292e29",
+    borderRadius: 14,
+    padding: 14,
+    marginTop: 8,
+  },
+  detailGroupTitle: {
+    color: "#b9e877",
+    fontSize: 11,
+    fontWeight: "800",
+    textTransform: "uppercase",
+    letterSpacing: 0.8,
+    marginBottom: 8,
+  },
+  detailValue: { color: "#e1e5df", fontSize: 14 },
+  configFields: { gap: 10 },
+  configGroup: { borderLeftWidth: 2, borderLeftColor: "#36432f", paddingLeft: 12, marginTop: 8 },
+  configGroupTitle: { color: "#c6ee88", fontSize: 14, fontWeight: "800", marginBottom: 10 },
+  configField: { gap: 5 },
+  configMultiline: { minHeight: 90, textAlignVertical: "top" },
+  booleanControl: {
+    alignSelf: "flex-start",
+    minWidth: 62,
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+    borderRadius: 16,
+    backgroundColor: "#343a34",
+  },
+  booleanControlOn: { backgroundColor: "#456528" },
+  booleanText: { color: "#e7eee2", fontSize: 12, fontWeight: "800", textAlign: "center" },
+  detailProse: {
+    color: "#d9ddd7",
+    fontSize: 14,
+    lineHeight: 22,
+    backgroundColor: "#121512",
+    borderWidth: 1,
+    borderColor: "#292e29",
+    borderRadius: 14,
+    padding: 15,
+  },
   titleRow: { flexDirection: "row", alignItems: "center", gap: 10, marginBottom: 18 },
   detailHeading: { flex: 1 },
   detailId: { color: "#858d82", fontSize: 11, fontFamily: "monospace", marginTop: 3 },

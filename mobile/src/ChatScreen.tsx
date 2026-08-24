@@ -189,7 +189,9 @@ export function ChatScreen({ onUnauthorized }: { onUnauthorized: () => void }) {
   if (desktop) {
     return (
       <View style={styles.desktopRoot}>
-        <SessionList sessions={sessions} selectedId={sessionId} onSelect={setSessionId} />
+        <View style={styles.desktopList}>
+          <SessionList sessions={sessions} selectedId={sessionId} onSelect={setSessionId} />
+        </View>
         <View style={styles.desktopConversation}>{conversation}</View>
       </View>
     );
@@ -416,7 +418,8 @@ function MessageRow({ message }: { message: Message }) {
 
 const styles = StyleSheet.create({
   desktopRoot: { flex: 1, flexDirection: "row", backgroundColor: "#090b09" },
-  desktopConversation: { flex: 1, borderLeftWidth: 1, borderLeftColor: "#252925" },
+  desktopList: { width: 340, flexShrink: 0 },
+  desktopConversation: { flex: 1, minWidth: 0, borderLeftWidth: 1, borderLeftColor: "#252925" },
   listRoot: { flex: 1, backgroundColor: "#0a0c0a" },
   sessionList: { paddingLeft: 14, paddingTop: 6 },
   listLoader: { marginTop: 80 },

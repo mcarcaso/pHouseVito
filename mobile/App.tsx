@@ -55,6 +55,7 @@ type MainTabParamList = {
 type MainRouteName = keyof MainTabParamList;
 type RootStackParamList = {
   Main: NavigatorScreenParams<MainTabParamList> | undefined;
+  MemoryHome: undefined;
   Operation: { area: OperationArea };
   MemoryResults: { query: string };
 };
@@ -137,6 +138,7 @@ const linking: LinkingOptions<RootStackParamList> = {
           Providers: "providers",
         },
       },
+      MemoryHome: "operation/memory",
       Operation: "operation/:area",
       MemoryResults: "memory/results/:query",
     },
@@ -205,6 +207,40 @@ function AppContent() {
               />
             )}
           </RootStack.Screen>
+          <RootStack.Screen
+            name="MemoryHome"
+            component={RootMemoryScreen}
+            options={({ navigation }) => ({
+              headerShown: true,
+              headerTransparent: false,
+              title: "",
+              headerBackTitle: "More",
+              headerStyle: { backgroundColor: theme.colors.canvas },
+              headerTintColor: theme.colors.accent,
+              headerShadowVisible: false,
+              header:
+                Platform.OS === "web"
+                  ? () => (
+                      <WebStackHeader
+                        onBack={() => navigation.goBack()}
+                        onSearch={(query) => navigation.navigate("MemoryResults", { query })}
+                      />
+                    )
+                  : undefined,
+              headerSearchBarOptions:
+                Platform.OS === "web"
+                  ? undefined
+                  : {
+                      placeholder: "Search memory",
+                      hideWhenScrolling: false,
+                      obscureBackgroundDuringPresentation: false,
+                      onSearchButtonPress: (event) => {
+                        const query = event.nativeEvent.text.trim();
+                        if (query) navigation.navigate("MemoryResults", { query });
+                      },
+                    },
+            })}
+          />
           <RootStack.Screen
             name="Operation"
             component={RootOperationScreen}
@@ -342,6 +378,29 @@ function WebStackHeader({
         </View>
       )}
     </View>
+  );
+}
+
+function RootMemoryScreen({ navigation }: { navigation: RootNavigation }) {
+  const styles = useThemeStyles(createStyles);
+  return (
+    <ScrollView
+      automaticallyAdjustContentInsets
+      contentInsetAdjustmentBehavior={Platform.OS === "ios" ? "automatic" : "never"}
+      automaticallyAdjustKeyboardInsets
+      automaticallyAdjustsScrollIndicatorInsets
+      keyboardDismissMode="interactive"
+      keyboardShouldPersistTaps="handled"
+      contentContainerStyle={styles.fullScreenOperation}
+    >
+      <OperationsScreen
+        initialArea="memory"
+        showAreaTabs={false}
+        hideMemorySearch
+        onUnauthorized={() => navigation.navigate("Main", { screen: "More" })}
+        onMemorySearch={(query) => navigation.navigate("MemoryResults", { query })}
+      />
+    </ScrollView>
   );
 }
 
@@ -594,7 +653,11 @@ function MoreMenu() {
               return (
                 <Pressable
                   key={item.id}
-                  onPress={() => navigation.navigate("Operation", { area: item.id })}
+                  onPress={() =>
+                    item.id === "memory"
+                      ? navigation.navigate("MemoryHome")
+                      : navigation.navigate("Operation", { area: item.id })
+                  }
                   style={styles.moreRow}
                 >
                   <Ionicons name={meta.icon} size={18} style={styles.moreIcon} />

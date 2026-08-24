@@ -428,6 +428,8 @@ function MenuToggle({
 
 function MessageRow({ message }: { message: Message }) {
   const styles = useThemeStyles(createStyles);
+  const { width } = useWindowDimensions();
+  const desktop = width >= 760;
   if (message.type === "thought")
     return (
       <View style={styles.thoughtCard}>
@@ -463,7 +465,13 @@ function MessageRow({ message }: { message: Message }) {
   const user = message.type === "user";
   return (
     <View style={[styles.messageRow, user && styles.userRow]}>
-      <View style={[styles.bubble, user ? styles.userBubble : styles.assistantBubble]}>
+      <View
+        style={[
+          styles.bubble,
+          desktop && styles.desktopBubble,
+          user ? styles.userBubble : styles.assistantBubble,
+        ]}
+      >
         <MarkdownText variant="chat" tone={user ? "onAccent" : "default"}>
           {cleanContent(message.content)}
         </MarkdownText>
@@ -598,6 +606,7 @@ const createStyles = (theme: VitoTheme) =>
       paddingHorizontal: theme.space.md,
       paddingVertical: theme.space.sm,
     },
+    desktopBubble: { maxWidth: 680 },
     assistantBubble: { backgroundColor: theme.colors.separator, borderBottomLeftRadius: 5 },
     userBubble: { backgroundColor: theme.colors.accent, borderBottomRightRadius: 5 },
     thoughtCard: {

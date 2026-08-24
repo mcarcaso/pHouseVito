@@ -91,7 +91,7 @@ export function MarkdownText({
     [styles, tone, variant],
   );
   return (
-    <Markdown mergeStyle rules={rules} style={markdownStyles}>
+    <Markdown mergeStyle={false} rules={rules} style={markdownStyles}>
       {children}
     </Markdown>
   );
@@ -104,7 +104,14 @@ const createStyles = (theme: VitoTheme) =>
     bodyOnAccent: { color: theme.colors.accentText },
     text: { color: theme.colors.textSecondary },
     textOnAccent: { color: theme.colors.accentText },
-    paragraph: { marginTop: theme.space.none, marginBottom: theme.space.md },
+    paragraph: {
+      width: "100%",
+      flexDirection: "row",
+      flexWrap: "wrap",
+      alignItems: "flex-start",
+      marginTop: theme.space.none,
+      marginBottom: theme.space.md,
+    },
     paragraphChat: { marginBottom: theme.space.none },
     heading1: {
       color: theme.colors.text,
@@ -113,6 +120,8 @@ const createStyles = (theme: VitoTheme) =>
       fontWeight: "800",
       marginTop: theme.space.xl,
       marginBottom: theme.space.md,
+      flexDirection: "row",
+      flexWrap: "wrap",
     },
     heading2: {
       color: theme.colors.text,
@@ -121,6 +130,8 @@ const createStyles = (theme: VitoTheme) =>
       fontWeight: "800",
       marginTop: theme.space.xl,
       marginBottom: theme.space.sm,
+      flexDirection: "row",
+      flexWrap: "wrap",
     },
     heading3: {
       color: theme.colors.text,
@@ -129,6 +140,8 @@ const createStyles = (theme: VitoTheme) =>
       fontWeight: "800",
       marginTop: theme.space.lg,
       marginBottom: theme.space.sm,
+      flexDirection: "row",
+      flexWrap: "wrap",
     },
     heading1Chat: { fontSize: 18, lineHeight: 23, marginTop: theme.space.sm },
     heading2Chat: { fontSize: 16, lineHeight: 21, marginTop: theme.space.sm },
@@ -142,9 +155,23 @@ const createStyles = (theme: VitoTheme) =>
     linkOnAccent: { color: theme.colors.accentText },
     bullet_list: { marginBottom: theme.space.md },
     ordered_list: { marginBottom: theme.space.md },
-    list_item: { marginBottom: theme.space.xs },
-    bullet_list_icon: { color: theme.colors.accent, marginRight: theme.space.sm },
-    ordered_list_icon: { color: theme.colors.accent, marginRight: theme.space.sm },
+    list_item: {
+      flexDirection: "row",
+      alignItems: "flex-start",
+      marginBottom: theme.space.xxs,
+    },
+    bullet_list_icon: {
+      color: theme.colors.accent,
+      marginLeft: theme.space.none,
+      marginRight: theme.space.sm,
+    },
+    bullet_list_content: { flex: 1 },
+    ordered_list_icon: {
+      color: theme.colors.accent,
+      marginLeft: theme.space.none,
+      marginRight: theme.space.sm,
+    },
+    ordered_list_content: { flex: 1 },
     blockquote: {
       backgroundColor: theme.colors.surface,
       borderLeftColor: theme.colors.accent,
@@ -156,6 +183,11 @@ const createStyles = (theme: VitoTheme) =>
     code_inline: {
       color: theme.colors.text,
       backgroundColor: theme.colors.surfaceRaised,
+      borderColor: theme.colors.separatorStrong,
+      borderWidth: StyleSheet.hairlineWidth,
+      borderRadius: theme.radius.sm,
+      paddingHorizontal: theme.space.xs,
+      paddingVertical: theme.space.none,
       fontFamily: "monospace",
       fontSize: 12,
     },
@@ -187,5 +219,8 @@ const createStyles = (theme: VitoTheme) =>
     th: { padding: theme.space.sm, fontWeight: "800" },
     td: { padding: theme.space.sm },
     hr: { backgroundColor: theme.colors.separator, height: StyleSheet.hairlineWidth },
+    textgroup: {},
+    hardbreak: { width: "100%", height: StyleSheet.hairlineWidth },
+    softbreak: {},
     image: { maxWidth: "100%" },
   });

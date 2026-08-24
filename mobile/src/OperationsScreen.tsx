@@ -188,6 +188,14 @@ function humanize(key: string): string {
     .replace(/^./, (letter) => letter.toUpperCase());
 }
 
+function formatMemoryDay(value: unknown): string {
+  if (typeof value !== "string") return "Unknown date";
+  const date = new Date(`${value}T12:00:00`);
+  return Number.isNaN(date.getTime())
+    ? value
+    : date.toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" });
+}
+
 function displayValue(value: unknown): string {
   if (value === null || value === undefined) return "—";
   if (typeof value === "boolean") return value ? "Yes" : "No";
@@ -743,18 +751,35 @@ export function OperationsScreen({
   }
 
   return (
-    <View style={styles.root}>
+    <View style={[styles.root, area === "memory" && styles.memoryRoot]}>
       <View style={styles.titleRow}>
         {onBack && (
           <Pressable onPress={onBack} style={styles.backButton}>
             <Text style={styles.backText}>‹</Text>
           </Pressable>
         )}
-        <Text style={styles.title}>
+        <Text style={[styles.title, styles.screenTitle]}>
           {showAreaTabs
             ? "Run the family business."
             : operationAreas.find((item) => item.id === area)?.label}
         </Text>
+        {area === "memory" && (
+          <View style={styles.headerActions}>
+            <Pressable
+              onPress={async () => setSelected(await api("/api/memory/profile"))}
+              style={styles.headerTextButton}
+            >
+              <Text style={styles.headerTextButtonLabel}>Profile</Text>
+            </Pressable>
+            <Pressable
+              accessibilityLabel="Refresh memory"
+              onPress={() => void load()}
+              style={styles.headerIconButton}
+            >
+              <Text style={styles.headerIcon}>↻</Text>
+            </Pressable>
+          </View>
+        )}
       </View>
       {showAreaTabs && (
         <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.tabs}>
@@ -777,12 +802,14 @@ export function OperationsScreen({
         </ScrollView>
       )}
 
-      <View style={styles.toolbar}>
-        <View />
-        <Pressable onPress={() => void load()} style={styles.smallButton}>
-          <Text style={styles.smallButtonText}>Refresh</Text>
-        </Pressable>
-      </View>
+      {area !== "memory" && (
+        <View style={styles.toolbar}>
+          <View />
+          <Pressable onPress={() => void load()} style={styles.smallButton}>
+            <Text style={styles.smallButtonText}>Refresh</Text>
+          </Pressable>
+        </View>
+      )}
 
       {area === "memory" && (
         <View style={styles.formRow}>
@@ -796,12 +823,6 @@ export function OperationsScreen({
           />
           <Pressable onPress={() => void searchMemory()} style={styles.smallButton}>
             <Text style={styles.smallButtonText}>Search</Text>
-          </Pressable>
-          <Pressable
-            onPress={async () => setSelected(await api("/api/memory/profile"))}
-            style={styles.smallButton}
-          >
-            <Text style={styles.smallButtonText}>Profile</Text>
           </Pressable>
         </View>
       )}
@@ -967,6 +988,12 @@ export function OperationsScreen({
         </View>
       )}
 
+      {!loading && area === "memory" && rows && (
+        <Text style={styles.resultCount}>
+          {rows.length} {rows.length === 1 ? "result" : "results"}
+        </Text>
+      )}
+
       {!loading && rows && (
         <View style={styles.list}>
           {rows.map((row, index) => {
@@ -974,9 +1001,7 @@ export function OperationsScreen({
             const name = labelFor(row, index);
             const identifier = rowIdentifier(row, index);
             const memoryResult = area === "memory" && typeof record.text === "string";
-            const title = memoryResult
-              ? [record.day, record.alias ?? record.session_id].filter(Boolean).join(" · ")
-              : name;
+            const title = memoryResult ? String(record.alias ?? record.session_id ?? name) : name;
             const context = memoryResult ? displayValue(record.context) : "";
             const memoryKey = String(record.id ?? `${record.session_id ?? "memory"}-${index}`);
             const memoryExpanded = memoryResult && expandedMemory.has(memoryKey);
@@ -985,7 +1010,12 @@ export function OperationsScreen({
                 {memoryResult ? (
                   <View style={styles.cardMain}>
                     <View style={styles.memoryHeader}>
-                      <Text style={[styles.cardTitle, styles.memoryTitle]}>{title || name}</Text>
+                      <View style={styles.memoryIdentity}>
+                        <Text style={styles.memoryDay}>{formatMemoryDay(record.day)}</Text>
+                        <Text style={styles.memorySession} numberOfLines={1}>
+                          {title || name}
+                        </Text>
+                      </View>
                       <Pressable
                         accessibilityLabel={
                           memoryExpanded ? "Collapse conversation" : "Expand conversation"
@@ -1000,15 +1030,11 @@ export function OperationsScreen({
                         }
                         style={styles.memoryExpandButton}
                       >
-                        <Text style={styles.memoryExpandIcon}>{memoryExpanded ? "⌃" : "⌄"}</Text>
+                        <Text style={styles.memoryExpandIcon}>{memoryExpanded ? "−" : "+"}</Text>
                       </Pressable>
                     </View>
                     {context && context !== "—" && (
-                      <Text
-                        selectable
-                        style={styles.memoryContext}
-                        numberOfLines={memoryExpanded ? undefined : 3}
-                      >
+                      <Text selectable style={styles.memoryContext} numberOfLines={3}>
                         {context}
                       </Text>
                     )}
@@ -1218,6 +1244,7 @@ export function OperationsScreen({
 
 const styles = StyleSheet.create({
   root: { paddingBottom: 70 },
+  memoryRoot: { width: "100%", maxWidth: 1040, alignSelf: "center" },
   eyebrow: { color: "#b7f34a", fontSize: 11, fontWeight: "800", letterSpacing: 2 },
   statGrid: { flexDirection: "row", flexWrap: "wrap", gap: 10, marginBottom: 18 },
   statCard: {
@@ -1297,6 +1324,35 @@ const styles = StyleSheet.create({
   detailHeading: { flex: 1 },
   detailId: { color: "#858d82", fontSize: 11, fontFamily: "monospace", marginTop: 3 },
   title: { color: "#f3f5ef", fontSize: 30, fontWeight: "800", marginTop: 8 },
+  screenTitle: { flex: 1 },
+  headerActions: { flexDirection: "row", alignItems: "center", gap: 7, marginTop: 6 },
+  headerTextButton: {
+    height: 36,
+    paddingHorizontal: 12,
+    borderRadius: 18,
+    backgroundColor: "#20271d",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  headerTextButtonLabel: { color: "#c8d1c3", fontSize: 11, fontWeight: "800" },
+  headerIconButton: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: "#20271d",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  headerIcon: { color: "#b7f34a", fontSize: 20, fontWeight: "800" },
+  resultCount: {
+    color: "#6f786c",
+    fontSize: 10,
+    fontWeight: "800",
+    textTransform: "uppercase",
+    letterSpacing: 1,
+    marginTop: 14,
+    marginBottom: 4,
+  },
   backButton: {
     width: 36,
     height: 36,
@@ -1410,7 +1466,9 @@ const styles = StyleSheet.create({
   },
   memoryExpansionText: { color: "#d9ddd7", fontSize: 12, lineHeight: 19, fontFamily: "monospace" },
   memoryHeader: { flexDirection: "row", alignItems: "center", gap: 10 },
-  memoryTitle: { flex: 1 },
+  memoryIdentity: { flex: 1, minWidth: 0 },
+  memoryDay: { color: "#eef1eb", fontSize: 13, fontWeight: "800" },
+  memorySession: { color: "#747d72", fontSize: 10, fontFamily: "monospace", marginTop: 3 },
   memoryExpandButton: {
     width: 30,
     height: 30,
@@ -1420,7 +1478,7 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     backgroundColor: "#25301e",
   },
-  memoryExpandIcon: { color: "#b7f34a", fontSize: 18, fontWeight: "800", lineHeight: 20 },
+  memoryExpandIcon: { color: "#b7f34a", fontSize: 19, fontWeight: "700", lineHeight: 21 },
   inlineActions: { flexDirection: "row", gap: 10, flexWrap: "wrap", justifyContent: "flex-end" },
   link: { color: "#b7f34a", fontSize: 12, fontWeight: "800" },
   deleteLink: { color: "#ff8d8d", fontSize: 12, fontWeight: "800" },

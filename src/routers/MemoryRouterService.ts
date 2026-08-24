@@ -75,6 +75,11 @@ export class MemoryRouterService implements RouterService {
       handler: async (routeX, { data: { query }, req: _req, res }) => {
         const start = Date.now();
         try {
+          const aliases = Object.fromEntries(
+            xSessionStore(routeX)
+              .list(routeX, { hasAlias: true })
+              .map((session) => [session.id, session.alias]),
+          );
           const results = await xMemoryService(routeX).search(routeX, query.q, {
             limit: query.limit,
             mode: query.mode,
@@ -87,6 +92,7 @@ export class MemoryRouterService implements RouterService {
             results: results.map((result) => ({
               id: result.id,
               session_id: result.sessionId,
+              alias: aliases[result.sessionId] || null,
               day: result.day,
               chunk_index: result.chunkIndex,
               text: result.text,

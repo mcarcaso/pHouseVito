@@ -9,9 +9,15 @@ import {
   useWindowDimensions,
   View,
 } from "react-native";
-import { api } from "./api";
-import { MarkdownText } from "./MarkdownText";
-import { DESKTOP_BREAKPOINT, useThemeStyles, useVitoTheme, type VitoTheme } from "./theme";
+import { api } from "../../services/api/client";
+import { MarkdownText } from "../../components/markdown/MarkdownText";
+import {
+  DESKTOP_BREAKPOINT,
+  useThemeStyles,
+  useVitoTheme,
+  type VitoTheme,
+} from "../../hooks/useVitoTheme";
+import { createSkillsStyles } from "./styles";
 import { StyleSheet } from "react-native";
 
 type Skill = { name: string; description: string; source: "builtin" | "user" };
@@ -25,7 +31,7 @@ export function SkillsScreen({
   onUnauthorized: () => void;
   onOpenSkill?: (skill: Skill) => void;
 }) {
-  const styles = useThemeStyles(createStyles);
+  const styles = useThemeStyles(createSkillsStyles);
   const theme = useVitoTheme();
   const desktop = useWindowDimensions().width >= DESKTOP_BREAKPOINT;
   const [skills, setSkills] = useState<Skill[]>([]);
@@ -237,117 +243,3 @@ function stripFrontmatter(content: string) {
 function formatSize(size: number) {
   return size < 1024 ? `${size} B` : `${(size / 1024).toFixed(1)} KB`;
 }
-
-const createStyles = (theme: VitoTheme) =>
-  StyleSheet.create({
-    desktop: { flex: 1, flexDirection: "row" },
-    skillPane: { flex: 1, minWidth: 0 },
-    count: {
-      color: theme.colors.textMuted,
-      fontSize: 11,
-      marginHorizontal: theme.space.xl,
-      marginTop: theme.space.lg,
-    },
-    search: {
-      flexDirection: "row",
-      alignItems: "center",
-      gap: theme.space.sm,
-      marginHorizontal: theme.space.xl,
-      marginTop: theme.space.sm,
-      marginBottom: theme.space.md,
-      borderWidth: 1,
-      borderColor: theme.colors.separatorStrong,
-      borderRadius: 11,
-      paddingHorizontal: theme.space.md,
-    },
-    searchInput: { flex: 1, color: theme.colors.text, paddingVertical: theme.space.md },
-    skillList: { flex: 1 },
-    skillRow: {
-      paddingHorizontal: theme.space.xl,
-      paddingVertical: theme.space.md,
-      borderBottomWidth: 1,
-      borderBottomColor: theme.colors.separator,
-    },
-    skillRowActive: {
-      backgroundColor: theme.colors.accentSurface,
-      borderLeftWidth: 2,
-      borderLeftColor: theme.colors.accent,
-    },
-    skillRowTop: { flexDirection: "row", justifyContent: "space-between", gap: theme.space.sm },
-    skillName: { color: theme.colors.text, fontSize: 13, fontWeight: "800", flex: 1 },
-    source: { color: theme.colors.textMuted, fontSize: 8, fontWeight: "900", letterSpacing: 0.8 },
-    description: {
-      color: theme.colors.textMuted,
-      fontSize: 11,
-      lineHeight: 16,
-      marginTop: theme.space.xs,
-    },
-    filePane: {
-      width: 230,
-      borderLeftWidth: 1,
-      borderRightWidth: 1,
-      borderColor: theme.colors.separator,
-      paddingTop: theme.space.xl,
-    },
-    fileHeading: {
-      color: theme.colors.textMuted,
-      fontSize: 9,
-      fontWeight: "900",
-      letterSpacing: 1.2,
-      marginHorizontal: theme.space.md,
-      marginBottom: theme.space.sm,
-    },
-    fileRow: {
-      flexDirection: "row",
-      alignItems: "center",
-      gap: theme.space.sm,
-      paddingHorizontal: theme.space.md,
-      paddingVertical: theme.space.sm,
-    },
-    fileRowActive: { backgroundColor: theme.colors.accentSurface },
-    fileName: { flex: 1, color: theme.colors.textSecondary, fontFamily: "monospace", fontSize: 10 },
-    fileSize: { color: theme.colors.textMuted, fontSize: 9 },
-    viewer: { flex: 2, minWidth: 0 },
-    fileBar: {
-      height: 48,
-      justifyContent: "center",
-      paddingHorizontal: theme.space.xl,
-      borderBottomWidth: 1,
-      borderBottomColor: theme.colors.separator,
-    },
-    currentFile: { color: theme.colors.textMuted, fontFamily: "monospace", fontSize: 11 },
-    viewerContent: { padding: theme.space.xl, paddingBottom: theme.space.xxxl },
-    code: {
-      color: theme.colors.textSecondary,
-      fontFamily: "monospace",
-      fontSize: 11,
-      lineHeight: 18,
-    },
-    mobileHeader: {
-      height: 54,
-      flexDirection: "row",
-      alignItems: "center",
-      gap: theme.space.md,
-      paddingHorizontal: theme.space.md,
-      borderBottomWidth: 1,
-      borderBottomColor: theme.colors.separator,
-    },
-    mobileTitle: {
-      flex: 1,
-      color: theme.colors.text,
-      fontSize: 15,
-      fontWeight: "800",
-      textAlign: "center",
-    },
-    folderButton: { width: 32, alignItems: "flex-end" },
-    headerSpacer: { width: 25 },
-    emptyPane: {
-      flex: 3,
-      alignItems: "center",
-      justifyContent: "center",
-      borderLeftWidth: 1,
-      borderLeftColor: theme.colors.separator,
-    },
-    empty: { color: theme.colors.textMuted, fontSize: 12 },
-    error: { color: theme.colors.danger },
-  });

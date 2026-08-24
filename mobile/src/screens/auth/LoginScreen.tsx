@@ -10,8 +10,8 @@ import {
   TextInput,
   View,
 } from "react-native";
-import { getRecentAgents, login, setAgentUrl, VITO_URL } from "./api";
-import { useThemeStyles, useVitoTheme, type VitoTheme } from "./theme";
+import { getRecentAgents, login, setAgentUrl, VITO_URL } from "../../services/api/client";
+import { useThemeStyles, useVitoTheme, type VitoTheme } from "../../hooks/useVitoTheme";
 
 export function LoginScreen({ onSuccess }: { onSuccess: () => void }) {
   const styles = useThemeStyles(createStyles);

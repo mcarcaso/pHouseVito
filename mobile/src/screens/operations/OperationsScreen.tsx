@@ -10,14 +10,14 @@ import {
   Platform,
   Pressable,
   ScrollView,
-  StyleSheet,
   Text,
   TextInput,
   View,
 } from "react-native";
-import { api, VITO_URL } from "./api";
-import { MarkdownText } from "./MarkdownText";
-import { useThemeStyles, useVitoTheme, type VitoTheme } from "./theme";
+import { api, VITO_URL } from "../../services/api/client";
+import { MarkdownText } from "../../components/markdown/MarkdownText";
+import { useThemeStyles, useVitoTheme, type VitoTheme } from "../../hooks/useVitoTheme";
+import { createOperationsStyles } from "./styles";
 
 export type OperationArea =
   | "memory"
@@ -117,7 +117,7 @@ function PiSessionDeleteContainer({
   label: string;
   onDelete: () => void;
 }) {
-  const styles = useThemeStyles(createStyles);
+  const styles = useThemeStyles(createOperationsStyles);
   const theme = useVitoTheme();
   if (Platform.OS === "web")
     return (
@@ -161,7 +161,7 @@ function StructuredRows({
   kind: "traces" | "pi";
   showRaw?: boolean;
 }) {
-  const styles = useThemeStyles(createStyles);
+  const styles = useThemeStyles(createOperationsStyles);
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
   const lines =
     data && typeof data === "object" && Array.isArray((data as { lines?: unknown[] }).lines)
@@ -350,7 +350,7 @@ function formatBytes(value: unknown): string {
 }
 
 export function StructuredDetail({ value }: { value: unknown }) {
-  const styles = useThemeStyles(createStyles);
+  const styles = useThemeStyles(createOperationsStyles);
   if (typeof value === "string")
     return (
       <Text selectable style={styles.detailProse}>
@@ -413,7 +413,7 @@ function ConfigFields({
   path?: string[];
   onUpdate: (path: string[], value: unknown) => void;
 }) {
-  const styles = useThemeStyles(createStyles);
+  const styles = useThemeStyles(createOperationsStyles);
   if (!value || typeof value !== "object" || Array.isArray(value)) return null;
   return (
     <View style={styles.configFields}>
@@ -480,7 +480,7 @@ function StructuredConfigEditor({
   editor: string;
   onChange: (value: string) => void;
 }) {
-  const styles = useThemeStyles(createStyles);
+  const styles = useThemeStyles(createOperationsStyles);
   let value: unknown;
   try {
     value = JSON.parse(editor);
@@ -500,7 +500,7 @@ function StructuredConfigEditor({
 }
 
 function MemoryOverview({ value }: { value: unknown }) {
-  const styles = useThemeStyles(createStyles);
+  const styles = useThemeStyles(createOperationsStyles);
   const record = (value ?? {}) as Record<string, unknown>;
   const sessions = Array.isArray(record.sessions) ? record.sessions : [];
   return (
@@ -596,7 +596,7 @@ export function OperationsScreen({
   hideScreenTitle?: boolean;
   hideRefreshToolbar?: boolean;
 }) {
-  const styles = useThemeStyles(createStyles);
+  const styles = useThemeStyles(createOperationsStyles);
   const theme = useVitoTheme();
   const [area, setArea] = useState<OperationArea>(initialArea);
   const [data, setData] = useState<unknown>();
@@ -1569,618 +1569,3 @@ export function OperationsScreen({
     </View>
   );
 }
-
-const createStyles = (theme: VitoTheme) =>
-  StyleSheet.create({
-    root: {},
-    memoryRoot: { width: "100%", maxWidth: 820, alignSelf: "center" },
-    memoryLanding: { flex: 1, justifyContent: "center", paddingBottom: 80 },
-    memoryLandingTitle: {
-      color: theme.colors.text,
-      fontSize: 28,
-      fontWeight: "800",
-      textAlign: "center",
-      letterSpacing: -0.8,
-    },
-    memoryLandingSubtitle: {
-      color: theme.colors.textMuted,
-      fontSize: 13,
-      textAlign: "center",
-      marginTop: theme.space.sm,
-      marginBottom: theme.space.xxl,
-    },
-    memoryLandingSearch: {
-      minHeight: 54,
-      flexDirection: "row",
-      alignItems: "center",
-      gap: theme.space.sm,
-      borderWidth: 1,
-      borderColor: theme.colors.separatorStrong,
-      borderRadius: 16,
-      backgroundColor: theme.colors.surface,
-      paddingLeft: theme.space.lg,
-      paddingRight: theme.space.xs,
-    },
-    memorySearchButton: {
-      backgroundColor: theme.colors.accent,
-      borderRadius: 12,
-      paddingHorizontal: theme.space.lg,
-      paddingVertical: theme.space.md,
-    },
-    memorySearchButtonText: { color: theme.colors.accentText, fontSize: 12, fontWeight: "800" },
-    memoryAdvancedToggle: {
-      color: theme.colors.textMuted,
-      fontSize: 11,
-      fontWeight: "700",
-      marginTop: theme.space.md,
-      textAlign: "center",
-    },
-    memoryAdvancedPanel: {
-      marginTop: theme.space.md,
-      borderTopWidth: 1,
-      borderTopColor: theme.colors.separator,
-      paddingTop: theme.space.md,
-      gap: theme.space.md,
-    },
-    memoryModeRow: { flexDirection: "row", justifyContent: "center", gap: theme.space.sm },
-    memoryModeButton: {
-      borderWidth: 1,
-      borderColor: theme.colors.separatorStrong,
-      borderRadius: 99,
-      paddingHorizontal: theme.space.md,
-      paddingVertical: theme.space.sm,
-    },
-    memoryModeButtonActive: {
-      backgroundColor: theme.colors.accent,
-      borderColor: theme.colors.accent,
-    },
-    memoryModeText: { color: theme.colors.textSecondary, fontSize: 11, fontWeight: "700" },
-    memoryModeTextActive: { color: theme.colors.accentText },
-    memoryLimitRow: {
-      flexDirection: "row",
-      alignItems: "center",
-      justifyContent: "center",
-      gap: theme.space.sm,
-    },
-    memoryLimitLabel: { color: theme.colors.textMuted, fontSize: 11 },
-    memoryLimitInput: {
-      width: 56,
-      color: theme.colors.text,
-      textAlign: "center",
-      borderBottomWidth: 1,
-      borderBottomColor: theme.colors.separatorStrong,
-      paddingVertical: theme.space.xs,
-    },
-    memorySearchRow: {
-      height: 50,
-      flexDirection: "row",
-      alignItems: "center",
-      gap: theme.space.md,
-      borderBottomWidth: 1,
-      borderBottomColor: theme.colors.separatorStrong,
-      marginBottom: theme.space.huge,
-    },
-    memorySearchIcon: { color: theme.colors.accent, fontSize: 22 },
-    memorySearchInput: {
-      flex: 1,
-      color: theme.colors.text,
-      fontSize: 15,
-      paddingVertical: theme.space.md,
-    },
-    memorySummary: {
-      flexDirection: "row",
-      flexWrap: "wrap",
-      justifyContent: "space-between",
-      gap: theme.space.sm,
-      paddingBottom: theme.space.md,
-      borderBottomWidth: 1,
-      borderBottomColor: theme.colors.separator,
-    },
-    memorySummaryPrimary: { color: theme.colors.text, fontSize: 12, fontWeight: "700" },
-    memorySummarySecondary: { color: theme.colors.textMuted, fontSize: 11 },
-    flatSectionHeader: {
-      paddingTop: theme.space.xxxl,
-      paddingBottom: theme.space.md,
-      borderBottomWidth: 1,
-      borderBottomColor: theme.colors.separator,
-    },
-    flatSectionTitle: { color: theme.colors.text, fontSize: 13, fontWeight: "700" },
-    flatRow: {
-      minHeight: 58,
-      flexDirection: "row",
-      alignItems: "center",
-      gap: theme.space.lg,
-      borderBottomWidth: 1,
-      borderBottomColor: theme.colors.separator,
-    },
-    flatRowMain: { flex: 1 },
-    eyebrow: { color: theme.colors.accent, fontSize: 11, fontWeight: "800", letterSpacing: 2 },
-    statGrid: {
-      flexDirection: "row",
-      flexWrap: "wrap",
-      gap: theme.space.md,
-      marginBottom: theme.space.xl,
-    },
-    statCard: {
-      width: "48%",
-      minHeight: 90,
-      borderRadius: 15,
-      padding: theme.space.lg,
-      backgroundColor: theme.colors.surface,
-      borderWidth: 1,
-      borderColor: theme.colors.separator,
-      justifyContent: "center",
-    },
-    statValue: { color: theme.colors.text, fontSize: 21, fontWeight: "800" },
-    statLabel: {
-      color: theme.colors.textMuted,
-      fontSize: 10,
-      fontWeight: "800",
-      textTransform: "uppercase",
-      letterSpacing: 1,
-      marginTop: theme.space.xs,
-    },
-    fieldList: { gap: theme.space.xxs },
-    fieldRow: {
-      paddingVertical: theme.space.md,
-      borderBottomWidth: 1,
-      borderBottomColor: theme.colors.separator,
-    },
-    fieldLabel: {
-      color: theme.colors.textMuted,
-      fontSize: 10,
-      fontWeight: "800",
-      textTransform: "uppercase",
-      letterSpacing: 0.8,
-      marginBottom: theme.space.xs,
-    },
-    fieldValue: { color: theme.colors.textSecondary, fontSize: 14, lineHeight: 20 },
-    detailList: { gap: theme.space.md },
-    detailGroup: {
-      backgroundColor: theme.colors.surface,
-      borderWidth: 1,
-      borderColor: theme.colors.separator,
-      borderRadius: 14,
-      padding: theme.space.lg,
-      marginTop: theme.space.sm,
-    },
-    detailGroupTitle: {
-      color: theme.colors.accent,
-      fontSize: 11,
-      fontWeight: "800",
-      textTransform: "uppercase",
-      letterSpacing: 0.8,
-      marginBottom: theme.space.sm,
-    },
-    detailValue: { color: theme.colors.textSecondary, fontSize: 14 },
-    configFields: { gap: theme.space.md },
-    configGroup: {
-      borderLeftWidth: 2,
-      borderLeftColor: theme.colors.separatorStrong,
-      paddingLeft: theme.space.md,
-      marginTop: theme.space.sm,
-    },
-    configGroupTitle: {
-      color: theme.colors.accent,
-      fontSize: 14,
-      fontWeight: "800",
-      marginBottom: theme.space.md,
-    },
-    configField: { gap: theme.space.xs },
-    configMultiline: { minHeight: 90, textAlignVertical: "top" },
-    booleanControl: {
-      alignSelf: "flex-start",
-      minWidth: 62,
-      paddingHorizontal: theme.space.lg,
-      paddingVertical: theme.space.sm,
-      borderRadius: 16,
-      backgroundColor: theme.colors.surfaceRaised,
-    },
-    booleanControlOn: { backgroundColor: theme.colors.accentSurface },
-    booleanText: { color: theme.colors.text, fontSize: 12, fontWeight: "800", textAlign: "center" },
-    detailProse: {
-      color: theme.colors.textSecondary,
-      fontSize: 14,
-      lineHeight: 22,
-      backgroundColor: theme.colors.surface,
-      borderWidth: 1,
-      borderColor: theme.colors.separator,
-      borderRadius: 14,
-      padding: theme.space.lg,
-    },
-    titleRow: {
-      flexDirection: "row",
-      alignItems: "center",
-      gap: theme.space.md,
-      marginBottom: theme.space.xl,
-    },
-    compactTitleRow: { marginBottom: theme.space.xxl },
-    routedDetailToolbar: { marginBottom: theme.space.md },
-
-    detailHeading: { flex: 1, minWidth: 0 },
-    rawToggle: {
-      height: 32,
-      justifyContent: "center",
-      paddingHorizontal: theme.space.sm,
-      borderRadius: 6,
-      borderWidth: 1,
-      borderColor: theme.colors.separatorStrong,
-    },
-    rawToggleActive: {
-      borderColor: theme.colors.accent,
-      backgroundColor: theme.colors.accentSurface,
-    },
-    rawToggleText: {
-      color: theme.colors.textMuted,
-      fontSize: 10,
-      fontWeight: "900",
-      letterSpacing: 0.8,
-    },
-    rawToggleTextActive: { color: theme.colors.accent },
-    detailId: {
-      color: theme.colors.textMuted,
-      fontSize: 11,
-      fontFamily: "monospace",
-      marginTop: theme.space.xs,
-    },
-    title: { color: theme.colors.text, fontSize: 30, fontWeight: "800", marginTop: theme.space.sm },
-    screenTitle: { flex: 1 },
-    headerActions: {
-      flexDirection: "row",
-      alignItems: "center",
-      gap: theme.space.sm,
-      marginTop: theme.space.sm,
-    },
-    headerTextButton: {
-      height: 36,
-      paddingHorizontal: theme.space.md,
-      borderRadius: 18,
-      backgroundColor: theme.colors.accentSurface,
-      alignItems: "center",
-      justifyContent: "center",
-    },
-    headerTextButtonLabel: { color: theme.colors.textSecondary, fontSize: 11, fontWeight: "800" },
-    headerIconButton: {
-      width: 36,
-      height: 36,
-      borderRadius: 18,
-      backgroundColor: theme.colors.accentSurface,
-      alignItems: "center",
-      justifyContent: "center",
-    },
-    headerIcon: { color: theme.colors.accent, fontSize: 20, fontWeight: "800" },
-    resultCount: {
-      color: theme.colors.textMuted,
-      fontSize: 10,
-      fontWeight: "800",
-      textTransform: "uppercase",
-      letterSpacing: 1,
-      marginTop: theme.space.lg,
-      marginBottom: theme.space.xs,
-    },
-    backButton: {
-      width: 36,
-      height: 36,
-      borderRadius: 18,
-      backgroundColor: theme.colors.surfaceRaised,
-      alignItems: "center",
-      justifyContent: "center",
-    },
-    backText: { color: theme.colors.accent, fontSize: 30, lineHeight: 31 },
-    tabs: { marginHorizontal: -4, marginBottom: theme.space.xl },
-    tabRow: { flexDirection: "row", gap: theme.space.sm, paddingHorizontal: theme.space.xs },
-    tab: {
-      borderWidth: 1,
-      borderColor: theme.colors.separatorStrong,
-      borderRadius: 99,
-      paddingHorizontal: theme.space.lg,
-      paddingVertical: theme.space.sm,
-    },
-    tabActive: { backgroundColor: theme.colors.accent, borderColor: theme.colors.accent },
-    tabText: { color: theme.colors.textSecondary, fontSize: 13, fontWeight: "700" },
-    tabTextActive: { color: theme.colors.accentText },
-    toolbar: {
-      flexDirection: "row",
-      alignItems: "center",
-      justifyContent: "space-between",
-      gap: theme.space.md,
-      marginBottom: theme.space.md,
-    },
-    section: { color: theme.colors.text, fontSize: 18, fontWeight: "800" },
-    formRow: {
-      flexDirection: "row",
-      flexWrap: "wrap",
-      gap: theme.space.sm,
-      marginBottom: theme.space.lg,
-    },
-    input: {
-      flex: 1,
-      color: theme.colors.text,
-      backgroundColor: theme.colors.surface,
-      borderWidth: 1,
-      borderColor: theme.colors.separatorStrong,
-      borderRadius: 12,
-      padding: theme.space.md,
-    },
-    editorBlock: { gap: theme.space.md },
-    editor: { minHeight: 360, fontFamily: "monospace", fontSize: 12, textAlignVertical: "top" },
-    driveFolder: { marginBottom: theme.space.lg },
-    commandEditor: {
-      minHeight: 110,
-      fontFamily: "monospace",
-      fontSize: 12,
-      textAlignVertical: "top",
-    },
-    smallButton: {
-      backgroundColor: theme.colors.surfaceRaised,
-      borderRadius: 10,
-      paddingHorizontal: theme.space.md,
-      paddingVertical: theme.space.md,
-      alignSelf: "flex-start",
-    },
-    smallButtonText: { color: theme.colors.textSecondary, fontWeight: "700", fontSize: 12 },
-    iconButton: {
-      width: 34,
-      height: 34,
-      alignItems: "center",
-      justifyContent: "center",
-      borderRadius: 8,
-      backgroundColor: theme.colors.surfaceRaised,
-    },
-    primaryButton: {
-      backgroundColor: theme.colors.accent,
-      borderRadius: 11,
-      paddingHorizontal: theme.space.lg,
-      paddingVertical: theme.space.md,
-      alignSelf: "flex-start",
-    },
-    primaryText: { color: theme.colors.accentText, fontWeight: "800" },
-    dangerButton: {
-      borderWidth: 1,
-      borderColor: theme.colors.danger,
-      borderRadius: 11,
-      padding: theme.space.md,
-    },
-    dangerText: { color: theme.colors.danger, fontWeight: "800" },
-    actionRow: { marginBottom: theme.space.lg },
-    loader: { margin: theme.space.xxl },
-    loadingRow: {
-      flexDirection: "row",
-      alignItems: "center",
-      gap: theme.space.md,
-      paddingVertical: theme.space.xl,
-    },
-    loadingText: { color: theme.colors.textSecondary, fontWeight: "700" },
-    loadMoreSeparator: {
-      flexDirection: "row",
-      alignItems: "center",
-      gap: theme.space.md,
-      marginBottom: theme.space.lg,
-    },
-    loadMoreRule: { flex: 1, height: 1, backgroundColor: theme.colors.separator },
-    loadMoreButton: {
-      paddingHorizontal: theme.space.md,
-      paddingVertical: theme.space.sm,
-      borderRadius: 7,
-      borderWidth: 1,
-      borderColor: theme.colors.separatorStrong,
-      backgroundColor: theme.colors.surface,
-    },
-    loadMoreText: { color: theme.colors.textSecondary, fontSize: 11, fontWeight: "700" },
-    error: { color: theme.colors.danger, marginVertical: theme.space.md },
-    list: { gap: theme.space.sm },
-    card: {
-      backgroundColor: theme.colors.surface,
-      borderWidth: 1,
-      borderColor: theme.colors.separator,
-      borderRadius: 14,
-      padding: theme.space.md,
-      flexDirection: "row",
-      alignItems: "center",
-      gap: theme.space.md,
-    },
-    memoryResultRow: {
-      backgroundColor: "transparent",
-      borderWidth: 0,
-      borderBottomWidth: 1,
-      borderBottomColor: theme.colors.separator,
-      borderRadius: 0,
-      paddingHorizontal: theme.space.xxs,
-      paddingVertical: theme.space.lg,
-    },
-    cardMain: { flex: 1 },
-    swipeContainer: { flex: 1, minWidth: 0 },
-    desktopDeleteContainer: { flex: 1, minWidth: 0, position: "relative", paddingRight: 28 },
-    desktopDeleteButton: {
-      position: "absolute",
-      right: 0,
-      bottom: 0,
-      width: 28,
-      height: 28,
-      alignItems: "center",
-      justifyContent: "center",
-      borderRadius: 6,
-    },
-    swipeDelete: {
-      width: 88,
-      alignItems: "center",
-      justifyContent: "center",
-      gap: theme.space.xs,
-      marginLeft: theme.space.sm,
-      borderRadius: 10,
-      backgroundColor: theme.colors.danger,
-    },
-    swipeDeleteText: { color: "#fff", fontSize: 11, fontWeight: "800" },
-    piSessionMain: { flex: 1, minWidth: 0, gap: theme.space.sm },
-    piSessionTop: { flexDirection: "row", alignItems: "center", gap: theme.space.md },
-    piSessionTitle: { flex: 1, color: theme.colors.text, fontSize: 14, fontWeight: "800" },
-    piSessionDate: { color: theme.colors.textMuted, fontSize: 10 },
-    piSessionMeta: {
-      flexDirection: "row",
-      alignItems: "center",
-      gap: theme.space.sm,
-      flexWrap: "wrap",
-    },
-    piSessionTag: {
-      color: theme.colors.textMuted,
-      backgroundColor: theme.colors.surfaceRaised,
-      paddingHorizontal: theme.space.sm,
-      paddingVertical: theme.space.xxs,
-      borderRadius: 5,
-      fontSize: 10,
-      overflow: "hidden",
-    },
-    piSessionModel: { color: theme.colors.accent, maxWidth: 220 },
-    piSessionSize: { color: theme.colors.textMuted, fontSize: 10 },
-    piSessionId: { color: theme.colors.textMuted, fontSize: 10, fontFamily: "monospace" },
-    piSessionPreview: { color: theme.colors.textSecondary, fontSize: 12, lineHeight: 17 },
-    cardTitle: { color: theme.colors.text, fontWeight: "800", fontSize: 14 },
-    cardMeta: { color: theme.colors.textMuted, fontSize: 12, marginTop: theme.space.xs },
-    memoryContext: {
-      color: theme.colors.textSecondary,
-      fontSize: 12,
-      lineHeight: 17,
-      marginTop: theme.space.sm,
-      paddingLeft: theme.space.sm,
-      borderLeftWidth: 2,
-      borderLeftColor: theme.colors.separatorStrong,
-    },
-    memoryScores: {
-      flexDirection: "row",
-      flexWrap: "wrap",
-      gap: theme.space.md,
-      marginTop: theme.space.sm,
-    },
-    memoryScore: { fontFamily: "monospace", fontSize: 10, fontWeight: "700" },
-    memoryScoreRrf: { color: theme.colors.success },
-    memoryScoreEmbedding: { color: theme.colors.info },
-    memoryScoreDecay: { color: theme.colors.accent },
-    memoryScoreBm25: { color: theme.colors.warning },
-    memoryExpansion: {
-      marginTop: theme.space.md,
-      paddingTop: theme.space.md,
-      borderTopWidth: 1,
-      borderTopColor: theme.colors.separator,
-    },
-    memoryExpansionLabel: {
-      color: theme.colors.textMuted,
-      fontSize: 9,
-      fontWeight: "900",
-      textTransform: "uppercase",
-      letterSpacing: 1,
-      marginBottom: theme.space.sm,
-    },
-    memoryExpansionText: {
-      color: theme.colors.textSecondary,
-      fontSize: 12,
-      lineHeight: 19,
-      fontFamily: "monospace",
-    },
-    memoryHeader: { flexDirection: "row", alignItems: "center", gap: theme.space.md },
-    memoryIdentity: { flex: 1, minWidth: 0 },
-    memoryDay: { color: theme.colors.text, fontSize: 13, fontWeight: "800" },
-    memorySession: {
-      color: theme.colors.textMuted,
-      fontSize: 10,
-      fontFamily: "monospace",
-      marginTop: theme.space.xs,
-    },
-    memoryExpandButton: {
-      width: 36,
-      height: 36,
-      flexShrink: 0,
-      alignItems: "center",
-      justifyContent: "center",
-    },
-    memoryExpandIcon: {
-      color: theme.colors.accent,
-      fontSize: 19,
-      fontWeight: "700",
-      lineHeight: 21,
-    },
-    inlineActions: {
-      flexDirection: "row",
-      gap: theme.space.md,
-      flexWrap: "wrap",
-      justifyContent: "flex-end",
-    },
-    link: { color: theme.colors.accent, fontSize: 12, fontWeight: "800" },
-    deleteLink: { color: theme.colors.danger, fontSize: 12, fontWeight: "800" },
-    structuredList: { gap: theme.space.sm },
-    eventGroup: { gap: theme.space.sm },
-    eventCard: { borderWidth: 1, borderRadius: 13, padding: theme.space.md },
-    eventNeutral: {
-      backgroundColor: theme.colors.surface,
-      borderColor: theme.colors.separatorStrong,
-    },
-    eventUser: { backgroundColor: theme.colors.infoSurface, borderColor: theme.colors.info },
-    eventAssistant: { backgroundColor: theme.colors.surfaceRaised, borderColor: theme.colors.info },
-    eventThought: { backgroundColor: theme.colors.surface, borderColor: theme.colors.accent },
-    eventTool: { backgroundColor: theme.colors.successSurface, borderColor: theme.colors.success },
-    eventError: { backgroundColor: theme.colors.dangerSurface, borderColor: theme.colors.danger },
-    eventHeader: { flexDirection: "row", alignItems: "center", gap: theme.space.sm },
-    eventBadge: {
-      color: theme.colors.accent,
-      backgroundColor: theme.colors.surfaceRaised,
-      borderRadius: 7,
-      overflow: "hidden",
-      paddingHorizontal: theme.space.sm,
-      paddingVertical: theme.space.xs,
-      fontSize: 10,
-      fontWeight: "800",
-      fontFamily: "monospace",
-    },
-    eventTitle: {
-      color: theme.colors.text,
-      flex: 1,
-      fontSize: 12,
-      fontWeight: "700",
-      fontFamily: "monospace",
-    },
-    eventChevron: { color: theme.colors.textMuted, fontSize: 18 },
-    eventPreview: {
-      color: theme.colors.textSecondary,
-      fontSize: 12,
-      lineHeight: 17,
-      marginTop: theme.space.sm,
-    },
-    eventBody: {
-      color: theme.colors.textSecondary,
-      fontSize: 11,
-      lineHeight: 17,
-      marginTop: theme.space.md,
-      fontFamily: "monospace",
-    },
-    eventRaw: {
-      color: theme.colors.textMuted,
-      fontSize: 10,
-      lineHeight: 15,
-      marginTop: theme.space.md,
-      padding: theme.space.md,
-      borderRadius: 8,
-      backgroundColor: theme.colors.canvas,
-      fontFamily: "monospace",
-    },
-    emptyText: { color: theme.colors.textMuted, textAlign: "center", padding: theme.space.xxl },
-    jsonCard: {
-      backgroundColor: theme.colors.canvas,
-      borderRadius: 14,
-      padding: theme.space.lg,
-      borderWidth: 1,
-      borderColor: theme.colors.separator,
-    },
-    json: {
-      color: theme.colors.textSecondary,
-      fontFamily: "monospace",
-      fontSize: 11,
-      lineHeight: 17,
-    },
-    detail: {
-      marginTop: theme.space.xl,
-      backgroundColor: theme.colors.canvas,
-      borderRadius: 14,
-      padding: theme.space.lg,
-      borderWidth: 1,
-      borderColor: theme.colors.separatorStrong,
-    },
-  });

@@ -10,8 +10,8 @@ import {
   TextInput,
   View,
 } from "react-native";
-import { api } from "./api";
-import { useThemeStyles, useVitoTheme, type VitoTheme } from "./theme";
+import { api } from "../../services/api/client";
+import { useThemeStyles, useVitoTheme, type VitoTheme } from "../../hooks/useVitoTheme";
 
 type Job = {
   name: string;

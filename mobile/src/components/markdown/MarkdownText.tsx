@@ -1,7 +1,7 @@
 import Markdown, { type ASTNode, type RenderRules } from "react-native-markdown-display";
 import { ScrollView, StyleSheet, Text, View } from "react-native";
 import { useMemo } from "react";
-import { useThemeStyles, type VitoTheme } from "./theme";
+import { useThemeStyles, type VitoTheme } from "../../hooks/useVitoTheme";
 
 const rules: RenderRules = {
   text: (node: ASTNode, _children, parents, styles) => {

@@ -5,8 +5,8 @@ import {
   getVoiceSessions,
   type VoiceSession,
   type VoiceSessionDetail,
-} from "./api";
-import { useThemeStyles, useVitoTheme, type VitoTheme } from "./theme";
+} from "../../services/api/client";
+import { useThemeStyles, useVitoTheme, type VitoTheme } from "../../hooks/useVitoTheme";
 
 export function VoiceHistoryScreen({ onOpen }: { onOpen: (id: string) => void }) {
   const styles = useThemeStyles(createStyles);

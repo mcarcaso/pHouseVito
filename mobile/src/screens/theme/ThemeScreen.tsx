@@ -5,7 +5,7 @@ import {
   useVitoThemeController,
   type VitoTheme,
   type VitoThemeName,
-} from "./theme";
+} from "../../hooks/useVitoTheme";
 
 export function ThemeScreen() {
   const styles = useThemeStyles(createStyles);

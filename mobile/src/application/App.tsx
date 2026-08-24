@@ -2,20 +2,15 @@ import {
   NavigationContainer,
   createNavigationContainerRef,
   type LinkingOptions,
-  type NavigatorScreenParams,
   useNavigation,
 } from "@react-navigation/native";
 import { createBottomTabNavigator, type BottomTabBarProps } from "@react-navigation/bottom-tabs";
-import {
-  SafeAreaProvider,
-  SafeAreaView as ContextSafeAreaView,
-} from "react-native-safe-area-context";
+import { SafeAreaView as ContextSafeAreaView } from "react-native-safe-area-context";
 import {
   createNativeStackNavigator,
   type NativeStackNavigationProp,
 } from "@react-navigation/native-stack";
 import { Ionicons } from "@expo/vector-icons";
-import { GestureHandlerRootView } from "react-native-gesture-handler";
 import { StatusBar } from "expo-status-bar";
 import { useCallback, useEffect, useState } from "react";
 import {
@@ -25,98 +20,61 @@ import {
   Pressable,
   SafeAreaView,
   ScrollView,
-  StyleSheet,
   Text,
   TextInput,
   useWindowDimensions,
   View,
 } from "react-native";
-import { ChatScreen, DEFAULT_SESSION } from "./src/ChatScreen";
+import { ChatScreen, DEFAULT_SESSION } from "../screens/chat/ChatScreen";
 import {
   IdentityDocumentScreen,
   IdentityHome,
   identityDocumentTitle,
-  type IdentityDocument,
-} from "./src/IdentityScreen";
-import { LoginScreen } from "./src/LoginScreen";
-import { operationAreas, OperationsScreen, type OperationArea } from "./src/OperationsScreen";
-import { OperationItemDetailScreen } from "./src/OperationItemDetailScreen";
-import { SkillsScreen } from "./src/SkillsScreen";
-import { SettingsScreen } from "./src/SettingsScreen";
-import { ThemeScreen } from "./src/ThemeScreen";
-import { JobEditorScreen, JobsScreen } from "./src/JobsScreen";
+} from "../screens/identity/IdentityScreen";
+import { LoginScreen } from "../screens/auth/LoginScreen";
+import {
+  operationAreas,
+  OperationsScreen,
+  type OperationArea,
+} from "../screens/operations/OperationsScreen";
+import { OperationItemDetailScreen } from "../screens/operations/OperationItemDetailScreen";
+import { SkillsScreen } from "../screens/skills/SkillsScreen";
+import { SettingsScreen } from "../screens/settings/SettingsScreen";
+import { ThemeScreen } from "../screens/theme/ThemeScreen";
+import { JobEditorScreen, JobsScreen } from "../screens/jobs/JobsScreen";
 import {
   DesktopSecretsScreen,
   SecretEditorScreen,
   SecretsScreen,
   type Secret,
-} from "./src/SecretsScreen";
-import { SkillDocumentScreen, SkillFilesScreen, SkillFileScreen } from "./src/SkillMobileScreens";
-import { VoiceScreen, type VoiceOverlayStatus } from "./src/VoiceScreen";
-import { VoiceHistoryDetailScreen, VoiceHistoryScreen } from "./src/VoiceHistoryScreen";
-import { api, checkAuth, loadAgentUrl, loadToken, logout, saveToken } from "./src/api";
+} from "../screens/secrets/SecretsScreen";
 import {
-  DESKTOP_BREAKPOINT,
-  VitoThemeProvider,
-  useThemeStyles,
-  useVitoTheme,
-  type VitoTheme,
-} from "./src/theme";
+  SkillDocumentScreen,
+  SkillFilesScreen,
+  SkillFileScreen,
+} from "../screens/skills/SkillMobileScreens";
+import { VoiceScreen, type VoiceOverlayStatus } from "../screens/voice/VoiceScreen";
+import { VoiceHistoryDetailScreen, VoiceHistoryScreen } from "../screens/voice/VoiceHistoryScreen";
+import { api, checkAuth, loadAgentUrl, loadToken, logout, saveToken } from "../services/api/client";
+import { AppProviders } from "../providers/AppProviders";
+import { createAppStyles } from "./styles";
+import { DESKTOP_BREAKPOINT, useThemeStyles, useVitoTheme } from "../hooks/useVitoTheme";
 
-type ChatStackParamList = {
-  ChatList: undefined;
-  ChatConversation: { sessionId: string };
-};
-type MainTabParamList = {
-  Chat: NavigatorScreenParams<ChatStackParamList> | undefined;
-  Voice: undefined;
-  Identity: undefined;
-  More: undefined;
-  Memory: undefined;
-  Profile: undefined;
-  Skills: undefined;
-  Jobs: undefined;
-  Apps: undefined;
-  Drive: undefined;
-  Traces: undefined;
-  PiSessions: undefined;
-  Settings: undefined;
-  Theme: undefined;
-  Secrets: undefined;
-  System: undefined;
-  Server: undefined;
-  Providers: undefined;
-};
-type MainRouteName = keyof MainTabParamList;
-type RootStackParamList = {
-  Main: NavigatorScreenParams<MainTabParamList> | undefined;
-  MemoryHome: undefined;
-  IdentityHome: undefined;
-  IdentityDocument: { document: IdentityDocument };
-  Operation: { area: OperationArea; refreshKey?: number };
-  MemoryResults: { query: string; mode: "hybrid" | "embedding" | "bm25"; limit: number };
-  PiSessionDetail: { id: string; raw?: boolean };
-  TraceDetail: { id: string };
-  OperationItemDetail: { area: "apps" | "providers"; id: string };
-  DriveDirectory: { path: string };
-  JobDetail: { name?: string };
-  SkillDetail: { name: string; description?: string };
-  SkillFiles: { name: string };
-  SkillFile: { name: string; fileName: string };
-  SecretDetail: { key: string };
-  SecretNew: undefined;
-  VoiceHistory: undefined;
-  VoiceHistoryDetail: { id: string };
-};
+import type {
+  ChatStackParamList,
+  IdentityStackParamList,
+  MainRouteName,
+  MainTabParamList,
+  MoreStackParamList,
+  RootStackParamList,
+} from "./navigation/route-types";
+
 type RootNavigation = NativeStackNavigationProp<RootStackParamList>;
 const RootStack = createNativeStackNavigator<RootStackParamList>();
 const Tabs = createBottomTabNavigator<MainTabParamList>();
 const ChatStack = createNativeStackNavigator<ChatStackParamList>();
-const MoreStack = createNativeStackNavigator<{ MoreHome: undefined }>();
-const IdentityStack = createNativeStackNavigator<{
-  IdentityHome: undefined;
-  IdentityDocument: { document: IdentityDocument };
-}>();
+const MoreStack = createNativeStackNavigator<MoreStackParamList>();
+const IdentityStack = createNativeStackNavigator<IdentityStackParamList>();
 const navigationRef = createNavigationContainerRef<RootStackParamList>();
 const idleVoiceStatus: VoiceOverlayStatus = {
   state: "idle",
@@ -243,18 +201,14 @@ const linking: LinkingOptions<RootStackParamList> = {
 
 export default function App() {
   return (
-    <GestureHandlerRootView style={{ flex: 1 }}>
-      <SafeAreaProvider>
-        <VitoThemeProvider>
-          <AppContent />
-        </VitoThemeProvider>
-      </SafeAreaProvider>
-    </GestureHandlerRootView>
+    <AppProviders>
+      <AppContent />
+    </AppProviders>
   );
 }
 
 function AppContent() {
-  const styles = useThemeStyles(createStyles);
+  const styles = useThemeStyles(createAppStyles);
   const theme = useVitoTheme();
   const [authState, setAuthState] = useState<"loading" | "authenticated" | "login">("loading");
   const [voiceStatus, setVoiceStatus] = useState<VoiceOverlayStatus>(idleVoiceStatus);
@@ -756,7 +710,7 @@ function ChatNavigator({
   desktop: boolean;
   onUnauthorized: () => void;
 }) {
-  const styles = useThemeStyles(createStyles);
+  const styles = useThemeStyles(createAppStyles);
   return (
     <ChatStack.Navigator
       initialRouteName="ChatList"
@@ -801,7 +755,7 @@ function MainTabs({
   onLogout: () => void;
   onVoiceStatusChange: (status: VoiceOverlayStatus) => void;
 }) {
-  const styles = useThemeStyles(createStyles);
+  const styles = useThemeStyles(createAppStyles);
   const theme = useVitoTheme();
   const rootNavigation = useNavigation<RootNavigation>();
   const { width } = useWindowDimensions();
@@ -885,7 +839,7 @@ function WebStackHeader({
   title?: string;
   right?: React.ReactNode;
 }) {
-  const styles = useThemeStyles(createStyles);
+  const styles = useThemeStyles(createAppStyles);
   const theme = useVitoTheme();
   const [query, setQuery] = useState("");
   return (
@@ -917,7 +871,7 @@ function WebStackHeader({
 }
 
 function RootMemoryScreen({ navigation }: { navigation: RootNavigation }) {
-  const styles = useThemeStyles(createStyles);
+  const styles = useThemeStyles(createAppStyles);
   return (
     <ScrollView
       automaticallyAdjustContentInsets
@@ -1008,7 +962,7 @@ function PiSessionDetailScreen({
   route: { params: { id: string; raw?: boolean } };
   navigation: RootNavigation;
 }) {
-  const styles = useThemeStyles(createStyles);
+  const styles = useThemeStyles(createAppStyles);
   return (
     <ScrollView contentContainerStyle={styles.fullScreenOperation}>
       <OperationsScreen
@@ -1030,7 +984,7 @@ function RootOperationScreen({
   route: { params: { area: OperationArea; refreshKey?: number } };
   navigation: RootNavigation;
 }) {
-  const styles = useThemeStyles(createStyles);
+  const styles = useThemeStyles(createAppStyles);
   const theme = useVitoTheme();
   const area = route.params.area;
   const [query, setQuery] = useState("");
@@ -1206,7 +1160,7 @@ function MemoryResultsScreen({
   route: { params: { query: string; mode: "hybrid" | "embedding" | "bm25"; limit: number } };
   navigation: RootNavigation;
 }) {
-  const styles = useThemeStyles(createStyles);
+  const styles = useThemeStyles(createAppStyles);
   return (
     <ScrollView
       automaticallyAdjustContentInsets
@@ -1289,7 +1243,7 @@ function RootSkillFileScreen({ route }: { route: { params: { name: string; fileN
 }
 
 function TabSafeArea({ desktop, children }: { desktop: boolean; children: React.ReactNode }) {
-  const styles = useThemeStyles(createStyles);
+  const styles = useThemeStyles(createAppStyles);
   return (
     <ContextSafeAreaView edges={desktop ? [] : ["top"]} style={styles.tabSafeArea}>
       {children}
@@ -1298,7 +1252,7 @@ function TabSafeArea({ desktop, children }: { desktop: boolean; children: React.
 }
 
 function ScreenFrame({ desktop, children }: { desktop: boolean; children: React.ReactNode }) {
-  const styles = useThemeStyles(createStyles);
+  const styles = useThemeStyles(createAppStyles);
   return (
     <ScrollView contentContainerStyle={[styles.screenFrame, desktop && styles.screenFrameDesktop]}>
       <View style={styles.screenPage}>{children}</View>
@@ -1314,7 +1268,7 @@ function OperationRoute({
   desktop: boolean;
   onUnauthorized: () => void;
 }) {
-  const styles = useThemeStyles(createStyles);
+  const styles = useThemeStyles(createAppStyles);
   const theme = useVitoTheme();
   const root = useNavigation<RootNavigation>();
   const [desktopMemorySearch, setDesktopMemorySearch] = useState<{
@@ -1552,7 +1506,7 @@ function AdaptiveTabBar({
   desktop,
   onLogout,
 }: BottomTabBarProps & { desktop: boolean; onLogout: () => void }) {
-  const styles = useThemeStyles(createStyles);
+  const styles = useThemeStyles(createAppStyles);
   const current = state.routeNames[state.index] as MainRouteName;
   const visible = desktop
     ? (state.routeNames as MainRouteName[])
@@ -1632,7 +1586,7 @@ function DesktopNavItem({
   current: MainRouteName;
   navigation: BottomTabBarProps["navigation"];
 }) {
-  const styles = useThemeStyles(createStyles);
+  const styles = useThemeStyles(createAppStyles);
   const item = labels[route];
   const active = current === route;
   return (
@@ -1651,7 +1605,7 @@ function GlobalVoiceOverlay({
   status: VoiceOverlayStatus;
   onPress: () => void;
 }) {
-  const styles = useThemeStyles(createStyles);
+  const styles = useThemeStyles(createAppStyles);
   const theme = useVitoTheme();
   const { width } = useWindowDimensions();
   const desktop = width >= DESKTOP_BREAKPOINT;
@@ -1698,7 +1652,7 @@ function GlobalVoiceOverlay({
 }
 
 function MoreMenu({ onLogout }: { onLogout: () => void }) {
-  const styles = useThemeStyles(createStyles);
+  const styles = useThemeStyles(createAppStyles);
   const navigation = useNavigation<RootNavigation>();
   return (
     <ScrollView contentContainerStyle={styles.moreScreen}>
@@ -1752,259 +1706,3 @@ function MoreMenu({ onLogout }: { onLogout: () => void }) {
     </ScrollView>
   );
 }
-
-const createStyles = (theme: VitoTheme) =>
-  StyleSheet.create({
-    safeArea: { flex: 1, backgroundColor: theme.colors.canvas },
-    voiceScreen: { flex: 1, paddingHorizontal: theme.space.xl, paddingBottom: theme.space.md },
-    voiceScreenDesktop: {
-      padding: theme.space.xxxl,
-      maxWidth: 860,
-      width: "100%",
-      alignSelf: "center",
-    },
-    voiceOverlay: {
-      position: "absolute",
-      left: theme.space.md,
-      right: theme.space.md,
-      bottom: 78,
-      minHeight: 62,
-      paddingHorizontal: theme.space.md,
-      paddingVertical: theme.space.sm,
-      borderRadius: 17,
-      flexDirection: "row",
-      alignItems: "center",
-      gap: theme.space.md,
-      backgroundColor: theme.colors.surfaceRaised,
-      borderWidth: 1,
-      borderColor: theme.colors.separatorStrong,
-      shadowColor: "#000",
-      shadowOpacity: 0.22,
-      shadowRadius: 18,
-      shadowOffset: { width: 0, height: 8 },
-      elevation: 12,
-      zIndex: 100,
-    },
-    voiceOverlayDesktop: {
-      left: undefined,
-      right: theme.space.xl,
-      bottom: theme.space.xl,
-      width: 310,
-    },
-    voicePulse: {
-      width: 38,
-      height: 38,
-      borderRadius: 12,
-      alignItems: "center",
-      justifyContent: "center",
-      backgroundColor: theme.colors.accent,
-    },
-    voicePulseSpeaking: { transform: [{ scale: 1.05 }] },
-    voiceOverlayCopy: { flex: 1, minWidth: 0 },
-    voiceOverlayTitle: { color: theme.colors.text, fontSize: 13, fontWeight: "800" },
-    voiceOverlayDetail: {
-      color: theme.colors.textMuted,
-      fontSize: 11,
-      marginTop: theme.space.xs,
-    },
-    voiceReadyDot: {
-      width: 8,
-      height: 8,
-      borderRadius: 4,
-      backgroundColor: theme.colors.accent,
-    },
-    loading: {
-      flex: 1,
-      backgroundColor: theme.colors.canvas,
-      alignItems: "center",
-      justifyContent: "center",
-    },
-    routeBackground: { backgroundColor: theme.colors.canvas },
-    sidebar: {
-      width: 224,
-      paddingHorizontal: theme.space.lg,
-      paddingTop: theme.space.xl,
-      paddingBottom: theme.space.lg,
-      backgroundColor: theme.colors.sidebar,
-      borderRightWidth: 1,
-      borderRightColor: theme.colors.separator,
-    },
-    brand: {
-      flexDirection: "row",
-      paddingHorizontal: theme.space.md,
-      marginBottom: theme.space.xxl,
-    },
-    brandName: { color: theme.colors.text, fontSize: 19, fontWeight: "800" },
-    brandDot: { color: theme.colors.accent, fontSize: 19, fontWeight: "800" },
-    desktopNavList: { paddingBottom: theme.space.md },
-    navSection: {
-      color: theme.colors.textMuted,
-      fontSize: 9,
-      fontWeight: "800",
-      letterSpacing: 1.4,
-      textTransform: "uppercase",
-      marginTop: theme.space.xl,
-      marginBottom: theme.space.sm,
-      paddingHorizontal: theme.space.md,
-    },
-    navItem: {
-      minHeight: 36,
-      flexDirection: "row",
-      alignItems: "center",
-      gap: theme.space.md,
-      paddingHorizontal: theme.space.md,
-    },
-    navIcon: { color: theme.colors.textMuted, width: 18 },
-    navLabel: { color: theme.colors.textSecondary, fontWeight: "600", fontSize: 13 },
-    navLabelActive: { color: theme.colors.text, fontWeight: "800" },
-    navActiveDot: {
-      marginLeft: "auto",
-      width: 5,
-      height: 5,
-      borderRadius: 3,
-      backgroundColor: theme.colors.accent,
-    },
-    activeText: { color: theme.colors.accent },
-    signOut: { padding: theme.space.md, alignItems: "center" },
-    signOutText: { color: theme.colors.textMuted, fontSize: 11, fontWeight: "700" },
-    tabBar: {
-      backgroundColor: theme.colors.sidebar,
-      borderTopWidth: 1,
-      borderTopColor: theme.colors.separator,
-      paddingBottom: Platform.OS === "ios" ? 20 : 8,
-      paddingTop: theme.space.sm,
-    },
-    tabList: { flexDirection: "row", justifyContent: "space-around" },
-    tabItem: {
-      minWidth: 78,
-      alignItems: "center",
-      gap: theme.space.xs,
-      paddingVertical: theme.space.xs,
-    },
-    tabItemActive: {},
-    tabIcon: { color: theme.colors.textMuted, height: 22 },
-    tabLabel: { color: theme.colors.textMuted, fontSize: 10, fontWeight: "700" },
-    tabSafeArea: { flex: 1, backgroundColor: theme.colors.canvas },
-    screenFrame: { flexGrow: 1, padding: theme.space.xl, paddingBottom: theme.space.xxxl },
-    screenFrameDesktop: { padding: theme.space.xxxl },
-    screenPage: { width: "100%", maxWidth: 900, alignSelf: "center" },
-    operationRoute: { flex: 1, minHeight: 0 },
-    operationToolbar: {
-      height: 48,
-      flexDirection: "row",
-      alignItems: "center",
-      justifyContent: "space-between",
-      paddingHorizontal: theme.space.lg,
-      borderBottomWidth: 1,
-      borderBottomColor: theme.colors.separator,
-      backgroundColor: theme.colors.canvas,
-    },
-    operationToolbarTitle: {
-      flex: 1,
-      color: theme.colors.text,
-      fontSize: 15,
-      fontWeight: "700",
-    },
-    operationToolbarButton: {
-      width: 34,
-      height: 34,
-      alignItems: "center",
-      justifyContent: "center",
-      borderRadius: 7,
-    },
-    operationFrame: { flexGrow: 1, padding: theme.space.xl, paddingBottom: theme.space.xxxl },
-    operationFrameDesktop: {
-      paddingHorizontal: theme.space.giant,
-      paddingVertical: theme.space.huge,
-    },
-    rootOperation: { flex: 1, backgroundColor: theme.colors.canvas },
-    fullScreenOperation: { flexGrow: 1, padding: theme.space.xl, paddingBottom: theme.space.xl },
-    nativeMemorySearch: {
-      height: 50,
-      flexDirection: "row",
-      alignItems: "center",
-      gap: theme.space.md,
-      marginHorizontal: theme.space.xl,
-      borderBottomWidth: StyleSheet.hairlineWidth,
-      borderBottomColor: theme.colors.separatorStrong,
-    },
-    nativeMemorySearchInput: {
-      flex: 1,
-      color: theme.colors.text,
-      fontSize: 15,
-      paddingVertical: theme.space.md,
-    },
-    webStackHeader: {
-      minHeight: 58,
-      flexDirection: "row",
-      alignItems: "center",
-      gap: theme.space.md,
-      paddingHorizontal: theme.space.xl,
-      backgroundColor: theme.colors.canvas,
-      borderBottomWidth: StyleSheet.hairlineWidth,
-      borderBottomColor: theme.colors.separator,
-    },
-    webBackButton: {
-      width: 36,
-      height: 44,
-      alignItems: "flex-start",
-      justifyContent: "center",
-    },
-    webHeaderTitle: { color: theme.colors.text, fontSize: 16, fontWeight: "700" },
-    webHeaderSearch: {
-      flex: 1,
-      maxWidth: 820,
-      height: 44,
-      flexDirection: "row",
-      alignItems: "center",
-      gap: theme.space.md,
-      borderBottomWidth: StyleSheet.hairlineWidth,
-      borderBottomColor: theme.colors.separatorStrong,
-    },
-    webHeaderSearchInput: {
-      flex: 1,
-      color: theme.colors.text,
-      fontSize: 15,
-      paddingVertical: theme.space.md,
-    },
-    moreScreen: {
-      flexGrow: 1,
-      paddingHorizontal: theme.space.xl,
-      paddingTop: theme.space.xxl,
-      paddingBottom: theme.space.giant,
-    },
-    moreSection: { marginBottom: theme.space.xl },
-    moreSectionLabel: {
-      color: theme.colors.accent,
-      fontSize: 10,
-      fontWeight: "800",
-      letterSpacing: 1.4,
-      textTransform: "uppercase",
-      marginBottom: theme.space.xs,
-    },
-    moreRow: {
-      minHeight: 58,
-      flexDirection: "row",
-      alignItems: "center",
-      gap: theme.space.md,
-      borderBottomWidth: 1,
-      borderBottomColor: theme.colors.separator,
-    },
-    moreIcon: { color: theme.colors.textSecondary, width: 24 },
-    moreRowText: { flex: 1 },
-    moreTitle: { color: theme.colors.text, fontSize: 14, fontWeight: "700" },
-    moreDescription: { color: theme.colors.textMuted, fontSize: 11, marginTop: theme.space.xs },
-    moreChevron: { color: theme.colors.textMuted },
-    mobileSignOut: {
-      minHeight: 52,
-      flexDirection: "row",
-      alignItems: "center",
-      justifyContent: "center",
-      gap: theme.space.sm,
-      marginTop: theme.space.lg,
-      borderWidth: 1,
-      borderColor: theme.colors.danger,
-      borderRadius: 12,
-    },
-    mobileSignOutText: { color: theme.colors.danger, fontSize: 13, fontWeight: "800" },
-  });

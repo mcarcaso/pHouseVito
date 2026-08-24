@@ -1,9 +1,9 @@
 import { Ionicons } from "@expo/vector-icons";
 import { useEffect, useState } from "react";
 import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
-import { api } from "./api";
-import { MarkdownText } from "./MarkdownText";
-import { useThemeStyles, useVitoTheme, type VitoTheme } from "./theme";
+import { api } from "../../services/api/client";
+import { MarkdownText } from "../../components/markdown/MarkdownText";
+import { useThemeStyles, useVitoTheme, type VitoTheme } from "../../hooks/useVitoTheme";
 
 export type MobileSkill = { name: string; description: string; source: "builtin" | "user" };
 export type MobileSkillFile = { name: string; path: string; size: number };

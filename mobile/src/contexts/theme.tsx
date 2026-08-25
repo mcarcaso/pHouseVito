@@ -57,6 +57,7 @@ export type VitoTheme = {
     xxxl: number;
     huge: number;
     giant: number;
+    massive: number;
   };
   radius: {
     sm: number;
@@ -78,6 +79,7 @@ const space = {
   xxxl: 32,
   huge: 48,
   giant: 64,
+  massive: 80,
 };
 const radius = { sm: 6, md: 10, lg: 14, round: 999 };
 type ThemeColors = VitoTheme["colors"];

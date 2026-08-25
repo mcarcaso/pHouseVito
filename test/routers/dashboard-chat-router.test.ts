@@ -8,7 +8,19 @@ import { DefaultDashboardChatService } from "../../src/services/chat/DefaultDash
 import type { InboundEvent } from "../../src/lib/types/inbound-event.js";
 
 const chatService = new DefaultDashboardChatService();
-const x = dashboardRouterContext({ dashboardChatService: () => chatService });
+const sessions = new Map<string, Record<string, unknown>>();
+const sessionStore = {
+  list: (_x: unknown, filter: { ids?: string[] }) =>
+    filter.ids?.flatMap((id) => (sessions.has(id) ? [sessions.get(id)] : [])) ?? [],
+  create: (_x: unknown, row: { id: string }) => {
+    sessions.set(row.id, row);
+    return row;
+  },
+};
+const x = dashboardRouterContext({
+  dashboardChatService: () => chatService,
+  sessionStore: () => sessionStore,
+});
 const app = express();
 app.use("/api/chat", await new DashboardChatRouterService().createRouter(x));
 

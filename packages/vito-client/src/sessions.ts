@@ -72,6 +72,26 @@ export function useSessionMessages(sessionId: string | null, args?: MessageQuery
   });
 }
 
+export const attachmentUploadSchema = z.object({
+  path: z.string(),
+  url: z.string(),
+  filename: z.string(),
+  mimeType: z.string(),
+});
+
+export function useUploadAttachment() {
+  const client = useVitoClient();
+  return useMutation({
+    mutationFn: (attachment: { data: string; filename?: string }) =>
+      requestJson(
+        client,
+        "/api/attachments",
+        attachmentUploadSchema,
+        jsonRequest("POST", attachment),
+      ),
+  });
+}
+
 export function useLoadSessionMessages() {
   const client = useVitoClient();
   return useMutation({

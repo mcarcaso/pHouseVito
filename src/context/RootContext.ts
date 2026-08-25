@@ -18,6 +18,7 @@ import { DefaultSessionService } from "../services/sessions/DefaultSessionServic
 import { DefaultServerLifecycleService } from "../services/server/DefaultServerLifecycleService.js";
 import { FileVitoService } from "../services/vito/FileVitoService.js";
 import { DefaultVoiceService } from "../services/voice/DefaultVoiceService.js";
+import { DefaultQuickCommandService } from "../services/quick-commands/DefaultQuickCommandService.js";
 import { FileAppStore } from "../stores/apps/FileAppStore.js";
 import { FileAttachmentStore } from "../stores/attachments/FileAttachmentStore.js";
 import { FileDriveStore } from "../stores/drive/FileDriveStore.js";
@@ -30,6 +31,7 @@ import { FileSkillStore } from "../stores/skills/FileSkillStore.js";
 import { FileTraceEventStore } from "../stores/traces/FileTraceEventStore.js";
 import { FileTraceStore } from "../stores/traces/FileTraceStore.js";
 import { SqliteVoiceTaskStore } from "../stores/voice/SqliteVoiceTaskStore.js";
+import { SqliteQuickCommandStore } from "../stores/quick-commands/SqliteQuickCommandStore.js";
 import { xAskApiService } from "../lib/x.js";
 import { ObjectContext } from "./ObjectContext.js";
 import type { Context } from "./Context.js";
@@ -65,6 +67,7 @@ export function RootContext(args: RootContextArgs): Context {
     attachmentsDir: () => args.attachmentsDir ?? resolve(process.cwd(), "data", "attachments"),
     vitoService: () => new FileVitoService(),
     voiceService: (x) => new DefaultVoiceService(xAskApiService(x)),
+    quickCommandService: (x) => new DefaultQuickCommandService(xAskApiService(x)),
     fileService: () => new FileSystemFileService(),
     inboundAttachmentService: () => new DriveInboundAttachmentService(),
     appProcessService: () => new Pm2AppProcessService(),
@@ -90,6 +93,7 @@ export function RootContext(args: RootContextArgs): Context {
     skillStore: () => new FileSkillStore(),
     messageStore: () => new SqliteMessageStore(),
     voiceTaskStore: () => new SqliteVoiceTaskStore(),
+    quickCommandStore: () => new SqliteQuickCommandStore(),
     traceStore: () => new FileTraceStore(),
     traceEventStore: () => new FileTraceEventStore(),
   });

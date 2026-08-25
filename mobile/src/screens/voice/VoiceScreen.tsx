@@ -1,8 +1,11 @@
+import { Ionicons } from "@expo/vector-icons";
+import { useFocusEffect } from "@react-navigation/native";
+import { StyleSheet } from "react-native";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { setAudioModeAsync } from "expo-audio";
 import { ActivityIndicator, Platform, Pressable, ScrollView, Text, View } from "react-native";
 import {
   getRealtimeToken,
+  getVoiceAvailability,
   getVoiceContext,
   getVoiceSession,
   getVoiceSessions,
@@ -15,22 +18,35 @@ import {
   type VoiceSession,
   type VoiceSessionDetail,
 } from "../../services/api/client";
+import { useAgentName } from "../../contexts/agentIdentity";
 import { connectRealtime, type VoiceConnection } from "../../services/voice/realtime-webrtc";
+import {
+  setVoiceAudioRoute,
+  startVoiceAudio,
+  stopVoiceAudio,
+  type VoiceAudioRoute,
+} from "../../services/voice/audio-routing";
 import { useThemeStyles, useVitoTheme, type VitoTheme } from "../../hooks/useVitoTheme";
-import { createVoiceStyles } from "./styles";
+import { VoiceControlBar } from "../../components/voice/GlobalVoiceOverlay";
 
 export type VoiceState = "idle" | "connecting" | "listening" | "speaking" | "error";
 export interface VoiceOverlayStatus {
   state: VoiceState;
   muted: boolean;
+  audioRoute: VoiceAudioRoute;
   runningTasks: number;
   completedTasks: number;
   failedTasks: number;
 }
+export interface VoiceOverlayControls {
+  toggleMute: () => void;
+  toggleAudioRoute: () => void;
+  hangUp: () => void;
+}
 
 interface TranscriptLine {
   id: number;
-  role: "Mike" | "Vito";
+  role: "user" | "agent";
   text: string;
 }
 interface VisibleTask {
@@ -60,17 +76,21 @@ interface RealtimeEvent {
 export function VoiceScreen({
   onUnauthorized,
   onStatusChange,
-  onPastConversations,
+  onControlsChange,
+  onConfigureOpenAi,
 }: {
   onUnauthorized: () => void;
   onStatusChange?: (status: VoiceOverlayStatus) => void;
-  onPastConversations: () => void;
+  onControlsChange?: (controls: VoiceOverlayControls | null) => void;
+  onConfigureOpenAi?: () => void;
 }) {
-  const styles = useThemeStyles(createVoiceStyles);
+  const styles = useThemeStyles(createStyles);
   const theme = useVitoTheme();
+  const agentName = useAgentName();
   const [state, setState] = useState<VoiceState>("idle");
+  const [available, setAvailable] = useState<boolean | null>(null);
   const [muted, setMuted] = useState(false);
-  const [audioRoute, setAudioRoute] = useState<"speaker" | "earpiece">("speaker");
+  const [audioRoute, setAudioRoute] = useState<VoiceAudioRoute>("speaker");
   const [selectedVoice, setSelectedVoice] = useState<RealtimeVoice>("marin");
   const [error, setError] = useState<string | null>(null);
   const [transcript, setTranscript] = useState<TranscriptLine[]>([]);
@@ -84,6 +104,23 @@ export function VoiceScreen({
   const lineIdRef = useRef(0);
   const sessionIdRef = useRef(`voice:${Date.now()}`);
   const handledToolCallsRef = useRef(new Set<string>());
+
+  useFocusEffect(
+    useCallback(() => {
+      let current = true;
+      void getVoiceAvailability()
+        .then((status) => {
+          if (current) setAvailable(status.available);
+        })
+        .catch(() => {
+          // Older backends do not expose availability; preserve the existing start behavior.
+          if (current) setAvailable(null);
+        });
+      return () => {
+        current = false;
+      };
+    }, []),
+  );
 
   const loadHistory = useCallback(async () => {
     try {
@@ -102,6 +139,7 @@ export function VoiceScreen({
     onStatusChange?.({
       state,
       muted,
+      audioRoute,
       runningTasks: tasks.filter((task) => task.status === "queued" || task.status === "running")
         .length,
       completedTasks: tasks.filter((task) => task.status === "completed").length,
@@ -110,7 +148,7 @@ export function VoiceScreen({
           task.status === "failed" || task.status === "cancelled" || task.status === "timed_out",
       ).length,
     });
-  }, [muted, onStatusChange, state, tasks]);
+  }, [audioRoute, muted, onStatusChange, state, tasks]);
 
   const openHistory = useCallback(async (id: string) => {
     const detail = await getVoiceSession(id);
@@ -121,7 +159,7 @@ export function VoiceScreen({
         .filter((message) => message.type === "user" || message.type === "assistant")
         .map((message) => ({
           id: ++lineIdRef.current,
-          role: message.type === "user" ? ("Mike" as const) : ("Vito" as const),
+          role: message.type === "user" ? ("user" as const) : ("agent" as const),
           text: message.content,
         })),
     );
@@ -149,13 +187,13 @@ export function VoiceScreen({
     );
   }, []);
 
-  const addLine = useCallback((role: "Mike" | "Vito", text: string) => {
+  const addLine = useCallback((role: "user" | "agent", text: string) => {
     const clean = text.trim();
     if (!clean) return;
     setTranscript((current) => [...current, { id: ++lineIdRef.current, role, text: clean }]);
     void persistVoiceEvent(
       sessionIdRef.current,
-      role === "Mike" ? "user" : "assistant",
+      role === "user" ? "user" : "assistant",
       clean,
     ).catch(() => undefined);
   }, []);
@@ -171,6 +209,7 @@ export function VoiceScreen({
     }
     connectionRef.current?.close();
     connectionRef.current = null;
+    if (Platform.OS !== "web") stopVoiceAudio();
     assistantDraftRef.current = "";
     setMuted(false);
     setState("idle");
@@ -191,41 +230,44 @@ export function VoiceScreen({
       response: {
         instructions:
           instructions ??
-          "Use the tool result. If another tool is needed, call it silently without narrating the search. Otherwise answer Mike directly.",
+          "Use the tool result. If another tool is needed, call it silently without narrating the search. Otherwise answer the user directly.",
       },
     });
   }, []);
 
-  const waitForTask = useCallback(async (id: string) => {
-    for (let attempt = 0; attempt < 300; attempt += 1) {
-      await new Promise((resolve) => setTimeout(resolve, 2_000));
-      const task = await getVoiceTask(id);
-      if (!task) continue;
+  const waitForTask = useCallback(
+    async (id: string) => {
+      for (let attempt = 0; attempt < 300; attempt += 1) {
+        await new Promise((resolve) => setTimeout(resolve, 2_000));
+        const task = await getVoiceTask(id);
+        if (!task) continue;
+        setTasks((current) =>
+          current.map((item) =>
+            item.id === id ? { ...item, status: task.status, result: task.result } : item,
+          ),
+        );
+        if (task.status === "queued" || task.status === "running") continue;
+        connectionRef.current?.sendEvent({
+          type: "conversation.item.create",
+          item: {
+            type: "message",
+            role: "system",
+            content: [
+              {
+                type: "input_text",
+                text: `Background ${agentName} task ${id} is now ${task.status}. Result: ${task.result ?? task.error ?? "No result"}. Do not speak about this until the user asks about the task or its result.`,
+              },
+            ],
+          },
+        });
+        return;
+      }
       setTasks((current) =>
-        current.map((item) =>
-          item.id === id ? { ...item, status: task.status, result: task.result } : item,
-        ),
+        current.map((item) => (item.id === id ? { ...item, status: "timed_out" } : item)),
       );
-      if (task.status === "queued" || task.status === "running") continue;
-      connectionRef.current?.sendEvent({
-        type: "conversation.item.create",
-        item: {
-          type: "message",
-          role: "system",
-          content: [
-            {
-              type: "input_text",
-              text: `Background Vito task ${id} is now ${task.status}. Result: ${task.result ?? task.error ?? "No result"}. Do not speak about this until Mike asks about the task or its result.`,
-            },
-          ],
-        },
-      });
-      return;
-    }
-    setTasks((current) =>
-      current.map((item) => (item.id === id ? { ...item, status: "timed_out" } : item)),
-    );
-  }, []);
+    },
+    [agentName],
+  );
 
   const executeTool = useCallback(
     async (name: string, callId: string, rawArguments?: string) => {
@@ -256,10 +298,9 @@ export function VoiceScreen({
           result = {
             taskId: task.id,
             status: task.status,
-            message: "Vito is investigating in the background. Conversation can continue.",
+            message: `${agentName} is investigating in the background. Conversation can continue.`,
           };
-          responseInstructions =
-            "Briefly confirm the Vito task is underway and conversation can continue. Do not claim you lack access, ask Mike to reconstruct the answer, repeat the request, or imply the task failed.";
+          responseInstructions = `Briefly confirm the ${agentName} task is underway and conversation can continue. Do not claim you lack access, ask the user to reconstruct the answer, repeat the request, or imply the task failed.`;
         } else if (name === "get_vito_task") {
           result = await getVoiceTask(String(args.id ?? ""));
         } else throw new Error(`Unknown tool: ${name}`);
@@ -271,7 +312,7 @@ export function VoiceScreen({
         sendToolResult(callId, result, responseInstructions);
       } catch (cause) {
         const message = cause instanceof Error ? cause.message : "Voice tool failed";
-        addLine("Vito", `Tool ${name} failed: ${message}`);
+        addLine("agent", `Tool ${name} failed: ${message}`);
         void persistVoiceEvent(
           sessionIdRef.current,
           "usage",
@@ -280,7 +321,7 @@ export function VoiceScreen({
         sendToolResult(callId, { error: message });
       }
     },
-    [addLine, sendToolResult, waitForTask],
+    [addLine, agentName, sendToolResult, waitForTask],
   );
 
   const handleEvent = useCallback(
@@ -309,13 +350,13 @@ export function VoiceScreen({
         event.type === "conversation.item.input_audio_transcription.completed" &&
         event.transcript
       ) {
-        addLine("Mike", event.transcript);
+        addLine("user", event.transcript);
       }
       if (event.type === "response.output_audio_transcript.delta" && event.delta) {
         assistantDraftRef.current += event.delta;
       }
       if (event.type === "response.output_audio_transcript.done") {
-        addLine("Vito", event.transcript ?? assistantDraftRef.current);
+        addLine("agent", event.transcript ?? assistantDraftRef.current);
         assistantDraftRef.current = "";
       }
       if (event.type === "response.function_call_arguments.done" && event.name && event.call_id) {
@@ -351,13 +392,7 @@ export function VoiceScreen({
       sessionIdRef.current = resume?.session.id ?? `voice:${Date.now()}`;
       handledToolCallsRef.current.clear();
       if (Platform.OS !== "web") {
-        await setAudioModeAsync({
-          allowsRecording: true,
-          playsInSilentMode: true,
-          shouldPlayInBackground: true,
-          shouldRouteThroughEarpiece: false,
-          interruptionMode: "doNotMix",
-        });
+        await startVoiceAudio("speaker");
         setAudioRoute("speaker");
       }
       const token = await getRealtimeToken(selectedVoice);
@@ -393,7 +428,7 @@ export function VoiceScreen({
               content: [
                 {
                   type: "input_text",
-                  text: `This is a resumed Vito voice conversation. Prior background tasks: ${JSON.stringify(
+                  text: `This is a resumed ${agentName} voice conversation. Prior background tasks: ${JSON.stringify(
                     (resume.tasks ?? []).map((task) => ({
                       id: task.id,
                       question: task.question,
@@ -401,7 +436,7 @@ export function VoiceScreen({
                       result: task.result,
                       error: task.error,
                     })),
-                  )}. Use completed results when Mike asks about them; do not announce them unsolicited.`,
+                  )}. Use completed results when the user asks about them; do not announce them unsolicited.`,
                 },
               ],
             },
@@ -422,6 +457,7 @@ export function VoiceScreen({
         },
       );
       connectionRef.current = connection;
+      if (Platform.OS !== "web") await setVoiceAudioRoute("speaker");
       if (opened) hydrate();
     } catch (cause) {
       stop();
@@ -439,70 +475,62 @@ export function VoiceScreen({
   };
 
   const toggleAudioRoute = async () => {
+    if (!connectionRef.current || state === "connecting") return;
     const next = audioRoute === "speaker" ? "earpiece" : "speaker";
-    await setAudioModeAsync({
-      allowsRecording: true,
-      playsInSilentMode: true,
-      shouldPlayInBackground: true,
-      shouldRouteThroughEarpiece: next === "earpiece",
-      interruptionMode: "doNotMix",
-    });
-    setAudioRoute(next);
+    try {
+      await setVoiceAudioRoute(next);
+      setAudioRoute(next);
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : "Could not change the audio route");
+    }
   };
 
   const active = state !== "idle" && state !== "error";
+  useEffect(() => {
+    onControlsChange?.(
+      active
+        ? {
+            toggleMute,
+            toggleAudioRoute: () => void toggleAudioRoute(),
+            hangUp: stop,
+          }
+        : null,
+    );
+    return () => onControlsChange?.(null);
+  }, [active, audioRoute, muted, onControlsChange, stop, state]);
+
+  const controlStatus: VoiceOverlayStatus = {
+    state,
+    muted,
+    audioRoute,
+    runningTasks: tasks.filter((task) => task.status === "queued" || task.status === "running")
+      .length,
+    completedTasks: tasks.filter((task) => task.status === "completed").length,
+    failedTasks: tasks.filter(
+      (task) =>
+        task.status === "failed" || task.status === "cancelled" || task.status === "timed_out",
+    ).length,
+  };
+  const localControls: VoiceOverlayControls | null = active
+    ? { toggleMute, toggleAudioRoute: () => void toggleAudioRoute(), hangUp: stop }
+    : null;
+
   return (
     <View style={styles.root}>
       {error && <Text style={styles.error}>{error}</Text>}
-      {!selectedHistory && !showHistory && (
-        <View style={styles.voiceStage}>
-          <Pressable
-            accessibilityLabel={active ? "End voice conversation" : "Start voice conversation"}
-            onPress={active ? stop : () => void start(null)}
-            style={[
-              styles.orb,
-              active && styles.orbActive,
-              state === "speaking" && styles.orbSpeaking,
-              state === "connecting" && styles.orbConnecting,
-            ]}
-          >
-            {state === "connecting" ? (
-              <ActivityIndicator color={theme.colors.accentText} size="large" />
-            ) : (
-              <Text style={[styles.orbMark, active && styles.orbMarkActive]}>
-                {active ? "■" : "V"}
-              </Text>
-            )}
-          </Pressable>
-          <Text style={styles.state}>
-            {active
-              ? state === "speaking"
-                ? "Speaking"
-                : muted
-                  ? "Muted"
-                  : "Listening"
-              : "Tap to start"}
+      {!active && available === false && !selectedHistory && (
+        <View style={styles.unavailable}>
+          <Ionicons name="mic-off-outline" size={34} color={theme.colors.textMuted} />
+          <Text style={styles.unavailableTitle}>Live Voice is unavailable</Text>
+          <Text style={styles.unavailableText}>
+            Live conversations use OpenAI Realtime and require an OpenAI API key.
           </Text>
-          {active && (
-            <View style={styles.controls}>
-              <Pressable onPress={toggleMute} style={styles.secondaryButton}>
-                <Text style={styles.secondaryText}>{muted ? "Unmute" : "Mute"}</Text>
-              </Pressable>
-              {Platform.OS !== "web" && (
-                <Pressable onPress={() => void toggleAudioRoute()} style={styles.secondaryButton}>
-                  <Text style={styles.secondaryText}>
-                    {audioRoute === "speaker" ? "Earpiece" : "Speaker"}
-                  </Text>
-                </Pressable>
-              )}
-            </View>
+          {onConfigureOpenAi && (
+            <Pressable onPress={onConfigureOpenAi} style={styles.configureButton}>
+              <Text style={styles.configureButtonText}>Configure OpenAI</Text>
+            </Pressable>
           )}
         </View>
-      )}
-      {!active && !selectedHistory && (
-        <Pressable onPress={onPastConversations} style={styles.historyButton}>
-          <Text style={styles.historyButtonText}>Past conversations</Text>
-        </Pressable>
       )}
       {!active && selectedHistory && (
         <Pressable
@@ -519,45 +547,21 @@ export function VoiceScreen({
         </Pressable>
       )}
 
-      {tasks.length > 0 && (
-        <View style={styles.taskStack}>
-          {tasks.map((task) => (
-            <View key={task.id} style={styles.taskCard}>
-              <View style={styles.taskHeader}>
-                <Text style={styles.taskIcon}>
-                  {task.status === "completed"
-                    ? "✅"
-                    : task.status === "failed" ||
-                        task.status === "cancelled" ||
-                        task.status === "timed_out"
-                      ? "⚠️"
-                      : "⏳"}
-                </Text>
-                <Text style={styles.taskStatus}>
-                  {task.status === "completed"
-                    ? "Vito investigation complete"
-                    : task.status === "running"
-                      ? "Vito is investigating"
-                      : task.status.replace("_", " ")}
-                </Text>
-              </View>
-              <Text style={styles.taskQuestion} numberOfLines={2}>
-                {task.question}
-              </Text>
-              {task.status === "completed" && (
-                <Text style={styles.taskHint}>Say “Tell me the task result.”</Text>
-              )}
-            </View>
-          ))}
-        </View>
-      )}
-
       {selectedHistory && !active && (
         <Pressable onPress={() => void start(selectedHistory)} style={styles.resumeButton}>
           <Text style={styles.resumeButtonText}>Resume conversation</Text>
         </Pressable>
       )}
       <ScrollView style={styles.transcript} contentContainerStyle={styles.transcriptContent}>
+        {available !== false && !showHistory && !selectedHistory && transcript.length === 0 && (
+          <View style={styles.transcriptEmpty}>
+            <Ionicons name="chatbubbles-outline" size={32} color={theme.colors.textMuted} />
+            <Text style={styles.transcriptEmptyTitle}>Your transcript will appear here</Text>
+            <Text style={styles.transcriptEmptyText}>
+              Start a conversation to see what you and {agentName} say.
+            </Text>
+          </View>
+        )}
         {!active && showHistory && !selectedHistory && history.length > 0 && (
           <View style={styles.historyBlock}>
             <Text style={styles.historyTitle}>RECENT CONVERSATIONS</Text>
@@ -589,11 +593,192 @@ export function VoiceScreen({
         {sessionSummary && <Text style={styles.summary}>{sessionSummary}</Text>}
         {transcript.map((line) => (
           <View key={line.id} style={styles.line}>
-            <Text style={styles.role}>{line.role}</Text>
+            <Text style={styles.role}>{line.role === "user" ? "You" : agentName}</Text>
             <Text style={styles.lineText}>{line.text}</Text>
           </View>
         ))}
       </ScrollView>
+      {available !== false && !selectedHistory && !showHistory && (
+        <View style={styles.embeddedControls}>
+          <VoiceControlBar
+            status={controlStatus}
+            controls={localControls}
+            onStart={() => void start(null)}
+          />
+        </View>
+      )}
     </View>
   );
 }
+
+const createStyles = (theme: VitoTheme) =>
+  StyleSheet.create({
+    root: { flex: 1, width: "100%", alignItems: "center" },
+    unavailable: {
+      width: "100%",
+      maxWidth: 420,
+      alignItems: "center",
+      paddingHorizontal: theme.space.xl,
+      paddingVertical: theme.space.xxxl,
+    },
+    unavailableTitle: {
+      color: theme.colors.text,
+      fontSize: 17,
+      fontWeight: "800",
+      marginTop: theme.space.md,
+    },
+    unavailableText: {
+      color: theme.colors.textMuted,
+      fontSize: 13,
+      lineHeight: 19,
+      textAlign: "center",
+      marginTop: theme.space.sm,
+    },
+    configureButton: {
+      backgroundColor: theme.colors.accent,
+      borderRadius: 12,
+      paddingHorizontal: theme.space.xl,
+      paddingVertical: theme.space.md,
+      marginTop: theme.space.xl,
+    },
+    configureButtonText: { color: theme.colors.accentText, fontSize: 13, fontWeight: "800" },
+    error: {
+      color: theme.colors.danger,
+      fontSize: 12,
+      lineHeight: 17,
+      textAlign: "center",
+      marginTop: theme.space.md,
+      maxWidth: 340,
+    },
+    voiceStage: { flex: 1, minHeight: 390, alignItems: "center", justifyContent: "center" },
+    orb: {
+      width: 72,
+      height: 72,
+      borderRadius: 36,
+      backgroundColor: theme.colors.surfaceRaised,
+      alignItems: "center",
+      justifyContent: "center",
+      borderWidth: 1,
+      borderColor: theme.colors.separatorStrong,
+    },
+    orbActive: { backgroundColor: theme.colors.accent, borderColor: theme.colors.accent },
+    orbSpeaking: { opacity: 0.9 },
+    orbConnecting: { opacity: 0.8 },
+    state: {
+      color: theme.colors.textSecondary,
+      fontSize: 15,
+      fontWeight: "700",
+      marginTop: theme.space.md,
+    },
+    controls: {
+      flexDirection: "row",
+      flexWrap: "wrap",
+      justifyContent: "center",
+      gap: theme.space.md,
+      marginTop: theme.space.xxl,
+    },
+    secondaryButton: {
+      minWidth: 100,
+      height: 50,
+      borderRadius: 15,
+      backgroundColor: theme.colors.surfaceRaised,
+      borderWidth: 1,
+      borderColor: theme.colors.separatorStrong,
+      alignItems: "center",
+      justifyContent: "center",
+    },
+    secondaryText: { color: theme.colors.textSecondary, fontSize: 14, fontWeight: "700" },
+    historyButton: {
+      minHeight: 48,
+      alignItems: "center",
+      justifyContent: "center",
+      paddingHorizontal: theme.space.xl,
+      marginBottom: theme.space.md,
+    },
+    historyButtonText: { color: theme.colors.accent, fontSize: 13, fontWeight: "800" },
+    taskStack: { width: "100%", gap: theme.space.sm, marginTop: theme.space.lg },
+    taskCard: {
+      backgroundColor: theme.colors.surface,
+      borderWidth: 1,
+      borderColor: theme.colors.separatorStrong,
+      borderRadius: 13,
+      padding: theme.space.md,
+    },
+    taskHeader: { flexDirection: "row", alignItems: "center", gap: theme.space.sm },
+    taskIcon: { fontSize: 14 },
+    taskStatus: { color: theme.colors.text, fontSize: 12, fontWeight: "800" },
+    taskQuestion: { color: theme.colors.textMuted, fontSize: 11, marginTop: theme.space.sm },
+    taskHint: {
+      color: theme.colors.accent,
+      fontSize: 11,
+      fontWeight: "700",
+      marginTop: theme.space.sm,
+    },
+    resumeButton: {
+      backgroundColor: theme.colors.accent,
+      borderRadius: 12,
+      paddingHorizontal: theme.space.xl,
+      paddingVertical: theme.space.md,
+      marginTop: theme.space.lg,
+    },
+    resumeButtonText: { color: theme.colors.accentText, fontSize: 13, fontWeight: "800" },
+    transcript: { flex: 1, width: "100%" },
+    transcriptContent: { flexGrow: 1, paddingVertical: theme.space.lg, gap: theme.space.md },
+    transcriptEmpty: {
+      flex: 1,
+      minHeight: 320,
+      alignItems: "center",
+      justifyContent: "center",
+      paddingHorizontal: theme.space.xxl,
+    },
+    transcriptEmptyTitle: {
+      color: theme.colors.text,
+      fontSize: 15,
+      fontWeight: "800",
+      marginTop: theme.space.md,
+    },
+    transcriptEmptyText: {
+      color: theme.colors.textMuted,
+      fontSize: 12,
+      lineHeight: 18,
+      textAlign: "center",
+      marginTop: theme.space.sm,
+    },
+    embeddedControls: { width: "100%", paddingTop: theme.space.sm },
+    historyBlock: { gap: theme.space.md, marginBottom: theme.space.xs },
+    historyTitle: {
+      color: theme.colors.textMuted,
+      fontSize: 9,
+      fontWeight: "800",
+      letterSpacing: 1.2,
+    },
+    historyListRow: {
+      minHeight: 62,
+      flexDirection: "row",
+      alignItems: "center",
+      borderBottomWidth: 1,
+      borderBottomColor: theme.colors.separator,
+      paddingVertical: theme.space.md,
+    },
+    historyListCopy: { flex: 1, minWidth: 0 },
+    historyListTitle: { color: theme.colors.text, fontSize: 13, fontWeight: "700" },
+    historyTime: { color: theme.colors.textMuted, fontSize: 11, marginTop: theme.space.xs },
+    historyChevron: { color: theme.colors.textMuted, fontSize: 24 },
+    summary: { color: theme.colors.textSecondary, fontSize: 11, textAlign: "center" },
+    line: {
+      padding: theme.space.lg,
+      borderRadius: 14,
+      backgroundColor: theme.colors.surface,
+      borderWidth: 1,
+      borderColor: theme.colors.separator,
+    },
+    role: {
+      color: theme.colors.accent,
+      fontSize: 9,
+      fontWeight: "800",
+      letterSpacing: 1.2,
+      marginBottom: theme.space.xs,
+      textTransform: "uppercase",
+    },
+    lineText: { color: theme.colors.textSecondary, fontSize: 14, lineHeight: 20 },
+  });

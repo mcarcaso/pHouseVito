@@ -122,7 +122,6 @@ export function JobsScreen({
 export function JobEditorScreen({ name, onDone }: { name?: string; onDone: () => void }) {
   const s = useThemeStyles(styles),
     t = useVitoTheme(),
-    [all, setAll] = useState<Job[]>([]),
     [job, setJob] = useState<Job>({
       name: "",
       schedule: "",
@@ -130,15 +129,17 @@ export function JobEditorScreen({ name, onDone }: { name?: string; onDone: () =>
       session: "dashboard:default",
       prompt: "",
     }),
+    [loading, setLoading] = useState(Boolean(name)),
     [saving, setSaving] = useState(false);
   useEffect(() => {
-    void api<Job[]>("/api/cron/jobs").then((v) => {
-      setAll(v);
-      if (name) {
-        const found = v.find((x) => x.name === name);
-        if (found) setJob(found);
-      }
-    });
+    void api<Job[]>("/api/cron/jobs")
+      .then((v) => {
+        if (name) {
+          const found = v.find((x) => x.name === name);
+          if (found) setJob(found);
+        }
+      })
+      .finally(() => setLoading(false));
   }, [name]);
   const field = (key: keyof Job, label: string, multi = false) => (
     <View style={s.field}>
@@ -171,6 +172,12 @@ export function JobEditorScreen({ name, onDone }: { name?: string; onDone: () =>
           void api(`/api/cron/jobs/${encodeURIComponent(name)}`, { method: "DELETE" }).then(onDone),
       },
     ]);
+  if (loading)
+    return (
+      <View style={s.center}>
+        <ActivityIndicator color={t.colors.accent} />
+      </View>
+    );
   return (
     <ScrollView contentContainerStyle={s.editor}>
       {field("name", "Name")}
@@ -211,6 +218,7 @@ function human(c: string) {
 }
 const styles = (t: VitoTheme) =>
   StyleSheet.create({
+    center: { flex: 1, alignItems: "center", justifyContent: "center" },
     root: { flex: 1 },
     toolbar: {
       height: 48,
@@ -227,7 +235,7 @@ const styles = (t: VitoTheme) =>
       height: 34,
       flexDirection: "row",
       alignItems: "center",
-      gap: 4,
+      gap: t.space.xs,
       paddingHorizontal: t.space.md,
       borderRadius: 8,
       backgroundColor: t.colors.accent,
@@ -248,7 +256,7 @@ const styles = (t: VitoTheme) =>
     cardHead: { flexDirection: "row", alignItems: "flex-start", gap: t.space.sm },
     identity: { flex: 1, minWidth: 0 },
     name: { color: t.colors.text, fontWeight: "800", fontSize: 14 },
-    session: { color: t.colors.textMuted, fontSize: 11, marginTop: 2 },
+    session: { color: t.colors.textMuted, fontSize: 11, marginTop: t.space.xxs },
     badge: {
       color: t.colors.accent,
       fontSize: 8,
@@ -256,8 +264,8 @@ const styles = (t: VitoTheme) =>
       borderWidth: 1,
       borderColor: t.colors.accent,
       borderRadius: 4,
-      paddingHorizontal: 5,
-      paddingVertical: 2,
+      paddingHorizontal: t.space.xs,
+      paddingVertical: t.space.xxs,
     },
     facts: {
       flexDirection: "row",
@@ -270,8 +278,13 @@ const styles = (t: VitoTheme) =>
     },
     fact: { flex: 1 },
     label: { color: t.colors.textMuted, fontSize: 9, fontWeight: "800", letterSpacing: 0.8 },
-    value: { color: t.colors.textSecondary, fontSize: 13, marginTop: 4 },
-    cron: { color: t.colors.textSecondary, fontSize: 11, fontFamily: "monospace", marginTop: 5 },
+    value: { color: t.colors.textSecondary, fontSize: 13, marginTop: t.space.xs },
+    cron: {
+      color: t.colors.textSecondary,
+      fontSize: 11,
+      fontFamily: "monospace",
+      marginTop: t.space.xs,
+    },
     prompt: { color: t.colors.textSecondary, fontSize: 12, lineHeight: 17, minHeight: 34 },
     foot: { flexDirection: "row", alignItems: "center", marginTop: t.space.md },
     details: { color: t.colors.textMuted, fontSize: 11 },
@@ -279,12 +292,12 @@ const styles = (t: VitoTheme) =>
       marginLeft: "auto",
       flexDirection: "row",
       alignItems: "center",
-      gap: 5,
+      gap: t.space.xs,
       borderWidth: 1,
       borderColor: t.colors.success,
       borderRadius: 7,
       paddingHorizontal: t.space.sm,
-      paddingVertical: 6,
+      paddingVertical: t.space.sm,
     },
     runText: { color: t.colors.success, fontSize: 11, fontWeight: "700" },
     editor: {

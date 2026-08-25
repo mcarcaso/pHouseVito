@@ -60,6 +60,23 @@ export function createDatabase(dbPath: string): Database.Database {
       FOREIGN KEY (voice_session_id) REFERENCES sessions(id)
     );
     CREATE INDEX IF NOT EXISTS idx_voice_tasks_session ON voice_tasks(voice_session_id, created_at);
+
+    CREATE TABLE IF NOT EXISTS quick_commands (
+      id TEXT PRIMARY KEY,
+      status TEXT NOT NULL CHECK(status IN ('queued','transcribing','processing','completed','empty','failed')),
+      transcript TEXT,
+      result TEXT,
+      error TEXT,
+      created_at INTEGER NOT NULL,
+      updated_at INTEGER NOT NULL
+    );
+    CREATE INDEX IF NOT EXISTS idx_quick_commands_created ON quick_commands(created_at DESC);
+
+    CREATE TABLE IF NOT EXISTS push_devices (
+      token TEXT PRIMARY KEY,
+      platform TEXT NOT NULL,
+      updated_at INTEGER NOT NULL
+    );
   `);
 
   // Migrations for existing databases

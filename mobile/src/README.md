@@ -5,7 +5,7 @@
 - `components/` — presentation components shared by multiple features.
 - `hooks/` — mobile-specific React hooks. Shared server/domain hooks belong in `@vito/client`.
 - `contexts/` — React context definitions and state contracts.
-- `providers/` — provider lifecycle/composition (`AppProviders`, theme, Vito client).
+- `providers/` — provider lifecycle/composition (`AppProviders`, theme, headless agent client).
 - `services/` — non-React infrastructure such as API/auth/storage and native/web voice transports.
 
 Keep feature-specific types, hooks, and components beside their owning screen. Promote them to the shared directories only after a second feature needs them. Screens compose behavior; they should not become API clients or generic object renderers.

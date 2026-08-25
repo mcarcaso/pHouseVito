@@ -29,6 +29,7 @@
     },
     "plugins": [
       "expo-secure-store",
+      "expo-notifications",
       "@config-plugins/react-native-webrtc",
       [
         "expo-audio",

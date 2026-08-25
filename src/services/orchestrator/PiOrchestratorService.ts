@@ -12,7 +12,7 @@ import { withTyping } from "./runtime/TypingPiRuntime.js";
 import { NoReplyOutputHandler } from "../../lib/output/NoReplyOutputHandler.js";
 import { DirectChannelService } from "../channels/direct/DirectChannelService.js";
 import type { ChannelService } from "../channels/ChannelService.js";
-import type { AskOptions, OrchestratorService } from "./OrchestratorService.js";
+import type { AskOptions, OrchestratorRun, OrchestratorService } from "./OrchestratorService.js";
 
 import { getEffectiveSettings } from "../vito/settings.js";
 import {
@@ -60,7 +60,10 @@ export class PiOrchestratorService implements OrchestratorService {
   private sessionProcessing = new Set<string>();
 
   /** Track active requests so they can be aborted on /stop. */
-  private activeRequests = new Map<string, { abort: AbortController; aborted: boolean }>();
+  private activeRequests = new Map<
+    string,
+    { abort: AbortController; aborted: boolean; event: InboundEvent; startedAt: number }
+  >();
 
   /**
    * Long-lived runtimes, keyed by Vito session id. Same runtime instance
@@ -222,6 +225,33 @@ export class PiOrchestratorService implements OrchestratorService {
     } catch (err) {
       console.error(`[PiOrchestratorService] Lazy config reload failed:`, err);
     }
+  }
+
+  listRuns(_x: Context): OrchestratorRun[] {
+    const runs: OrchestratorRun[] = [];
+    for (const [sessionKey, active] of this.activeRequests) {
+      runs.push({
+        sessionKey,
+        channel: active.event.channel,
+        author: active.event.author,
+        preview: active.event.content.slice(0, 180),
+        status: "active",
+        timestamp: active.startedAt,
+      });
+    }
+    for (const [sessionKey, queue] of this.sessionQueues) {
+      for (const item of queue) {
+        runs.push({
+          sessionKey,
+          channel: item.event.channel,
+          author: item.event.author,
+          preview: item.event.content.slice(0, 180),
+          status: "queued",
+          timestamp: item.event.timestamp,
+        });
+      }
+    }
+    return runs.sort((a, b) => a.timestamp - b.timestamp);
   }
 
   async start(x: Context): Promise<void> {
@@ -494,7 +524,12 @@ export class PiOrchestratorService implements OrchestratorService {
 
       // Abort wiring
       const abortController = new AbortController();
-      this.activeRequests.set(event.sessionKey, { abort: abortController, aborted: false });
+      this.activeRequests.set(event.sessionKey, {
+        abort: abortController,
+        aborted: false,
+        event,
+        startedAt: Date.now(),
+      });
 
       try {
         await runtime.run(

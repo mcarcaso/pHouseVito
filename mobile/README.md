@@ -1,6 +1,6 @@
-# Vito Mobile
+# Rook
 
-Expo foundation for the eventual shared native/web Vito dashboard.
+Expo companion app for connecting to a personally named agent on native and web.
 
 ## Run
 

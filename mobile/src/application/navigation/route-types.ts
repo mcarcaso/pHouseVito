@@ -2,20 +2,19 @@ import type { NavigatorScreenParams } from "@react-navigation/native";
 import type { IdentityDocument } from "../../screens/identity/IdentityScreen";
 import type { OperationArea } from "../../screens/operations/operation-catalog";
 
-export type ChatStackParamList = {
-  ChatList: undefined;
-  ChatConversation: { sessionId: string };
-};
+export type ResourceRouteParams = { id?: string };
+
 export type MainTabParamList = {
-  Chat: NavigatorScreenParams<ChatStackParamList> | undefined;
+  Home: undefined;
+  Chat: undefined;
   Voice: undefined;
-  Identity: undefined;
+  Identity: ResourceRouteParams | undefined;
   More: undefined;
   Memory: undefined;
   Profile: undefined;
-  Skills: undefined;
-  Jobs: undefined;
-  Apps: undefined;
+  Skills: ResourceRouteParams | undefined;
+  Jobs: ResourceRouteParams | undefined;
+  Apps: ResourceRouteParams | undefined;
   Drive: undefined;
   Traces: undefined;
   PiSessions: undefined;
@@ -24,11 +23,12 @@ export type MainTabParamList = {
   Secrets: undefined;
   System: undefined;
   Server: undefined;
-  Providers: undefined;
+  Providers: ResourceRouteParams | undefined;
 };
 export type MainRouteName = keyof MainTabParamList;
 export type RootStackParamList = {
   Main: NavigatorScreenParams<MainTabParamList> | undefined;
+  ChatConversation: { sessionId: string };
   MemoryHome: undefined;
   IdentityHome: undefined;
   IdentityDocument: { document: IdentityDocument };

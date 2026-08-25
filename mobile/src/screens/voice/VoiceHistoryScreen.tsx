@@ -6,6 +6,7 @@ import {
   type VoiceSession,
   type VoiceSessionDetail,
 } from "../../services/api/client";
+import { useAgentName } from "../../contexts/agentIdentity";
 import { useThemeStyles, useVitoTheme, type VitoTheme } from "../../hooks/useVitoTheme";
 
 export function VoiceHistoryScreen({ onOpen }: { onOpen: (id: string) => void }) {
@@ -52,6 +53,7 @@ export function VoiceHistoryScreen({ onOpen }: { onOpen: (id: string) => void })
 export function VoiceHistoryDetailScreen({ id }: { id: string }) {
   const styles = useThemeStyles(createStyles);
   const theme = useVitoTheme();
+  const agentName = useAgentName();
   const [detail, setDetail] = useState<VoiceSessionDetail | null>(null);
   useEffect(() => {
     void getVoiceSession(id).then(setDetail);
@@ -68,7 +70,7 @@ export function VoiceHistoryDetailScreen({ id }: { id: string }) {
         .filter((message) => message.type === "user" || message.type === "assistant")
         .map((message, index) => (
           <View key={`${message.type}-${index}`} style={styles.message}>
-            <Text style={styles.role}>{message.type === "user" ? "Mike" : "Vito"}</Text>
+            <Text style={styles.role}>{message.type === "user" ? "You" : agentName}</Text>
             <Text selectable style={styles.body}>
               {message.content}
             </Text>
@@ -90,7 +92,7 @@ const createStyles = (theme: VitoTheme) =>
       borderBottomColor: theme.colors.separator,
     },
     title: { color: theme.colors.text, fontSize: 14, fontWeight: "800" },
-    meta: { color: theme.colors.textMuted, fontSize: 11, marginTop: 4 },
+    meta: { color: theme.colors.textMuted, fontSize: 11, marginTop: theme.space.xs },
     chevron: { color: theme.colors.textMuted, fontSize: 20 },
     empty: { color: theme.colors.textMuted, textAlign: "center", padding: theme.space.xxxl },
     detail: { padding: theme.space.lg, paddingBottom: theme.space.xxxl, gap: theme.space.md },

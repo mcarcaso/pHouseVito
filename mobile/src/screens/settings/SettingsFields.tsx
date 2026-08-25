@@ -1,3 +1,5 @@
+import type { VitoTheme } from "../../hooks/useVitoTheme";
+import { StyleSheet } from "react-native";
 import { useEffect, useState, type ReactNode } from "react";
 import {
   ActivityIndicator,
@@ -11,7 +13,6 @@ import {
 } from "react-native";
 import { api } from "../../services/api/client";
 import { useThemeStyles, useVitoTheme } from "../../hooks/useVitoTheme";
-import { createSettingsStyles } from "./styles";
 
 const capitalize = (value: string) => value.charAt(0).toUpperCase() + value.slice(1);
 
@@ -290,7 +291,7 @@ export function ChoiceField({
                       }}
                       style={[styles.option, option.value === value && styles.optionActive]}
                     >
-                      <View style={{ flex: 1 }}>
+                      <View style={styles.optionCopy}>
                         <Text
                           style={[
                             styles.optionText,
@@ -331,29 +332,37 @@ export function ModelField({
   const [provider, setProvider] = useState(value?.provider ?? "");
   const [providers, setProviders] = useState<string[]>([]);
   const [models, setModels] = useState<string[]>([]);
+  const [providersLoading, setProvidersLoading] = useState(true);
+  const [modelsLoading, setModelsLoading] = useState(false);
   useEffect(() => {
-    void api<Dict>("/api/models/providers").then((result) => {
-      const all = (result.providers ?? []) as string[];
-      const authenticated = all.filter((item) => result.authStatus?.[item]?.hasAuth === true);
-      setProviders(
-        authenticated.includes(provider)
-          ? authenticated
-          : [provider, ...authenticated].filter(Boolean),
-      );
-    });
+    setProvidersLoading(true);
+    void api<Dict>("/api/models/providers")
+      .then((result) => {
+        const all = (result.providers ?? []) as string[];
+        const authenticated = all.filter((item) => result.authStatus?.[item]?.hasAuth === true);
+        setProviders(
+          authenticated.includes(provider)
+            ? authenticated
+            : [provider, ...authenticated].filter(Boolean),
+        );
+      })
+      .finally(() => setProvidersLoading(false));
   }, [provider]);
   useEffect(() => {
     if (!provider) {
       setModels([]);
+      setModelsLoading(false);
       return;
     }
-    void api<Array<{ id: string }>>(`/api/models/${encodeURIComponent(provider)}`).then((result) =>
-      setModels(result.map((item) => item.id)),
-    );
+    setModelsLoading(true);
+    void api<Array<{ id: string }>>(`/api/models/${encodeURIComponent(provider)}`)
+      .then((result) => setModels(result.map((item) => item.id)))
+      .finally(() => setModelsLoading(false));
   }, [provider]);
   useEffect(() => setProvider(value?.provider ?? ""), [value?.provider]);
   return (
     <>
+      {providersLoading && <ActivityIndicator />}
       <ChoiceField
         label={`${label} provider`}
         options={providers}
@@ -366,6 +375,7 @@ export function ModelField({
         onReset={onReset}
         styles={styles}
       />
+      {modelsLoading && <ActivityIndicator />}
       <ChoiceField
         label={`${label} name`}
         options={models}
@@ -394,9 +404,7 @@ export function Row({
   return (
     <View style={[styles.row, overridden && styles.rowOverridden]}>
       <View style={styles.rowHeading}>
-        <View
-          style={{ flex: 1, flexDirection: "row", alignItems: "center", gap: 8, flexWrap: "wrap" }}
-        >
+        <View style={styles.rowHeadingContent}>
           <Text style={styles.label}>{label}</Text>
           {overridden && <Text style={styles.overrideLabel}>OVERRIDE</Text>}
           {hint && <Text style={[styles.hint, { width: "100%" }]}>{hint}</Text>}
@@ -499,3 +507,186 @@ export function SegmentField({
     </Row>
   );
 }
+
+const createStyles = (theme: VitoTheme) =>
+  StyleSheet.create({
+    actionSuccess: { color: theme.colors.success, fontSize: 12, marginVertical: theme.space.sm },
+    error: { color: theme.colors.danger, marginBottom: theme.space.md },
+    row: {
+      paddingVertical: theme.space.md,
+      borderBottomWidth: 1,
+      borderBottomColor: theme.colors.separator,
+    },
+    label: { color: theme.colors.textSecondary, fontSize: 13, fontWeight: "700" },
+    hint: { color: theme.colors.textMuted, fontSize: 10, marginTop: theme.space.xxs },
+    actionButton: {
+      alignSelf: "flex-start",
+      marginTop: theme.space.sm,
+      borderWidth: 1,
+      borderColor: theme.colors.accent,
+      borderRadius: 9,
+      paddingHorizontal: theme.space.md,
+      paddingVertical: theme.space.sm,
+      backgroundColor: theme.colors.accentSurface,
+    },
+    actionDisabled: { opacity: 0.45 },
+    actionButtonText: { color: theme.colors.accent, fontSize: 11, fontWeight: "800" },
+    idWrap: {
+      flexDirection: "row",
+      flexWrap: "wrap",
+      gap: theme.space.xs,
+      marginTop: theme.space.sm,
+    },
+    idChip: {
+      backgroundColor: theme.colors.accentSurface,
+      borderWidth: 1,
+      borderColor: theme.colors.accent,
+      borderRadius: 7,
+      paddingHorizontal: theme.space.sm,
+      paddingVertical: theme.space.xs,
+    },
+    idText: { color: theme.colors.accent, fontFamily: "monospace", fontSize: 10 },
+    idAdd: { flexDirection: "row", gap: theme.space.sm, marginTop: theme.space.sm },
+    input: {
+      color: theme.colors.text,
+      backgroundColor: theme.colors.canvas,
+      borderWidth: 1,
+      borderColor: theme.colors.separatorStrong,
+      borderRadius: 9,
+      paddingHorizontal: theme.space.md,
+      paddingVertical: theme.space.sm,
+    },
+    addButton: {
+      alignItems: "center",
+      justifyContent: "center",
+      backgroundColor: theme.colors.accentSurface,
+      borderRadius: 9,
+      paddingHorizontal: theme.space.lg,
+    },
+    addButtonText: { color: theme.colors.accent, fontWeight: "800", fontSize: 11 },
+    section: {
+      backgroundColor: theme.colors.surface,
+      borderWidth: 1,
+      borderColor: theme.colors.separator,
+      borderRadius: 14,
+      padding: theme.space.lg,
+      marginBottom: theme.space.lg,
+    },
+    sectionTitle: {
+      color: theme.colors.text,
+      fontSize: 14,
+      fontWeight: "800",
+      marginBottom: theme.space.xs,
+    },
+    sectionSubtitle: { color: theme.colors.textMuted, fontSize: 11, marginBottom: theme.space.md },
+    select: {
+      minHeight: 42,
+      flexDirection: "row",
+      alignItems: "center",
+      justifyContent: "space-between",
+      gap: theme.space.md,
+      backgroundColor: theme.colors.canvas,
+      borderWidth: 1,
+      borderColor: theme.colors.separatorStrong,
+      borderRadius: 9,
+      paddingHorizontal: theme.space.md,
+    },
+    selectText: { flex: 1, color: theme.colors.text, fontSize: 13 },
+    chevron: { color: theme.colors.textMuted, fontSize: 18 },
+    modalBackdrop: {
+      flex: 1,
+      backgroundColor: "rgba(0,0,0,.65)",
+      alignItems: "center",
+      justifyContent: "center",
+      padding: theme.space.xl,
+    },
+    modalCard: {
+      width: "100%",
+      maxWidth: 520,
+      maxHeight: "70%",
+      backgroundColor: theme.colors.surfaceRaised,
+      borderWidth: 1,
+      borderColor: theme.colors.separatorStrong,
+      borderRadius: 16,
+      overflow: "hidden",
+    },
+    modalTitle: {
+      color: theme.colors.text,
+      fontSize: 16,
+      fontWeight: "800",
+      padding: theme.space.lg,
+      borderBottomWidth: 1,
+      borderBottomColor: theme.colors.separator,
+    },
+    optionGroup: {
+      color: theme.colors.textMuted,
+      fontSize: 9,
+      fontWeight: "900",
+      letterSpacing: 1.1,
+      textTransform: "uppercase",
+      paddingHorizontal: theme.space.lg,
+      paddingTop: theme.space.lg,
+      paddingBottom: theme.space.sm,
+    },
+    option: {
+      minHeight: 48,
+      flexDirection: "row",
+      alignItems: "center",
+      gap: theme.space.md,
+      paddingHorizontal: theme.space.lg,
+      borderBottomWidth: 1,
+      borderBottomColor: theme.colors.separator,
+    },
+    optionActive: { backgroundColor: theme.colors.accentSurface },
+    optionCopy: { flex: 1 },
+    optionText: { color: theme.colors.textSecondary, fontSize: 13 },
+    optionTextActive: { color: theme.colors.accent, fontWeight: "800" },
+    optionBadge: { color: theme.colors.accent, fontSize: 9, marginTop: theme.space.xs },
+    check: {
+      flexGrow: 0,
+      flexShrink: 0,
+      color: theme.colors.accent,
+      fontSize: 16,
+      fontWeight: "800",
+    },
+    rowOverridden: {
+      borderLeftWidth: 2,
+      borderLeftColor: theme.colors.accent,
+      paddingLeft: theme.space.md,
+    },
+    rowHeading: { flexDirection: "row", alignItems: "flex-start", marginBottom: theme.space.sm },
+    rowHeadingContent: {
+      flex: 1,
+      flexDirection: "row",
+      alignItems: "center",
+      gap: theme.space.sm,
+      flexWrap: "wrap",
+    },
+    overrideLabel: {
+      color: theme.colors.accent,
+      fontSize: 8,
+      fontWeight: "900",
+      letterSpacing: 0.8,
+      backgroundColor: theme.colors.accentSurface,
+      paddingHorizontal: theme.space.sm,
+      paddingVertical: theme.space.xxs,
+      borderRadius: 4,
+      overflow: "hidden",
+    },
+    reset: { color: theme.colors.danger, fontSize: 11 },
+    textarea: { minHeight: 90, textAlignVertical: "top" },
+    segments: { flexDirection: "row", flexWrap: "wrap", gap: theme.space.xs },
+    segment: {
+      borderWidth: 1,
+      borderColor: theme.colors.separatorStrong,
+      borderRadius: 8,
+      paddingHorizontal: theme.space.md,
+      paddingVertical: theme.space.sm,
+    },
+    segmentActive: {
+      backgroundColor: theme.colors.accentSurface,
+      borderColor: theme.colors.accent,
+    },
+    segmentText: { color: theme.colors.textMuted, fontSize: 11, fontWeight: "700" },
+    segmentTextActive: { color: theme.colors.accent },
+  });

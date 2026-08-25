@@ -17,6 +17,7 @@ export interface VoiceSessionDetail {
 }
 
 export interface VoiceService {
+  getStatus(x: Context): { available: boolean; provider: "openai" | null; reason: string | null };
   createRealtimeSecret(x: Context, voice: RealtimeVoice): Promise<unknown>;
   recordEvent(
     x: Context,

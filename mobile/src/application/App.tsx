@@ -1,3 +1,5 @@
+import type { VitoTheme } from "../hooks/useVitoTheme";
+import { StyleSheet } from "react-native";
 import { operationAreas, type OperationArea } from "../screens/operations/operation-catalog";
 import {
   NavigationContainer,
@@ -11,7 +13,9 @@ import {
   type NativeStackNavigationProp,
 } from "@react-navigation/native-stack";
 import { Ionicons } from "@expo/vector-icons";
+import { HeaderButton } from "@react-navigation/elements";
 import { StatusBar } from "expo-status-bar";
+import * as Notifications from "expo-notifications";
 import { useCallback, useEffect, useState } from "react";
 import {
   ActivityIndicator,
@@ -26,6 +30,8 @@ import {
   View,
 } from "react-native";
 import { ChatScreen, DEFAULT_SESSION } from "../screens/chat/ChatScreen";
+import { HomeScreen, type QuickCommandRecordingStatus } from "../screens/home/HomeScreen";
+import { QuickCommandRecordingOverlay } from "../components/quick-command/QuickCommandRecordingOverlay";
 import {
   IdentityDocumentScreen,
   IdentityHome,
@@ -38,46 +44,41 @@ import { SkillsScreen } from "../screens/skills/SkillsScreen";
 import { SettingsScreen } from "../screens/settings/SettingsScreen";
 import { ThemeScreen } from "../screens/theme/ThemeScreen";
 import { JobEditorScreen, JobsScreen } from "../screens/jobs/JobsScreen";
-import {
-  DesktopSecretsScreen,
-  SecretEditorScreen,
-  SecretsScreen,
-  type Secret,
-} from "../screens/secrets/SecretsScreen";
+import { SecretEditorScreen, SecretsScreen, type Secret } from "../screens/secrets/SecretsScreen";
 import {
   SkillDocumentScreen,
   SkillFilesScreen,
   SkillFileScreen,
 } from "../screens/skills/SkillMobileScreens";
-import { VoiceScreen, type VoiceOverlayStatus } from "../screens/voice/VoiceScreen";
+import {
+  VoiceScreen,
+  type VoiceOverlayControls,
+  type VoiceOverlayStatus,
+} from "../screens/voice/VoiceScreen";
 import { VoiceHistoryDetailScreen, VoiceHistoryScreen } from "../screens/voice/VoiceHistoryScreen";
 import { api, checkAuth, loadAgentUrl, loadToken, logout, saveToken } from "../services/api/client";
 import { AppProviders } from "../providers/AppProviders";
-import { createAppStyles } from "./styles";
 import { WebStackHeader } from "../components/navigation/WebStackHeader";
-import { AdaptiveTabBar } from "../components/navigation/AdaptiveTabBar";
+import { MobileTabBar } from "../components/navigation/MobileTabBar";
 import { GlobalVoiceOverlay } from "../components/voice/GlobalVoiceOverlay";
+import { AgentIdentityProvider, useAgentName } from "../contexts/agentIdentity";
 import { DESKTOP_BREAKPOINT, useThemeStyles, useVitoTheme } from "../hooks/useVitoTheme";
 
 import type {
-  ChatStackParamList,
-  IdentityStackParamList,
   MainRouteName,
   MainTabParamList,
-  MoreStackParamList,
   RootStackParamList,
+  ResourceRouteParams,
 } from "./navigation/route-types";
 
 type RootNavigation = NativeStackNavigationProp<RootStackParamList>;
 const RootStack = createNativeStackNavigator<RootStackParamList>();
 const Tabs = createBottomTabNavigator<MainTabParamList>();
-const ChatStack = createNativeStackNavigator<ChatStackParamList>();
-const MoreStack = createNativeStackNavigator<MoreStackParamList>();
-const IdentityStack = createNativeStackNavigator<IdentityStackParamList>();
 const navigationRef = createNavigationContainerRef<RootStackParamList>();
 const idleVoiceStatus: VoiceOverlayStatus = {
   state: "idle",
   muted: false,
+  audioRoute: "speaker",
   runningTasks: 0,
   completedTasks: 0,
   failedTasks: 0,
@@ -94,11 +95,23 @@ export default function App() {
 }
 
 function AppContent() {
-  const styles = useThemeStyles(createAppStyles);
+  const styles = useThemeStyles(createStyles);
   const theme = useVitoTheme();
   const [authState, setAuthState] = useState<"loading" | "authenticated" | "login">("loading");
   const [voiceStatus, setVoiceStatus] = useState<VoiceOverlayStatus>(idleVoiceStatus);
-  const [currentRoute, setCurrentRoute] = useState<string>("Chat");
+  const [voiceControls, setVoiceControls] = useState<VoiceOverlayControls | null>(null);
+  const [quickCommandRecording, setQuickCommandRecording] =
+    useState<QuickCommandRecordingStatus | null>(null);
+  useEffect(() => {
+    const subscription = Notifications.addNotificationResponseReceivedListener((response) => {
+      const sessionId = response.notification.request.content.data?.sessionId;
+      if (typeof sessionId === "string" && navigationRef.isReady()) {
+        navigationRef.navigate("ChatConversation", { sessionId });
+      }
+    });
+    return () => subscription.remove();
+  }, []);
+  const [currentRoute, setCurrentRoute] = useState<string>("Home");
   const updateVoiceStatus = useCallback((status: VoiceOverlayStatus) => {
     setVoiceStatus(status);
   }, []);
@@ -133,162 +146,141 @@ function AppContent() {
       </SafeAreaView>
     );
   return (
-    <View style={styles.safeArea}>
-      <StatusBar style={theme.dark ? "light" : "dark"} />
-      <NavigationContainer
-        ref={navigationRef}
-        linking={linking}
-        onReady={() => setCurrentRoute(navigationRef.getCurrentRoute()?.name ?? "Chat")}
-        onStateChange={() => setCurrentRoute(navigationRef.getCurrentRoute()?.name ?? "Chat")}
-      >
-        <RootStack.Navigator
-          screenOptions={{
-            headerShown: false,
-            animation: Platform.OS === "web" ? "none" : "slide_from_right",
-            contentStyle: styles.routeBackground,
-          }}
+    <AgentIdentityProvider>
+      <View style={styles.safeArea}>
+        <StatusBar style={theme.dark ? "light" : "dark"} />
+        <NavigationContainer
+          ref={navigationRef}
+          linking={linking}
+          onReady={() => setCurrentRoute(navigationRef.getCurrentRoute()?.name ?? "Home")}
+          onStateChange={() => setCurrentRoute(navigationRef.getCurrentRoute()?.name ?? "Home")}
         >
-          <RootStack.Screen name="Main">
-            {() => (
-              <MainTabs
-                onUnauthorized={unauthorized}
-                onLogout={() => void logout().finally(() => setAuthState("login"))}
-                onVoiceStatusChange={updateVoiceStatus}
-              />
-            )}
-          </RootStack.Screen>
-          <RootStack.Screen
-            name="IdentityHome"
-            options={{
-              headerShown: true,
-              title: "Identity",
-              headerBackTitle: "More",
-              headerStyle: { backgroundColor: theme.colors.canvas },
-              headerTintColor: theme.colors.text,
-              headerShadowVisible: false,
-            }}
-          >
-            {({ navigation }) => (
-              <IdentityHome
-                onOpen={(document) => navigation.navigate("IdentityDocument", { document })}
-              />
-            )}
-          </RootStack.Screen>
-          <RootStack.Screen
-            name="IdentityDocument"
-            options={({ route }) => ({
-              headerShown: true,
-              title: identityDocumentTitle(route.params.document),
-              headerBackTitle: "Identity",
-              headerStyle: { backgroundColor: theme.colors.canvas },
-              headerTintColor: theme.colors.text,
-              headerShadowVisible: false,
-            })}
-          >
-            {({ route }) => <IdentityDocumentScreen document={route.params.document} />}
-          </RootStack.Screen>
-          <RootStack.Screen
-            name="MemoryHome"
-            component={RootMemoryScreen}
-            options={({ navigation }) => ({
-              headerShown: true,
-              headerTransparent: false,
-              title: "",
-              headerBackTitle: "More",
+          <RootStack.Navigator
+            screenOptions={{
+              headerShown: false,
+              animation: Platform.OS === "web" ? "none" : "slide_from_right",
+              contentStyle: styles.routeBackground,
               headerStyle: { backgroundColor: theme.colors.canvas },
               headerTintColor: theme.colors.accent,
+              headerTitleStyle: { color: theme.colors.text, fontSize: 16, fontWeight: "700" },
               headerShadowVisible: false,
-              header:
-                Platform.OS === "web"
-                  ? () => <WebStackHeader onBack={() => navigation.goBack()} />
-                  : undefined,
-              headerSearchBarOptions: undefined,
-            })}
-          />
-          <RootStack.Screen
-            name="Operation"
-            component={RootOperationScreen}
-            options={({ route, navigation }) => {
-              const area = route.params.area;
-              const title = operationAreas.find((item) => item.id === area)?.label ?? "";
-              return {
+              headerBackButtonDisplayMode: "minimal",
+            }}
+          >
+            <RootStack.Screen name="Main" options={{ headerShown: true, title: "Chats" }}>
+              {() => (
+                <MainTabs
+                  onUnauthorized={unauthorized}
+                  onLogout={() => void logout().finally(() => setAuthState("login"))}
+                  onVoiceStatusChange={updateVoiceStatus}
+                  onVoiceControlsChange={setVoiceControls}
+                  onQuickCommandRecordingChange={setQuickCommandRecording}
+                />
+              )}
+            </RootStack.Screen>
+            <RootStack.Screen
+              name="ChatConversation"
+              options={{
+                headerShown: true,
+                title: "Chat",
+                headerStyle: { backgroundColor: theme.colors.canvas },
+                headerTintColor: theme.colors.text,
+                headerShadowVisible: false,
+              }}
+            >
+              {({ route }) => (
+                <ChatScreen
+                  onUnauthorized={unauthorized}
+                  selectedSessionId={route.params.sessionId}
+                  onSelectSession={(session) =>
+                    navigationRef.navigate("ChatConversation", { sessionId: session.id })
+                  }
+                />
+              )}
+            </RootStack.Screen>
+            <RootStack.Screen
+              name="IdentityHome"
+              options={{
+                headerShown: true,
+                title: "Identity",
+                headerStyle: { backgroundColor: theme.colors.canvas },
+                headerTintColor: theme.colors.text,
+                headerShadowVisible: false,
+              }}
+            >
+              {({ navigation }) => (
+                <IdentityHome
+                  onOpen={(document) => navigation.navigate("IdentityDocument", { document })}
+                />
+              )}
+            </RootStack.Screen>
+            <RootStack.Screen
+              name="IdentityDocument"
+              options={({ route }) => ({
+                headerShown: true,
+                title: identityDocumentTitle(route.params.document),
+                headerStyle: { backgroundColor: theme.colors.canvas },
+                headerTintColor: theme.colors.text,
+                headerShadowVisible: false,
+              })}
+            >
+              {({ route }) => <IdentityDocumentScreen document={route.params.document} />}
+            </RootStack.Screen>
+            <RootStack.Screen
+              name="MemoryHome"
+              component={RootMemoryScreen}
+              options={({ navigation }) => ({
                 headerShown: true,
                 headerTransparent: false,
-                title: area === "memory" ? "" : title,
-                headerBackTitle: "More",
+                title: "",
                 headerStyle: { backgroundColor: theme.colors.canvas },
                 headerTintColor: theme.colors.accent,
-                headerTitleStyle: { color: theme.colors.text },
                 headerShadowVisible: false,
-                headerRight:
-                  area === "secrets"
-                    ? () => (
-                        <Pressable
-                          accessibilityLabel="Add secret"
-                          onPress={() => navigation.navigate("SecretNew")}
-                          style={{
-                            width: 44,
-                            height: 44,
-                            alignItems: "center",
-                            justifyContent: "center",
-                          }}
-                        >
-                          <Ionicons name="add" size={25} color={theme.colors.accent} />
-                        </Pressable>
-                      )
-                    : area === "jobs"
+                header:
+                  Platform.OS === "web"
+                    ? () => <WebStackHeader onBack={() => navigation.goBack()} />
+                    : undefined,
+                headerSearchBarOptions: undefined,
+              })}
+            />
+            <RootStack.Screen
+              name="Operation"
+              component={RootOperationScreen}
+              options={({ route, navigation }) => {
+                const area = route.params.area;
+                const title = operationAreas.find((item) => item.id === area)?.label ?? "";
+                return {
+                  headerShown: true,
+                  headerTransparent: false,
+                  title: area === "memory" ? "" : title,
+                  headerStyle: { backgroundColor: theme.colors.canvas },
+                  headerTintColor: theme.colors.accent,
+                  headerTitleStyle: { color: theme.colors.text },
+                  headerShadowVisible: false,
+                  headerRight:
+                    area === "secrets"
                       ? () => (
-                          <View style={{ flexDirection: "row", alignItems: "center" }}>
-                            <Pressable
-                              accessibilityLabel="Refresh jobs"
-                              onPress={() => navigation.setParams({ refreshKey: Date.now() })}
-                              style={{
-                                width: 40,
-                                height: 44,
-                                alignItems: "center",
-                                justifyContent: "center",
-                              }}
-                            >
-                              <Ionicons name="refresh" size={20} color={theme.colors.accent} />
-                            </Pressable>
-                            <Pressable
-                              accessibilityLabel="New job"
-                              onPress={() => navigation.navigate("JobDetail", {})}
-                              style={{
-                                width: 40,
-                                height: 44,
-                                alignItems: "center",
-                                justifyContent: "center",
-                              }}
-                            >
-                              <Ionicons name="add" size={25} color={theme.colors.accent} />
-                            </Pressable>
-                          </View>
+                          <Pressable
+                            accessibilityLabel="Add secret"
+                            onPress={() => navigation.navigate("SecretNew")}
+                            style={{
+                              width: 44,
+                              height: 44,
+                              alignItems: "center",
+                              justifyContent: "center",
+                            }}
+                          >
+                            <Ionicons name="add" size={25} color={theme.colors.accent} />
+                          </Pressable>
                         )
-                      : area === "pi"
+                      : area === "jobs"
                         ? () => (
-                            <Pressable
-                              accessibilityLabel="Refresh Pi sessions"
-                              onPress={() => navigation.setParams({ refreshKey: Date.now() })}
-                              style={{
-                                width: 44,
-                                height: 44,
-                                alignItems: "center",
-                                justifyContent: "center",
-                              }}
-                            >
-                              <Ionicons name="refresh" size={21} color={theme.colors.accent} />
-                            </Pressable>
-                          )
-                        : (
-                              ["apps", "drive", "traces", "providers", "server"] as OperationArea[]
-                            ).includes(area)
-                          ? () => (
+                            <View style={{ flexDirection: "row", alignItems: "center" }}>
                               <Pressable
-                                accessibilityLabel={`Refresh ${title}`}
+                                accessibilityLabel="Refresh jobs"
                                 onPress={() => navigation.setParams({ refreshKey: Date.now() })}
                                 style={{
-                                  width: 44,
+                                  width: 40,
                                   height: 44,
                                   alignItems: "center",
                                   justifyContent: "center",
@@ -296,339 +288,348 @@ function AppContent() {
                               >
                                 <Ionicons name="refresh" size={20} color={theme.colors.accent} />
                               </Pressable>
+                              <Pressable
+                                accessibilityLabel="New job"
+                                onPress={() => navigation.navigate("JobDetail", {})}
+                                style={{
+                                  width: 40,
+                                  height: 44,
+                                  alignItems: "center",
+                                  justifyContent: "center",
+                                }}
+                              >
+                                <Ionicons name="add" size={25} color={theme.colors.accent} />
+                              </Pressable>
+                            </View>
+                          )
+                        : area === "pi"
+                          ? ({ tintColor }) => (
+                              <HeaderButton
+                                accessibilityLabel="Refresh Pi sessions"
+                                onPress={() => navigation.setParams({ refreshKey: Date.now() })}
+                                tintColor={tintColor}
+                              >
+                                <Ionicons name="refresh" size={21} color={tintColor} />
+                              </HeaderButton>
                             )
-                          : undefined,
+                          : (
+                                [
+                                  "apps",
+                                  "drive",
+                                  "traces",
+                                  "providers",
+                                  "server",
+                                ] as OperationArea[]
+                              ).includes(area)
+                            ? ({ tintColor }) => (
+                                <HeaderButton
+                                  accessibilityLabel={`Refresh ${title}`}
+                                  onPress={() => navigation.setParams({ refreshKey: Date.now() })}
+                                  tintColor={tintColor}
+                                >
+                                  <Ionicons name="refresh" size={20} color={tintColor} />
+                                </HeaderButton>
+                              )
+                            : undefined,
+                  header:
+                    Platform.OS === "web"
+                      ? () => (
+                          <WebStackHeader
+                            onBack={() => navigation.goBack()}
+                            title={area === "memory" ? undefined : title}
+                            onSearch={
+                              area === "memory"
+                                ? (query) =>
+                                    navigation.navigate("MemoryResults", {
+                                      query,
+                                      mode: "hybrid",
+                                      limit: 10,
+                                    })
+                                : undefined
+                            }
+                          />
+                        )
+                      : undefined,
+                };
+              }}
+            />
+            <RootStack.Screen
+              name="JobDetail"
+              component={JobDetailRoute}
+              options={({ route }) => ({
+                headerShown: true,
+                title: route.params.name ? "Job details" : "New job",
+                headerStyle: { backgroundColor: theme.colors.canvas },
+                headerTintColor: theme.colors.accent,
+                headerShadowVisible: false,
+              })}
+            />
+            <RootStack.Screen
+              name="DriveDirectory"
+              component={DriveDirectoryScreen}
+              options={({ route }) => ({
+                headerShown: true,
+                title: route.params.path.split("/").pop() || "Drive",
+                headerStyle: { backgroundColor: theme.colors.canvas },
+                headerTintColor: theme.colors.accent,
+                headerTitleStyle: { color: theme.colors.text },
+                headerShadowVisible: false,
+              })}
+            />
+            <RootStack.Screen
+              name="TraceDetail"
+              component={TraceDetailScreen}
+              options={({ route, navigation }) => ({
+                headerShown: true,
+                title: "Trace Details",
+                headerStyle: { backgroundColor: theme.colors.canvas },
+                headerTintColor: theme.colors.accent,
+                headerTitleStyle: { color: theme.colors.text },
+                headerShadowVisible: false,
+                headerRight: () => (
+                  <Pressable
+                    accessibilityLabel="Delete trace"
+                    onPress={() =>
+                      Alert.alert("Delete trace?", route.params.id, [
+                        { text: "Cancel", style: "cancel" },
+                        {
+                          text: "Delete",
+                          style: "destructive",
+                          onPress: () =>
+                            void api(`/api/logs/${encodeURIComponent(route.params.id)}`, {
+                              method: "DELETE",
+                            }).then(() => navigation.goBack()),
+                        },
+                      ])
+                    }
+                    style={{
+                      width: 44,
+                      height: 44,
+                      alignItems: "center",
+                      justifyContent: "center",
+                    }}
+                  >
+                    <Ionicons name="trash-outline" size={20} color={theme.colors.danger} />
+                  </Pressable>
+                ),
+              })}
+            />
+            <RootStack.Screen
+              name="OperationItemDetail"
+              component={RootOperationItemDetailScreen}
+              options={({ route }) => ({
+                headerShown: true,
+                title: route.params.id,
+                headerStyle: { backgroundColor: theme.colors.canvas },
+                headerTintColor: theme.colors.accent,
+                headerTitleStyle: { color: theme.colors.text },
+                headerShadowVisible: false,
+              })}
+            />
+            <RootStack.Screen
+              name="PiSessionDetail"
+              component={PiSessionDetailScreen}
+              options={({ route, navigation }) => ({
+                headerShown: true,
+                title: "Pi session",
+                headerStyle: { backgroundColor: theme.colors.canvas },
+                headerTintColor: theme.colors.accent,
+                headerShadowVisible: false,
+                headerRight: () => (
+                  <Pressable
+                    accessibilityLabel={
+                      route.params.raw ? "Show formatted session" : "Show raw session"
+                    }
+                    onPress={() => navigation.setParams({ raw: !route.params.raw })}
+                    style={{ paddingHorizontal: theme.space.sm, paddingVertical: theme.space.sm }}
+                  >
+                    <Text
+                      style={{
+                        color: route.params.raw ? theme.colors.accent : theme.colors.textSecondary,
+                        fontSize: 11,
+                        fontWeight: "800",
+                      }}
+                    >
+                      RAW
+                    </Text>
+                  </Pressable>
+                ),
                 header:
                   Platform.OS === "web"
                     ? () => (
                         <WebStackHeader
                           onBack={() => navigation.goBack()}
-                          title={area === "memory" ? undefined : title}
-                          onSearch={
-                            area === "memory"
-                              ? (query) =>
-                                  navigation.navigate("MemoryResults", {
-                                    query,
-                                    mode: "hybrid",
-                                    limit: 10,
-                                  })
-                              : undefined
+                          title="Pi session"
+                          right={
+                            <Pressable
+                              onPress={() => navigation.setParams({ raw: !route.params.raw })}
+                              style={{
+                                paddingHorizontal: theme.space.sm,
+                                paddingVertical: theme.space.sm,
+                              }}
+                            >
+                              <Text
+                                style={{
+                                  color: route.params.raw
+                                    ? theme.colors.accent
+                                    : theme.colors.textSecondary,
+                                  fontSize: 11,
+                                  fontWeight: "800",
+                                }}
+                              >
+                                RAW
+                              </Text>
+                            </Pressable>
                           }
                         />
                       )
                     : undefined,
-              };
-            }}
-          />
-          <RootStack.Screen
-            name="JobDetail"
-            component={JobDetailRoute}
-            options={({ route }) => ({
-              headerShown: true,
-              title: route.params.name ? "Job details" : "New job",
-              headerBackTitle: "Jobs",
-              headerStyle: { backgroundColor: theme.colors.canvas },
-              headerTintColor: theme.colors.accent,
-              headerShadowVisible: false,
-            })}
-          />
-          <RootStack.Screen
-            name="DriveDirectory"
-            component={DriveDirectoryScreen}
-            options={({ route }) => ({
-              headerShown: true,
-              title: route.params.path.split("/").pop() || "Drive",
-              headerBackTitle: "Drive",
-              headerStyle: { backgroundColor: theme.colors.canvas },
-              headerTintColor: theme.colors.accent,
-              headerTitleStyle: { color: theme.colors.text },
-              headerShadowVisible: false,
-            })}
-          />
-          <RootStack.Screen
-            name="TraceDetail"
-            component={TraceDetailScreen}
-            options={({ route, navigation }) => ({
-              headerShown: true,
-              title: "Trace Details",
-              headerBackTitle: "Traces",
-              headerStyle: { backgroundColor: theme.colors.canvas },
-              headerTintColor: theme.colors.accent,
-              headerTitleStyle: { color: theme.colors.text },
-              headerShadowVisible: false,
-              headerRight: () => (
-                <Pressable
-                  accessibilityLabel="Delete trace"
-                  onPress={() =>
-                    Alert.alert("Delete trace?", route.params.id, [
-                      { text: "Cancel", style: "cancel" },
-                      {
-                        text: "Delete",
-                        style: "destructive",
-                        onPress: () =>
-                          void api(`/api/logs/${encodeURIComponent(route.params.id)}`, {
-                            method: "DELETE",
-                          }).then(() => navigation.goBack()),
-                      },
-                    ])
-                  }
-                  style={{ width: 44, height: 44, alignItems: "center", justifyContent: "center" }}
-                >
-                  <Ionicons name="trash-outline" size={20} color={theme.colors.danger} />
-                </Pressable>
-              ),
-            })}
-          />
-          <RootStack.Screen
-            name="OperationItemDetail"
-            component={RootOperationItemDetailScreen}
-            options={({ route }) => ({
-              headerShown: true,
-              title: route.params.id,
-              headerBackTitle: route.params.area === "apps" ? "Apps" : "Providers",
-              headerStyle: { backgroundColor: theme.colors.canvas },
-              headerTintColor: theme.colors.accent,
-              headerTitleStyle: { color: theme.colors.text },
-              headerShadowVisible: false,
-            })}
-          />
-          <RootStack.Screen
-            name="PiSessionDetail"
-            component={PiSessionDetailScreen}
-            options={({ route, navigation }) => ({
-              headerShown: true,
-              title: "Pi session",
-              headerBackTitle: "Sessions",
-              headerStyle: { backgroundColor: theme.colors.canvas },
-              headerTintColor: theme.colors.accent,
-              headerShadowVisible: false,
-              headerRight: () => (
-                <Pressable
-                  accessibilityLabel={
-                    route.params.raw ? "Show formatted session" : "Show raw session"
-                  }
-                  onPress={() => navigation.setParams({ raw: !route.params.raw })}
-                  style={{ paddingHorizontal: 6, paddingVertical: 8 }}
-                >
-                  <Text
+              })}
+            />
+            <RootStack.Screen
+              name="VoiceHistory"
+              component={RootVoiceHistoryScreen}
+              options={{
+                headerShown: true,
+                title: "Past Conversations",
+                headerStyle: { backgroundColor: theme.colors.canvas },
+                headerTintColor: theme.colors.accent,
+                headerTitleStyle: { color: theme.colors.text },
+                headerShadowVisible: false,
+              }}
+            />
+            <RootStack.Screen
+              name="VoiceHistoryDetail"
+              component={RootVoiceHistoryDetailScreen}
+              options={{
+                headerShown: true,
+                title: "Voice Conversation",
+                headerStyle: { backgroundColor: theme.colors.canvas },
+                headerTintColor: theme.colors.accent,
+                headerTitleStyle: { color: theme.colors.text },
+                headerShadowVisible: false,
+              }}
+            />
+            <RootStack.Screen
+              name="SecretDetail"
+              component={RootSecretDetailScreen}
+              options={({ route }) => ({
+                headerShown: true,
+                title: route.params.key,
+                headerStyle: { backgroundColor: theme.colors.canvas },
+                headerTintColor: theme.colors.accent,
+                headerTitleStyle: { color: theme.colors.text },
+                headerShadowVisible: false,
+              })}
+            />
+            <RootStack.Screen
+              name="SecretNew"
+              component={RootSecretNewScreen}
+              options={{
+                headerShown: true,
+                title: "New Secret",
+                headerStyle: { backgroundColor: theme.colors.canvas },
+                headerTintColor: theme.colors.accent,
+                headerTitleStyle: { color: theme.colors.text },
+                headerShadowVisible: false,
+              }}
+            />
+            <RootStack.Screen
+              name="SkillDetail"
+              component={RootSkillDetailScreen}
+              options={({ route, navigation }) => ({
+                headerShown: true,
+                title: route.params.name,
+                headerStyle: { backgroundColor: theme.colors.canvas },
+                headerTintColor: theme.colors.accent,
+                headerTitleStyle: { color: theme.colors.text },
+                headerShadowVisible: false,
+                headerRight: () => (
+                  <Pressable
+                    accessibilityLabel="Browse skill files"
+                    hitSlop={8}
+                    onPress={() => navigation.navigate("SkillFiles", { name: route.params.name })}
                     style={{
-                      color: route.params.raw ? theme.colors.accent : theme.colors.textSecondary,
-                      fontSize: 11,
-                      fontWeight: "800",
+                      width: 44,
+                      height: 44,
+                      alignItems: "center",
+                      justifyContent: "center",
                     }}
                   >
-                    RAW
-                  </Text>
-                </Pressable>
-              ),
-              header:
-                Platform.OS === "web"
-                  ? () => (
-                      <WebStackHeader
-                        onBack={() => navigation.goBack()}
-                        title="Pi session"
-                        right={
-                          <Pressable
-                            onPress={() => navigation.setParams({ raw: !route.params.raw })}
-                            style={{ paddingHorizontal: 8, paddingVertical: 6 }}
-                          >
-                            <Text
-                              style={{
-                                color: route.params.raw
-                                  ? theme.colors.accent
-                                  : theme.colors.textSecondary,
-                                fontSize: 11,
-                                fontWeight: "800",
-                              }}
-                            >
-                              RAW
-                            </Text>
-                          </Pressable>
-                        }
-                      />
-                    )
-                  : undefined,
-            })}
-          />
-          <RootStack.Screen
-            name="VoiceHistory"
-            component={RootVoiceHistoryScreen}
-            options={{
-              headerShown: true,
-              title: "Past Conversations",
-              headerBackTitle: "Voice",
-              headerStyle: { backgroundColor: theme.colors.canvas },
-              headerTintColor: theme.colors.accent,
-              headerTitleStyle: { color: theme.colors.text },
-              headerShadowVisible: false,
-            }}
-          />
-          <RootStack.Screen
-            name="VoiceHistoryDetail"
-            component={RootVoiceHistoryDetailScreen}
-            options={{
-              headerShown: true,
-              title: "Voice Conversation",
-              headerBackTitle: "Past Conversations",
-              headerStyle: { backgroundColor: theme.colors.canvas },
-              headerTintColor: theme.colors.accent,
-              headerTitleStyle: { color: theme.colors.text },
-              headerShadowVisible: false,
-            }}
-          />
-          <RootStack.Screen
-            name="SecretDetail"
-            component={RootSecretDetailScreen}
-            options={({ route }) => ({
-              headerShown: true,
-              title: route.params.key,
-              headerBackTitle: "Secrets",
-              headerStyle: { backgroundColor: theme.colors.canvas },
-              headerTintColor: theme.colors.accent,
-              headerTitleStyle: { color: theme.colors.text },
-              headerShadowVisible: false,
-            })}
-          />
-          <RootStack.Screen
-            name="SecretNew"
-            component={RootSecretNewScreen}
-            options={{
-              headerShown: true,
-              title: "New Secret",
-              headerBackTitle: "Secrets",
-              headerStyle: { backgroundColor: theme.colors.canvas },
-              headerTintColor: theme.colors.accent,
-              headerTitleStyle: { color: theme.colors.text },
-              headerShadowVisible: false,
-            }}
-          />
-          <RootStack.Screen
-            name="SkillDetail"
-            component={RootSkillDetailScreen}
-            options={({ route, navigation }) => ({
-              headerShown: true,
-              title: route.params.name,
-              headerBackTitle: "Skills",
-              headerStyle: { backgroundColor: theme.colors.canvas },
-              headerTintColor: theme.colors.accent,
-              headerTitleStyle: { color: theme.colors.text },
-              headerShadowVisible: false,
-              headerRight: () => (
-                <Pressable
-                  accessibilityLabel="Browse skill files"
-                  hitSlop={8}
-                  onPress={() => navigation.navigate("SkillFiles", { name: route.params.name })}
-                  style={{ width: 44, height: 44, alignItems: "center", justifyContent: "center" }}
-                >
-                  <Ionicons
-                    name="folder-open-outline"
-                    size={22}
-                    color={theme.colors.accent}
-                    style={{ transform: [{ translateY: -3 }] }}
-                  />
-                </Pressable>
-              ),
-            })}
-          />
-          <RootStack.Screen
-            name="SkillFiles"
-            component={RootSkillFilesScreen}
-            options={({ route }) => ({
-              headerShown: true,
-              title: `${route.params.name} files`,
-              headerBackTitle: route.params.name,
-              headerStyle: { backgroundColor: theme.colors.canvas },
-              headerTintColor: theme.colors.accent,
-              headerTitleStyle: { color: theme.colors.text },
-              headerShadowVisible: false,
-            })}
-          />
-          <RootStack.Screen
-            name="SkillFile"
-            component={RootSkillFileScreen}
-            options={({ route }) => ({
-              headerShown: true,
-              title: route.params.fileName,
-              headerBackTitle: "Files",
-              headerStyle: { backgroundColor: theme.colors.canvas },
-              headerTintColor: theme.colors.accent,
-              headerTitleStyle: { color: theme.colors.text },
-              headerShadowVisible: false,
-            })}
-          />
-          <RootStack.Screen
-            name="MemoryResults"
-            component={MemoryResultsScreen}
-            options={({ navigation }) => ({
-              headerShown: true,
-              headerTransparent: false,
-              title: "",
-              headerBackTitle: "Memory",
-              headerStyle: { backgroundColor: theme.colors.canvas },
-              headerTintColor: theme.colors.accent,
-              headerShadowVisible: false,
-              header:
-                Platform.OS === "web"
-                  ? () => <WebStackHeader onBack={() => navigation.goBack()} />
-                  : undefined,
-            })}
-          />
-        </RootStack.Navigator>
-      </NavigationContainer>
-      {voiceStatus.state !== "idle" &&
-        voiceStatus.state !== "error" &&
-        currentRoute !== "Voice" && (
-          <GlobalVoiceOverlay
-            status={voiceStatus}
-            onPress={() =>
-              navigationRef.isReady() && navigationRef.navigate("Main", { screen: "Voice" })
+                    <Ionicons
+                      name="folder-open-outline"
+                      size={22}
+                      color={theme.colors.accent}
+                      style={{ transform: [{ translateY: -3 }] }}
+                    />
+                  </Pressable>
+                ),
+              })}
+            />
+            <RootStack.Screen
+              name="SkillFiles"
+              component={RootSkillFilesScreen}
+              options={({ route }) => ({
+                headerShown: true,
+                title: `${route.params.name} files`,
+                headerStyle: { backgroundColor: theme.colors.canvas },
+                headerTintColor: theme.colors.accent,
+                headerTitleStyle: { color: theme.colors.text },
+                headerShadowVisible: false,
+              })}
+            />
+            <RootStack.Screen
+              name="SkillFile"
+              component={RootSkillFileScreen}
+              options={({ route }) => ({
+                headerShown: true,
+                title: route.params.fileName,
+                headerStyle: { backgroundColor: theme.colors.canvas },
+                headerTintColor: theme.colors.accent,
+                headerTitleStyle: { color: theme.colors.text },
+                headerShadowVisible: false,
+              })}
+            />
+            <RootStack.Screen
+              name="MemoryResults"
+              component={MemoryResultsScreen}
+              options={({ navigation }) => ({
+                headerShown: true,
+                headerTransparent: false,
+                title: "",
+                headerStyle: { backgroundColor: theme.colors.canvas },
+                headerTintColor: theme.colors.accent,
+                headerShadowVisible: false,
+                header:
+                  Platform.OS === "web"
+                    ? () => <WebStackHeader onBack={() => navigation.goBack()} />
+                    : undefined,
+              })}
+            />
+          </RootStack.Navigator>
+        </NavigationContainer>
+        {quickCommandRecording && currentRoute !== "Home" && (
+          <QuickCommandRecordingOverlay
+            status={quickCommandRecording}
+            onOpen={() =>
+              navigationRef.isReady() && navigationRef.navigate("Main", { screen: "Home" })
             }
           />
         )}
-    </View>
-  );
-}
-
-function ChatNavigator({
-  desktop,
-  onUnauthorized,
-}: {
-  desktop: boolean;
-  onUnauthorized: () => void;
-}) {
-  const styles = useThemeStyles(createAppStyles);
-  return (
-    <ChatStack.Navigator
-      initialRouteName="ChatList"
-      screenOptions={{
-        headerShown: false,
-        contentStyle: styles.routeBackground,
-      }}
-    >
-      <ChatStack.Screen name="ChatList">
-        {({ navigation }) => (
-          <ChatScreen
-            onUnauthorized={onUnauthorized}
-            selectedSessionId={desktop ? DEFAULT_SESSION : null}
-            onSelectSession={(session) =>
-              navigation.navigate("ChatConversation", { sessionId: session.id })
-            }
-          />
-        )}
-      </ChatStack.Screen>
-      <ChatStack.Screen name="ChatConversation">
-        {({ navigation, route }) => (
-          <ChatScreen
-            onUnauthorized={onUnauthorized}
-            selectedSessionId={route.params.sessionId}
-            onSelectSession={(session) =>
-              navigation.navigate("ChatConversation", { sessionId: session.id })
-            }
-            onBack={() => navigation.goBack()}
-          />
-        )}
-      </ChatStack.Screen>
-    </ChatStack.Navigator>
+        {voiceStatus.state !== "idle" &&
+          voiceStatus.state !== "error" &&
+          voiceControls &&
+          currentRoute !== "Voice" && (
+            <GlobalVoiceOverlay
+              status={voiceStatus}
+              controls={voiceControls}
+              onPress={() =>
+                navigationRef.isReady() && navigationRef.navigate("Main", { screen: "Voice" })
+              }
+            />
+          )}
+      </View>
+    </AgentIdentityProvider>
   );
 }
 
@@ -636,45 +637,88 @@ function MainTabs({
   onUnauthorized,
   onLogout,
   onVoiceStatusChange,
+  onVoiceControlsChange,
+  onQuickCommandRecordingChange,
 }: {
   onUnauthorized: () => void;
   onLogout: () => void;
   onVoiceStatusChange: (status: VoiceOverlayStatus) => void;
+  onVoiceControlsChange: (controls: VoiceOverlayControls | null) => void;
+  onQuickCommandRecordingChange: (status: QuickCommandRecordingStatus | null) => void;
 }) {
-  const styles = useThemeStyles(createAppStyles);
+  const styles = useThemeStyles(createStyles);
   const theme = useVitoTheme();
   const rootNavigation = useNavigation<RootNavigation>();
-  const { width } = useWindowDimensions();
-  const desktop = width >= DESKTOP_BREAKPOINT;
-  const [agentName, setAgentName] = useState("Vito");
-  useEffect(() => {
-    void api<{ bot?: { name?: string } }>("/api/config").then((config) =>
-      setAgentName(config.bot?.name?.trim() || "Vito"),
-    );
-  }, []);
+  const agentName = useAgentName();
   return (
     <Tabs.Navigator
-      initialRouteName="Chat"
-      tabBar={(props) => <AdaptiveTabBar {...props} desktop={desktop} onLogout={onLogout} />}
+      initialRouteName="Home"
+      tabBar={(props) => <MobileTabBar {...props} />}
+      screenListeners={{
+        state: (event) => {
+          const state = event.data.state;
+          const active = state.routes[state.index]?.name;
+          if (active === "Home") {
+            rootNavigation.setOptions({
+              title: "Home",
+              headerLeft: undefined,
+              headerRight: undefined,
+            });
+          } else if (active === "Chat") {
+            rootNavigation.setOptions({ title: "Chats" });
+          } else if (active === "Voice") {
+            rootNavigation.setOptions({
+              title: `Talk to ${agentName}`,
+              headerLeft: undefined,
+              headerRight: ({ tintColor }) => (
+                <HeaderButton
+                  accessibilityLabel="Voice conversation history"
+                  onPress={() => rootNavigation.navigate("VoiceHistory")}
+                  tintColor={tintColor}
+                >
+                  <Ionicons name="time-outline" size={22} color={tintColor} />
+                </HeaderButton>
+              ),
+            });
+          } else {
+            rootNavigation.setOptions({
+              title: "More",
+              headerLeft: undefined,
+              headerRight: undefined,
+            });
+          }
+        },
+      }}
       screenOptions={{
         headerShown: false,
         sceneStyle: styles.routeBackground,
-        tabBarPosition: desktop ? "left" : "bottom",
+        tabBarPosition: "bottom",
         animation: "none",
         lazy: false,
       }}
     >
+      <Tabs.Screen name="Home">
+        {() => (
+          <HomeScreen
+            onRecordingStatusChange={onQuickCommandRecordingChange}
+            onOpenRun={(sessionId) => rootNavigation.navigate("ChatConversation", { sessionId })}
+          />
+        )}
+      </Tabs.Screen>
       <Tabs.Screen name="Chat">
         {() => (
-          <TabSafeArea desktop={desktop}>
-            <ChatNavigator desktop={desktop} onUnauthorized={onUnauthorized} />
-          </TabSafeArea>
+          <ChatScreen
+            onUnauthorized={onUnauthorized}
+            selectedSessionId={null}
+            onSelectSession={(session) =>
+              rootNavigation.navigate("ChatConversation", { sessionId: session.id })
+            }
+          />
         )}
       </Tabs.Screen>
       <Tabs.Screen
         name="Voice"
         options={{
-          headerShown: !desktop,
           title: `Talk to ${agentName}`,
           headerStyle: { backgroundColor: theme.colors.canvas },
           headerTintColor: theme.colors.text,
@@ -684,32 +728,28 @@ function MainTabs({
       >
         {() => (
           <View style={styles.operationRoute}>
-            {desktop && (
-              <View style={styles.operationToolbar}>
-                <Text style={styles.operationToolbarTitle}>Talk to {agentName}</Text>
-              </View>
-            )}
-            <View style={[styles.voiceScreen, desktop && styles.voiceScreenDesktop]}>
+            <View style={styles.voiceScreen}>
               <VoiceScreen
                 onUnauthorized={onUnauthorized}
                 onStatusChange={onVoiceStatusChange}
-                onPastConversations={() => rootNavigation.navigate("VoiceHistory")}
+                onControlsChange={onVoiceControlsChange}
+                onConfigureOpenAi={() => rootNavigation.navigate("Operation", { area: "secrets" })}
               />
             </View>
           </View>
         )}
       </Tabs.Screen>
-      <Tabs.Screen name="Identity">{() => <IdentityNavigator desktop={desktop} />}</Tabs.Screen>
-      <Tabs.Screen name="More">
-        {() => <MoreStackScreen desktop={desktop} onLogout={onLogout} />}
+      <Tabs.Screen
+        name="More"
+        options={{
+          title: "More",
+          headerStyle: { backgroundColor: theme.colors.canvas },
+          headerTintColor: theme.colors.text,
+          headerShadowVisible: false,
+        }}
+      >
+        {() => <MoreMenu onLogout={onLogout} />}
       </Tabs.Screen>
-      {(Object.entries(areaForRoute) as Array<[MainRouteName, OperationArea]>).map(
-        ([route, area]) => (
-          <Tabs.Screen key={route} name={route}>
-            {() => <OperationRoute area={area} desktop={desktop} onUnauthorized={onUnauthorized} />}
-          </Tabs.Screen>
-        ),
-      )}
     </Tabs.Navigator>
   );
 }
@@ -722,8 +762,7 @@ import {
   RootOperationItemDetailScreen,
   PiSessionDetailScreen,
   RootOperationScreen,
-  IdentityNavigator,
-  MoreStackScreen,
+  MoreMenu,
   MemoryResultsScreen,
   RootVoiceHistoryScreen,
   RootVoiceHistoryDetailScreen,
@@ -734,6 +773,24 @@ import {
   RootSkillFileScreen,
   TabSafeArea,
   ScreenFrame,
-  MoreMenu,
 } from "./navigation/route-screens";
-import { OperationRoute } from "./navigation/OperationRoute";
+
+const createStyles = (theme: VitoTheme) =>
+  StyleSheet.create({
+    loading: {
+      flex: 1,
+      backgroundColor: theme.colors.canvas,
+      alignItems: "center",
+      justifyContent: "center",
+    },
+    safeArea: { flex: 1, backgroundColor: theme.colors.canvas },
+    routeBackground: { backgroundColor: theme.colors.canvas },
+    operationRoute: { flex: 1, minHeight: 0 },
+    voiceScreen: { flex: 1, paddingHorizontal: theme.space.xl, paddingBottom: theme.space.md },
+    voiceScreenDesktop: {
+      padding: theme.space.xxxl,
+      maxWidth: 860,
+      width: "100%",
+      alignSelf: "center",
+    },
+  });

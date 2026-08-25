@@ -1,3 +1,4 @@
+import { StyleSheet } from "react-native";
 import * as DocumentPicker from "expo-document-picker";
 import * as FileSystem from "expo-file-system/legacy";
 import { Ionicons } from "@expo/vector-icons";
@@ -14,10 +15,10 @@ import {
   TextInput,
   View,
 } from "react-native";
+import { useAgentName } from "../../contexts/agentIdentity";
 import { api, VITO_URL } from "../../services/api/client";
 import { MarkdownText } from "../../components/markdown/MarkdownText";
 import { useThemeStyles, useVitoTheme, type VitoTheme } from "../../hooks/useVitoTheme";
-import { createOperationsStyles } from "./styles";
 
 import { operationAreas, type OperationArea } from "./operation-catalog";
 
@@ -50,6 +51,23 @@ import {
   labelFor,
   pretty,
 } from "./structured-data";
+
+function tracePreviewInfo(preview: unknown) {
+  const result = { session: "", channel: "", model: "" };
+  if (typeof preview !== "string") return result;
+  for (const line of preview.split("\n")) {
+    if (line.startsWith("Session:")) result.session = line.slice(8).trim();
+    if (line.startsWith("Channel:")) result.channel = line.slice(8).trim();
+    if (line.startsWith("Model:")) result.model = line.slice(6).trim();
+  }
+  return result;
+}
+
+function traceUserMessage(record: Record<string, unknown>): string {
+  const message = String(record.userMessage ?? "");
+  if (record.traceType !== "classifier" || !message.includes("<user-message>")) return message;
+  return message.match(/<user-message>\s*([\s\S]*?)\s*<\/user-message>/)?.[1]?.trim() ?? message;
+}
 
 export function OperationWorkspace({
   onUnauthorized,
@@ -90,8 +108,9 @@ export function OperationWorkspace({
   hideScreenTitle?: boolean;
   hideRefreshToolbar?: boolean;
 }) {
-  const styles = useThemeStyles(createOperationsStyles);
+  const styles = useThemeStyles(createStyles);
   const theme = useVitoTheme();
+  const agentName = useAgentName();
   const [area, setArea] = useState<OperationArea>(initialArea);
   const [data, setData] = useState<unknown>();
   const [selected, setSelected] = useState<unknown>();
@@ -100,7 +119,7 @@ export function OperationWorkspace({
     id: string;
     offset: number;
   } | null>(initialDetail ? { ...initialDetail, offset: 0 } : null);
-  const [loading, setLoading] = useState(false);
+  const [loading, setLoading] = useState(true);
   const [detailLoading, setDetailLoading] = useState(false);
   const [hasOlderDetailRows, setHasOlderDetailRows] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -109,6 +128,7 @@ export function OperationWorkspace({
   const [memoryLimit, setMemoryLimit] = useState(String(initialMemoryLimit));
   const [showMemoryAdvanced, setShowMemoryAdvanced] = useState(false);
   const [showPiRaw, setShowPiRaw] = useState(initialShowRaw);
+  const [hideTraceRaw, setHideTraceRaw] = useState(false);
   const [editor, setEditor] = useState("");
   const [drivePath, setDrivePath] = useState(initialDrivePath);
   const [command, setCommand] = useState("");
@@ -170,7 +190,7 @@ export function OperationWorkspace({
   };
 
   const confirm = (title: string, action: () => void) =>
-    Alert.alert(title, "This action changes Vito. Continue?", [
+    Alert.alert(title, `This action changes ${agentName}. Continue?`, [
       { text: "Cancel", style: "cancel" },
       { text: "Continue", style: "destructive", onPress: action },
     ]);
@@ -395,6 +415,16 @@ export function OperationWorkspace({
                 {detailTarget.id}
               </Text>
             </View>
+            {detailTarget.area === "traces" && (
+              <Pressable
+                onPress={() => setHideTraceRaw((value) => !value)}
+                style={[styles.rawToggle, hideTraceRaw && styles.rawToggleActive]}
+              >
+                <Text style={[styles.rawToggleText, hideTraceRaw && styles.rawToggleTextActive]}>
+                  {hideTraceRaw ? "SHOW RAW" : "HIDE RAW"}
+                </Text>
+              </Pressable>
+            )}
             {detailTarget.area === "pi" && (
               <Pressable
                 onPress={() => setShowPiRaw((value) => !value)}
@@ -435,7 +465,12 @@ export function OperationWorkspace({
         )}
 
         {selected !== undefined && (
-          <StructuredRows data={selected} kind={detailTarget.area} showRaw={showPiRaw} />
+          <StructuredRows
+            data={selected}
+            kind={detailTarget.area}
+            showRaw={showPiRaw}
+            hideRawEvents={hideTraceRaw}
+          />
         )}
       </View>
     );
@@ -723,7 +758,10 @@ export function OperationWorkspace({
         <View style={styles.actionRow}>
           <Pressable
             onPress={() =>
-              confirm("Rebuild and restart Vito", () => void mutate("/api/server/restart", "POST"))
+              confirm(
+                `Rebuild and restart ${agentName}`,
+                () => void mutate("/api/server/restart", "POST"),
+              )
             }
             style={styles.dangerButton}
           >
@@ -745,6 +783,7 @@ export function OperationWorkspace({
             const name = labelFor(row, index);
             const identifier = rowIdentifier(row, index);
             const memoryResult = area === "memory" && typeof record.text === "string";
+            const traceResult = area === "traces" && typeof record.filename === "string";
             const piSession = area === "pi" && typeof record.rel === "string";
             const title = memoryResult ? String(record.alias ?? record.session_id ?? name) : name;
             const context = memoryResult ? displayValue(record.context) : "";
@@ -755,7 +794,67 @@ export function OperationWorkspace({
                 key={`${name}-${index}`}
                 style={[styles.card, memoryResult && styles.memoryResultRow]}
               >
-                {piSession ? (
+                {traceResult ? (
+                  <Pressable onPress={() => void openRow(row, index)} style={styles.traceMain}>
+                    <View style={styles.traceTop}>
+                      <View style={styles.traceIdentity}>
+                        <Text style={styles.traceTitle} numberOfLines={1}>
+                          {String(
+                            record.alias ||
+                              record.sessionId ||
+                              tracePreviewInfo(record.preview).session ||
+                              record.filename,
+                          )}
+                        </Text>
+                        {!!record.alias && (
+                          <Text style={styles.traceSession} numberOfLines={1}>
+                            {String(record.sessionId || tracePreviewInfo(record.preview).session)}
+                          </Text>
+                        )}
+                      </View>
+                      <Text style={styles.traceDate}>
+                        {new Date(Number(record.timestamp)).toLocaleString()}
+                      </Text>
+                      <Ionicons name="chevron-forward" size={17} color={theme.colors.textMuted} />
+                    </View>
+                    <View style={styles.traceMeta}>
+                      {String(record.traceType || "main") !== "main" && (
+                        <Text
+                          style={[
+                            styles.traceTag,
+                            record.traceType === "classifier"
+                              ? styles.traceClassifier
+                              : styles.traceProfile,
+                          ]}
+                        >
+                          {String(record.traceType).toUpperCase()}
+                        </Text>
+                      )}
+                      {!!tracePreviewInfo(record.preview).channel && (
+                        <Text style={styles.traceTag}>
+                          {tracePreviewInfo(record.preview).channel}
+                        </Text>
+                      )}
+                      {!!tracePreviewInfo(record.preview).model && (
+                        <Text style={[styles.traceTag, styles.traceModel]} numberOfLines={1}>
+                          {tracePreviewInfo(record.preview).model}
+                        </Text>
+                      )}
+                      {typeof record.cost === "number" && (
+                        <Text style={styles.traceCost}>${Number(record.cost).toFixed(4)}</Text>
+                      )}
+                      <Text style={styles.traceSize}>{formatBytes(record.size)}</Text>
+                      {record.hasEmbedding === true && (
+                        <Ionicons name="sparkles-outline" size={13} color={theme.colors.success} />
+                      )}
+                    </View>
+                    {!!traceUserMessage(record) && (
+                      <Text style={styles.traceMessage} numberOfLines={2}>
+                        {traceUserMessage(record)}
+                      </Text>
+                    )}
+                  </Pressable>
+                ) : piSession ? (
                   <PiSessionDeleteContainer
                     label={name}
                     onDelete={() =>
@@ -980,24 +1079,6 @@ export function OperationWorkspace({
                     </Pressable>
                   </View>
                 )}
-                {area === "traces" && (
-                  <Pressable
-                    onPress={() =>
-                      confirm(
-                        `Delete ${name}`,
-                        () =>
-                          void mutate(
-                            area === "traces"
-                              ? `/api/logs/${encodeURIComponent(identifier)}`
-                              : `/api/pi-sessions/${identifier.split("/").map(encodeURIComponent).join("/")}`,
-                            "DELETE",
-                          ),
-                      )
-                    }
-                  >
-                    <Text style={styles.deleteLink}>delete</Text>
-                  </Pressable>
-                )}
                 {area === "drive" && typeof record.path === "string" && (
                   <View style={styles.inlineActions}>
                     <Pressable
@@ -1006,7 +1087,9 @@ export function OperationWorkspace({
                           ? onOpenDriveDirectory
                             ? onOpenDriveDirectory(record.path as string)
                             : setDrivePath(record.path as string)
-                          : void Linking.openURL(`${VITO_URL}/api/drive/file/${record.path}`)
+                          : void Linking.openURL(
+                              `${VITO_URL}/d/${String(record.path).split("/").map(encodeURIComponent).join("/")}`,
+                            )
                       }
                     >
                       <Text style={styles.link}>open</Text>
@@ -1063,3 +1146,403 @@ export function OperationWorkspace({
     </View>
   );
 }
+
+const createStyles = (theme: VitoTheme) =>
+  StyleSheet.create({
+    root: {},
+    titleRow: {
+      flexDirection: "row",
+      alignItems: "center",
+      gap: theme.space.md,
+      marginBottom: theme.space.xl,
+    },
+    backButton: {
+      width: 36,
+      height: 36,
+      borderRadius: 18,
+      backgroundColor: theme.colors.surfaceRaised,
+      alignItems: "center",
+      justifyContent: "center",
+    },
+    backText: { color: theme.colors.accent, fontSize: 30, lineHeight: 31 },
+    detailHeading: { flex: 1, minWidth: 0 },
+    title: { color: theme.colors.text, fontSize: 30, fontWeight: "800", marginTop: theme.space.sm },
+    detailId: {
+      color: theme.colors.textMuted,
+      fontSize: 11,
+      fontFamily: "monospace",
+      marginTop: theme.space.xs,
+    },
+    rawToggle: {
+      height: 32,
+      justifyContent: "center",
+      paddingHorizontal: theme.space.sm,
+      borderRadius: 6,
+      borderWidth: 1,
+      borderColor: theme.colors.separatorStrong,
+    },
+    rawToggleActive: {
+      borderColor: theme.colors.accent,
+      backgroundColor: theme.colors.accentSurface,
+    },
+    rawToggleText: {
+      color: theme.colors.textMuted,
+      fontSize: 10,
+      fontWeight: "900",
+      letterSpacing: 0.8,
+    },
+    rawToggleTextActive: { color: theme.colors.accent },
+    error: { color: theme.colors.danger, marginVertical: theme.space.md },
+    loadingRow: {
+      flexDirection: "row",
+      alignItems: "center",
+      gap: theme.space.md,
+      paddingVertical: theme.space.xl,
+    },
+    loadingText: { color: theme.colors.textSecondary, fontWeight: "700" },
+    loadMoreSeparator: {
+      flexDirection: "row",
+      alignItems: "center",
+      gap: theme.space.md,
+      marginBottom: theme.space.lg,
+    },
+    loadMoreRule: { flex: 1, height: 1, backgroundColor: theme.colors.separator },
+    loadMoreButton: {
+      paddingHorizontal: theme.space.md,
+      paddingVertical: theme.space.sm,
+      borderRadius: 7,
+      borderWidth: 1,
+      borderColor: theme.colors.separatorStrong,
+      backgroundColor: theme.colors.surface,
+    },
+    loadMoreText: { color: theme.colors.textSecondary, fontSize: 11, fontWeight: "700" },
+    memoryRoot: { width: "100%", maxWidth: 820, alignSelf: "center" },
+    memoryLanding: { flex: 1, justifyContent: "center", paddingBottom: theme.space.massive },
+    memoryLandingTitle: {
+      color: theme.colors.text,
+      fontSize: 28,
+      fontWeight: "800",
+      textAlign: "center",
+      letterSpacing: -0.8,
+    },
+    memoryLandingSubtitle: {
+      color: theme.colors.textMuted,
+      fontSize: 13,
+      textAlign: "center",
+      marginTop: theme.space.sm,
+      marginBottom: theme.space.xxl,
+    },
+    memoryLandingSearch: {
+      minHeight: 54,
+      flexDirection: "row",
+      alignItems: "center",
+      gap: theme.space.sm,
+      borderWidth: 1,
+      borderColor: theme.colors.separatorStrong,
+      borderRadius: 16,
+      backgroundColor: theme.colors.surface,
+      paddingLeft: theme.space.lg,
+      paddingRight: theme.space.xs,
+    },
+    memorySearchIcon: { color: theme.colors.accent, fontSize: 22 },
+    memorySearchInput: {
+      flex: 1,
+      color: theme.colors.text,
+      fontSize: 15,
+      paddingVertical: theme.space.md,
+    },
+    memorySearchButton: {
+      backgroundColor: theme.colors.accent,
+      borderRadius: 12,
+      paddingHorizontal: theme.space.lg,
+      paddingVertical: theme.space.md,
+    },
+    memorySearchButtonText: { color: theme.colors.accentText, fontSize: 12, fontWeight: "800" },
+    memoryAdvancedToggle: {
+      color: theme.colors.textMuted,
+      fontSize: 11,
+      fontWeight: "700",
+      marginTop: theme.space.md,
+      textAlign: "center",
+    },
+    memoryAdvancedPanel: {
+      marginTop: theme.space.md,
+      borderTopWidth: 1,
+      borderTopColor: theme.colors.separator,
+      paddingTop: theme.space.md,
+      gap: theme.space.md,
+    },
+    memoryModeRow: { flexDirection: "row", justifyContent: "center", gap: theme.space.sm },
+    memoryModeButton: {
+      borderWidth: 1,
+      borderColor: theme.colors.separatorStrong,
+      borderRadius: 99,
+      paddingHorizontal: theme.space.md,
+      paddingVertical: theme.space.sm,
+    },
+    memoryModeButtonActive: {
+      backgroundColor: theme.colors.accent,
+      borderColor: theme.colors.accent,
+    },
+    memoryModeText: { color: theme.colors.textSecondary, fontSize: 11, fontWeight: "700" },
+    memoryModeTextActive: { color: theme.colors.accentText },
+    memoryLimitRow: {
+      flexDirection: "row",
+      alignItems: "center",
+      justifyContent: "center",
+      gap: theme.space.sm,
+    },
+    memoryLimitLabel: { color: theme.colors.textMuted, fontSize: 11 },
+    memoryLimitInput: {
+      width: 56,
+      color: theme.colors.text,
+      textAlign: "center",
+      borderBottomWidth: 1,
+      borderBottomColor: theme.colors.separatorStrong,
+      paddingVertical: theme.space.xs,
+    },
+    compactTitleRow: { marginBottom: theme.space.xxl },
+    screenTitle: { flex: 1 },
+    tabs: { marginHorizontal: -4, marginBottom: theme.space.xl },
+    tabRow: { flexDirection: "row", gap: theme.space.sm, paddingHorizontal: theme.space.xs },
+    tab: {
+      borderWidth: 1,
+      borderColor: theme.colors.separatorStrong,
+      borderRadius: 99,
+      paddingHorizontal: theme.space.lg,
+      paddingVertical: theme.space.sm,
+    },
+    tabActive: { backgroundColor: theme.colors.accent, borderColor: theme.colors.accent },
+    tabText: { color: theme.colors.textSecondary, fontSize: 13, fontWeight: "700" },
+    tabTextActive: { color: theme.colors.accentText },
+    toolbar: {
+      flexDirection: "row",
+      alignItems: "center",
+      justifyContent: "space-between",
+      gap: theme.space.md,
+      marginBottom: theme.space.md,
+    },
+    iconButton: {
+      width: 34,
+      height: 34,
+      alignItems: "center",
+      justifyContent: "center",
+      borderRadius: 8,
+      backgroundColor: theme.colors.surfaceRaised,
+    },
+    smallButton: {
+      backgroundColor: theme.colors.surfaceRaised,
+      borderRadius: 10,
+      paddingHorizontal: theme.space.md,
+      paddingVertical: theme.space.md,
+      alignSelf: "flex-start",
+    },
+    smallButtonText: { color: theme.colors.textSecondary, fontWeight: "700", fontSize: 12 },
+    memorySearchRow: {
+      height: 50,
+      flexDirection: "row",
+      alignItems: "center",
+      gap: theme.space.md,
+      borderBottomWidth: 1,
+      borderBottomColor: theme.colors.separatorStrong,
+      marginBottom: theme.space.huge,
+    },
+    editorBlock: { gap: theme.space.md },
+    input: {
+      flex: 1,
+      color: theme.colors.text,
+      backgroundColor: theme.colors.surface,
+      borderWidth: 1,
+      borderColor: theme.colors.separatorStrong,
+      borderRadius: 12,
+      padding: theme.space.md,
+    },
+    formRow: {
+      flexDirection: "row",
+      flexWrap: "wrap",
+      gap: theme.space.sm,
+      marginBottom: theme.space.lg,
+    },
+    commandEditor: {
+      minHeight: 110,
+      fontFamily: "monospace",
+      fontSize: 12,
+      textAlignVertical: "top",
+    },
+    primaryButton: {
+      backgroundColor: theme.colors.accent,
+      borderRadius: 11,
+      paddingHorizontal: theme.space.lg,
+      paddingVertical: theme.space.md,
+      alignSelf: "flex-start",
+    },
+    primaryText: { color: theme.colors.accentText, fontWeight: "800" },
+    driveFolder: { marginBottom: theme.space.lg },
+    editor: { minHeight: 360, fontFamily: "monospace", fontSize: 12, textAlignVertical: "top" },
+    actionRow: { marginBottom: theme.space.lg },
+    dangerButton: {
+      borderWidth: 1,
+      borderColor: theme.colors.danger,
+      borderRadius: 11,
+      padding: theme.space.md,
+    },
+    dangerText: { color: theme.colors.danger, fontWeight: "800" },
+    resultCount: {
+      color: theme.colors.textMuted,
+      fontSize: 10,
+      fontWeight: "800",
+      textTransform: "uppercase",
+      letterSpacing: 1,
+      marginTop: theme.space.lg,
+      marginBottom: theme.space.xs,
+    },
+    list: { gap: theme.space.sm },
+    card: {
+      backgroundColor: theme.colors.surface,
+      borderWidth: 1,
+      borderColor: theme.colors.separator,
+      borderRadius: 14,
+      padding: theme.space.md,
+      flexDirection: "row",
+      alignItems: "center",
+      gap: theme.space.md,
+    },
+    memoryResultRow: {
+      backgroundColor: "transparent",
+      borderWidth: 0,
+      borderBottomWidth: 1,
+      borderBottomColor: theme.colors.separator,
+      borderRadius: 0,
+      paddingHorizontal: theme.space.xxs,
+      paddingVertical: theme.space.lg,
+    },
+    traceMain: { flex: 1, minWidth: 0, gap: theme.space.sm },
+    traceTop: { flexDirection: "row", alignItems: "center", gap: theme.space.sm },
+    traceIdentity: { flex: 1, minWidth: 0 },
+    traceTitle: { color: theme.colors.text, fontSize: 14, fontWeight: "800" },
+    traceSession: {
+      color: theme.colors.textMuted,
+      fontSize: 10,
+      fontFamily: "monospace",
+      marginTop: theme.space.xxs,
+    },
+    traceDate: { color: theme.colors.textMuted, fontSize: 10 },
+    traceMeta: {
+      flexDirection: "row",
+      alignItems: "center",
+      flexWrap: "wrap",
+      gap: theme.space.xs,
+    },
+    traceTag: {
+      color: theme.colors.textMuted,
+      backgroundColor: theme.colors.surfaceRaised,
+      fontSize: 9,
+      fontWeight: "800",
+      paddingHorizontal: theme.space.sm,
+      paddingVertical: theme.space.xs,
+      borderRadius: 5,
+      overflow: "hidden",
+    },
+    traceClassifier: { color: theme.colors.warning },
+    traceProfile: { color: theme.colors.info },
+    traceModel: { color: theme.colors.accent, maxWidth: 220 },
+    traceCost: { color: theme.colors.success, fontSize: 10, fontFamily: "monospace" },
+    traceSize: { color: theme.colors.textMuted, fontSize: 10 },
+    traceMessage: { color: theme.colors.textSecondary, fontSize: 12, lineHeight: 17 },
+    piSessionMain: { flex: 1, minWidth: 0, gap: theme.space.sm },
+    piSessionTop: { flexDirection: "row", alignItems: "center", gap: theme.space.md },
+    piSessionTitle: { flex: 1, color: theme.colors.text, fontSize: 14, fontWeight: "800" },
+    piSessionDate: { color: theme.colors.textMuted, fontSize: 10 },
+    piSessionMeta: {
+      flexDirection: "row",
+      alignItems: "center",
+      gap: theme.space.sm,
+      flexWrap: "wrap",
+    },
+    piSessionTag: {
+      color: theme.colors.textMuted,
+      backgroundColor: theme.colors.surfaceRaised,
+      paddingHorizontal: theme.space.sm,
+      paddingVertical: theme.space.xxs,
+      borderRadius: 5,
+      fontSize: 10,
+      overflow: "hidden",
+    },
+    piSessionModel: { color: theme.colors.accent, maxWidth: 220 },
+    piSessionSize: { color: theme.colors.textMuted, fontSize: 10 },
+    piSessionId: { color: theme.colors.textMuted, fontSize: 10, fontFamily: "monospace" },
+    piSessionPreview: { color: theme.colors.textSecondary, fontSize: 12, lineHeight: 17 },
+    cardMain: { flex: 1 },
+    memoryHeader: { flexDirection: "row", alignItems: "center", gap: theme.space.md },
+    memoryIdentity: { flex: 1, minWidth: 0 },
+    memoryDay: { color: theme.colors.text, fontSize: 13, fontWeight: "800" },
+    memorySession: {
+      color: theme.colors.textMuted,
+      fontSize: 10,
+      fontFamily: "monospace",
+      marginTop: theme.space.xs,
+    },
+    memoryExpandButton: {
+      width: 36,
+      height: 36,
+      flexShrink: 0,
+      alignItems: "center",
+      justifyContent: "center",
+    },
+    memoryExpandIcon: {
+      color: theme.colors.accent,
+      fontSize: 19,
+      fontWeight: "700",
+      lineHeight: 21,
+    },
+    memoryContext: {
+      color: theme.colors.textSecondary,
+      fontSize: 12,
+      lineHeight: 17,
+      marginTop: theme.space.sm,
+      paddingLeft: theme.space.sm,
+      borderLeftWidth: 2,
+      borderLeftColor: theme.colors.separatorStrong,
+    },
+    memoryScores: {
+      flexDirection: "row",
+      flexWrap: "wrap",
+      gap: theme.space.md,
+      marginTop: theme.space.sm,
+    },
+    memoryScore: { fontFamily: "monospace", fontSize: 10, fontWeight: "700" },
+    memoryScoreRrf: { color: theme.colors.success },
+    memoryScoreEmbedding: { color: theme.colors.info },
+    memoryScoreDecay: { color: theme.colors.accent },
+    memoryScoreBm25: { color: theme.colors.warning },
+    memoryExpansion: {
+      marginTop: theme.space.md,
+      paddingTop: theme.space.md,
+      borderTopWidth: 1,
+      borderTopColor: theme.colors.separator,
+    },
+    memoryExpansionLabel: {
+      color: theme.colors.textMuted,
+      fontSize: 9,
+      fontWeight: "900",
+      textTransform: "uppercase",
+      letterSpacing: 1,
+      marginBottom: theme.space.sm,
+    },
+    memoryExpansionText: {
+      color: theme.colors.textSecondary,
+      fontSize: 12,
+      lineHeight: 19,
+      fontFamily: "monospace",
+    },
+    cardTitle: { color: theme.colors.text, fontWeight: "800", fontSize: 14 },
+    cardMeta: { color: theme.colors.textMuted, fontSize: 12, marginTop: theme.space.xs },
+    inlineActions: {
+      flexDirection: "row",
+      gap: theme.space.md,
+      flexWrap: "wrap",
+      justifyContent: "flex-end",
+    },
+    link: { color: theme.colors.accent, fontSize: 12, fontWeight: "800" },
+    deleteLink: { color: theme.colors.danger, fontSize: 12, fontWeight: "800" },
+  });

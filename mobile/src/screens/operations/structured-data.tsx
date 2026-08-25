@@ -1,11 +1,13 @@
+import type { VitoTheme } from "../../hooks/useVitoTheme";
+import { StyleSheet } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import Swipeable from "react-native-gesture-handler/Swipeable";
 import { useState, type ReactNode } from "react";
 import { Alert, Platform, Pressable, ScrollView, Text, TextInput, View } from "react-native";
 import { MarkdownText } from "../../components/markdown/MarkdownText";
+import { StructuredValue } from "../../components/StructuredValue";
 import { useThemeStyles, useVitoTheme } from "../../hooks/useVitoTheme";
 import { api } from "../../services/api/client";
-import { createOperationsStyles } from "./styles";
 
 export function pretty(value: unknown) {
   return JSON.stringify(value, null, 2);
@@ -55,7 +57,7 @@ export function PiSessionDeleteContainer({
   label: string;
   onDelete: () => void;
 }) {
-  const styles = useThemeStyles(createOperationsStyles);
+  const styles = useThemeStyles(createStyles);
   const theme = useVitoTheme();
   if (Platform.OS === "web")
     return (
@@ -94,17 +96,25 @@ export function StructuredRows({
   data,
   kind,
   showRaw = false,
+  hideRawEvents = false,
 }: {
   data: unknown;
   kind: "traces" | "pi";
   showRaw?: boolean;
+  hideRawEvents?: boolean;
 }) {
-  const styles = useThemeStyles(createOperationsStyles);
+  const styles = useThemeStyles(createStyles);
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
-  const lines =
+  const allLines =
     data && typeof data === "object" && Array.isArray((data as { lines?: unknown[] }).lines)
       ? (data as { lines: unknown[] }).lines
       : [];
+  const lines = hideRawEvents
+    ? allLines.filter(
+        (line) =>
+          !line || typeof line !== "object" || (line as { type?: unknown }).type !== "raw_event",
+      )
+    : allLines;
   const toggle = (key: string) =>
     setExpanded((current) => {
       const next = new Set(current);
@@ -170,7 +180,7 @@ export function StructuredRows({
           title = String(record.model ?? record.id ?? record.session_id ?? "Session metadata");
           body = pretty(record);
         } else if (type === "user_message" || type === "prompt") {
-          title = type === "user_message" ? "Mike" : "Prompt";
+          title = type === "user_message" ? "You" : "Prompt";
           body = String(record.content ?? "");
           tint = type === "user_message" ? styles.eventUser : styles.eventNeutral;
         } else if (type === "model_change") {
@@ -236,9 +246,9 @@ export function StructuredRows({
                 )}
                 {isOpen && (
                   <>
-                    <Text selectable style={styles.eventBody}>
-                      {body || pretty(record)}
-                    </Text>
+                    <View style={styles.eventBody}>
+                      <StructuredValue value={body || record} rawValue={record} />
+                    </View>
                     {showRaw && kind === "pi" && (
                       <Text selectable style={styles.eventRaw}>
                         {pretty(record)}
@@ -288,7 +298,7 @@ export function formatBytes(value: unknown): string {
 }
 
 export function StructuredDetail({ value }: { value: unknown }) {
-  const styles = useThemeStyles(createOperationsStyles);
+  const styles = useThemeStyles(createStyles);
   if (typeof value === "string")
     return (
       <Text selectable style={styles.detailProse}>
@@ -351,7 +361,7 @@ export function ConfigFields({
   path?: string[];
   onUpdate: (path: string[], value: unknown) => void;
 }) {
-  const styles = useThemeStyles(createOperationsStyles);
+  const styles = useThemeStyles(createStyles);
   if (!value || typeof value !== "object" || Array.isArray(value)) return null;
   return (
     <View style={styles.configFields}>
@@ -418,7 +428,7 @@ export function StructuredConfigEditor({
   editor: string;
   onChange: (value: string) => void;
 }) {
-  const styles = useThemeStyles(createOperationsStyles);
+  const styles = useThemeStyles(createStyles);
   let value: unknown;
   try {
     value = JSON.parse(editor);
@@ -438,7 +448,7 @@ export function StructuredConfigEditor({
 }
 
 export function MemoryOverview({ value }: { value: unknown }) {
-  const styles = useThemeStyles(createOperationsStyles);
+  const styles = useThemeStyles(createStyles);
   const record = (value ?? {}) as Record<string, unknown>;
   const sessions = Array.isArray(record.sessions) ? record.sessions : [];
   return (
@@ -494,3 +504,197 @@ export function labelFor(value: unknown, index: number): string {
       `Item ${index + 1}`,
   );
 }
+
+const createStyles = (theme: VitoTheme) =>
+  StyleSheet.create({
+    desktopDeleteContainer: {
+      flex: 1,
+      minWidth: 0,
+      position: "relative",
+      paddingRight: theme.space.xxl,
+    },
+    desktopDeleteButton: {
+      position: "absolute",
+      right: 0,
+      bottom: 0,
+      width: 28,
+      height: 28,
+      alignItems: "center",
+      justifyContent: "center",
+      borderRadius: 6,
+    },
+    swipeContainer: { flex: 1, minWidth: 0 },
+    swipeDelete: {
+      width: 88,
+      alignItems: "center",
+      justifyContent: "center",
+      gap: theme.space.xs,
+      marginLeft: theme.space.sm,
+      borderRadius: 10,
+      backgroundColor: theme.colors.danger,
+    },
+    swipeDeleteText: { color: "#fff", fontSize: 11, fontWeight: "800" },
+    structuredList: { gap: theme.space.sm },
+    eventNeutral: {
+      backgroundColor: theme.colors.surface,
+      borderColor: theme.colors.separatorStrong,
+    },
+    eventTool: { backgroundColor: theme.colors.successSurface, borderColor: theme.colors.success },
+    eventUser: { backgroundColor: theme.colors.infoSurface, borderColor: theme.colors.info },
+    eventAssistant: { backgroundColor: theme.colors.surfaceRaised, borderColor: theme.colors.info },
+    eventError: { backgroundColor: theme.colors.dangerSurface, borderColor: theme.colors.danger },
+    eventGroup: { gap: theme.space.sm },
+    eventCard: { borderWidth: 1, borderRadius: 13, padding: theme.space.md },
+    eventThought: { backgroundColor: theme.colors.surface, borderColor: theme.colors.accent },
+    eventHeader: { flexDirection: "row", alignItems: "center", gap: theme.space.sm },
+    eventBadge: {
+      color: theme.colors.accent,
+      backgroundColor: theme.colors.surfaceRaised,
+      borderRadius: 7,
+      overflow: "hidden",
+      paddingHorizontal: theme.space.sm,
+      paddingVertical: theme.space.xs,
+      fontSize: 10,
+      fontWeight: "800",
+      fontFamily: "monospace",
+    },
+    eventTitle: {
+      color: theme.colors.text,
+      flex: 1,
+      fontSize: 12,
+      fontWeight: "700",
+      fontFamily: "monospace",
+    },
+    eventChevron: { color: theme.colors.textMuted, fontSize: 18 },
+    eventPreview: {
+      color: theme.colors.textSecondary,
+      fontSize: 12,
+      lineHeight: 17,
+      marginTop: theme.space.sm,
+    },
+    eventBody: {
+      color: theme.colors.textSecondary,
+      fontSize: 11,
+      lineHeight: 17,
+      marginTop: theme.space.md,
+      fontFamily: "monospace",
+    },
+    eventRaw: {
+      color: theme.colors.textMuted,
+      fontSize: 10,
+      lineHeight: 15,
+      marginTop: theme.space.md,
+      padding: theme.space.md,
+      borderRadius: 8,
+      backgroundColor: theme.colors.canvas,
+      fontFamily: "monospace",
+    },
+    emptyText: { color: theme.colors.textMuted, textAlign: "center", padding: theme.space.xxl },
+    detailProse: {
+      color: theme.colors.textSecondary,
+      fontSize: 14,
+      lineHeight: 22,
+      backgroundColor: theme.colors.surface,
+      borderWidth: 1,
+      borderColor: theme.colors.separator,
+      borderRadius: 14,
+      padding: theme.space.lg,
+    },
+    detailList: { gap: theme.space.md },
+    detailGroup: {
+      backgroundColor: theme.colors.surface,
+      borderWidth: 1,
+      borderColor: theme.colors.separator,
+      borderRadius: 14,
+      padding: theme.space.lg,
+      marginTop: theme.space.sm,
+    },
+    detailGroupTitle: {
+      color: theme.colors.accent,
+      fontSize: 11,
+      fontWeight: "800",
+      textTransform: "uppercase",
+      letterSpacing: 0.8,
+      marginBottom: theme.space.sm,
+    },
+    detailValue: { color: theme.colors.textSecondary, fontSize: 14 },
+    fieldList: { gap: theme.space.xxs },
+    fieldRow: {
+      paddingVertical: theme.space.md,
+      borderBottomWidth: 1,
+      borderBottomColor: theme.colors.separator,
+    },
+    fieldLabel: {
+      color: theme.colors.textMuted,
+      fontSize: 10,
+      fontWeight: "800",
+      textTransform: "uppercase",
+      letterSpacing: 0.8,
+      marginBottom: theme.space.xs,
+    },
+    fieldValue: { color: theme.colors.textSecondary, fontSize: 14, lineHeight: 20 },
+    configFields: { gap: theme.space.md },
+    configGroup: {
+      borderLeftWidth: 2,
+      borderLeftColor: theme.colors.separatorStrong,
+      paddingLeft: theme.space.md,
+      marginTop: theme.space.sm,
+    },
+    configGroupTitle: {
+      color: theme.colors.accent,
+      fontSize: 14,
+      fontWeight: "800",
+      marginBottom: theme.space.md,
+    },
+    configField: { gap: theme.space.xs },
+    booleanControl: {
+      alignSelf: "flex-start",
+      minWidth: 62,
+      paddingHorizontal: theme.space.lg,
+      paddingVertical: theme.space.sm,
+      borderRadius: 16,
+      backgroundColor: theme.colors.surfaceRaised,
+    },
+    booleanControlOn: { backgroundColor: theme.colors.accentSurface },
+    booleanText: { color: theme.colors.text, fontSize: 12, fontWeight: "800", textAlign: "center" },
+    input: {
+      flex: 1,
+      color: theme.colors.text,
+      backgroundColor: theme.colors.surface,
+      borderWidth: 1,
+      borderColor: theme.colors.separatorStrong,
+      borderRadius: 12,
+      padding: theme.space.md,
+    },
+    configMultiline: { minHeight: 90, textAlignVertical: "top" },
+    error: { color: theme.colors.danger, marginVertical: theme.space.md },
+    memorySummary: {
+      flexDirection: "row",
+      flexWrap: "wrap",
+      justifyContent: "space-between",
+      gap: theme.space.sm,
+      paddingBottom: theme.space.md,
+      borderBottomWidth: 1,
+      borderBottomColor: theme.colors.separator,
+    },
+    memorySummaryPrimary: { color: theme.colors.text, fontSize: 12, fontWeight: "700" },
+    memorySummarySecondary: { color: theme.colors.textMuted, fontSize: 11 },
+    flatSectionHeader: {
+      paddingTop: theme.space.xxxl,
+      paddingBottom: theme.space.md,
+      borderBottomWidth: 1,
+      borderBottomColor: theme.colors.separator,
+    },
+    flatSectionTitle: { color: theme.colors.text, fontSize: 13, fontWeight: "700" },
+    flatRow: {
+      minHeight: 58,
+      flexDirection: "row",
+      alignItems: "center",
+      gap: theme.space.lg,
+      borderBottomWidth: 1,
+      borderBottomColor: theme.colors.separator,
+    },
+    flatRowMain: { flex: 1 },
+    cardTitle: { color: theme.colors.text, fontWeight: "800", fontSize: 14 },
+    cardMeta: { color: theme.colors.textMuted, fontSize: 12, marginTop: theme.space.xs },
+  });

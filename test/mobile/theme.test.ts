@@ -4,6 +4,8 @@ import path from "node:path";
 import { describe, it } from "node:test";
 
 const mobileRoot = path.resolve("mobile");
+const isThemeModule = (file: string) =>
+  file.endsWith("/src/theme.tsx") || file.endsWith("/src/contexts/theme.tsx");
 
 async function tsxFiles(directory: string): Promise<string[]> {
   const entries = await readdir(directory, { withFileTypes: true });
@@ -20,7 +22,7 @@ async function tsxFiles(directory: string): Promise<string[]> {
 
 describe("mobile theme boundary", () => {
   it("keeps component colors in the theme rather than inline hex literals", async () => {
-    const files = (await tsxFiles(mobileRoot)).filter((file) => !file.endsWith("/src/theme.tsx"));
+    const files = (await tsxFiles(mobileRoot)).filter((file) => !isThemeModule(file));
     const violations: string[] = [];
     for (const file of files) {
       const source = await readFile(file, "utf8");
@@ -30,7 +32,7 @@ describe("mobile theme boundary", () => {
   });
 
   it("keeps component spacing on named theme tokens", async () => {
-    const files = (await tsxFiles(mobileRoot)).filter((file) => !file.endsWith("/src/theme.tsx"));
+    const files = (await tsxFiles(mobileRoot)).filter((file) => !isThemeModule(file));
     const inlineSpacing =
       /\b(?:padding|paddingTop|paddingBottom|paddingLeft|paddingRight|paddingHorizontal|paddingVertical|margin|marginTop|marginBottom|marginLeft|marginRight|marginHorizontal|marginVertical|gap|rowGap|columnGap):\s*\d+\b/;
     const violations: string[] = [];

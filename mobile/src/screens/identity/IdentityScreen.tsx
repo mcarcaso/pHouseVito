@@ -9,6 +9,7 @@ import {
   TextInput,
   View,
 } from "react-native";
+import { useAgentName } from "../../contexts/agentIdentity";
 import { api } from "../../services/api/client";
 import { MarkdownText } from "../../components/markdown/MarkdownText";
 import { useThemeStyles, useVitoTheme, type VitoTheme } from "../../hooks/useVitoTheme";
@@ -26,7 +27,7 @@ const documents: Array<{
   {
     id: "profile",
     title: "Profile",
-    description: "What Vito knows about Mike",
+    description: "Knowledge about the user",
     icon: "person-outline",
     path: "/api/memory/profile",
     editable: false,
@@ -34,7 +35,7 @@ const documents: Array<{
   {
     id: "soul",
     title: "Soul",
-    description: "Vito’s personality and values",
+    description: "Personality and values",
     icon: "heart-outline",
     path: "/api/soul",
     editable: true,
@@ -52,6 +53,7 @@ const documents: Array<{
 export function IdentityHome({ onOpen }: { onOpen: (document: IdentityDocument) => void }) {
   const styles = useThemeStyles(createStyles);
   const theme = useVitoTheme();
+  const agentName = useAgentName();
   return (
     <ScrollView contentContainerStyle={styles.home}>
       <View style={styles.documentList}>
@@ -60,7 +62,13 @@ export function IdentityHome({ onOpen }: { onOpen: (document: IdentityDocument) 
             <Ionicons name={document.icon} size={20} color={theme.colors.accent} />
             <View style={styles.rowCopy}>
               <Text style={styles.rowTitle}>{document.title}</Text>
-              <Text style={styles.rowDescription}>{document.description}</Text>
+              <Text style={styles.rowDescription}>
+                {document.id === "profile"
+                  ? `What ${agentName} knows about you`
+                  : document.id === "soul"
+                    ? `${agentName}’s personality and values`
+                    : document.description}
+              </Text>
             </View>
             <Ionicons name="chevron-forward" size={17} color={theme.colors.textMuted} />
           </Pressable>

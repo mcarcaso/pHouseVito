@@ -58,6 +58,24 @@ export class VoiceRouterService implements RouterService {
 
     route({
       router,
+      method: "GET",
+      path: "/status",
+      auth: "dashboard",
+      schemas: {
+        params: emptyRouteSchema,
+        query: emptyRouteSchema,
+        body: unknownRouteSchema,
+      },
+      responseSchema: z.object({
+        available: z.boolean(),
+        provider: z.literal("openai").nullable(),
+        reason: z.string().nullable(),
+      }),
+      handler: (routeX) => xVoiceService(routeX).getStatus(routeX),
+    });
+
+    route({
+      router,
       method: "POST",
       path: "/realtime-token",
       auth: "dashboard",

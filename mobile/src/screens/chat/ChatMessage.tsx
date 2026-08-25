@@ -1,3 +1,5 @@
+import type { VitoTheme } from "../../hooks/useVitoTheme";
+import { StyleSheet } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { useEffect, useState } from "react";
 import {
@@ -12,8 +14,8 @@ import {
 import type { VitoMessage as Message } from "@vito/client";
 import { driveFileSource } from "../../services/api/client";
 import { MarkdownText } from "../../components/markdown/MarkdownText";
+import { StructuredValue } from "../../components/StructuredValue";
 import { DESKTOP_BREAKPOINT, useThemeStyles, useVitoTheme } from "../../hooks/useVitoTheme";
-import { createChatStyles } from "./styles";
 
 type MessageAttachment = {
   type: string;
@@ -90,7 +92,7 @@ function MessageImage({
   source: { uri: string; headers?: { Authorization: string } };
   label: string;
 }) {
-  const styles = useThemeStyles(createChatStyles);
+  const styles = useThemeStyles(createStyles);
   const theme = useVitoTheme();
   const [aspectRatio, setAspectRatio] = useState(4 / 3);
   const [resolvedSource, setResolvedSource] = useState<typeof source | undefined>(
@@ -140,7 +142,7 @@ function MessageImage({
 }
 
 function MessageAttachments({ attachments }: { attachments: MessageAttachment[] }) {
-  const styles = useThemeStyles(createChatStyles);
+  const styles = useThemeStyles(createStyles);
   if (!attachments.length) return null;
   return (
     <View style={styles.attachments}>
@@ -174,7 +176,7 @@ function MessageAttachments({ attachments }: { attachments: MessageAttachment[] 
 }
 
 function ToolValue({ value, depth = 0 }: { value: unknown; depth?: number }) {
-  const styles = useThemeStyles(createChatStyles);
+  const styles = useThemeStyles(createStyles);
   const parsed = parseJsonString(value);
   const collection = parsed !== null && typeof parsed === "object";
   const entries = collection ? Object.entries(parsed as Record<string, unknown>) : [];
@@ -219,10 +221,9 @@ function prettyRawJson(content: string): string {
 }
 
 function ToolMessage({ message }: { message: Message }) {
-  const styles = useThemeStyles(createChatStyles);
+  const styles = useThemeStyles(createStyles);
   const tool = compactToolContent(message.content);
   const response = message.type === "tool_end";
-  const [raw, setRaw] = useState(false);
   return (
     <View style={[styles.toolCard, response && styles.toolResponseCard]}>
       <View style={styles.specialHeader}>
@@ -230,27 +231,17 @@ function ToolMessage({ message }: { message: Message }) {
           {response ? "TOOL RESPONSE" : "TOOL CALL"}
         </Text>
         <Text style={styles.specialTime}>{tool.title}</Text>
-        <Pressable onPress={() => setRaw((value) => !value)} hitSlop={8}>
-          <Text style={styles.toolMode}>{raw ? "PRETTY" : "RAW"}</Text>
-        </Pressable>
       </View>
       <View style={styles.toolBody}>
-        {raw ? (
-          <Text selectable style={styles.toolRaw}>
-            {prettyRawJson(message.content)}
-          </Text>
-        ) : (
-          <ToolValue value={tool.detail} />
-        )}
+        <StructuredValue value={tool.detail} rawValue={prettyRawJson(message.content)} />
       </View>
     </View>
   );
 }
 
 export function MessageRow({ message }: { message: Message }) {
-  const styles = useThemeStyles(createChatStyles);
-  const { width } = useWindowDimensions();
-  const desktop = width >= DESKTOP_BREAKPOINT;
+  const styles = useThemeStyles(createStyles);
+  const desktop = false;
   if (message.type === "thought")
     return (
       <View style={styles.thoughtCard}>
@@ -292,3 +283,117 @@ export function MessageRow({ message }: { message: Message }) {
     </View>
   );
 }
+
+const createStyles = (theme: VitoTheme) =>
+  StyleSheet.create({
+    attachmentError: { color: theme.colors.danger, fontSize: 12 },
+    attachmentLoader: { marginVertical: theme.space.xl },
+    attachmentImage: {
+      width: "100%",
+      maxHeight: 420,
+      borderRadius: theme.radius.md,
+      backgroundColor: theme.colors.canvas,
+    },
+    attachments: { gap: theme.space.sm, marginTop: theme.space.sm },
+    attachmentFile: {
+      flexDirection: "row",
+      alignItems: "center",
+      gap: theme.space.sm,
+      paddingVertical: theme.space.sm,
+      borderTopWidth: StyleSheet.hairlineWidth,
+      borderTopColor: theme.colors.separatorStrong,
+    },
+    attachmentFileIcon: { color: theme.colors.accent },
+    attachmentFileBody: { flex: 1, minWidth: 0 },
+    attachmentFileName: { color: theme.colors.text, fontSize: 13, fontWeight: "700" },
+    attachmentFileType: { color: theme.colors.textMuted, fontSize: 11, marginTop: theme.space.xxs },
+    toolPrimitive: {
+      color: theme.colors.textSecondary,
+      fontSize: 11,
+      lineHeight: 16,
+      fontFamily: Platform.select({ ios: "Menlo", android: "monospace", default: "monospace" }),
+    },
+    toolBranch: {
+      marginTop: theme.space.xs,
+      marginLeft: theme.space.sm,
+      paddingLeft: theme.space.sm,
+      borderLeftWidth: 1,
+      borderLeftColor: theme.colors.separatorStrong,
+    },
+    toolField: { marginTop: theme.space.sm },
+    toolKey: {
+      color: theme.colors.textMuted,
+      fontSize: 10,
+      fontWeight: "800",
+      marginBottom: theme.space.xxs,
+      fontFamily: Platform.select({ ios: "Menlo", android: "monospace", default: "monospace" }),
+    },
+    toolMarkdown: { width: "100%", maxWidth: "100%", minWidth: 0, overflow: "hidden" },
+    toolCard: {
+      width: "92%",
+      maxWidth: "92%",
+      minWidth: 0,
+      overflow: "hidden",
+      alignSelf: "flex-start",
+      borderRadius: 13,
+      padding: theme.space.md,
+      backgroundColor: theme.colors.infoSurface,
+      borderWidth: 1,
+      borderColor: theme.colors.info,
+    },
+    toolResponseCard: {
+      backgroundColor: theme.colors.successSurface,
+      borderColor: theme.colors.success,
+    },
+    specialHeader: {
+      flexDirection: "row",
+      alignItems: "center",
+      justifyContent: "space-between",
+      gap: theme.space.md,
+    },
+    toolLabel: { color: theme.colors.info, fontSize: 10, fontWeight: "900", letterSpacing: 1 },
+    toolResponseLabel: { color: theme.colors.success },
+    specialTime: {
+      flexShrink: 1,
+      color: theme.colors.textMuted,
+      fontSize: 9,
+      fontWeight: "700",
+      textTransform: "uppercase",
+    },
+    toolMode: {
+      color: theme.colors.accent,
+      fontSize: 9,
+      fontWeight: "900",
+      letterSpacing: 0.8,
+    },
+    toolBody: { marginTop: theme.space.sm },
+    toolRaw: {
+      color: theme.colors.textSecondary,
+      fontSize: 11,
+      lineHeight: 16,
+      fontFamily: Platform.select({ ios: "Menlo", android: "monospace", default: "monospace" }),
+    },
+    thoughtCard: {
+      maxWidth: "88%",
+      alignSelf: "flex-start",
+      borderRadius: 13,
+      padding: theme.space.md,
+      backgroundColor: theme.colors.surface,
+      borderWidth: 1,
+      borderColor: theme.colors.separatorStrong,
+    },
+    thoughtLabel: { color: theme.colors.accent, fontSize: 10, fontWeight: "900", letterSpacing: 1 },
+    thoughtBody: { marginTop: theme.space.sm },
+    messageRow: { flexDirection: "row" },
+    userRow: { justifyContent: "flex-end" },
+    bubble: {
+      maxWidth: "82%",
+      borderRadius: 19,
+      paddingHorizontal: theme.space.md,
+      paddingVertical: theme.space.sm,
+    },
+    desktopBubble: { maxWidth: 680 },
+    desktopAttachmentBubble: { width: 480 },
+    userBubble: { backgroundColor: theme.colors.accent, borderBottomRightRadius: 5 },
+    assistantBubble: { backgroundColor: theme.colors.separator, borderBottomLeftRadius: 5 },
+  });

@@ -13,12 +13,22 @@ export interface AskOptions {
 }
 
 /** Process-lifetime coordinator for channels, queues, cron, and live Pi sessions. */
+export interface OrchestratorRun {
+  sessionKey: string;
+  channel: string;
+  author: string;
+  preview: string;
+  status: "active" | "queued";
+  timestamp: number;
+}
+
 export interface OrchestratorService {
   registerChannel(x: Context, channel: ChannelService, channelX?: Context): void;
   reloadCronJobs(x: Context, jobs: CronJobConfig[], timezone?: string): void;
   reloadConfig(x: Context, config: VitoConfig): void;
   handleInbound(x: Context, event: InboundEvent, channel: ChannelService | null): Promise<void>;
   ask(x: Context, options: AskOptions): Promise<string>;
+  listRuns(x: Context): OrchestratorRun[];
   start(x: Context): Promise<void>;
   stop(x: Context): Promise<void>;
 }

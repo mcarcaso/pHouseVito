@@ -21,6 +21,15 @@ import type {
 export class DefaultVoiceService implements VoiceService {
   constructor(private readonly askApiService: AskApiService) {}
 
+  getStatus(x: Context) {
+    const available = Boolean(xSecretService(x).get(x, "OPENAI_API_KEY"));
+    return {
+      available,
+      provider: available ? ("openai" as const) : null,
+      reason: available ? null : "Live Voice requires an OpenAI API key.",
+    };
+  }
+
   async createRealtimeSecret(x: Context, voice: RealtimeVoice): Promise<unknown> {
     const apiKey = xSecretService(x).get(x, "OPENAI_API_KEY");
     if (!apiKey) throw new Error("OpenAI API key is not configured");

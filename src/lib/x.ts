@@ -29,6 +29,8 @@ import type { SkillStore } from "../stores/skills/SkillStore.js";
 import type { TraceEventStore } from "../stores/traces/TraceEventStore.js";
 import type { TraceStore } from "../stores/traces/TraceStore.js";
 import type { VoiceTaskStore } from "../stores/voice/VoiceTaskStore.js";
+import type { QuickCommandStore } from "../stores/quick-commands/QuickCommandStore.js";
+import type { QuickCommandService } from "../services/quick-commands/QuickCommandService.js";
 
 // Context accessors are the intentional casting boundary for opaque scopes.
 export const xDashboardUser = (x: Context): DashboardUser =>
@@ -57,6 +59,8 @@ export const xAppsDir = (x: Context): string => x.get("appsDir") as string;
 export const xAttachmentsDir = (x: Context): string => x.get("attachmentsDir") as string;
 export const xVitoService = (x: Context): VitoService => x.get("vitoService") as VitoService;
 export const xVoiceService = (x: Context): VoiceService => x.get("voiceService") as VoiceService;
+export const xQuickCommandService = (x: Context): QuickCommandService =>
+  x.get("quickCommandService") as QuickCommandService;
 export const xAppProcessService = (x: Context): AppProcessService =>
   x.get("appProcessService") as AppProcessService;
 export const xAskApiService = (x: Context): AskApiService =>
@@ -90,6 +94,8 @@ export const xSkillStore = (x: Context): SkillStore => x.get("skillStore") as Sk
 export const xMessageStore = (x: Context): MessageStore => x.get("messageStore") as MessageStore;
 export const xVoiceTaskStore = (x: Context): VoiceTaskStore =>
   x.get("voiceTaskStore") as VoiceTaskStore;
+export const xQuickCommandStore = (x: Context): QuickCommandStore =>
+  x.get("quickCommandStore") as QuickCommandStore;
 export const xTraceStore = (x: Context): TraceStore => x.get("traceStore") as TraceStore;
 export const xTraceEventStore = (x: Context): TraceEventStore =>
   x.get("traceEventStore") as TraceEventStore;

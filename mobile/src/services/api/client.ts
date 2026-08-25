@@ -325,6 +325,14 @@ export async function cancelVoiceTask(id: string): Promise<VoiceTask> {
   });
 }
 
+export async function getVoiceAvailability(): Promise<{
+  available: boolean;
+  provider: "openai" | null;
+  reason: string | null;
+}> {
+  return await api("/api/voice/status");
+}
+
 export async function getRealtimeToken(voice: RealtimeVoice): Promise<string> {
   const result = await api<unknown>("/api/voice/realtime-token", {
     method: "POST",
@@ -337,7 +345,9 @@ export async function getRealtimeToken(voice: RealtimeVoice): Promise<string> {
     typeof result.value !== "string" ||
     !result.value
   ) {
-    throw new Error("Voice endpoint is unavailable. Restart Vito to activate the backend changes.");
+    throw new Error(
+      "Voice endpoint is unavailable. Restart the agent service to activate the backend changes.",
+    );
   }
   return result.value;
 }

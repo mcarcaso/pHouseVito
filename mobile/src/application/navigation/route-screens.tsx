@@ -1,3 +1,5 @@
+import type { VitoTheme } from "../../hooks/useVitoTheme";
+import { StyleSheet } from "react-native";
 import { operationAreas, type OperationArea } from "../../screens/operations/operation-catalog";
 import {
   NavigationContainer,
@@ -30,16 +32,18 @@ import {
   IdentityDocumentScreen,
   IdentityHome,
   identityDocumentTitle,
+  type IdentityDocument,
 } from "../../screens/identity/IdentityScreen";
 import { LoginScreen } from "../../screens/auth/LoginScreen";
 import { OperationWorkspace } from "../../screens/operations/OperationWorkspace";
-import { OperationItemDetailScreen } from "../../screens/operations/OperationItemDetailScreen";
+import { AppDetailScreen, AppsScreen } from "../../screens/apps/AppsScreen";
+import { ProviderModelsScreen, ProvidersScreen } from "../../screens/providers/ProvidersScreen";
 import { SkillsScreen } from "../../screens/skills/SkillsScreen";
 import { SettingsScreen } from "../../screens/settings/SettingsScreen";
 import { ThemeScreen } from "../../screens/theme/ThemeScreen";
 import { JobEditorScreen, JobsScreen } from "../../screens/jobs/JobsScreen";
+import { DriveScreen } from "../../screens/drive/DriveScreen";
 import {
-  DesktopSecretsScreen,
   SecretEditorScreen,
   SecretsScreen,
   type Secret,
@@ -63,28 +67,18 @@ import {
   saveToken,
 } from "../../services/api/client";
 import { AppProviders } from "../../providers/AppProviders";
-import { createAppStyles } from "../styles";
 import { operationMeta } from "./config";
 import { WebStackHeader } from "../../components/navigation/WebStackHeader";
-import { AdaptiveTabBar } from "../../components/navigation/AdaptiveTabBar";
 import { GlobalVoiceOverlay } from "../../components/voice/GlobalVoiceOverlay";
+import { useAgentName } from "../../contexts/agentIdentity";
 import { DESKTOP_BREAKPOINT, useThemeStyles, useVitoTheme } from "../../hooks/useVitoTheme";
 
-import type {
-  ChatStackParamList,
-  IdentityStackParamList,
-  MainRouteName,
-  MainTabParamList,
-  MoreStackParamList,
-  RootStackParamList,
-} from "./route-types";
+import type { MainRouteName, MainTabParamList, RootStackParamList } from "./route-types";
 
 type RootNavigation = NativeStackNavigationProp<RootStackParamList>;
-const MoreStack = createNativeStackNavigator<MoreStackParamList>();
-const IdentityStack = createNativeStackNavigator<IdentityStackParamList>();
 
 export function RootMemoryScreen({ navigation }: { navigation: RootNavigation }) {
-  const styles = useThemeStyles(createAppStyles);
+  const styles = useThemeStyles(createStyles);
   return (
     <ScrollView
       automaticallyAdjustContentInsets
@@ -126,17 +120,11 @@ export function DriveDirectoryScreen({
   navigation: RootNavigation;
 }) {
   return (
-    <ScrollView contentContainerStyle={{ flexGrow: 1, padding: 16 }}>
-      <OperationWorkspace
-        initialArea="drive"
-        initialDrivePath={route.params.path}
-        showAreaTabs={false}
-        hideScreenTitle
-        hideRefreshToolbar
-        onOpenDriveDirectory={(path) => navigation.push("DriveDirectory", { path })}
-        onUnauthorized={() => navigation.navigate("Main", { screen: "More" })}
-      />
-    </ScrollView>
+    <DriveScreen
+      path={route.params.path}
+      onOpenDirectory={(path) => navigation.push("DriveDirectory", { path })}
+      onUnauthorized={() => navigation.navigate("Main", { screen: "More" })}
+    />
   );
 }
 
@@ -147,8 +135,9 @@ export function TraceDetailScreen({
   route: { params: { id: string } };
   navigation: RootNavigation;
 }) {
+  const styles = useThemeStyles(createStyles);
   return (
-    <ScrollView contentContainerStyle={{ flexGrow: 1, padding: 16 }}>
+    <ScrollView contentContainerStyle={styles.fullScreenOperation}>
       <OperationWorkspace
         initialArea="traces"
         initialDetail={{ area: "traces", id: route.params.id }}
@@ -162,10 +151,15 @@ export function TraceDetailScreen({
 
 export function RootOperationItemDetailScreen({
   route,
+  navigation,
 }: {
   route: { params: { area: "apps" | "providers"; id: string } };
+  navigation: RootNavigation;
 }) {
-  return <OperationItemDetailScreen area={route.params.area} id={route.params.id} />;
+  if (route.params.area === "apps") {
+    return <AppDetailScreen name={route.params.id} onDeleted={() => navigation.goBack()} />;
+  }
+  return <ProviderModelsScreen id={route.params.id} />;
 }
 
 export function PiSessionDetailScreen({
@@ -175,7 +169,7 @@ export function PiSessionDetailScreen({
   route: { params: { id: string; raw?: boolean } };
   navigation: RootNavigation;
 }) {
-  const styles = useThemeStyles(createAppStyles);
+  const styles = useThemeStyles(createStyles);
   return (
     <ScrollView contentContainerStyle={styles.fullScreenOperation}>
       <OperationWorkspace
@@ -197,7 +191,7 @@ export function RootOperationScreen({
   route: { params: { area: OperationArea; refreshKey?: number } };
   navigation: RootNavigation;
 }) {
-  const styles = useThemeStyles(createAppStyles);
+  const styles = useThemeStyles(createStyles);
   const theme = useVitoTheme();
   const area = route.params.area;
   const [query, setQuery] = useState("");
@@ -209,6 +203,14 @@ export function RootOperationScreen({
     const search = value.trim();
     if (search) navigation.navigate("MemoryResults", { query: search, mode, limit });
   };
+  if (area === "drive") {
+    return (
+      <DriveScreen
+        onOpenDirectory={(path) => navigation.push("DriveDirectory", { path })}
+        onUnauthorized={() => navigation.navigate("Main", { screen: "More" })}
+      />
+    );
+  }
   if (area === "secrets") {
     return (
       <SecretsScreen
@@ -233,6 +235,24 @@ export function RootOperationScreen({
         onOpen={(name) => navigation.navigate("JobDetail", { name })}
       />
     );
+  if (area === "providers") {
+    return (
+      <ProvidersScreen
+        refreshKey={route.params.refreshKey}
+        onUnauthorized={() => navigation.navigate("Main", { screen: "More" })}
+        onOpen={(id) => navigation.navigate("OperationItemDetail", { area: "providers", id })}
+      />
+    );
+  }
+  if (area === "apps") {
+    return (
+      <AppsScreen
+        refreshKey={route.params.refreshKey}
+        onUnauthorized={() => navigation.navigate("Main", { screen: "More" })}
+        onOpen={(id) => navigation.navigate("OperationItemDetail", { area: "apps", id })}
+      />
+    );
+  }
   if (area === "skills") {
     return (
       <SkillsScreen
@@ -282,87 +302,12 @@ export function RootOperationScreen({
                 ? (_detailArea, id) => navigation.navigate("TraceDetail", { id })
                 : undefined
           }
-          onOpenItem={
-            area === "apps" || area === "providers"
-              ? (detailArea, id) =>
-                  navigation.navigate("OperationItemDetail", { area: detailArea, id })
-              : undefined
-          }
-          onOpenDriveDirectory={
-            area === "drive" ? (path) => navigation.navigate("DriveDirectory", { path }) : undefined
-          }
+          onOpenItem={undefined}
           hideMemorySearch={area === "memory"}
           onMemorySearch={area === "memory" ? openResults : undefined}
         />
       </ScrollView>
     </View>
-  );
-}
-
-export function IdentityNavigator({ desktop }: { desktop: boolean }) {
-  const theme = useVitoTheme();
-  const root = useNavigation<RootNavigation>();
-  return (
-    <IdentityStack.Navigator
-      screenOptions={{
-        headerShown: true,
-        headerStyle: { backgroundColor: theme.colors.canvas },
-        headerTintColor: theme.colors.text,
-        headerTitleStyle: { fontSize: 16, fontWeight: "700" },
-        headerShadowVisible: false,
-        contentStyle: { backgroundColor: theme.colors.canvas },
-      }}
-    >
-      <IdentityStack.Screen
-        name="IdentityHome"
-        options={{
-          title: "Identity",
-          headerShown: !desktop,
-          headerLeft: desktop
-            ? undefined
-            : () => (
-                <Pressable
-                  accessibilityLabel="Back to More"
-                  onPress={() => root.navigate("Main", { screen: "More" })}
-                >
-                  <Ionicons name="chevron-back" size={25} color={theme.colors.accent} />
-                </Pressable>
-              ),
-        }}
-      >
-        {({ navigation }) => (
-          <IdentityHome
-            onOpen={(document) => navigation.navigate("IdentityDocument", { document })}
-          />
-        )}
-      </IdentityStack.Screen>
-      <IdentityStack.Screen
-        name="IdentityDocument"
-        options={({ route }) => ({ title: identityDocumentTitle(route.params.document) })}
-      >
-        {({ route }) => <IdentityDocumentScreen document={route.params.document} />}
-      </IdentityStack.Screen>
-    </IdentityStack.Navigator>
-  );
-}
-
-export function MoreStackScreen({ desktop, onLogout }: { desktop: boolean; onLogout: () => void }) {
-  const theme = useVitoTheme();
-  return (
-    <MoreStack.Navigator
-      screenOptions={{
-        headerShown: !desktop,
-        headerStyle: { backgroundColor: theme.colors.canvas },
-        headerTintColor: theme.colors.text,
-        headerTitleStyle: { fontSize: 16, fontWeight: "700" },
-        headerShadowVisible: false,
-        contentStyle: { backgroundColor: theme.colors.canvas },
-      }}
-    >
-      <MoreStack.Screen name="MoreHome" options={{ title: "More" }}>
-        {() => <MoreMenu onLogout={onLogout} />}
-      </MoreStack.Screen>
-    </MoreStack.Navigator>
   );
 }
 
@@ -373,7 +318,7 @@ export function MemoryResultsScreen({
   route: { params: { query: string; mode: "hybrid" | "embedding" | "bm25"; limit: number } };
   navigation: RootNavigation;
 }) {
-  const styles = useThemeStyles(createAppStyles);
+  const styles = useThemeStyles(createStyles);
   return (
     <ScrollView
       automaticallyAdjustContentInsets
@@ -459,16 +404,10 @@ export function RootSkillFileScreen({
   return <SkillFileScreen name={route.params.name} fileName={route.params.fileName} />;
 }
 
-export function TabSafeArea({
-  desktop,
-  children,
-}: {
-  desktop: boolean;
-  children: React.ReactNode;
-}) {
-  const styles = useThemeStyles(createAppStyles);
+export function TabSafeArea({ children }: { children: React.ReactNode }) {
+  const styles = useThemeStyles(createStyles);
   return (
-    <ContextSafeAreaView edges={desktop ? [] : ["top"]} style={styles.tabSafeArea}>
+    <ContextSafeAreaView edges={["top"]} style={styles.tabSafeArea}>
       {children}
     </ContextSafeAreaView>
   );
@@ -481,7 +420,7 @@ export function ScreenFrame({
   desktop: boolean;
   children: React.ReactNode;
 }) {
-  const styles = useThemeStyles(createAppStyles);
+  const styles = useThemeStyles(createStyles);
   return (
     <ScrollView contentContainerStyle={[styles.screenFrame, desktop && styles.screenFrameDesktop]}>
       <View style={styles.screenPage}>{children}</View>
@@ -489,14 +428,15 @@ export function ScreenFrame({
   );
 }
 export function MoreMenu({ onLogout }: { onLogout: () => void }) {
-  const styles = useThemeStyles(createAppStyles);
+  const styles = useThemeStyles(createStyles);
+  const agentName = useAgentName();
   const navigation = useNavigation<RootNavigation>();
   return (
     <ScrollView contentContainerStyle={styles.moreScreen}>
-      {(["Intelligence", "Automation", "Operations", "Vito"] as const).map((group) => (
+      {(["Intelligence", "Automation", "Operations", "Agent"] as const).map((group) => (
         <View key={group} style={styles.moreSection}>
-          <Text style={styles.moreSectionLabel}>{group}</Text>
-          {group === "Vito" && (
+          <Text style={styles.moreSectionLabel}>{group === "Agent" ? agentName : group}</Text>
+          {group === "Agent" && (
             <Pressable onPress={() => navigation.navigate("IdentityHome")} style={styles.moreRow}>
               <Ionicons name="finger-print-outline" size={18} style={styles.moreIcon} />
               <View style={styles.moreRowText}>
@@ -543,3 +483,68 @@ export function MoreMenu({ onLogout }: { onLogout: () => void }) {
     </ScrollView>
   );
 }
+
+const createStyles = (theme: VitoTheme) =>
+  StyleSheet.create({
+    fullScreenOperation: { flexGrow: 1, padding: theme.space.xl, paddingBottom: theme.space.xl },
+    rootOperation: { flex: 1, backgroundColor: theme.colors.canvas },
+    nativeMemorySearch: {
+      height: 50,
+      flexDirection: "row",
+      alignItems: "center",
+      gap: theme.space.md,
+      marginHorizontal: theme.space.xl,
+      borderBottomWidth: StyleSheet.hairlineWidth,
+      borderBottomColor: theme.colors.separatorStrong,
+    },
+    nativeMemorySearchInput: {
+      flex: 1,
+      color: theme.colors.text,
+      fontSize: 15,
+      paddingVertical: theme.space.md,
+    },
+    tabSafeArea: { flex: 1, backgroundColor: theme.colors.canvas },
+    screenFrame: { flexGrow: 1, padding: theme.space.xl, paddingBottom: theme.space.xxxl },
+    screenFrameDesktop: { padding: theme.space.xxxl },
+    screenPage: { width: "100%", maxWidth: 900, alignSelf: "center" },
+    moreScreen: {
+      flexGrow: 1,
+      paddingHorizontal: theme.space.xl,
+      paddingTop: theme.space.xxl,
+      paddingBottom: theme.space.giant,
+    },
+    moreSection: { marginBottom: theme.space.xl },
+    moreSectionLabel: {
+      color: theme.colors.accent,
+      fontSize: 10,
+      fontWeight: "800",
+      letterSpacing: 1.4,
+      textTransform: "uppercase",
+      marginBottom: theme.space.xs,
+    },
+    moreRow: {
+      minHeight: 58,
+      flexDirection: "row",
+      alignItems: "center",
+      gap: theme.space.md,
+      borderBottomWidth: 1,
+      borderBottomColor: theme.colors.separator,
+    },
+    moreIcon: { color: theme.colors.textSecondary, width: 24 },
+    moreRowText: { flex: 1 },
+    moreTitle: { color: theme.colors.text, fontSize: 14, fontWeight: "700" },
+    moreDescription: { color: theme.colors.textMuted, fontSize: 11, marginTop: theme.space.xs },
+    moreChevron: { color: theme.colors.textMuted },
+    mobileSignOut: {
+      minHeight: 52,
+      flexDirection: "row",
+      alignItems: "center",
+      justifyContent: "center",
+      gap: theme.space.sm,
+      marginTop: theme.space.lg,
+      borderWidth: 1,
+      borderColor: theme.colors.danger,
+      borderRadius: 12,
+    },
+    mobileSignOutText: { color: theme.colors.danger, fontSize: 13, fontWeight: "800" },
+  });

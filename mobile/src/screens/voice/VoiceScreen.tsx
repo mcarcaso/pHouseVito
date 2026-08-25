@@ -4,25 +4,32 @@ import { StyleSheet } from "react-native";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { ActivityIndicator, Platform, Pressable, ScrollView, Text, View } from "react-native";
 import {
+  getGeminiRealtimeBootstrap,
   getRealtimeToken,
   getVoiceAvailability,
   getVoiceContext,
   getVoiceSession,
   getVoiceSessions,
   getVoiceTask,
+  loadGeminiLiveVoice,
+  loadLiveVoiceProvider,
   loadRealtimeModel,
   loadRealtimeVoice,
   persistVoiceEvent,
   searchVoiceMemory,
   startVoiceTask,
+  type GeminiLiveVoice,
+  type LiveVoiceProviderPreference,
   type RealtimeModel,
   type RealtimeVoice,
+  type VoiceAvailability,
   type VoiceSession,
   type VoiceSessionDetail,
 } from "../../services/api/client";
 import { useAgentName } from "../../contexts/agentIdentity";
 import type { LiveVoiceEvent, LiveVoiceSession } from "../../services/voice/live-voice";
 import { openAiLiveVoiceProvider } from "../../services/voice/openai-live-voice";
+import { geminiLiveVoiceProvider } from "../../services/voice/gemini-live-voice";
 import {
   setVoiceAudioRoute,
   startVoiceAudio,
@@ -75,10 +82,13 @@ export function VoiceScreen({
   const agentName = useAgentName();
   const [state, setState] = useState<VoiceState>("idle");
   const [available, setAvailable] = useState<boolean | null>(null);
+  const [availability, setAvailability] = useState<VoiceAvailability | null>(null);
   const [muted, setMuted] = useState(false);
   const [audioRoute, setAudioRoute] = useState<VoiceAudioRoute>("speaker");
   const [selectedVoice, setSelectedVoice] = useState<RealtimeVoice>("marin");
   const [selectedModel, setSelectedModel] = useState<RealtimeModel>("gpt-realtime-mini");
+  const [providerPreference, setProviderPreference] = useState<LiveVoiceProviderPreference>("auto");
+  const [geminiVoice, setGeminiVoice] = useState<GeminiLiveVoice>("Kore");
   const [error, setError] = useState<string | null>(null);
   const [transcript, setTranscript] = useState<TranscriptLine[]>([]);
   const [history, setHistory] = useState<VoiceSession[]>([]);
@@ -96,7 +106,10 @@ export function VoiceScreen({
       let current = true;
       void getVoiceAvailability()
         .then((status) => {
-          if (current) setAvailable(status.available);
+          if (current) {
+            setAvailability(status);
+            setAvailable(status.available);
+          }
         })
         .catch(() => {
           // Older backends do not expose availability; preserve the existing start behavior.
@@ -107,6 +120,12 @@ export function VoiceScreen({
       });
       void loadRealtimeModel().then((model) => {
         if (current) setSelectedModel(model);
+      });
+      void loadLiveVoiceProvider().then((provider) => {
+        if (current) setProviderPreference(provider);
+      });
+      void loadGeminiLiveVoice().then((voice) => {
+        if (current) setGeminiVoice(voice);
       });
       return () => {
         current = false;
@@ -331,7 +350,21 @@ export function VoiceScreen({
         await startVoiceAudio("speaker");
         setAudioRoute("speaker");
       }
-      const token = await getRealtimeToken(selectedVoice, selectedModel);
+      const provider =
+        providerPreference === "auto" ? (availability?.provider ?? "openai") : providerPreference;
+      if (availability && !availability.providers[provider]) {
+        throw new Error(
+          provider === "gemini"
+            ? "Google AI API key is not configured"
+            : "OpenAI API key is not configured",
+        );
+      }
+      const bootstrap =
+        provider === "gemini"
+          ? await getGeminiRealtimeBootstrap(geminiVoice)
+          : { value: await getRealtimeToken(selectedVoice, selectedModel) };
+      const liveProvider =
+        provider === "gemini" ? geminiLiveVoiceProvider : openAiLiveVoiceProvider;
       let opened = false;
       let hydrated = false;
       const hydrate = () => {
@@ -363,8 +396,9 @@ export function VoiceScreen({
             : []),
         ]);
       };
-      const connection = await openAiLiveVoiceProvider.connect({
-        credential: token,
+      const connection = await liveProvider.connect({
+        credential: bootstrap.value,
+        metadata: provider === "gemini" ? bootstrap : undefined,
         onEvent: handleEvent,
         onOpen: () => {
           opened = true;
@@ -443,11 +477,11 @@ export function VoiceScreen({
           <Ionicons name="mic-off-outline" size={34} color={theme.colors.textMuted} />
           <Text style={styles.unavailableTitle}>Live Voice is unavailable</Text>
           <Text style={styles.unavailableText}>
-            Live conversations use OpenAI Realtime and require an OpenAI API key.
+            Live conversations require a configured OpenAI or Google AI API key.
           </Text>
           {onConfigureOpenAi && (
             <Pressable onPress={onConfigureOpenAi} style={styles.configureButton}>
-              <Text style={styles.configureButtonText}>Configure OpenAI</Text>
+              <Text style={styles.configureButtonText}>Configure voice providers</Text>
             </Pressable>
           )}
         </View>

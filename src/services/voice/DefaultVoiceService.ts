@@ -19,15 +19,56 @@ import type {
   VoiceSessionDetail,
 } from "./VoiceService.js";
 
+function voiceInstructions(x: Context): string {
+  const today = new Date().toLocaleDateString("en-CA");
+  const soul = xVitoService(x).getSoul(x).trim();
+  const profile = xMemoryService(x).getProfile(x)?.trim() ?? "";
+  const personality = soul ? `\n\n<personality>\n${soul}\n</personality>` : "";
+  const userProfile = profile ? `\n\n<user_profile>\n${profile}\n</user_profile>` : "";
+  return `You are Vito, Mike Carcasole's concise personal voice companion. Today is ${today}. Speak naturally, warmly, and directly. Keep answers brief unless Mike asks for detail. Treat very short greetings or fragments as tentative openings: respond with one short line, avoid stacking multiple questions, and leave room for Mike to continue. Your stable knowledge of Mike is provided in user_profile; answer directly from it when possible. For anything requiring conversation history, uncertain recall, deeper reasoning, current information, a skill, or an external action, create a Vito task using Mike's complete natural-language request. Creating a task returns immediately so conversation can continue. Acknowledge it once, never poll automatically, and never claim an action completed from a queued response. The companion shows task status and silently adds completed results to your context. Only call get_vito_task when Mike explicitly asks you to check a task. Completed task responses contain the final answer or verified result only; do not ask for private reasoning or intermediate tool chatter. Mike is the authenticated owner and may ask about his own profile. Consequential communication with real people still requires explicit confirmation before creating the task. Never fabricate memory, tool use, or completion.${personality}${userProfile}`;
+}
+
+const voiceToolDeclarations = [
+  {
+    name: "create_vito_task",
+    description:
+      "Create background authoritative Vito reasoning or tool work—including memory research and external actions—and immediately return a task ID so conversation can continue.",
+    parameters: {
+      type: "object",
+      properties: { question: { type: "string" } },
+      required: ["question"],
+    },
+  },
+  {
+    name: "get_vito_task",
+    description:
+      "Get a task's status or final response. Call only when Mike explicitly asks to check that task.",
+    parameters: {
+      type: "object",
+      properties: { id: { type: "string" } },
+      required: ["id"],
+    },
+  },
+] as const;
+
 export class DefaultVoiceService implements VoiceService {
   constructor(private readonly askApiService: AskApiService) {}
 
   getStatus(x: Context) {
-    const available = Boolean(xSecretService(x).get(x, "OPENAI_API_KEY"));
+    const providers = {
+      openai: Boolean(xSecretService(x).get(x, "OPENAI_API_KEY")),
+      gemini: Boolean(xSecretService(x).get(x, "GOOGLE_GENERATIVE_AI_API_KEY")),
+    };
+    const provider = providers.openai
+      ? ("openai" as const)
+      : providers.gemini
+        ? ("gemini" as const)
+        : null;
     return {
-      available,
-      provider: available ? ("openai" as const) : null,
-      reason: available ? null : "Live Voice requires an OpenAI API key.",
+      available: provider !== null,
+      provider,
+      reason: provider ? null : "Live Voice requires an OpenAI or Google AI API key.",
+      providers,
     };
   }
 
@@ -38,11 +79,7 @@ export class DefaultVoiceService implements VoiceService {
   ): Promise<unknown> {
     const apiKey = xSecretService(x).get(x, "OPENAI_API_KEY");
     if (!apiKey) throw new Error("OpenAI API key is not configured");
-    const today = new Date().toLocaleDateString("en-CA");
-    const soul = xVitoService(x).getSoul(x).trim();
-    const profile = xMemoryService(x).getProfile(x)?.trim() ?? "";
-    const personality = soul ? `\n\n<personality>\n${soul}\n</personality>` : "";
-    const userProfile = profile ? `\n\n<user_profile>\n${profile}\n</user_profile>` : "";
+    const instructions = voiceInstructions(x);
     const response = await fetch("https://api.openai.com/v1/realtime/client_secrets", {
       method: "POST",
       headers: {
@@ -54,7 +91,7 @@ export class DefaultVoiceService implements VoiceService {
         session: {
           type: "realtime",
           model,
-          instructions: `You are Vito, Mike Carcasole's concise personal voice companion. Today is ${today}. Speak naturally, warmly, and directly. Keep answers brief unless Mike asks for detail. Treat very short greetings or fragments as tentative openings: respond with one short line, avoid stacking multiple questions, and leave room for Mike to continue. Your stable knowledge of Mike is provided in user_profile; answer directly from it when possible. For anything requiring conversation history, uncertain recall, deeper reasoning, current information, a skill, or an external action, create a Vito task using Mike's complete natural-language request. Creating a task returns immediately so conversation can continue. Acknowledge it once, never poll automatically, and never claim an action completed from a queued response. The companion shows task status and silently adds completed results to your context. Only call get_vito_task when Mike explicitly asks you to check a task. Completed task responses contain the final answer or verified result only; do not ask for private reasoning or intermediate tool chatter. Mike is the authenticated owner and may ask about his own profile. Consequential communication with real people still requires explicit confirmation before creating the task. Never fabricate memory, tool use, or completion.${personality}${userProfile}`,
+          instructions,
           tools: [
             {
               type: "function",
@@ -93,6 +130,38 @@ export class DefaultVoiceService implements VoiceService {
     });
     if (!response.ok) throw new Error(`OpenAI Realtime token request failed (${response.status})`);
     return await response.json();
+  }
+
+  async createGeminiRealtimeSecret(x: Context, voice: string): Promise<unknown> {
+    const apiKey = xSecretService(x).get(x, "GOOGLE_GENERATIVE_AI_API_KEY");
+    if (!apiKey) throw new Error("Google AI API key is not configured");
+    const now = Date.now();
+    const response = await fetch("https://generativelanguage.googleapis.com/v1beta/auth_tokens", {
+      method: "POST",
+      headers: {
+        "x-goog-api-key": apiKey,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        uses: 1,
+        expireTime: new Date(now + 30 * 60_000).toISOString(),
+        newSessionExpireTime: new Date(now + 60_000).toISOString(),
+      }),
+    });
+    if (!response.ok) {
+      throw new Error(`Gemini Live token request failed (${response.status})`);
+    }
+    const token = (await response.json()) as { name?: unknown };
+    if (typeof token.name !== "string" || !token.name) {
+      throw new Error("Gemini Live token response was invalid");
+    }
+    return {
+      value: token.name,
+      model: "gemini-3.1-flash-live-preview",
+      voice,
+      instructions: voiceInstructions(x),
+      tools: voiceToolDeclarations,
+    };
   }
 
   recordEvent(

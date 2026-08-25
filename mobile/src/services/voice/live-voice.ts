@@ -22,6 +22,7 @@ export interface LiveVoiceSession {
 
 export interface LiveVoiceConnectOptions {
   credential: string;
+  metadata?: unknown;
   onEvent: (event: LiveVoiceEvent) => void;
   onOpen: () => void;
   onError: (message: string) => void;

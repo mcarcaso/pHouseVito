@@ -8,6 +8,7 @@ export type VoiceEventKind = "user" | "assistant" | "usage" | "session_end";
 export type RealtimeVoice =
   "alloy" | "ash" | "ballad" | "cedar" | "coral" | "echo" | "marin" | "sage" | "shimmer" | "verse";
 export type RealtimeModel = "gpt-realtime-mini" | "gpt-realtime";
+export type LiveVoiceProviderId = "openai" | "gemini";
 
 export interface VoiceSessionDetail {
   session: SessionRow;
@@ -18,8 +19,14 @@ export interface VoiceSessionDetail {
 }
 
 export interface VoiceService {
-  getStatus(x: Context): { available: boolean; provider: "openai" | null; reason: string | null };
+  getStatus(x: Context): {
+    available: boolean;
+    provider: LiveVoiceProviderId | null;
+    reason: string | null;
+    providers: Record<LiveVoiceProviderId, boolean>;
+  };
   createRealtimeSecret(x: Context, voice: RealtimeVoice, model: RealtimeModel): Promise<unknown>;
+  createGeminiRealtimeSecret(x: Context, voice: string): Promise<unknown>;
   recordEvent(
     x: Context,
     event: { sessionId: string; kind: VoiceEventKind; content: string },

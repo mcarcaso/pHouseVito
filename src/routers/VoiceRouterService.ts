@@ -25,6 +25,38 @@ const realtimeVoiceSchema = z.enum([
   "verse",
 ]);
 const realtimeModelSchema = z.enum(["gpt-realtime-mini", "gpt-realtime"]);
+const geminiVoiceSchema = z.enum([
+  "Zephyr",
+  "Puck",
+  "Charon",
+  "Kore",
+  "Fenrir",
+  "Leda",
+  "Orus",
+  "Aoede",
+  "Callirrhoe",
+  "Autonoe",
+  "Enceladus",
+  "Iapetus",
+  "Umbriel",
+  "Algieba",
+  "Despina",
+  "Erinome",
+  "Algenib",
+  "Rasalgethi",
+  "Laomedeia",
+  "Achernar",
+  "Alnilam",
+  "Schedar",
+  "Gacrux",
+  "Pulcherrima",
+  "Achird",
+  "Zubenelgenubi",
+  "Vindemiatrix",
+  "Sadachbia",
+  "Sadaltager",
+  "Sulafat",
+]);
 const realtimeClientSecretSchema = z
   .object({ value: z.string().min(1), expires_at: z.number().optional() })
   .passthrough();
@@ -69,8 +101,9 @@ export class VoiceRouterService implements RouterService {
       },
       responseSchema: z.object({
         available: z.boolean(),
-        provider: z.literal("openai").nullable(),
+        provider: z.enum(["openai", "gemini"]).nullable(),
         reason: z.string().nullable(),
+        providers: z.object({ openai: z.boolean(), gemini: z.boolean() }),
       }),
       handler: (routeX) => xVoiceService(routeX).getStatus(routeX),
     });
@@ -93,6 +126,27 @@ export class VoiceRouterService implements RouterService {
         realtimeClientSecretSchema.parse(
           await xVoiceService(routeX).createRealtimeSecret(routeX, body.voice, body.model),
         ),
+    });
+
+    route({
+      router,
+      method: "POST",
+      path: "/gemini-token",
+      auth: "dashboard",
+      schemas: {
+        params: emptyRouteSchema,
+        query: emptyRouteSchema,
+        body: z.object({ voice: geminiVoiceSchema.default("Kore") }),
+      },
+      responseSchema: z.object({
+        value: z.string().min(1),
+        model: z.literal("gemini-3.1-flash-live-preview"),
+        voice: geminiVoiceSchema,
+        instructions: z.string(),
+        tools: z.array(unknownRouteSchema),
+      }),
+      handler: async (routeX, { data: { body } }) =>
+        await xVoiceService(routeX).createGeminiRealtimeSecret(routeX, body.voice),
     });
 
     route({

@@ -18,6 +18,8 @@ const RECENT_AGENTS_KEY = "vito-recent-agents";
 const LEGACY_TOKEN_KEY = "vito-dashboard-token";
 const VOICE_KEY = "vito-realtime-voice";
 const VOICE_MODEL_KEY = "vito-realtime-model";
+const VOICE_PROVIDER_KEY = "vito-live-voice-provider";
+const GEMINI_VOICE_KEY = "vito-gemini-live-voice";
 let authToken: string | null = null;
 const urlListeners = new Set<(url: string) => void>();
 
@@ -95,6 +97,41 @@ export const REALTIME_VOICES = [
 export type RealtimeVoice = (typeof REALTIME_VOICES)[number];
 export const REALTIME_MODELS = ["gpt-realtime-mini", "gpt-realtime"] as const;
 export type RealtimeModel = (typeof REALTIME_MODELS)[number];
+export const LIVE_VOICE_PROVIDERS = ["auto", "openai", "gemini"] as const;
+export type LiveVoiceProviderPreference = (typeof LIVE_VOICE_PROVIDERS)[number];
+export const GEMINI_LIVE_VOICES = [
+  "Zephyr",
+  "Puck",
+  "Charon",
+  "Kore",
+  "Fenrir",
+  "Leda",
+  "Orus",
+  "Aoede",
+  "Callirrhoe",
+  "Autonoe",
+  "Enceladus",
+  "Iapetus",
+  "Umbriel",
+  "Algieba",
+  "Despina",
+  "Erinome",
+  "Algenib",
+  "Rasalgethi",
+  "Laomedeia",
+  "Achernar",
+  "Alnilam",
+  "Schedar",
+  "Gacrux",
+  "Pulcherrima",
+  "Achird",
+  "Zubenelgenubi",
+  "Vindemiatrix",
+  "Sadachbia",
+  "Sadaltager",
+  "Sulafat",
+] as const;
+export type GeminiLiveVoice = (typeof GEMINI_LIVE_VOICES)[number];
 
 function isRealtimeVoice(value: string | null): value is RealtimeVoice {
   return value !== null && REALTIME_VOICES.some((voice) => voice === value);
@@ -121,6 +158,26 @@ export async function loadRealtimeModel(): Promise<RealtimeModel> {
 
 export async function saveRealtimeModel(model: RealtimeModel): Promise<void> {
   await storage().set(VOICE_MODEL_KEY, model);
+}
+
+export async function loadLiveVoiceProvider(): Promise<LiveVoiceProviderPreference> {
+  const value = await storage().get(VOICE_PROVIDER_KEY);
+  return LIVE_VOICE_PROVIDERS.some((provider) => provider === value)
+    ? (value as LiveVoiceProviderPreference)
+    : "auto";
+}
+
+export async function saveLiveVoiceProvider(provider: LiveVoiceProviderPreference): Promise<void> {
+  await storage().set(VOICE_PROVIDER_KEY, provider);
+}
+
+export async function loadGeminiLiveVoice(): Promise<GeminiLiveVoice> {
+  const value = await storage().get(GEMINI_VOICE_KEY);
+  return GEMINI_LIVE_VOICES.some((voice) => voice === value) ? (value as GeminiLiveVoice) : "Kore";
+}
+
+export async function saveGeminiLiveVoice(voice: GeminiLiveVoice): Promise<void> {
+  await storage().set(GEMINI_VOICE_KEY, voice);
 }
 
 export class ApiError extends Error {
@@ -338,11 +395,14 @@ export async function cancelVoiceTask(id: string): Promise<VoiceTask> {
   });
 }
 
-export async function getVoiceAvailability(): Promise<{
+export interface VoiceAvailability {
   available: boolean;
-  provider: "openai" | null;
+  provider: "openai" | "gemini" | null;
   reason: string | null;
-}> {
+  providers: { openai: boolean; gemini: boolean };
+}
+
+export async function getVoiceAvailability(): Promise<VoiceAvailability> {
   return await api("/api/voice/status");
 }
 
@@ -366,4 +426,21 @@ export async function getRealtimeToken(
     );
   }
   return result.value;
+}
+
+export interface GeminiRealtimeBootstrap {
+  value: string;
+  model: "gemini-3.1-flash-live-preview";
+  voice: GeminiLiveVoice;
+  instructions: string;
+  tools: Array<Record<string, unknown>>;
+}
+
+export async function getGeminiRealtimeBootstrap(
+  voice: GeminiLiveVoice,
+): Promise<GeminiRealtimeBootstrap> {
+  return await api<GeminiRealtimeBootstrap>("/api/voice/gemini-token", {
+    method: "POST",
+    body: JSON.stringify({ voice }),
+  });
 }

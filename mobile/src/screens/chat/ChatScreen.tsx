@@ -10,7 +10,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import {
   ActivityIndicator,
   Image,
-  KeyboardAvoidingView,
+  Keyboard,
   Modal,
   Platform,
   Pressable,
@@ -693,6 +693,8 @@ function Conversation({
   const agentName = useAgentName();
   const insets = useSafeAreaInsets();
   const [webInputHeight, setWebInputHeight] = useState(22);
+  const [keyboardInset, setKeyboardInset] = useState(0);
+  const { height: windowHeight } = useWindowDimensions();
   const nearBottomRef = useRef(true);
   const scrollOffsetRef = useRef(0);
   const contentHeightRef = useRef(0);
@@ -702,16 +704,29 @@ function Conversation({
     if (Platform.OS === "web" && input.length === 0) setWebInputHeight(22);
   }, [input]);
 
+  useEffect(() => {
+    if (Platform.OS !== "ios") return;
+    const frame = Keyboard.addListener("keyboardWillChangeFrame", (event) => {
+      setKeyboardInset(Math.max(0, windowHeight - event.endCoordinates.screenY));
+    });
+    const hide = Keyboard.addListener("keyboardWillHide", () => setKeyboardInset(0));
+    return () => {
+      frame.remove();
+      hide.remove();
+    };
+  }, [windowHeight]);
+
   const slashQuery = input.startsWith("/") && !input.includes(" ") ? input.toLowerCase() : null;
   const slashCommands = slashQuery
     ? SLASH_COMMANDS.filter((item) => item.command.startsWith(slashQuery))
     : [];
 
   return (
-    <KeyboardAvoidingView
-      style={styles.conversationRoot}
-      behavior={Platform.OS === "ios" ? "padding" : undefined}
-      keyboardVerticalOffset={8}
+    <View
+      style={[
+        styles.conversationRoot,
+        Platform.OS === "ios" && keyboardInset > 0 && { paddingBottom: keyboardInset },
+      ]}
     >
       {onBack && (
         <View style={styles.conversationHeader}>
@@ -890,7 +905,7 @@ function Conversation({
           )}
         </Pressable>
       </View>
-    </KeyboardAvoidingView>
+    </View>
   );
 }
 

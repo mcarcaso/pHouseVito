@@ -21,6 +21,20 @@ const commonVoices = [
   "verse",
 ];
 const voiceSchema = z.object({ id: z.string(), name: z.string() });
+const speechModelSchema = z.object({
+  id: z.string(),
+  name: z.string(),
+  voices: z.array(voiceSchema),
+});
+
+function voiceName(id: string): string {
+  return id
+    .replace(/^(?:flux|aura)-/, "")
+    .split(/[-_]/)
+    .filter(Boolean)
+    .map((part) => (part.length <= 3 ? part.toUpperCase() : part[0].toUpperCase() + part.slice(1)))
+    .join(" ");
+}
 
 async function ensureResponse(response: Response, provider: string): Promise<Response> {
   if (response.ok) return response;
@@ -41,7 +55,11 @@ export class SpeechRouterService implements RouterService {
         query: z.object({ provider: providerSchema }),
         body: unknownRouteSchema,
       },
-      responseSchema: z.object({ configured: z.boolean(), voices: z.array(voiceSchema) }),
+      responseSchema: z.object({
+        configured: z.boolean(),
+        voices: z.array(voiceSchema),
+        models: z.array(speechModelSchema),
+      }),
       handler: async (routeX, { data: { query } }) => {
         const secrets = xSecretService(routeX);
         const keyName =
@@ -51,15 +69,44 @@ export class SpeechRouterService implements RouterService {
               ? "ELEVEN_LABS_API_KEY"
               : "OPENROUTER_API_KEY";
         const key = secrets.get(routeX, keyName);
-        if (!key) return { configured: false, voices: [] };
-        if (query.provider !== "elevenlabs") {
+        if (!key) return { configured: false, voices: [], models: [] };
+        if (query.provider === "openai") {
           return {
             configured: true,
             voices: commonVoices.map((voice) => ({
               id: voice,
               name: voice[0].toUpperCase() + voice.slice(1),
             })),
+            models: [],
           };
+        }
+        if (query.provider === "openrouter") {
+          const response = await ensureResponse(
+            await fetch("https://openrouter.ai/api/v1/models?output_modalities=speech", {
+              headers: { Authorization: `Bearer ${key}` },
+            }),
+            "OpenRouter",
+          );
+          const body = (await response.json()) as {
+            data?: Array<{
+              id?: unknown;
+              name?: unknown;
+              supported_voices?: unknown;
+            }>;
+          };
+          const models = (body.data ?? []).flatMap((model) => {
+            if (
+              typeof model.id !== "string" ||
+              typeof model.name !== "string" ||
+              !Array.isArray(model.supported_voices)
+            )
+              return [];
+            const voices = model.supported_voices.flatMap((voice) =>
+              typeof voice === "string" ? [{ id: voice, name: voiceName(voice) }] : [],
+            );
+            return voices.length > 0 ? [{ id: model.id, name: model.name, voices }] : [];
+          });
+          return { configured: true, voices: [], models };
         }
         const response = await ensureResponse(
           await fetch("https://api.elevenlabs.io/v1/voices", { headers: { "xi-api-key": key } }),
@@ -75,6 +122,7 @@ export class SpeechRouterService implements RouterService {
               ? [{ id: voice.voice_id, name: voice.name }]
               : [],
           ),
+          models: [],
         };
       },
     });

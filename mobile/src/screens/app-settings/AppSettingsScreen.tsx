@@ -18,6 +18,11 @@ interface Voice {
   id: string;
   name: string;
 }
+interface SpeechModel {
+  id: string;
+  name: string;
+  voices: Voice[];
+}
 const providers: Array<{ id: SpeechProvider; name: string; detail: string }> = [
   { id: "openai", name: "OpenAI", detail: "Fast, natural speech" },
   { id: "elevenlabs", name: "ElevenLabs", detail: "Your ElevenLabs voice library" },
@@ -29,19 +34,39 @@ export function SpeechSettingsScreen() {
   const theme = useVitoTheme();
   const speech = useSpeech();
   const [voices, setVoices] = useState<Voice[]>([]);
+  const [models, setModels] = useState<SpeechModel[]>([]);
   const [configured, setConfigured] = useState(true);
   const [loading, setLoading] = useState(true);
   const [voiceOpen, setVoiceOpen] = useState(false);
+  const [modelOpen, setModelOpen] = useState(false);
   const [search, setSearch] = useState("");
 
   useEffect(() => {
     setLoading(true);
-    void api<{ configured: boolean; voices: Voice[] }>(
+    void api<{ configured: boolean; voices: Voice[]; models: SpeechModel[] }>(
       `/api/speech/voices?provider=${speech.settings.provider}`,
     )
       .then((result) => {
         setConfigured(result.configured);
-        setVoices(result.voices);
+        setModels(result.models);
+        if (speech.settings.provider !== "openrouter") {
+          setVoices(result.voices);
+          return;
+        }
+        const selected =
+          result.models.find((model) => model.id === speech.settings.model) ?? result.models[0];
+        setVoices(selected?.voices ?? []);
+        if (!selected) return;
+        const selectedVoice = selected.voices.some((voice) => voice.id === speech.settings.voice)
+          ? speech.settings.voice
+          : (selected.voices[0]?.id ?? "");
+        if (speech.settings.model !== selected.id || speech.settings.voice !== selectedVoice) {
+          void speech.updateSettings({
+            ...speech.settings,
+            model: selected.id,
+            voice: selectedVoice,
+          });
+        }
       })
       .finally(() => setLoading(false));
   }, [speech.settings.provider]);
@@ -49,10 +74,12 @@ export function SpeechSettingsScreen() {
   const updateProvider = async (provider: SpeechProvider) => {
     await speech.updateSettings({
       provider,
-      voice: provider === "elevenlabs" ? "" : "alloy",
+      voice: provider === "openai" ? "alloy" : "",
+      model: provider === "openrouter" ? "" : undefined,
       rate: speech.settings.rate,
     });
   };
+  const selectedModel = models.find((model) => model.id === speech.settings.model);
   const selectedVoice = voices.find((voice) => voice.id === speech.settings.voice);
   const filteredVoices = voices.filter((voice) =>
     voice.name.toLowerCase().includes(search.trim().toLowerCase()),
@@ -97,9 +124,22 @@ export function SpeechSettingsScreen() {
           </Text>
         </View>
       )}
+      {speech.settings.provider === "openrouter" && (
+        <>
+          <Text style={styles.fieldLabel}>MODEL</Text>
+          <Pressable
+            disabled={loading || !configured || models.length === 0}
+            onPress={() => setModelOpen(true)}
+            style={styles.selector}
+          >
+            <Text style={styles.selectorText}>{selectedModel?.name ?? "Choose a model"}</Text>
+            <Ionicons name="chevron-down" size={17} color={theme.colors.textMuted} />
+          </Pressable>
+        </>
+      )}
       <Text style={styles.fieldLabel}>VOICE</Text>
       <Pressable
-        disabled={loading || !configured}
+        disabled={loading || !configured || voices.length === 0}
         onPress={() => setVoiceOpen(true)}
         style={styles.selector}
       >
@@ -112,18 +152,6 @@ export function SpeechSettingsScreen() {
         )}
         <Ionicons name="chevron-down" size={17} color={theme.colors.textMuted} />
       </Pressable>
-      {speech.settings.provider === "openrouter" && (
-        <>
-          <Text style={styles.fieldLabel}>MODEL</Text>
-          <TextInput
-            value={speech.settings.model || "openai/gpt-4o-mini-tts-2025-12-15"}
-            onChangeText={(model) => void speech.updateSettings({ ...speech.settings, model })}
-            autoCapitalize="none"
-            autoCorrect={false}
-            style={styles.input}
-          />
-        </>
-      )}
       <Text style={styles.fieldLabel}>PLAYBACK SPEED</Text>
       <View style={styles.speedRow}>
         {[0.8, 1, 1.2, 1.5].map((rate) => (
@@ -166,6 +194,45 @@ export function SpeechSettingsScreen() {
         <Text style={styles.previewText}>Preview voice</Text>
       </Pressable>
       {!!speech.state.error && <Text style={styles.error}>{speech.state.error}</Text>}
+      <Modal
+        transparent
+        visible={modelOpen}
+        animationType="slide"
+        onRequestClose={() => setModelOpen(false)}
+      >
+        <Pressable style={styles.backdrop} onPress={() => setModelOpen(false)}>
+          <Pressable style={styles.sheet} onPress={(event) => event.stopPropagation()}>
+            <View style={styles.handle} />
+            <Text style={styles.sheetTitle}>Choose a model</Text>
+            <ScrollView keyboardShouldPersistTaps="handled">
+              {models.map((model) => (
+                <Pressable
+                  key={model.id}
+                  onPress={() => {
+                    const nextVoice = model.voices[0]?.id ?? "";
+                    setVoices(model.voices);
+                    void speech.updateSettings({
+                      ...speech.settings,
+                      model: model.id,
+                      voice: nextVoice,
+                    });
+                    setModelOpen(false);
+                  }}
+                  style={styles.voiceRow}
+                >
+                  <View style={styles.modelCopy}>
+                    <Text style={styles.voiceName}>{model.name}</Text>
+                    <Text style={styles.modelDetail}>{model.voices.length} voices</Text>
+                  </View>
+                  {speech.settings.model === model.id && (
+                    <Ionicons name="checkmark" size={20} color={theme.colors.accent} />
+                  )}
+                </Pressable>
+              ))}
+            </ScrollView>
+          </Pressable>
+        </Pressable>
+      </Modal>
       <Modal
         transparent
         visible={voiceOpen}
@@ -331,5 +398,7 @@ const createStyles = (theme: VitoTheme) =>
       borderBottomWidth: StyleSheet.hairlineWidth,
       borderBottomColor: theme.colors.separator,
     },
+    modelCopy: { flex: 1 },
+    modelDetail: { color: theme.colors.textMuted, fontSize: 10, marginTop: theme.space.xs },
     voiceName: { color: theme.colors.text, fontSize: 13, fontWeight: "700" },
   });

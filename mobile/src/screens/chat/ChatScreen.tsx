@@ -725,9 +725,7 @@ function Conversation({
     <View
       style={[
         styles.conversationRoot,
-        Platform.OS === "ios" && keyboardInset > 0 && {
-          paddingBottom: Math.max(0, keyboardInset - insets.bottom),
-        },
+        Platform.OS === "ios" && keyboardInset > 0 && { paddingBottom: keyboardInset },
       ]}
     >
       {onBack && (

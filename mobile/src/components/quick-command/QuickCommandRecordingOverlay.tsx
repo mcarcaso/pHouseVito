@@ -84,7 +84,7 @@ const createStyles = (theme: VitoTheme) =>
       elevation: 12,
       zIndex: 101,
     },
-    overlayBottom: { bottom: 78 },
+    overlayBottom: { bottom: 88 },
     status: {
       flex: 1,
       minHeight: 56,

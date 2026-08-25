@@ -7,8 +7,13 @@ import { VoiceRouterService } from "../../src/routers/VoiceRouterService.js";
 import type { VoiceService } from "../../src/services/voice/VoiceService.js";
 import { authenticatedDashboardAuthService } from "../support/authenticated-dashboard-auth-service.js";
 
+let requestedRealtimeModel: string | null = null;
 const voiceService: VoiceService = {
-  createRealtimeSecret: async () => ({ value: "test" }),
+  getStatus: () => ({ available: true, provider: "openai", reason: null }),
+  createRealtimeSecret: async (_x, _voice, model) => {
+    requestedRealtimeModel = model;
+    return { value: "test" };
+  },
   recordEvent: () => undefined,
   listSessions: () => [],
   getSession: () => null,
@@ -28,6 +33,7 @@ let baseUrl: string;
 
 before(async () => {
   const app = express();
+  app.use(express.json());
   const x = new ObjectContext({
     dashboardAuthService: () => authenticatedDashboardAuthService,
     voiceService: () => voiceService,
@@ -48,6 +54,17 @@ after(async () => {
 });
 
 describe("voice router", () => {
+  it("validates and forwards the selected realtime model", async () => {
+    const response = await fetch(`${baseUrl}/api/voice/realtime-token`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ voice: "marin", model: "gpt-realtime" }),
+    });
+    assert.equal(response.status, 200);
+    assert.deepEqual(await response.json(), { value: "test" });
+    assert.equal(requestedRealtimeModel, "gpt-realtime");
+  });
+
   it("accepts bodyless GET requests for context and sessions", async () => {
     const context = await fetch(`${baseUrl}/api/voice/context`);
     assert.equal(context.status, 200);

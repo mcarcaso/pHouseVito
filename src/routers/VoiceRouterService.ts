@@ -24,6 +24,7 @@ const realtimeVoiceSchema = z.enum([
   "shimmer",
   "verse",
 ]);
+const realtimeModelSchema = z.enum(["gpt-realtime-mini", "gpt-realtime"]);
 const realtimeClientSecretSchema = z
   .object({ value: z.string().min(1), expires_at: z.number().optional() })
   .passthrough();
@@ -82,12 +83,15 @@ export class VoiceRouterService implements RouterService {
       schemas: {
         params: emptyRouteSchema,
         query: emptyRouteSchema,
-        body: z.object({ voice: realtimeVoiceSchema.default("marin") }),
+        body: z.object({
+          voice: realtimeVoiceSchema.default("marin"),
+          model: realtimeModelSchema.default("gpt-realtime-mini"),
+        }),
       },
       responseSchema: realtimeClientSecretSchema,
       handler: async (routeX, { data: { body } }) =>
         realtimeClientSecretSchema.parse(
-          await xVoiceService(routeX).createRealtimeSecret(routeX, body.voice),
+          await xVoiceService(routeX).createRealtimeSecret(routeX, body.voice, body.model),
         ),
     });
 

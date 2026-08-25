@@ -17,6 +17,7 @@ const AGENT_URL_KEY = "vito-agent-url";
 const RECENT_AGENTS_KEY = "vito-recent-agents";
 const LEGACY_TOKEN_KEY = "vito-dashboard-token";
 const VOICE_KEY = "vito-realtime-voice";
+const VOICE_MODEL_KEY = "vito-realtime-model";
 let authToken: string | null = null;
 const urlListeners = new Set<(url: string) => void>();
 
@@ -92,6 +93,8 @@ export const REALTIME_VOICES = [
   "verse",
 ] as const;
 export type RealtimeVoice = (typeof REALTIME_VOICES)[number];
+export const REALTIME_MODELS = ["gpt-realtime-mini", "gpt-realtime"] as const;
+export type RealtimeModel = (typeof REALTIME_MODELS)[number];
 
 function isRealtimeVoice(value: string | null): value is RealtimeVoice {
   return value !== null && REALTIME_VOICES.some((voice) => voice === value);
@@ -106,8 +109,18 @@ export async function loadRealtimeVoice(): Promise<RealtimeVoice> {
 }
 
 export async function saveRealtimeVoice(voice: RealtimeVoice): Promise<void> {
-  if (Platform.OS === "web") globalThis.localStorage?.setItem(VOICE_KEY, voice);
-  else await SecureStore.setItemAsync(VOICE_KEY, voice);
+  await storage().set(VOICE_KEY, voice);
+}
+
+export async function loadRealtimeModel(): Promise<RealtimeModel> {
+  const value = await storage().get(VOICE_MODEL_KEY);
+  return REALTIME_MODELS.some((model) => model === value)
+    ? (value as RealtimeModel)
+    : "gpt-realtime-mini";
+}
+
+export async function saveRealtimeModel(model: RealtimeModel): Promise<void> {
+  await storage().set(VOICE_MODEL_KEY, model);
 }
 
 export class ApiError extends Error {
@@ -333,10 +346,13 @@ export async function getVoiceAvailability(): Promise<{
   return await api("/api/voice/status");
 }
 
-export async function getRealtimeToken(voice: RealtimeVoice): Promise<string> {
+export async function getRealtimeToken(
+  voice: RealtimeVoice,
+  model: RealtimeModel,
+): Promise<string> {
   const result = await api<unknown>("/api/voice/realtime-token", {
     method: "POST",
-    body: JSON.stringify({ voice }),
+    body: JSON.stringify({ voice, model }),
   });
   if (
     !result ||

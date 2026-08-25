@@ -12,6 +12,7 @@ import type { VoiceTaskRow } from "../../stores/voice/VoiceTaskStore.js";
 import type { AskApiService } from "../ask/AskApiService.js";
 import type { SearchResult } from "../memory/MemoryService.js";
 import type {
+  RealtimeModel,
   RealtimeVoice,
   VoiceEventKind,
   VoiceService,
@@ -30,7 +31,11 @@ export class DefaultVoiceService implements VoiceService {
     };
   }
 
-  async createRealtimeSecret(x: Context, voice: RealtimeVoice): Promise<unknown> {
+  async createRealtimeSecret(
+    x: Context,
+    voice: RealtimeVoice,
+    model: RealtimeModel,
+  ): Promise<unknown> {
     const apiKey = xSecretService(x).get(x, "OPENAI_API_KEY");
     if (!apiKey) throw new Error("OpenAI API key is not configured");
     const today = new Date().toLocaleDateString("en-CA");
@@ -48,7 +53,7 @@ export class DefaultVoiceService implements VoiceService {
       body: JSON.stringify({
         session: {
           type: "realtime",
-          model: "gpt-realtime-2.1-mini",
+          model,
           instructions: `You are Vito, Mike Carcasole's concise personal voice companion. Today is ${today}. Speak naturally, warmly, and directly. Keep answers brief unless Mike asks for detail. Treat very short greetings or fragments as tentative openings: respond with one short line, avoid stacking multiple questions, and leave room for Mike to continue. Your stable knowledge of Mike is provided in user_profile; answer directly from it when possible. For anything requiring conversation history, uncertain recall, deeper reasoning, current information, a skill, or an external action, create a Vito task using Mike's complete natural-language request. Creating a task returns immediately so conversation can continue. Acknowledge it once, never poll automatically, and never claim an action completed from a queued response. The companion shows task status and silently adds completed results to your context. Only call get_vito_task when Mike explicitly asks you to check a task. Completed task responses contain the final answer or verified result only; do not ask for private reasoning or intermediate tool chatter. Mike is the authenticated owner and may ask about his own profile. Consequential communication with real people still requires explicit confirmation before creating the task. Never fabricate memory, tool use, or completion.${personality}${userProfile}`,
           tools: [
             {

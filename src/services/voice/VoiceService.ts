@@ -7,6 +7,7 @@ import type { SearchResult } from "../memory/MemoryService.js";
 export type VoiceEventKind = "user" | "assistant" | "usage" | "session_end";
 export type RealtimeVoice =
   "alloy" | "ash" | "ballad" | "cedar" | "coral" | "echo" | "marin" | "sage" | "shimmer" | "verse";
+export type RealtimeModel = "gpt-realtime-mini" | "gpt-realtime";
 
 export interface VoiceSessionDetail {
   session: SessionRow;
@@ -18,7 +19,7 @@ export interface VoiceSessionDetail {
 
 export interface VoiceService {
   getStatus(x: Context): { available: boolean; provider: "openai" | null; reason: string | null };
-  createRealtimeSecret(x: Context, voice: RealtimeVoice): Promise<unknown>;
+  createRealtimeSecret(x: Context, voice: RealtimeVoice, model: RealtimeModel): Promise<unknown>;
   recordEvent(
     x: Context,
     event: { sessionId: string; kind: VoiceEventKind; content: string },

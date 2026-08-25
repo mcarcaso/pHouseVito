@@ -10,16 +10,20 @@ import {
   getVoiceSession,
   getVoiceSessions,
   getVoiceTask,
+  loadRealtimeModel,
   loadRealtimeVoice,
   persistVoiceEvent,
+  saveRealtimeModel,
   searchVoiceMemory,
   startVoiceTask,
+  type RealtimeModel,
   type RealtimeVoice,
   type VoiceSession,
   type VoiceSessionDetail,
 } from "../../services/api/client";
 import { useAgentName } from "../../contexts/agentIdentity";
-import { connectRealtime, type VoiceConnection } from "../../services/voice/realtime-webrtc";
+import type { LiveVoiceEvent, LiveVoiceSession } from "../../services/voice/live-voice";
+import { openAiLiveVoiceProvider } from "../../services/voice/openai-live-voice";
 import {
   setVoiceAudioRoute,
   startVoiceAudio,
@@ -56,23 +60,6 @@ interface VisibleTask {
   result: string | null;
 }
 
-interface RealtimeEvent {
-  type?: string;
-  transcript?: string;
-  delta?: string;
-  error?: { message?: string };
-  response?: { usage?: unknown };
-  name?: string;
-  call_id?: string;
-  arguments?: string;
-  item?: {
-    type?: string;
-    name?: string;
-    call_id?: string;
-    arguments?: string;
-  };
-}
-
 export function VoiceScreen({
   onUnauthorized,
   onStatusChange,
@@ -92,6 +79,7 @@ export function VoiceScreen({
   const [muted, setMuted] = useState(false);
   const [audioRoute, setAudioRoute] = useState<VoiceAudioRoute>("speaker");
   const [selectedVoice, setSelectedVoice] = useState<RealtimeVoice>("marin");
+  const [selectedModel, setSelectedModel] = useState<RealtimeModel>("gpt-realtime-mini");
   const [error, setError] = useState<string | null>(null);
   const [transcript, setTranscript] = useState<TranscriptLine[]>([]);
   const [history, setHistory] = useState<VoiceSession[]>([]);
@@ -99,8 +87,7 @@ export function VoiceScreen({
   const [selectedHistory, setSelectedHistory] = useState<VoiceSessionDetail | null>(null);
   const [showHistory, setShowHistory] = useState(false);
   const [tasks, setTasks] = useState<VisibleTask[]>([]);
-  const connectionRef = useRef<VoiceConnection | null>(null);
-  const assistantDraftRef = useRef("");
+  const connectionRef = useRef<LiveVoiceSession | null>(null);
   const lineIdRef = useRef(0);
   const sessionIdRef = useRef(`voice:${Date.now()}`);
   const handledToolCallsRef = useRef(new Set<string>());
@@ -133,6 +120,7 @@ export function VoiceScreen({
   useEffect(() => {
     void loadHistory();
     void loadRealtimeVoice().then(setSelectedVoice);
+    void loadRealtimeModel().then(setSelectedModel);
   }, [loadHistory]);
 
   useEffect(() => {
@@ -210,29 +198,13 @@ export function VoiceScreen({
     connectionRef.current?.close();
     connectionRef.current = null;
     if (Platform.OS !== "web") stopVoiceAudio();
-    assistantDraftRef.current = "";
     setMuted(false);
     setState("idle");
     void loadHistory();
   }, [loadHistory]);
 
   const sendToolResult = useCallback((callId: string, result: unknown, instructions?: string) => {
-    connectionRef.current?.sendEvent({
-      type: "conversation.item.create",
-      item: {
-        type: "function_call_output",
-        call_id: callId,
-        output: JSON.stringify(result),
-      },
-    });
-    connectionRef.current?.sendEvent({
-      type: "response.create",
-      response: {
-        instructions:
-          instructions ??
-          "Use the tool result. If another tool is needed, call it silently without narrating the search. Otherwise answer the user directly.",
-      },
-    });
+    connectionRef.current?.submitToolResult(callId, result, instructions);
   }, []);
 
   const waitForTask = useCallback(
@@ -247,19 +219,12 @@ export function VoiceScreen({
           ),
         );
         if (task.status === "queued" || task.status === "running") continue;
-        connectionRef.current?.sendEvent({
-          type: "conversation.item.create",
-          item: {
-            type: "message",
+        connectionRef.current?.addHistory([
+          {
             role: "system",
-            content: [
-              {
-                type: "input_text",
-                text: `Background ${agentName} task ${id} is now ${task.status}. Result: ${task.result ?? task.error ?? "No result"}. Do not speak about this until the user asks about the task or its result.`,
-              },
-            ],
+            text: `Background ${agentName} task ${id} is now ${task.status}. Result: ${task.result ?? task.error ?? "No result"}. Do not speak about this until the user asks about the task or its result.`,
           },
-        });
+        ]);
         return;
       }
       setTasks((current) =>
@@ -325,53 +290,21 @@ export function VoiceScreen({
   );
 
   const handleEvent = useCallback(
-    (raw: unknown) => {
-      if (typeof raw !== "string") return;
-      let event: RealtimeEvent;
-      try {
-        event = JSON.parse(raw) as RealtimeEvent;
-      } catch {
-        return;
+    (event: LiveVoiceEvent) => {
+      if (event.type === "listening") setState("listening");
+      if (event.type === "speaking") setState("speaking");
+      if (event.type === "transcript")
+        addLine(event.role === "user" ? "user" : "agent", event.text);
+      if (event.type === "usage") {
+        void persistVoiceEvent(sessionIdRef.current, "usage", JSON.stringify(event.usage)).catch(
+          () => undefined,
+        );
       }
-
-      if (event.type === "input_audio_buffer.speech_started") setState("listening");
-      if (event.type === "response.output_audio.delta") setState("speaking");
-      if (event.type === "response.done") {
-        setState("listening");
-        if (event.response?.usage) {
-          void persistVoiceEvent(
-            sessionIdRef.current,
-            "usage",
-            JSON.stringify(event.response.usage),
-          ).catch(() => undefined);
-        }
-      }
-      if (
-        event.type === "conversation.item.input_audio_transcription.completed" &&
-        event.transcript
-      ) {
-        addLine("user", event.transcript);
-      }
-      if (event.type === "response.output_audio_transcript.delta" && event.delta) {
-        assistantDraftRef.current += event.delta;
-      }
-      if (event.type === "response.output_audio_transcript.done") {
-        addLine("agent", event.transcript ?? assistantDraftRef.current);
-        assistantDraftRef.current = "";
-      }
-      if (event.type === "response.function_call_arguments.done" && event.name && event.call_id) {
-        void executeTool(event.name, event.call_id, event.arguments);
-      }
-      if (
-        event.type === "response.output_item.done" &&
-        event.item?.type === "function_call" &&
-        event.item.name &&
-        event.item.call_id
-      ) {
-        void executeTool(event.item.name, event.item.call_id, event.item.arguments);
+      if (event.type === "tool_call") {
+        void executeTool(event.name, event.callId, event.arguments);
       }
       if (event.type === "error") {
-        setError(event.error?.message ?? "OpenAI Realtime reported an error");
+        setError(event.message);
         setState("error");
       }
     },
@@ -395,7 +328,7 @@ export function VoiceScreen({
         await startVoiceAudio("speaker");
         setAudioRoute("speaker");
       }
-      const token = await getRealtimeToken(selectedVoice);
+      const token = await getRealtimeToken(selectedVoice, selectedModel);
       let opened = false;
       let hydrated = false;
       const hydrate = () => {
@@ -404,30 +337,15 @@ export function VoiceScreen({
         const turns = resume.messages
           .filter((message) => message.type === "user" || message.type === "assistant")
           .slice(-30);
-        for (const message of turns) {
-          connectionRef.current.sendEvent({
-            type: "conversation.item.create",
-            item: {
-              type: "message",
-              role: message.type === "user" ? "user" : "assistant",
-              content: [
+        connectionRef.current.addHistory([
+          ...turns.map((message) => ({
+            role: message.type === "user" ? ("user" as const) : ("assistant" as const),
+            text: message.content,
+          })),
+          ...((resume.tasks ?? []).length > 0
+            ? [
                 {
-                  type: message.type === "user" ? "input_text" : "output_text",
-                  text: message.content,
-                },
-              ],
-            },
-          });
-        }
-        if ((resume.tasks ?? []).length > 0) {
-          connectionRef.current.sendEvent({
-            type: "conversation.item.create",
-            item: {
-              type: "message",
-              role: "system",
-              content: [
-                {
-                  type: "input_text",
+                  role: "system" as const,
                   text: `This is a resumed ${agentName} voice conversation. Prior background tasks: ${JSON.stringify(
                     (resume.tasks ?? []).map((task) => ({
                       id: task.id,
@@ -438,24 +356,23 @@ export function VoiceScreen({
                     })),
                   )}. Use completed results when the user asks about them; do not announce them unsolicited.`,
                 },
-              ],
-            },
-          });
-        }
+              ]
+            : []),
+        ]);
       };
-      const connection = await connectRealtime(
-        token,
-        handleEvent,
-        () => {
+      const connection = await openAiLiveVoiceProvider.connect({
+        credential: token,
+        onEvent: handleEvent,
+        onOpen: () => {
           opened = true;
           setState("listening");
           queueMicrotask(hydrate);
         },
-        () => {
-          setError("The realtime data channel failed");
+        onError: (message) => {
+          setError(message);
           setState("error");
         },
-      );
+      });
       connectionRef.current = connection;
       if (Platform.OS !== "web") await setVoiceAudioRoute("speaker");
       if (opened) hydrate();
@@ -552,6 +469,37 @@ export function VoiceScreen({
           <Text style={styles.resumeButtonText}>Resume conversation</Text>
         </Pressable>
       )}
+      {!active && available !== false && !selectedHistory && !showHistory && (
+        <View style={styles.modelPicker}>
+          <Text style={styles.modelPickerLabel}>VOICE MODEL</Text>
+          <View style={styles.modelOptions}>
+            {(
+              [
+                ["gpt-realtime-mini", "Fast"],
+                ["gpt-realtime", "Full"],
+              ] as const
+            ).map(([model, label]) => (
+              <Pressable
+                key={model}
+                onPress={() => {
+                  setSelectedModel(model);
+                  void saveRealtimeModel(model);
+                }}
+                style={[styles.modelOption, selectedModel === model && styles.modelOptionSelected]}
+              >
+                <Text
+                  style={[
+                    styles.modelOptionText,
+                    selectedModel === model && styles.modelOptionTextSelected,
+                  ]}
+                >
+                  {label}
+                </Text>
+              </Pressable>
+            ))}
+          </View>
+        </View>
+      )}
       <ScrollView style={styles.transcript} contentContainerStyle={styles.transcriptContent}>
         {available !== false && !showHistory && !selectedHistory && transcript.length === 0 && (
           <View style={styles.transcriptEmpty}>
@@ -614,6 +562,33 @@ export function VoiceScreen({
 const createStyles = (theme: VitoTheme) =>
   StyleSheet.create({
     root: { flex: 1, width: "100%", alignItems: "center" },
+    modelPicker: {
+      width: "100%",
+      maxWidth: 760,
+      paddingHorizontal: theme.space.xl,
+      paddingTop: theme.space.md,
+    },
+    modelPickerLabel: {
+      color: theme.colors.textMuted,
+      fontSize: 10,
+      fontWeight: "800",
+      letterSpacing: 0.8,
+      marginBottom: theme.space.sm,
+    },
+    modelOptions: { flexDirection: "row", gap: theme.space.sm },
+    modelOption: {
+      borderWidth: 1,
+      borderColor: theme.colors.separatorStrong,
+      borderRadius: 10,
+      paddingHorizontal: theme.space.lg,
+      paddingVertical: theme.space.sm,
+    },
+    modelOptionSelected: {
+      backgroundColor: theme.colors.accent,
+      borderColor: theme.colors.accent,
+    },
+    modelOptionText: { color: theme.colors.textSecondary, fontSize: 12, fontWeight: "700" },
+    modelOptionTextSelected: { color: theme.colors.accentText },
     unavailable: {
       width: "100%",
       maxWidth: 420,

@@ -117,7 +117,6 @@ export const linking: LinkingOptions<RootStackParamList> = {
       SecretNew: "secrets/new",
       VoiceHistory: "voice/history",
       VoiceHistoryDetail: "voice/history/:id",
-      AppSettings: "app-settings",
       SpeechSettings: "app-settings/speech",
       VoiceModeSettings: "app-settings/voice-mode",
       AppThemeSettings: "app-settings/theme",

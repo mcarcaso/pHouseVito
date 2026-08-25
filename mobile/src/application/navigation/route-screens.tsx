@@ -434,15 +434,40 @@ export function MoreMenu({ onLogout }: { onLogout: () => void }) {
   return (
     <ScrollView contentContainerStyle={styles.moreScreen}>
       <View style={styles.moreSection}>
-        <Text style={styles.moreSectionLabel}>App</Text>
-        <Pressable onPress={() => navigation.navigate("AppSettings")} style={styles.moreRow}>
-          <Ionicons name="options-outline" size={18} style={styles.moreIcon} />
-          <View style={styles.moreRowText}>
-            <Text style={styles.moreTitle}>App Settings</Text>
-            <Text style={styles.moreDescription}>Speech, Voice Mode, and Theme</Text>
-          </View>
-          <Ionicons name="chevron-forward" size={16} style={styles.moreChevron} />
-        </Pressable>
+        <Text style={styles.moreSectionLabel}>App Settings</Text>
+        {[
+          {
+            route: "SpeechSettings" as const,
+            icon: "volume-high-outline" as const,
+            title: "Speech",
+            description: "Chat message playback, voice, and speed",
+          },
+          {
+            route: "VoiceModeSettings" as const,
+            icon: "mic-outline" as const,
+            title: "Voice Mode",
+            description: "Live conversation provider, model, and voice",
+          },
+          {
+            route: "AppThemeSettings" as const,
+            icon: "color-palette-outline" as const,
+            title: "Theme",
+            description: "Color scheme for this device",
+          },
+        ].map((item) => (
+          <Pressable
+            key={item.route}
+            onPress={() => navigation.navigate(item.route)}
+            style={styles.moreRow}
+          >
+            <Ionicons name={item.icon} size={18} style={styles.moreIcon} />
+            <View style={styles.moreRowText}>
+              <Text style={styles.moreTitle}>{item.title}</Text>
+              <Text style={styles.moreDescription}>{item.description}</Text>
+            </View>
+            <Ionicons name="chevron-forward" size={16} style={styles.moreChevron} />
+          </Pressable>
+        ))}
       </View>
       {(["Intelligence", "Automation", "Operations", "Agent"] as const).map((group) => (
         <View key={group} style={styles.moreSection}>

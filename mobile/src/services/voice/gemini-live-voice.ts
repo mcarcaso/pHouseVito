@@ -30,6 +30,16 @@ interface GeminiMessage {
   error?: { message?: string };
 }
 
+async function websocketMessageText(data: unknown): Promise<string> {
+  if (typeof data === "string") return data;
+  if (data instanceof Blob) return await data.text();
+  if (data instanceof ArrayBuffer) return new TextDecoder().decode(new Uint8Array(data));
+  if (ArrayBuffer.isView(data)) {
+    return new TextDecoder().decode(new Uint8Array(data.buffer, data.byteOffset, data.byteLength));
+  }
+  return String(data);
+}
+
 function metadata(value: unknown): GeminiBootstrapMetadata {
   if (!value || typeof value !== "object") throw new Error("Gemini session metadata is missing");
   const candidate = value as Partial<GeminiBootstrapMetadata>;
@@ -85,6 +95,14 @@ export const geminiLiveVoiceProvider: LiveVoiceProvider = {
     socket = new WebSocket(
       `wss://generativelanguage.googleapis.com/ws/google.ai.generativelanguage.v1beta.GenerativeService.BidiGenerateContentConstrained?access_token=${encodeURIComponent(options.credential)}`,
     );
+    socket.binaryType = "arraybuffer";
+    const connectionTimer = setTimeout(() => {
+      if (ready || closed) return;
+      closed = true;
+      audio.close();
+      socket.close();
+      options.onError("Gemini Live did not finish connecting");
+    }, 15_000);
 
     socket.onopen = () => {
       socket.send(
@@ -108,12 +126,12 @@ export const geminiLiveVoiceProvider: LiveVoiceProvider = {
     socket.onmessage = async (raw) => {
       let message: GeminiMessage;
       try {
-        const data = raw.data instanceof Blob ? await raw.data.text() : String(raw.data);
-        message = JSON.parse(data) as GeminiMessage;
+        message = JSON.parse(await websocketMessageText(raw.data)) as GeminiMessage;
       } catch {
         return;
       }
       if (message.setupComplete !== undefined) {
+        clearTimeout(connectionTimer);
         ready = true;
         for (const value of pending.splice(0)) socket.send(JSON.stringify(value));
         options.onOpen();
@@ -173,6 +191,7 @@ export const geminiLiveVoiceProvider: LiveVoiceProvider = {
     };
     socket.onerror = () => options.onError("The Gemini Live WebSocket failed");
     socket.onclose = (event) => {
+      clearTimeout(connectionTimer);
       if (!closed) {
         closed = true;
         audio.close();
@@ -198,6 +217,7 @@ export const geminiLiveVoiceProvider: LiveVoiceProvider = {
       },
       close: () => {
         if (closed) return;
+        clearTimeout(connectionTimer);
         closed = true;
         audio.close();
         socket.close();

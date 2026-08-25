@@ -1,6 +1,6 @@
 import { Ionicons } from "@expo/vector-icons";
 import { useEffect, useState } from "react";
-import { Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
+import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
 import {
   loadRealtimeModel,
   loadRealtimeVoice,
@@ -10,7 +10,8 @@ import {
   type RealtimeModel,
   type RealtimeVoice,
 } from "../../services/api/client";
-import { useThemeStyles, type VitoTheme } from "../../hooks/useVitoTheme";
+import { useSpeech } from "../../contexts/speech";
+import { useThemeStyles, useVitoTheme, type VitoTheme } from "../../hooks/useVitoTheme";
 
 const models: Array<{ id: RealtimeModel; name: string; detail: string }> = [
   {
@@ -27,6 +28,8 @@ const models: Array<{ id: RealtimeModel; name: string; detail: string }> = [
 
 export function VoiceModeSettingsScreen() {
   const styles = useThemeStyles(createStyles);
+  const theme = useVitoTheme();
+  const speech = useSpeech();
   const [model, setModel] = useState<RealtimeModel>("gpt-realtime-mini");
   const [voice, setVoice] = useState<RealtimeVoice>("marin");
 
@@ -73,24 +76,54 @@ export function VoiceModeSettingsScreen() {
 
       <Text style={styles.sectionTitle}>Voice</Text>
       <View style={styles.voiceGrid}>
-        {REALTIME_VOICES.map((option) => (
-          <Pressable
-            key={option}
-            onPress={() => {
-              setVoice(option);
-              void saveRealtimeVoice(option);
-            }}
-            style={[styles.voiceOption, voice === option && styles.voiceOptionSelected]}
-          >
-            <Text style={[styles.voiceText, voice === option && styles.voiceTextSelected]}>
-              {option[0].toUpperCase() + option.slice(1)}
-            </Text>
-            {voice === option && (
-              <Ionicons name="checkmark" size={16} style={styles.selectedIcon} />
-            )}
-          </Pressable>
-        ))}
+        {REALTIME_VOICES.map((option) => {
+          const previewId = `voice-mode-preview:${option}`;
+          const previewing = speech.state.id === previewId;
+          return (
+            <View
+              key={option}
+              style={[styles.voiceOption, voice === option && styles.voiceOptionSelected]}
+            >
+              <Pressable
+                onPress={() => {
+                  setVoice(option);
+                  void saveRealtimeVoice(option);
+                }}
+                style={styles.voiceSelect}
+              >
+                <Text style={[styles.voiceText, voice === option && styles.voiceTextSelected]}>
+                  {option[0].toUpperCase() + option.slice(1)}
+                </Text>
+                {voice === option && (
+                  <Ionicons name="checkmark" size={16} style={styles.selectedIcon} />
+                )}
+              </Pressable>
+              <Pressable
+                accessibilityLabel={`Preview ${option}`}
+                onPress={() =>
+                  void speech.toggle(
+                    previewId,
+                    `Hi Mike, this is ${option}. This is how I sound in Voice Mode.`,
+                    { provider: "openai", voice: option, rate: 1 },
+                  )
+                }
+                style={styles.previewButton}
+              >
+                {previewing && speech.state.status === "loading" ? (
+                  <ActivityIndicator size="small" color={theme.colors.accent} />
+                ) : (
+                  <Ionicons
+                    name={previewing && speech.state.status === "playing" ? "pause" : "play"}
+                    size={15}
+                    color={theme.colors.accent}
+                  />
+                )}
+              </Pressable>
+            </View>
+          );
+        })}
       </View>
+      {!!speech.state.error && <Text style={styles.error}>{speech.state.error}</Text>}
       <Text style={styles.footnote}>Changes apply the next time you start Voice Mode.</Text>
     </ScrollView>
   );
@@ -153,7 +186,6 @@ const createStyles = (theme: VitoTheme) =>
       flexDirection: "row",
       alignItems: "center",
       justifyContent: "space-between",
-      paddingHorizontal: theme.space.md,
       borderRadius: 11,
       borderWidth: 1,
       borderColor: theme.colors.separator,
@@ -163,7 +195,25 @@ const createStyles = (theme: VitoTheme) =>
       borderColor: theme.colors.accent,
       backgroundColor: theme.colors.accentSurface,
     },
+    voiceSelect: {
+      flex: 1,
+      minHeight: 44,
+      flexDirection: "row",
+      alignItems: "center",
+      justifyContent: "space-between",
+      paddingLeft: theme.space.md,
+      paddingRight: theme.space.sm,
+    },
+    previewButton: {
+      width: 42,
+      minHeight: 42,
+      alignItems: "center",
+      justifyContent: "center",
+      borderLeftWidth: StyleSheet.hairlineWidth,
+      borderLeftColor: theme.colors.separatorStrong,
+    },
     voiceText: { color: theme.colors.textSecondary, fontSize: 12, fontWeight: "700" },
     voiceTextSelected: { color: theme.colors.accent },
+    error: { color: theme.colors.danger, fontSize: 11, marginTop: theme.space.md },
     footnote: { color: theme.colors.textMuted, fontSize: 11, marginTop: theme.space.lg },
   });

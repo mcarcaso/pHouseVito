@@ -21,7 +21,7 @@ interface SpeechContextValue {
   settings: SpeechSettings;
   state: SpeechState;
   updateSettings: (settings: SpeechSettings) => Promise<void>;
-  toggle: (id: string, text: string) => Promise<void>;
+  toggle: (id: string, text: string, override?: SpeechSettings) => Promise<void>;
   stop: () => void;
 }
 
@@ -60,7 +60,7 @@ export function SpeechProviderContext({ children }: { children: ReactNode }) {
     stop();
   };
 
-  const toggle = async (id: string, text: string) => {
+  const toggle = async (id: string, text: string, override?: SpeechSettings) => {
     if (state.id === id && state.status === "playing") {
       playerRef.current?.pause();
       setState({ id, status: "paused" });
@@ -74,12 +74,13 @@ export function SpeechProviderContext({ children }: { children: ReactNode }) {
     playerRef.current?.pause();
     setState({ id, status: "loading" });
     try {
-      const key = cacheKey(settings, text);
+      const activeSettings = override ?? settings;
+      const key = cacheKey(activeSettings, text);
       let uri = cache.get(key);
       if (!uri) {
         const result = await api<{ data: string; mimeType: string }>("/api/speech/synthesize", {
           method: "POST",
-          body: JSON.stringify({ ...settings, text }),
+          body: JSON.stringify({ ...activeSettings, text }),
         });
         if (Platform.OS === "web") uri = `data:${result.mimeType};base64,${result.data}`;
         else {
@@ -99,7 +100,7 @@ export function SpeechProviderContext({ children }: { children: ReactNode }) {
         shouldRouteThroughEarpiece: false,
       });
       const player = createAudioPlayer(uri);
-      player.setPlaybackRate(settings.rate);
+      player.setPlaybackRate(activeSettings.rate);
       player.addListener("playbackStatusUpdate", (status) => {
         if (status.didJustFinish) setState({ id: null, status: "idle" });
       });

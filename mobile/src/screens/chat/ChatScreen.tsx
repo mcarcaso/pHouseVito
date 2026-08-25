@@ -725,7 +725,9 @@ function Conversation({
     <View
       style={[
         styles.conversationRoot,
-        Platform.OS === "ios" && keyboardInset > 0 && { paddingBottom: keyboardInset },
+        Platform.OS === "ios" && keyboardInset > 0 && {
+          paddingBottom: Math.max(0, keyboardInset - insets.bottom),
+        },
       ]}
     >
       {onBack && (
@@ -863,7 +865,10 @@ function Conversation({
         style={[
           styles.composer,
           Platform.OS === "web" && styles.composerWeb,
-          { marginBottom: Math.max(theme.space.sm, insets.bottom) },
+          {
+            marginBottom:
+              keyboardInset > 0 ? theme.space.sm : Math.max(theme.space.sm, insets.bottom),
+          },
         ]}
       >
         <Pressable

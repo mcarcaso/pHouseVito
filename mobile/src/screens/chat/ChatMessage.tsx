@@ -1,16 +1,21 @@
 import type { VitoTheme } from "../../hooks/useVitoTheme";
+import * as Clipboard from "expo-clipboard";
+import * as FileSystem from "expo-file-system/legacy";
 import { StyleSheet } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { useEffect, useState } from "react";
 import {
   ActivityIndicator,
+  Alert,
   Image,
+  Modal,
   Platform,
   Pressable,
   Text,
   useWindowDimensions,
   View,
 } from "react-native";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 import type { VitoMessage as Message } from "@vito/client";
 import { attachmentFileSource } from "../../services/api/client";
 import { MarkdownText } from "../../components/markdown/MarkdownText";
@@ -53,20 +58,125 @@ function compactToolContent(content: string): { title: string; detail: unknown }
   }
 }
 
-function MessageImage({
+type ImageSource = { uri: string; headers?: { Authorization: string } };
+
+async function imageBase64(source: ImageSource): Promise<string> {
+  if (Platform.OS === "web") {
+    const response = await fetch(source.uri, { headers: source.headers });
+    if (!response.ok) throw new Error(`Image request failed (${response.status})`);
+    const blob = await response.blob();
+    const dataUrl = await new Promise<string>((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => resolve(String(reader.result));
+      reader.onerror = () => reject(reader.error ?? new Error("Couldn’t read image"));
+      reader.readAsDataURL(blob);
+    });
+    return dataUrl.slice(dataUrl.indexOf(",") + 1);
+  }
+
+  if (!FileSystem.cacheDirectory) throw new Error("No cache directory is available");
+  const destination = `${FileSystem.cacheDirectory}rook-image-${Date.now()}`;
+  const downloaded = await FileSystem.downloadAsync(source.uri, destination, {
+    headers: source.headers,
+  });
+  try {
+    return await FileSystem.readAsStringAsync(downloaded.uri, {
+      encoding: FileSystem.EncodingType.Base64,
+    });
+  } finally {
+    await FileSystem.deleteAsync(downloaded.uri, { idempotent: true }).catch(() => undefined);
+  }
+}
+
+function FullscreenImage({
   source,
+  displaySource,
   label,
+  visible,
+  onClose,
 }: {
-  source: { uri: string; headers?: { Authorization: string } };
+  source: ImageSource;
+  displaySource: ImageSource;
   label: string;
+  visible: boolean;
+  onClose: () => void;
 }) {
   const styles = useThemeStyles(createStyles);
   const theme = useVitoTheme();
+  const insets = useSafeAreaInsets();
+  const [copying, setCopying] = useState(false);
+  const [copied, setCopied] = useState(false);
+
+  useEffect(() => {
+    if (!visible) setCopied(false);
+  }, [visible]);
+
+  const copy = async () => {
+    if (copying) return;
+    setCopying(true);
+    setCopied(false);
+    try {
+      await Clipboard.setImageAsync(await imageBase64(source));
+      setCopied(true);
+    } catch {
+      Alert.alert("Couldn’t copy image", "The image couldn’t be placed on the clipboard.");
+    } finally {
+      setCopying(false);
+    }
+  };
+
+  return (
+    <Modal
+      visible={visible}
+      animationType="fade"
+      onRequestClose={onClose}
+      statusBarTranslucent
+      navigationBarTranslucent
+    >
+      <View style={styles.imageViewer}>
+        <View
+          style={[styles.imageViewerToolbar, { paddingTop: Math.max(insets.top, theme.space.md) }]}
+        >
+          <Pressable accessibilityLabel="Close image" onPress={onClose} style={styles.viewerButton}>
+            <Ionicons name="close" size={24} color={theme.colors.text} />
+          </Pressable>
+          <Pressable
+            accessibilityLabel={copied ? "Image copied" : "Copy image"}
+            disabled={copying}
+            onPress={() => void copy()}
+            style={styles.viewerButton}
+          >
+            {copying ? (
+              <ActivityIndicator color={theme.colors.text} />
+            ) : (
+              <Ionicons
+                name={copied ? "checkmark" : "copy-outline"}
+                size={21}
+                color={theme.colors.text}
+              />
+            )}
+          </Pressable>
+        </View>
+        <Image
+          accessibilityLabel={label}
+          source={displaySource}
+          resizeMode="contain"
+          style={styles.fullscreenImage}
+        />
+      </View>
+    </Modal>
+  );
+}
+
+function MessageImage({ source, label }: { source: ImageSource; label: string }) {
+  const styles = useThemeStyles(createStyles);
+  const theme = useVitoTheme();
   const [aspectRatio, setAspectRatio] = useState(4 / 3);
-  const [resolvedSource, setResolvedSource] = useState<typeof source | undefined>(
+  const [resolvedSource, setResolvedSource] = useState<ImageSource | undefined>(
     Platform.OS === "web" ? undefined : source,
   );
   const [failed, setFailed] = useState(false);
+  const [viewerOpen, setViewerOpen] = useState(false);
   const authorization = source.headers?.Authorization;
   useEffect(() => {
     if (Platform.OS !== "web") {
@@ -95,17 +205,28 @@ function MessageImage({
   if (!resolvedSource)
     return <ActivityIndicator color={theme.colors.accent} style={styles.attachmentLoader} />;
   return (
-    <Image
-      accessibilityLabel={label}
-      source={resolvedSource}
-      resizeMode="contain"
-      onLoad={(event) => {
-        const dimensions = event.nativeEvent.source;
-        if (dimensions?.width > 0 && dimensions.height > 0)
-          setAspectRatio(dimensions.width / dimensions.height);
-      }}
-      style={[styles.attachmentImage, { aspectRatio }]}
-    />
+    <>
+      <Pressable accessibilityLabel={`View ${label}`} onPress={() => setViewerOpen(true)}>
+        <Image
+          accessibilityLabel={label}
+          source={resolvedSource}
+          resizeMode="contain"
+          onLoad={(event) => {
+            const dimensions = event.nativeEvent.source;
+            if (dimensions?.width > 0 && dimensions.height > 0)
+              setAspectRatio(dimensions.width / dimensions.height);
+          }}
+          style={[styles.attachmentImage, { aspectRatio }]}
+        />
+      </Pressable>
+      <FullscreenImage
+        source={source}
+        displaySource={resolvedSource}
+        label={label}
+        visible={viewerOpen}
+        onClose={() => setViewerOpen(false)}
+      />
+    </>
   );
 }
 
@@ -303,6 +424,24 @@ const createStyles = (theme: VitoTheme) =>
       borderRadius: theme.radius.md,
       backgroundColor: theme.colors.canvas,
     },
+    imageViewer: { flex: 1, backgroundColor: theme.colors.canvas },
+    imageViewerToolbar: {
+      flexDirection: "row",
+      alignItems: "center",
+      justifyContent: "space-between",
+      paddingHorizontal: theme.space.md,
+      paddingBottom: theme.space.sm,
+      backgroundColor: theme.colors.canvas,
+    },
+    viewerButton: {
+      width: 44,
+      height: 44,
+      alignItems: "center",
+      justifyContent: "center",
+      borderRadius: theme.radius.round,
+      backgroundColor: theme.colors.surfaceRaised,
+    },
+    fullscreenImage: { flex: 1, width: "100%" },
     attachments: { gap: theme.space.sm, marginTop: theme.space.sm },
     attachmentFile: {
       flexDirection: "row",

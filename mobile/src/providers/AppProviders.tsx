@@ -4,6 +4,7 @@ import { GestureHandlerRootView } from "react-native-gesture-handler";
 import { SafeAreaProvider } from "react-native-safe-area-context";
 import { subscribeAgentUrl, VITO_URL, vitoTokenStore } from "../services/api/client";
 import { VitoThemeProvider } from "./VitoThemeProvider";
+import { SpeechProviderContext } from "../contexts/speech";
 
 export function AppProviders({ children }: { children: ReactNode }) {
   const [baseUrl, setBaseUrl] = useState(VITO_URL);
@@ -12,7 +13,9 @@ export function AppProviders({ children }: { children: ReactNode }) {
     <GestureHandlerRootView style={{ flex: 1 }}>
       <SafeAreaProvider>
         <VitoClientProvider key={baseUrl} options={{ baseUrl, tokenStore: vitoTokenStore }}>
-          <VitoThemeProvider>{children}</VitoThemeProvider>
+          <VitoThemeProvider>
+            <SpeechProviderContext>{children}</SpeechProviderContext>
+          </VitoThemeProvider>
         </VitoClientProvider>
       </SafeAreaProvider>
     </GestureHandlerRootView>

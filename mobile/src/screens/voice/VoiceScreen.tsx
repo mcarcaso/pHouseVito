@@ -13,7 +13,6 @@ import {
   loadRealtimeModel,
   loadRealtimeVoice,
   persistVoiceEvent,
-  saveRealtimeModel,
   searchVoiceMemory,
   startVoiceTask,
   type RealtimeModel,
@@ -103,6 +102,12 @@ export function VoiceScreen({
           // Older backends do not expose availability; preserve the existing start behavior.
           if (current) setAvailable(null);
         });
+      void loadRealtimeVoice().then((voice) => {
+        if (current) setSelectedVoice(voice);
+      });
+      void loadRealtimeModel().then((model) => {
+        if (current) setSelectedModel(model);
+      });
       return () => {
         current = false;
       };
@@ -119,8 +124,6 @@ export function VoiceScreen({
 
   useEffect(() => {
     void loadHistory();
-    void loadRealtimeVoice().then(setSelectedVoice);
-    void loadRealtimeModel().then(setSelectedModel);
   }, [loadHistory]);
 
   useEffect(() => {
@@ -469,37 +472,6 @@ export function VoiceScreen({
           <Text style={styles.resumeButtonText}>Resume conversation</Text>
         </Pressable>
       )}
-      {!active && available !== false && !selectedHistory && !showHistory && (
-        <View style={styles.modelPicker}>
-          <Text style={styles.modelPickerLabel}>VOICE MODEL</Text>
-          <View style={styles.modelOptions}>
-            {(
-              [
-                ["gpt-realtime-mini", "Fast"],
-                ["gpt-realtime", "Full"],
-              ] as const
-            ).map(([model, label]) => (
-              <Pressable
-                key={model}
-                onPress={() => {
-                  setSelectedModel(model);
-                  void saveRealtimeModel(model);
-                }}
-                style={[styles.modelOption, selectedModel === model && styles.modelOptionSelected]}
-              >
-                <Text
-                  style={[
-                    styles.modelOptionText,
-                    selectedModel === model && styles.modelOptionTextSelected,
-                  ]}
-                >
-                  {label}
-                </Text>
-              </Pressable>
-            ))}
-          </View>
-        </View>
-      )}
       <ScrollView style={styles.transcript} contentContainerStyle={styles.transcriptContent}>
         {available !== false && !showHistory && !selectedHistory && transcript.length === 0 && (
           <View style={styles.transcriptEmpty}>
@@ -562,33 +534,6 @@ export function VoiceScreen({
 const createStyles = (theme: VitoTheme) =>
   StyleSheet.create({
     root: { flex: 1, width: "100%", alignItems: "center" },
-    modelPicker: {
-      width: "100%",
-      maxWidth: 760,
-      paddingHorizontal: theme.space.xl,
-      paddingTop: theme.space.md,
-    },
-    modelPickerLabel: {
-      color: theme.colors.textMuted,
-      fontSize: 10,
-      fontWeight: "800",
-      letterSpacing: 0.8,
-      marginBottom: theme.space.sm,
-    },
-    modelOptions: { flexDirection: "row", gap: theme.space.sm },
-    modelOption: {
-      borderWidth: 1,
-      borderColor: theme.colors.separatorStrong,
-      borderRadius: 10,
-      paddingHorizontal: theme.space.lg,
-      paddingVertical: theme.space.sm,
-    },
-    modelOptionSelected: {
-      backgroundColor: theme.colors.accent,
-      borderColor: theme.colors.accent,
-    },
-    modelOptionText: { color: theme.colors.textSecondary, fontSize: 12, fontWeight: "700" },
-    modelOptionTextSelected: { color: theme.colors.accentText },
     unavailable: {
       width: "100%",
       maxWidth: 420,

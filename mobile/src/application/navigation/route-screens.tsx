@@ -433,24 +433,38 @@ export function MoreMenu({ onLogout }: { onLogout: () => void }) {
   const navigation = useNavigation<RootNavigation>();
   return (
     <ScrollView contentContainerStyle={styles.moreScreen}>
+      <View style={styles.moreSection}>
+        <Text style={styles.moreSectionLabel}>App</Text>
+        <Pressable onPress={() => navigation.navigate("AppSettings")} style={styles.moreRow}>
+          <Ionicons name="options-outline" size={18} style={styles.moreIcon} />
+          <View style={styles.moreRowText}>
+            <Text style={styles.moreTitle}>App Settings</Text>
+            <Text style={styles.moreDescription}>Speech, Voice Mode, and Theme</Text>
+          </View>
+          <Ionicons name="chevron-forward" size={16} style={styles.moreChevron} />
+        </Pressable>
+      </View>
       {(["Intelligence", "Automation", "Operations", "Agent"] as const).map((group) => (
         <View key={group} style={styles.moreSection}>
           <Text style={styles.moreSectionLabel}>{group === "Agent" ? agentName : group}</Text>
           {group === "Agent" && (
-            <Pressable onPress={() => navigation.navigate("IdentityHome")} style={styles.moreRow}>
-              <Ionicons name="finger-print-outline" size={18} style={styles.moreIcon} />
-              <View style={styles.moreRowText}>
-                <Text style={styles.moreTitle}>Identity</Text>
-                <Text style={styles.moreDescription}>Profile, soul, and instructions</Text>
-              </View>
-              <Ionicons name="chevron-forward" size={16} style={styles.moreChevron} />
-            </Pressable>
+            <>
+              <Pressable onPress={() => navigation.navigate("IdentityHome")} style={styles.moreRow}>
+                <Ionicons name="finger-print-outline" size={18} style={styles.moreIcon} />
+                <View style={styles.moreRowText}>
+                  <Text style={styles.moreTitle}>Identity</Text>
+                  <Text style={styles.moreDescription}>Profile, soul, and instructions</Text>
+                </View>
+                <Ionicons name="chevron-forward" size={16} style={styles.moreChevron} />
+              </Pressable>
+            </>
           )}
           {operationAreas
             .filter(
               (item) =>
                 item.id !== "profile" &&
                 item.id !== "system" &&
+                item.id !== "theme" &&
                 operationMeta[item.id].group === group,
             )
             .map((item) => {

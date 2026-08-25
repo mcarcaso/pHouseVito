@@ -46,6 +46,10 @@ export type RootStackParamList = {
   SecretNew: undefined;
   VoiceHistory: undefined;
   VoiceHistoryDetail: { id: string };
+  AppSettings: undefined;
+  SpeechSettings: undefined;
+  VoiceModeSettings: undefined;
+  AppThemeSettings: undefined;
 };
 export type MoreStackParamList = { MoreHome: undefined };
 export type IdentityStackParamList = {

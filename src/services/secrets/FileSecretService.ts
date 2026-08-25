@@ -59,6 +59,7 @@ const SYSTEM_KEYS: Record<string, string> = {
     "Discord Bot token — get from https://discord.com/developers/applications (required for Discord channel)",
   DASHBOARD_PASSWORD_HASH: "Dashboard password hash (managed automatically — do not edit manually)",
   BLAND_WEBHOOK_SECRET: "Bland AI webhook secret — add as ?secret=VALUE to your Bland webhook URL",
+  ELEVEN_LABS_API_KEY: "ElevenLabs API key — https://elevenlabs.io/app/settings/api-keys",
   ...Object.fromEntries(
     Object.values(PROVIDER_API_KEYS).map((provider) => [provider.envVar, provider.description]),
   ),

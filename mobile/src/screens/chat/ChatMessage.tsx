@@ -16,6 +16,7 @@ import { driveFileSource } from "../../services/api/client";
 import { MarkdownText } from "../../components/markdown/MarkdownText";
 import { StructuredValue } from "../../components/StructuredValue";
 import { DESKTOP_BREAKPOINT, useThemeStyles, useVitoTheme } from "../../hooks/useVitoTheme";
+import { useSpeech } from "../../contexts/speech";
 
 type MessageAttachment = {
   type: string;
@@ -239,8 +240,21 @@ function ToolMessage({ message }: { message: Message }) {
   );
 }
 
+function speechText(value: string) {
+  return value
+    .replace(/```[\s\S]*?```/g, " Code block omitted. ")
+    .replace(/`([^`]+)`/g, "$1")
+    .replace(/!\[[^\]]*\]\([^)]*\)/g, "")
+    .replace(/\[([^\]]+)\]\([^)]*\)/g, "$1")
+    .replace(/^#{1,6}\s+/gm, "")
+    .replace(/[>*_~]/g, "")
+    .trim();
+}
+
 export function MessageRow({ message }: { message: Message }) {
   const styles = useThemeStyles(createStyles);
+  const theme = useVitoTheme();
+  const speech = useSpeech();
   const desktop = false;
   if (message.type === "thought")
     return (
@@ -279,6 +293,38 @@ export function MessageRow({ message }: { message: Message }) {
           </MarkdownText>
         )}
         <MessageAttachments attachments={body.attachments} />
+        {!user && !!body.text && (
+          <Pressable
+            accessibilityLabel={
+              speech.state.id === String(message.id) && speech.state.status === "playing"
+                ? "Pause reading"
+                : "Read message aloud"
+            }
+            onPress={() => void speech.toggle(String(message.id), speechText(body.text))}
+            style={styles.speechButton}
+          >
+            {speech.state.id === String(message.id) && speech.state.status === "loading" ? (
+              <ActivityIndicator size="small" color={theme.colors.textMuted} />
+            ) : (
+              <Ionicons
+                name={
+                  speech.state.id === String(message.id) && speech.state.status === "playing"
+                    ? "pause"
+                    : "play"
+                }
+                size={13}
+                color={theme.colors.textMuted}
+              />
+            )}
+            <Text style={styles.speechLabel}>
+              {speech.state.id === String(message.id) && speech.state.status === "playing"
+                ? "Pause"
+                : speech.state.id === String(message.id) && speech.state.status === "paused"
+                  ? "Resume"
+                  : "Listen"}
+            </Text>
+          </Pressable>
+        )}
       </View>
     </View>
   );
@@ -396,4 +442,16 @@ const createStyles = (theme: VitoTheme) =>
     desktopAttachmentBubble: { width: 480 },
     userBubble: { backgroundColor: theme.colors.accent, borderBottomRightRadius: 5 },
     assistantBubble: { backgroundColor: theme.colors.separator, borderBottomLeftRadius: 5 },
+    speechButton: {
+      alignSelf: "flex-start",
+      minHeight: 28,
+      marginTop: theme.space.xs,
+      flexDirection: "row",
+      alignItems: "center",
+      gap: theme.space.xs,
+      paddingHorizontal: theme.space.sm,
+      borderRadius: 9,
+      backgroundColor: theme.colors.surfaceRaised,
+    },
+    speechLabel: { color: theme.colors.textMuted, fontSize: 10, fontWeight: "800" },
   });

@@ -56,6 +56,9 @@ import {
   type VoiceOverlayStatus,
 } from "../screens/voice/VoiceScreen";
 import { VoiceHistoryDetailScreen, VoiceHistoryScreen } from "../screens/voice/VoiceHistoryScreen";
+import { SpeechSettingsScreen } from "../screens/app-settings/AppSettingsScreen";
+import { AppSettingsHomeScreen } from "../screens/app-settings/AppSettingsHomeScreen";
+import { VoiceModeSettingsScreen } from "../screens/app-settings/VoiceModeSettingsScreen";
 import { api, checkAuth, loadAgentUrl, loadToken, logout, saveToken } from "../services/api/client";
 import { AppProviders } from "../providers/AppProviders";
 import { WebStackHeader } from "../components/navigation/WebStackHeader";
@@ -504,6 +507,54 @@ function AppContent() {
               options={{
                 headerShown: true,
                 title: "Voice Conversation",
+                headerStyle: { backgroundColor: theme.colors.canvas },
+                headerTintColor: theme.colors.accent,
+                headerTitleStyle: { color: theme.colors.text },
+                headerShadowVisible: false,
+              }}
+            />
+            <RootStack.Screen
+              name="AppSettings"
+              component={AppSettingsHomeScreen}
+              options={{
+                headerShown: true,
+                title: "App Settings",
+                headerStyle: { backgroundColor: theme.colors.canvas },
+                headerTintColor: theme.colors.accent,
+                headerTitleStyle: { color: theme.colors.text },
+                headerShadowVisible: false,
+              }}
+            />
+            <RootStack.Screen
+              name="SpeechSettings"
+              component={SpeechSettingsScreen}
+              options={{
+                headerShown: true,
+                title: "Speech",
+                headerStyle: { backgroundColor: theme.colors.canvas },
+                headerTintColor: theme.colors.accent,
+                headerTitleStyle: { color: theme.colors.text },
+                headerShadowVisible: false,
+              }}
+            />
+            <RootStack.Screen
+              name="VoiceModeSettings"
+              component={VoiceModeSettingsScreen}
+              options={{
+                headerShown: true,
+                title: "Voice Mode",
+                headerStyle: { backgroundColor: theme.colors.canvas },
+                headerTintColor: theme.colors.accent,
+                headerTitleStyle: { color: theme.colors.text },
+                headerShadowVisible: false,
+              }}
+            />
+            <RootStack.Screen
+              name="AppThemeSettings"
+              component={ThemeScreen}
+              options={{
+                headerShown: true,
+                title: "Theme",
                 headerStyle: { backgroundColor: theme.colors.canvas },
                 headerTintColor: theme.colors.accent,
                 headerTitleStyle: { color: theme.colors.text },

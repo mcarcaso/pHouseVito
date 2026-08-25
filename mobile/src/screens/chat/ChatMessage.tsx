@@ -12,7 +12,7 @@ import {
   View,
 } from "react-native";
 import type { VitoMessage as Message } from "@vito/client";
-import { driveFileSource } from "../../services/api/client";
+import { attachmentFileSource } from "../../services/api/client";
 import { MarkdownText } from "../../components/markdown/MarkdownText";
 import { StructuredValue } from "../../components/StructuredValue";
 import { DESKTOP_BREAKPOINT, useThemeStyles, useVitoTheme } from "../../hooks/useVitoTheme";
@@ -21,6 +21,7 @@ import { useSpeech } from "../../contexts/speech";
 type MessageAttachment = {
   type: string;
   path: string;
+  url?: string;
   filename?: string;
   mimeType?: string;
 };
@@ -148,9 +149,10 @@ function MessageAttachments({ attachments }: { attachments: MessageAttachment[] 
   return (
     <View style={styles.attachments}>
       {attachments.map((attachment, index) => {
-        const source = driveFileSource(attachment.path);
+        const source = attachmentFileSource(attachment.path, attachment.url);
         const key = `${attachment.path}:${index}`;
-        if (attachment.type === "image" && source)
+        const image = attachment.type === "image" || attachment.mimeType?.startsWith("image/");
+        if (image && source)
           return (
             <MessageImage
               key={key}
@@ -310,19 +312,14 @@ export function MessageRow({ message }: { message: Message }) {
                 name={
                   speech.state.id === String(message.id) && speech.state.status === "playing"
                     ? "pause"
-                    : "play"
+                    : speech.state.id === String(message.id) && speech.state.status === "paused"
+                      ? "play"
+                      : "volume-medium-outline"
                 }
-                size={13}
+                size={16}
                 color={theme.colors.textMuted}
               />
             )}
-            <Text style={styles.speechLabel}>
-              {speech.state.id === String(message.id) && speech.state.status === "playing"
-                ? "Pause"
-                : speech.state.id === String(message.id) && speech.state.status === "paused"
-                  ? "Resume"
-                  : "Listen"}
-            </Text>
           </Pressable>
         )}
       </View>
@@ -443,15 +440,13 @@ const createStyles = (theme: VitoTheme) =>
     userBubble: { backgroundColor: theme.colors.accent, borderBottomRightRadius: 5 },
     assistantBubble: { backgroundColor: theme.colors.separator, borderBottomLeftRadius: 5 },
     speechButton: {
-      alignSelf: "flex-start",
-      minHeight: 28,
-      marginTop: theme.space.xs,
-      flexDirection: "row",
+      alignSelf: "flex-end",
+      width: 30,
+      height: 30,
+      marginTop: theme.space.xxs,
       alignItems: "center",
-      gap: theme.space.xs,
-      paddingHorizontal: theme.space.sm,
-      borderRadius: 9,
+      justifyContent: "center",
+      borderRadius: theme.radius.round,
       backgroundColor: theme.colors.surfaceRaised,
     },
-    speechLabel: { color: theme.colors.textMuted, fontSize: 10, fontWeight: "800" },
   });

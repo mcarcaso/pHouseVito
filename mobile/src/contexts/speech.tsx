@@ -3,9 +3,14 @@ import * as FileSystem from "expo-file-system/legacy";
 import { createAudioPlayer, setAudioModeAsync, type AudioPlayer } from "expo-audio";
 import { createContext, useContext, useEffect, useRef, useState, type ReactNode } from "react";
 import { Platform } from "react-native";
-import { api } from "../services/api/client";
+import {
+  agentStorageKey,
+  api,
+  loadAppPreferences,
+  patchAppPreferences,
+} from "../services/api/client";
 
-export type SpeechProvider = "openai" | "elevenlabs" | "openrouter";
+export type SpeechProvider = "gemini" | "openai" | "elevenlabs" | "openrouter";
 export interface SpeechSettings {
   provider: SpeechProvider;
   voice: string;
@@ -26,6 +31,7 @@ interface SpeechContextValue {
 }
 
 const STORAGE_KEY = "vito-app-speech-settings-v1";
+const PENDING_SYNC_KEY = "vito-app-speech-settings-pending-sync-v1";
 const defaults: SpeechSettings = { provider: "openai", voice: "alloy", rate: 1 };
 const SpeechContext = createContext<SpeechContextValue | null>(null);
 const cache = new Map<string, string>();
@@ -38,15 +44,48 @@ export function SpeechProviderContext({ children }: { children: ReactNode }) {
   const [settings, setSettings] = useState<SpeechSettings>(defaults);
   const [state, setState] = useState<SpeechState>({ id: null, status: "idle" });
   const playerRef = useRef<AudioPlayer | null>(null);
+  const editedRef = useRef(false);
 
   useEffect(() => {
-    void AsyncStorage.getItem(STORAGE_KEY)
-      .then((stored) => {
-        if (stored)
-          setSettings({ ...defaults, ...(JSON.parse(stored) as Partial<SpeechSettings>) });
-      })
-      .catch(() => undefined);
-    return () => playerRef.current?.remove();
+    let cancelled = false;
+    void (async () => {
+      let local = defaults;
+      let pendingSync = false;
+      try {
+        const [scopedStored, legacyStored, pending] = await Promise.all([
+          AsyncStorage.getItem(agentStorageKey(STORAGE_KEY)),
+          AsyncStorage.getItem(STORAGE_KEY),
+          AsyncStorage.getItem(agentStorageKey(PENDING_SYNC_KEY)),
+        ]);
+        const stored = scopedStored ?? legacyStored;
+        if (stored) local = { ...defaults, ...(JSON.parse(stored) as Partial<SpeechSettings>) };
+        pendingSync = pending === "true";
+      } catch {
+        // Ignore malformed or unavailable local storage and use defaults.
+      }
+      if (!cancelled && !editedRef.current) setSettings(local);
+      try {
+        if (pendingSync) {
+          await patchAppPreferences({ speech: local });
+          await AsyncStorage.removeItem(agentStorageKey(PENDING_SYNC_KEY));
+          return;
+        }
+        const remote = (await loadAppPreferences()).preferences.speech;
+        if (cancelled || editedRef.current) return;
+        if (remote) {
+          setSettings(remote);
+          await AsyncStorage.setItem(agentStorageKey(STORAGE_KEY), JSON.stringify(remote));
+        } else {
+          await patchAppPreferences({ speech: local });
+        }
+      } catch {
+        // Local preferences remain usable while the server is unavailable.
+      }
+    })();
+    return () => {
+      cancelled = true;
+      playerRef.current?.remove();
+    };
   }, []);
 
   const stop = () => {
@@ -55,8 +94,18 @@ export function SpeechProviderContext({ children }: { children: ReactNode }) {
   };
 
   const updateSettings = async (next: SpeechSettings) => {
+    editedRef.current = true;
     setSettings(next);
-    await AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(next));
+    await Promise.all([
+      AsyncStorage.setItem(agentStorageKey(STORAGE_KEY), JSON.stringify(next)),
+      AsyncStorage.setItem(agentStorageKey(PENDING_SYNC_KEY), "true"),
+    ]);
+    try {
+      await patchAppPreferences({ speech: next });
+      await AsyncStorage.removeItem(agentStorageKey(PENDING_SYNC_KEY));
+    } catch {
+      // Keep the pending marker so the local preference syncs on the next launch.
+    }
     stop();
   };
 
@@ -84,7 +133,8 @@ export function SpeechProviderContext({ children }: { children: ReactNode }) {
         });
         if (Platform.OS === "web") uri = `data:${result.mimeType};base64,${result.data}`;
         else {
-          uri = `${FileSystem.cacheDirectory}vito-speech-${Date.now()}.mp3`;
+          const extension = result.mimeType === "audio/wav" ? "wav" : "mp3";
+          uri = `${FileSystem.cacheDirectory}vito-speech-${Date.now()}.${extension}`;
           await FileSystem.writeAsStringAsync(uri, result.data, {
             encoding: FileSystem.EncodingType.Base64,
           });

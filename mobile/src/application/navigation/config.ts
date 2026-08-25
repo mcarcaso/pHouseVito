@@ -72,23 +72,61 @@ function baseTabForDeepLink(routeName: string): "Chat" | "Voice" | "More" {
   return "More";
 }
 
+function operationForDeepLink(
+  routeName: string,
+  params: Record<string, unknown>,
+): OperationArea | null {
+  if (routeName === "SkillDetail" || routeName === "SkillFiles" || routeName === "SkillFile")
+    return "skills";
+  if (routeName === "DriveDirectory") return "drive";
+  if (routeName === "JobDetail") return "jobs";
+  if (routeName === "SecretDetail" || routeName === "SecretNew") return "secrets";
+  if (routeName === "TraceDetail") return "traces";
+  if (routeName === "PiSessionDetail") return "pi";
+  if (routeName === "OperationItemDetail") {
+    const area = params.area;
+    return area === "apps" || area === "providers" ? area : null;
+  }
+  return null;
+}
+
 export const linking: LinkingOptions<RootStackParamList> = {
   prefixes: ["rook://", "https://mikes-mac-mini-1.tail1706d3.ts.net"],
   getStateFromPath: (path, options) => {
     const state = getStateFromPath(path, options);
     if (!state || state.routes[0]?.name === "Main") return state;
 
-    const tab = baseTabForDeepLink(state.routes[0]?.name ?? "");
+    const destination = state.routes[0];
+    const routeName = destination?.name ?? "";
+    const params = (destination?.params ?? {}) as Record<string, unknown>;
+    const tab = baseTabForDeepLink(routeName);
+    const prefix: Array<{
+      name: string;
+      params?: Record<string, unknown>;
+      state?: { index: number; routes: Array<{ name: string }> };
+    }> = [
+      {
+        name: "Main",
+        state: { index: 0, routes: [{ name: tab }] },
+      },
+    ];
+
+    const operation = operationForDeepLink(routeName, params);
+    if (operation) prefix.push({ name: "Operation", params: { area: operation } });
+    if (routeName === "MemoryResults") prefix.push({ name: "MemoryHome" });
+    if (routeName === "IdentityDocument") prefix.push({ name: "IdentityHome" });
+    if (routeName === "VoiceHistoryDetail") prefix.push({ name: "VoiceHistory" });
+    if (routeName === "SkillFiles" || routeName === "SkillFile") {
+      prefix.push({ name: "SkillDetail", params: { name: params.name } });
+    }
+    if (routeName === "SkillFile") {
+      prefix.push({ name: "SkillFiles", params: { name: params.name } });
+    }
+
     return {
       ...state,
-      index: (state.index ?? state.routes.length - 1) + 1,
-      routes: [
-        {
-          name: "Main",
-          state: { index: 0, routes: [{ name: tab }] },
-        },
-        ...state.routes,
-      ],
+      index: (state.index ?? state.routes.length - 1) + prefix.length,
+      routes: [...prefix, ...state.routes],
     };
   },
   config: {

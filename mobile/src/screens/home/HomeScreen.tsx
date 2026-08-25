@@ -25,19 +25,9 @@ import {
   listQuickCommandOutbox,
   syncQuickCommandOutbox,
 } from "../../services/quick-command/outbox";
-import { registerQuickCommandNotifications } from "../../services/quick-command/notifications";
+import { useCurrentRuns } from "../../hooks/useCurrentRuns";
 import { useThemeStyles, useVitoTheme, type VitoTheme } from "../../hooks/useVitoTheme";
-import { api } from "../../services/api/client";
 import { useSessions } from "@vito/client";
-
-interface CurrentRun {
-  sessionKey: string;
-  channel: string;
-  author: string;
-  preview: string;
-  status: "active" | "queued";
-  timestamp: number;
-}
 
 const ENABLED_KEY = "vito-quick-command-auto-record-v1";
 const DESTINATION_KEY = "vito-quick-command-destination-v1";
@@ -49,6 +39,7 @@ export interface QuickCommandRecordingStatus {
   recording: boolean;
   durationMs: number;
   stop: () => void;
+  cancel: () => void;
 }
 
 export function HomeScreen({
@@ -69,8 +60,7 @@ export function HomeScreen({
   const [ready, setReady] = useState(false);
   const [queued, setQueued] = useState(0);
   const [message, setMessage] = useState("Ready when you are");
-  const [runs, setRuns] = useState<CurrentRun[]>([]);
-  const [runsLoading, setRunsLoading] = useState(true);
+  const { runs, loading: runsLoading } = useCurrentRuns();
   const stopping = useRef(false);
   const speechSamples = useRef(0);
   const sessionsQuery = useSessions({ refetchInterval: 10_000 });
@@ -86,10 +76,6 @@ export function HomeScreen({
       );
     })
     .slice(0, 30);
-
-  const refreshOutbox = useCallback(async () => {
-    setQueued((await listQuickCommandOutbox()).length);
-  }, []);
 
   const start = useCallback(async () => {
     if (recorder.isRecording || stopping.current) return;
@@ -111,51 +97,42 @@ export function HomeScreen({
     setMessage("Listening…");
   }, [recorder]);
 
-  const stop = useCallback(async () => {
-    if (!recorder.isRecording || stopping.current) return;
-    stopping.current = true;
-    const durationMs = recorder.getStatus().durationMillis;
-    try {
-      await recorder.stop();
-      const uri = recorder.uri;
-      const meteringAvailable = recorderState.metering !== undefined;
-      const containsSpeech = !meteringAvailable || speechSamples.current >= REQUIRED_SPEECH_SAMPLES;
-      if (uri && durationMs >= MIN_RECORDING_MS && containsSpeech) {
-        await enqueueQuickCommand(uri, durationMs, destinationSession ?? undefined);
-        setMessage("Saved and queued for Vito");
-        const remaining = await syncQuickCommandOutbox();
-        setQueued(remaining.length);
-        if (!remaining.length) setMessage("Sent to Vito");
-      } else {
-        setMessage(containsSpeech ? "Nothing recorded" : "No speech detected");
-      }
-    } catch (cause) {
-      setMessage(cause instanceof Error ? cause.message : "Could not save recording");
-    } finally {
-      stopping.current = false;
-      await setAudioModeAsync({ allowsRecording: false });
-    }
-  }, [destinationSession, recorder, recorderState.metering, refreshOutbox]);
-
-  useEffect(() => {
-    let mounted = true;
-    const loadRuns = async () => {
+  const finishRecording = useCallback(
+    async (submit: boolean) => {
+      if (!recorder.isRecording || stopping.current) return;
+      stopping.current = true;
+      const durationMs = recorder.getStatus().durationMillis;
       try {
-        const current = await api<CurrentRun[]>("/api/runs");
-        if (mounted) setRuns(Array.isArray(current) ? current : []);
-      } catch {
-        // Runs are live process state; keep the last successful snapshot.
+        await recorder.stop();
+        if (!submit) {
+          setMessage("Recording cancelled");
+          return;
+        }
+        const uri = recorder.uri;
+        const meteringAvailable = recorderState.metering !== undefined;
+        const containsSpeech =
+          !meteringAvailable || speechSamples.current >= REQUIRED_SPEECH_SAMPLES;
+        if (uri && durationMs >= MIN_RECORDING_MS && containsSpeech) {
+          await enqueueQuickCommand(uri, durationMs, destinationSession ?? undefined);
+          setMessage("Saved and queued for Vito");
+          const remaining = await syncQuickCommandOutbox();
+          setQueued(remaining.length);
+          if (!remaining.length) setMessage("Sent to Vito");
+        } else {
+          setMessage(containsSpeech ? "Nothing recorded" : "No speech detected");
+        }
+      } catch (cause) {
+        setMessage(cause instanceof Error ? cause.message : "Could not finish recording");
       } finally {
-        if (mounted) setRunsLoading(false);
+        stopping.current = false;
+        await setAudioModeAsync({ allowsRecording: false });
       }
-    };
-    void loadRuns();
-    const timer = setInterval(() => void loadRuns(), 2_000);
-    return () => {
-      mounted = false;
-      clearInterval(timer);
-    };
-  }, []);
+    },
+    [destinationSession, recorder, recorderState.metering],
+  );
+
+  const stop = useCallback(() => finishRecording(true), [finishRecording]);
+  const cancel = useCallback(() => finishRecording(false), [finishRecording]);
 
   useEffect(() => {
     void Promise.all([
@@ -184,15 +161,25 @@ export function HomeScreen({
   useEffect(() => {
     onRecordingStatusChange?.(
       recorderState.isRecording
-        ? { recording: true, durationMs: recorderState.durationMillis, stop: () => void stop() }
+        ? {
+            recording: true,
+            durationMs: recorderState.durationMillis,
+            stop: () => void stop(),
+            cancel: () => void cancel(),
+          }
         : null,
     );
     return () => onRecordingStatusChange?.(null);
-  }, [onRecordingStatusChange, recorderState.durationMillis, recorderState.isRecording, stop]);
+  }, [
+    cancel,
+    onRecordingStatusChange,
+    recorderState.durationMillis,
+    recorderState.isRecording,
+    stop,
+  ]);
 
   useEffect(() => {
     if (ready && enabled) {
-      void registerQuickCommandNotifications();
       void start();
     }
   }, [enabled, ready, start]);
@@ -211,8 +198,7 @@ export function HomeScreen({
   const updateEnabled = async (value: boolean) => {
     setEnabled(value);
     await AsyncStorage.setItem(ENABLED_KEY, String(value));
-    if (value) void registerQuickCommandNotifications();
-    else await stop();
+    if (!value) await stop();
   };
 
   const selectDestination = async (sessionId: string | null) => {
@@ -258,9 +244,18 @@ export function HomeScreen({
                 : message}
           </Text>
           {recorderState.isRecording && (
-            <Text style={styles.commandTimer}>
-              {Math.floor(seconds / 60)}:{String(seconds % 60).padStart(2, "0")}
-            </Text>
+            <>
+              <Text style={styles.commandTimer}>
+                {Math.floor(seconds / 60)}:{String(seconds % 60).padStart(2, "0")}
+              </Text>
+              <Pressable
+                accessibilityLabel="Cancel Quick Command recording"
+                onPress={() => void cancel()}
+                style={styles.cancelButton}
+              >
+                <Ionicons name="close" size={20} color={theme.colors.textSecondary} />
+              </Pressable>
+            </>
           )}
         </View>
         <View style={styles.runsSection}>
@@ -528,6 +523,14 @@ const createStyles = (theme: VitoTheme) =>
     commandButtonActive: { backgroundColor: theme.colors.danger },
     commandState: { flex: 1, color: theme.colors.textSecondary, fontSize: 13, fontWeight: "700" },
     commandTimer: { color: theme.colors.textMuted, fontSize: 11, fontVariant: ["tabular-nums"] },
+    cancelButton: {
+      width: 36,
+      height: 36,
+      borderRadius: 12,
+      alignItems: "center",
+      justifyContent: "center",
+      backgroundColor: theme.colors.surfaceRaised,
+    },
     settingCopy: { flex: 1, minWidth: 0 },
     settingTitle: { color: theme.colors.text, fontSize: 13, fontWeight: "800" },
     settingText: {

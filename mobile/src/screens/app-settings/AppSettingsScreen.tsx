@@ -24,6 +24,7 @@ interface SpeechModel {
   voices: Voice[];
 }
 const providers: Array<{ id: SpeechProvider; name: string; detail: string }> = [
+  { id: "gemini", name: "Gemini", detail: "Expressive, controllable speech" },
   { id: "openai", name: "OpenAI", detail: "Fast, natural speech" },
   { id: "elevenlabs", name: "ElevenLabs", detail: "Your ElevenLabs voice library" },
   { id: "openrouter", name: "OpenRouter", detail: "Audio models through OpenRouter" },
@@ -74,7 +75,7 @@ export function SpeechSettingsScreen() {
   const updateProvider = async (provider: SpeechProvider) => {
     await speech.updateSettings({
       provider,
-      voice: provider === "openai" ? "alloy" : "",
+      voice: provider === "gemini" ? "Enceladus" : provider === "openai" ? "alloy" : "",
       model: provider === "openrouter" ? "" : undefined,
       rate: speech.settings.rate,
     });
@@ -281,7 +282,7 @@ const createStyles = (theme: VitoTheme) =>
       width: "100%",
       maxWidth: 680,
       alignSelf: "center",
-      padding: theme.space.lg,
+      padding: theme.space.xl,
       paddingBottom: theme.space.huge,
     },
     sectionTitle: { color: theme.colors.text, fontSize: 21, fontWeight: "900" },
@@ -291,20 +292,23 @@ const createStyles = (theme: VitoTheme) =>
       marginTop: theme.space.xs,
       marginBottom: theme.space.lg,
     },
-    providerList: {
-      borderTopWidth: StyleSheet.hairlineWidth,
-      borderTopColor: theme.colors.separator,
-    },
+    providerList: { gap: theme.space.sm },
     providerRow: {
       minHeight: 66,
       flexDirection: "row",
       alignItems: "center",
       gap: theme.space.md,
-      borderBottomWidth: StyleSheet.hairlineWidth,
-      borderBottomColor: theme.colors.separator,
+      paddingHorizontal: theme.space.md,
+      borderRadius: 12,
+      borderWidth: 1,
+      borderColor: theme.colors.separator,
+      backgroundColor: theme.colors.surface,
     },
-    providerRowSelected: { backgroundColor: theme.colors.accentSurface },
-    providerIcon: { width: 34, alignItems: "center" },
+    providerRowSelected: {
+      borderColor: theme.colors.accent,
+      backgroundColor: theme.colors.accentSurface,
+    },
+    providerIcon: { width: 28, alignItems: "center" },
     copy: { flex: 1 },
     providerName: { color: theme.colors.text, fontSize: 14, fontWeight: "800" },
     providerDetail: { color: theme.colors.textMuted, fontSize: 11, marginTop: theme.space.xs },

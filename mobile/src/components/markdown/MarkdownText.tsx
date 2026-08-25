@@ -1,7 +1,13 @@
-import Markdown, { type ASTNode, type RenderRules } from "react-native-markdown-display";
+import Markdown, {
+  MarkdownIt,
+  type ASTNode,
+  type RenderRules,
+} from "react-native-markdown-display";
 import { ScrollView, StyleSheet, Text, View } from "react-native";
 import { useMemo } from "react";
 import { useThemeStyles, type VitoTheme } from "../../hooks/useVitoTheme";
+
+const markdownIt = MarkdownIt({ typographer: true, linkify: true });
 
 const rules: RenderRules = {
   text: (node: ASTNode, _children, parents, styles) => {
@@ -111,7 +117,7 @@ export function MarkdownText({
     [styles, tone, variant],
   );
   return (
-    <Markdown mergeStyle={false} rules={rules} style={markdownStyles}>
+    <Markdown markdownit={markdownIt} mergeStyle={false} rules={rules} style={markdownStyles}>
       {children}
     </Markdown>
   );

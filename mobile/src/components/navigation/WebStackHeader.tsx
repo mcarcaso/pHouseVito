@@ -11,7 +11,7 @@ export function WebStackHeader({
   title,
   right,
 }: {
-  onBack: () => void;
+  onBack?: () => void;
   onSearch?: (query: string) => void;
   title?: string;
   right?: ReactNode;
@@ -21,9 +21,11 @@ export function WebStackHeader({
   const [query, setQuery] = useState("");
   return (
     <View style={styles.webStackHeader}>
-      <Pressable accessibilityLabel="Back" onPress={onBack} style={styles.webBackButton}>
-        <Ionicons name="chevron-back" size={24} color={theme.colors.accent} />
-      </Pressable>
+      {onBack && (
+        <Pressable accessibilityLabel="Back" onPress={onBack} style={styles.webBackButton}>
+          <Ionicons name="chevron-back" size={24} color={theme.colors.accent} />
+        </Pressable>
+      )}
       {title && <Text style={styles.webHeaderTitle}>{title}</Text>}
       {onSearch && (
         <View style={styles.webHeaderSearch}>

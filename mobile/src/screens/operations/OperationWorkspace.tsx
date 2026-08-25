@@ -69,6 +69,145 @@ function traceUserMessage(record: Record<string, unknown>): string {
   return message.match(/<user-message>\s*([\s\S]*?)\s*<\/user-message>/)?.[1]?.trim() ?? message;
 }
 
+function formatServerUptime(value: number): string {
+  const days = Math.floor(value / 86_400);
+  const hours = Math.floor((value % 86_400) / 3_600);
+  const minutes = Math.floor((value % 3_600) / 60);
+  if (days) return `${days}d ${hours}h`;
+  if (hours) return `${hours}h ${minutes}m`;
+  return `${minutes}m`;
+}
+
+function formatMegabytes(value: number): string {
+  return `${(value / 1_048_576).toFixed(1)} MB`;
+}
+
+function formatGigabytes(value: number): string {
+  return `${(value / 1_073_741_824).toFixed(1)} GB`;
+}
+
+function ServerOverview({
+  value,
+  agentName,
+  onRestart,
+}: {
+  value: unknown;
+  agentName: string;
+  onRestart: () => void;
+}) {
+  const styles = useThemeStyles(createStyles);
+  const theme = useVitoTheme();
+  const status = (value ?? {}) as {
+    uptime?: number;
+    pid?: number;
+    nodeVersion?: string;
+    memoryUsage?: {
+      rss?: number;
+      heapTotal?: number;
+      heapUsed?: number;
+      external?: number;
+    };
+    system?: {
+      cpuUsage?: number;
+      memoryTotal?: number;
+      memoryUsed?: number;
+      memoryFree?: number;
+    };
+  };
+  const uptime = Number(status.uptime ?? 0);
+  const rss = Number(status.memoryUsage?.rss ?? 0);
+  const heapUsed = Number(status.memoryUsage?.heapUsed ?? 0);
+  const heapTotal = Number(status.memoryUsage?.heapTotal ?? 0);
+  const heapPercent = heapTotal ? Math.min(100, (heapUsed / heapTotal) * 100) : 0;
+  const cpuUsage = Number(status.system?.cpuUsage ?? 0);
+  const memoryTotal = Number(status.system?.memoryTotal ?? 0);
+  const memoryUsed = Number(status.system?.memoryUsed ?? 0);
+
+  return (
+    <View style={styles.serverRoot}>
+      <View style={styles.serverHero}>
+        <View style={styles.serverStatusIcon}>
+          <Ionicons name="server-outline" size={25} color={theme.colors.success} />
+          <View style={styles.serverOnlineDot} />
+        </View>
+        <View style={styles.serverHeroCopy}>
+          <View style={styles.serverStatusLine}>
+            <Text style={styles.serverHeroTitle}>Online</Text>
+            <View style={styles.serverHealthyBadge}>
+              <Text style={styles.serverHealthyText}>HEALTHY</Text>
+            </View>
+          </View>
+          <Text style={styles.serverHeroSubtitle}>{agentName} is running normally.</Text>
+        </View>
+      </View>
+
+      <View style={styles.serverMetrics}>
+        <View style={styles.serverMetricCard}>
+          <Ionicons name="time-outline" size={18} color={theme.colors.accent} />
+          <Text style={styles.serverMetricValue}>{formatServerUptime(uptime)}</Text>
+          <Text style={styles.serverMetricLabel}>Uptime</Text>
+        </View>
+        <View style={styles.serverMetricCard}>
+          <Ionicons name="pulse-outline" size={18} color={theme.colors.info} />
+          <Text style={styles.serverMetricValue}>{cpuUsage.toFixed(1)}%</Text>
+          <Text style={styles.serverMetricLabel}>System CPU</Text>
+        </View>
+        <View style={styles.serverMetricCard}>
+          <Ionicons name="hardware-chip-outline" size={18} color={theme.colors.success} />
+          <Text style={styles.serverMetricValue}>{formatGigabytes(memoryUsed)}</Text>
+          <Text style={styles.serverMetricLabel}>of {formatGigabytes(memoryTotal)} RAM</Text>
+        </View>
+      </View>
+
+      <View style={styles.serverPanel}>
+        <Text style={styles.serverSectionTitle}>Runtime</Text>
+        <View style={styles.serverRuntimeRow}>
+          <Text style={styles.serverRuntimeLabel}>Node.js</Text>
+          <Text style={styles.serverRuntimeValue}>{status.nodeVersion ?? "—"}</Text>
+        </View>
+        <View style={styles.serverRuntimeRule} />
+        <View style={styles.serverRuntimeRow}>
+          <Text style={styles.serverRuntimeLabel}>Process ID</Text>
+          <Text style={styles.serverRuntimeValue}>{status.pid ?? "—"}</Text>
+        </View>
+        <View style={styles.serverRuntimeRule} />
+        <View style={styles.serverRuntimeRow}>
+          <Text style={styles.serverRuntimeLabel}>Process memory</Text>
+          <Text style={styles.serverRuntimeValue}>{formatMegabytes(rss)} RSS</Text>
+        </View>
+        <View style={styles.serverRuntimeRule} />
+        <View style={styles.serverRuntimeRow}>
+          <Text style={styles.serverRuntimeLabel}>Heap usage</Text>
+          <Text style={styles.serverRuntimeValue}>
+            {formatMegabytes(heapUsed)} / {formatMegabytes(heapTotal)}
+          </Text>
+        </View>
+        <View style={styles.serverHeapTrack}>
+          <View style={[styles.serverHeapFill, { width: `${heapPercent}%` }]} />
+        </View>
+      </View>
+
+      <View style={[styles.serverPanel, styles.serverControlPanel]}>
+        <View style={styles.serverControlHeading}>
+          <View style={styles.serverControlIcon}>
+            <Ionicons name="refresh" size={18} color={theme.colors.warning} />
+          </View>
+          <View style={styles.serverHeroCopy}>
+            <Text style={styles.serverSectionTitle}>Server controls</Text>
+            <Text style={styles.serverControlDescription}>
+              Rebuilds the backend and dashboard, then restarts the PM2 process.
+            </Text>
+          </View>
+        </View>
+        <Pressable onPress={onRestart} style={styles.serverRestartButton}>
+          <Ionicons name="refresh" size={17} color={theme.colors.danger} />
+          <Text style={styles.serverRestartText}>Rebuild & restart</Text>
+        </Pressable>
+      </View>
+    </View>
+  );
+}
+
 export function OperationWorkspace({
   onUnauthorized,
   initialArea = "memory",
@@ -755,19 +894,16 @@ export function OperationWorkspace({
       )}
 
       {!loading && area === "server" && (
-        <View style={styles.actionRow}>
-          <Pressable
-            onPress={() =>
-              confirm(
-                `Rebuild and restart ${agentName}`,
-                () => void mutate("/api/server/restart", "POST"),
-              )
-            }
-            style={styles.dangerButton}
-          >
-            <Text style={styles.dangerText}>Rebuild & restart</Text>
-          </Pressable>
-        </View>
+        <ServerOverview
+          value={data}
+          agentName={agentName}
+          onRestart={() =>
+            confirm(
+              `Rebuild and restart ${agentName}`,
+              () => void mutate("/api/server/restart", "POST"),
+            )
+          }
+        />
       )}
 
       {!loading && area === "memory" && rows && (
@@ -1142,7 +1278,8 @@ export function OperationWorkspace({
         area !== "memory" &&
         area !== "profile" &&
         area !== "settings" &&
-        area !== "system" && <StructuredDetail value={data} />}
+        area !== "system" &&
+        area !== "server" && <StructuredDetail value={data} />}
     </View>
   );
 }
@@ -1380,6 +1517,152 @@ const createStyles = (theme: VitoTheme) =>
     driveFolder: { marginBottom: theme.space.lg },
     editor: { minHeight: 360, fontFamily: "monospace", fontSize: 12, textAlignVertical: "top" },
     actionRow: { marginBottom: theme.space.lg },
+    serverRoot: {
+      width: "100%",
+      maxWidth: 760,
+      alignSelf: "center",
+      gap: theme.space.md,
+      paddingBottom: theme.space.xxl,
+    },
+    serverHero: {
+      flexDirection: "row",
+      alignItems: "center",
+      gap: theme.space.lg,
+      padding: theme.space.xl,
+      backgroundColor: theme.colors.successSurface,
+      borderWidth: 1,
+      borderColor: theme.colors.success,
+      borderRadius: theme.radius.lg,
+    },
+    serverStatusIcon: {
+      width: 52,
+      height: 52,
+      borderRadius: theme.radius.md,
+      alignItems: "center",
+      justifyContent: "center",
+      backgroundColor: theme.colors.surface,
+      position: "relative",
+    },
+    serverOnlineDot: {
+      position: "absolute",
+      right: 5,
+      bottom: 5,
+      width: 9,
+      height: 9,
+      borderRadius: theme.radius.round,
+      backgroundColor: theme.colors.success,
+      borderWidth: 2,
+      borderColor: theme.colors.surface,
+    },
+    serverHeroCopy: { flex: 1, minWidth: 0 },
+    serverStatusLine: { flexDirection: "row", alignItems: "center", gap: theme.space.sm },
+    serverHeroTitle: { color: theme.colors.text, fontSize: 20, fontWeight: "800" },
+    serverHealthyBadge: {
+      borderRadius: theme.radius.round,
+      paddingHorizontal: theme.space.sm,
+      paddingVertical: theme.space.xs,
+      backgroundColor: theme.colors.success,
+    },
+    serverHealthyText: {
+      color: theme.colors.accentText,
+      fontSize: 8,
+      fontWeight: "900",
+      letterSpacing: 0.8,
+    },
+    serverHeroSubtitle: {
+      color: theme.colors.textSecondary,
+      fontSize: 12,
+      marginTop: theme.space.xs,
+    },
+    serverMetrics: { flexDirection: "row", flexWrap: "wrap", gap: theme.space.sm },
+    serverMetricCard: {
+      flexGrow: 1,
+      flexBasis: 150,
+      minWidth: 140,
+      padding: theme.space.lg,
+      backgroundColor: theme.colors.surface,
+      borderWidth: 1,
+      borderColor: theme.colors.separator,
+      borderRadius: theme.radius.lg,
+    },
+    serverMetricValue: {
+      color: theme.colors.text,
+      fontSize: 21,
+      fontWeight: "800",
+      letterSpacing: -0.5,
+      marginTop: theme.space.md,
+    },
+    serverMetricLabel: {
+      color: theme.colors.textMuted,
+      fontSize: 10,
+      fontWeight: "700",
+      textTransform: "uppercase",
+      letterSpacing: 0.8,
+      marginTop: theme.space.xs,
+    },
+    serverPanel: {
+      padding: theme.space.xl,
+      backgroundColor: theme.colors.surface,
+      borderWidth: 1,
+      borderColor: theme.colors.separator,
+      borderRadius: theme.radius.lg,
+    },
+    serverSectionTitle: { color: theme.colors.text, fontSize: 14, fontWeight: "800" },
+    serverRuntimeRow: {
+      flexDirection: "row",
+      justifyContent: "space-between",
+      alignItems: "center",
+      gap: theme.space.lg,
+      paddingVertical: theme.space.md,
+    },
+    serverRuntimeLabel: { color: theme.colors.textMuted, fontSize: 12 },
+    serverRuntimeValue: {
+      color: theme.colors.textSecondary,
+      fontSize: 12,
+      fontWeight: "700",
+      fontFamily: "monospace",
+      textAlign: "right",
+    },
+    serverRuntimeRule: { height: 1, backgroundColor: theme.colors.separator },
+    serverHeapTrack: {
+      height: 5,
+      overflow: "hidden",
+      borderRadius: theme.radius.round,
+      backgroundColor: theme.colors.surfaceRaised,
+    },
+    serverHeapFill: {
+      height: "100%",
+      borderRadius: theme.radius.round,
+      backgroundColor: theme.colors.success,
+    },
+    serverControlPanel: { gap: theme.space.lg },
+    serverControlHeading: { flexDirection: "row", alignItems: "flex-start", gap: theme.space.md },
+    serverControlIcon: {
+      width: 36,
+      height: 36,
+      alignItems: "center",
+      justifyContent: "center",
+      borderRadius: theme.radius.md,
+      backgroundColor: theme.colors.surfaceRaised,
+    },
+    serverControlDescription: {
+      color: theme.colors.textMuted,
+      fontSize: 11,
+      lineHeight: 16,
+      marginTop: theme.space.xs,
+    },
+    serverRestartButton: {
+      minHeight: 44,
+      flexDirection: "row",
+      alignItems: "center",
+      justifyContent: "center",
+      gap: theme.space.sm,
+      borderWidth: 1,
+      borderColor: theme.colors.danger,
+      borderRadius: theme.radius.md,
+      backgroundColor: theme.colors.dangerSurface,
+    },
+    serverRestartText: { color: theme.colors.danger, fontSize: 12, fontWeight: "800" },
     dangerButton: {
       borderWidth: 1,
       borderColor: theme.colors.danger,

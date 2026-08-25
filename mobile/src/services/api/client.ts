@@ -1,14 +1,11 @@
 import { Platform } from "react-native";
 import * as SecureStore from "expo-secure-store";
 
-const privateWebOrigin =
-  Platform.OS === "web" && globalThis.location?.hostname.endsWith(".ts.net")
-    ? globalThis.location.origin
-    : undefined;
+const currentWebOrigin = Platform.OS === "web" ? globalThis.location?.origin : undefined;
 
 const DEFAULT_VITO_URL = (
   process.env.EXPO_PUBLIC_VITO_URL ??
-  privateWebOrigin ??
+  currentWebOrigin ??
   "https://theworstproductions.com"
 ).replace(/\/$/, "");
 export let VITO_URL = DEFAULT_VITO_URL;
@@ -20,6 +17,7 @@ const VOICE_KEY = "vito-realtime-voice";
 const VOICE_MODEL_KEY = "vito-realtime-model";
 const VOICE_PROVIDER_KEY = "vito-live-voice-provider";
 const GEMINI_VOICE_KEY = "vito-gemini-live-voice";
+const VOICE_MODE_PENDING_SYNC_KEY = "vito-voice-mode-pending-sync-v1";
 let authToken: string | null = null;
 const urlListeners = new Set<(url: string) => void>();
 
@@ -39,10 +37,13 @@ function storage() {
         : SecureStore.deleteItemAsync(key),
   };
 }
-function tokenKey(url = VITO_URL) {
+export function agentStorageKey(key: string, url = VITO_URL): string {
   let hash = 2166136261;
   for (const char of url) hash = Math.imul(hash ^ char.charCodeAt(0), 16777619);
-  return `vito-token-${(hash >>> 0).toString(16)}`;
+  return `${key}-${(hash >>> 0).toString(16)}`;
+}
+function tokenKey(url = VITO_URL) {
+  return agentStorageKey("vito-token", url);
 }
 export function normalizeAgentUrl(input: string) {
   const candidate = input.trim().replace(/\/$/, "");
@@ -65,6 +66,7 @@ export async function setAgentUrl(input: string) {
     JSON.stringify([next, ...recent.filter((url) => url !== next)].slice(0, 6)),
   );
   authToken = null;
+  resetVoiceModePreferences();
   urlListeners.forEach((listener) => listener(next));
   return next;
 }
@@ -133,51 +135,169 @@ export const GEMINI_LIVE_VOICES = [
 ] as const;
 export type GeminiLiveVoice = (typeof GEMINI_LIVE_VOICES)[number];
 
+export interface SyncedSpeechPreferences {
+  provider: "gemini" | "openai" | "elevenlabs" | "openrouter";
+  voice: string;
+  model?: string;
+  rate: number;
+}
+
+export interface VoiceModePreferences {
+  provider: LiveVoiceProviderPreference;
+  model: RealtimeModel;
+  openaiVoice: RealtimeVoice;
+  geminiVoice: GeminiLiveVoice;
+}
+
+export interface AppPreferences {
+  speech?: SyncedSpeechPreferences;
+  voiceMode?: VoiceModePreferences;
+}
+
+interface AppPreferencesResponse {
+  preferences: AppPreferences;
+  updatedAt: number | null;
+}
+
+export async function loadAppPreferences(): Promise<AppPreferencesResponse> {
+  return api<AppPreferencesResponse>("/api/app-preferences");
+}
+
+export async function patchAppPreferences(
+  preferences: AppPreferences,
+): Promise<AppPreferencesResponse> {
+  return api<AppPreferencesResponse>("/api/app-preferences", {
+    method: "PATCH",
+    body: JSON.stringify(preferences),
+  });
+}
+
 function isRealtimeVoice(value: string | null): value is RealtimeVoice {
   return value !== null && REALTIME_VOICES.some((voice) => voice === value);
 }
 
+async function getLocalPreference(key: string): Promise<string | null> {
+  return (await storage().get(agentStorageKey(key))) ?? (await storage().get(key));
+}
+
+async function loadLocalVoiceModePreferences(): Promise<VoiceModePreferences> {
+  const [provider, model, openaiVoice, geminiVoice] = await Promise.all([
+    getLocalPreference(VOICE_PROVIDER_KEY),
+    getLocalPreference(VOICE_MODEL_KEY),
+    getLocalPreference(VOICE_KEY),
+    getLocalPreference(GEMINI_VOICE_KEY),
+  ]);
+  return {
+    provider: LIVE_VOICE_PROVIDERS.some((candidate) => candidate === provider)
+      ? (provider as LiveVoiceProviderPreference)
+      : "auto",
+    model: REALTIME_MODELS.some((candidate) => candidate === model)
+      ? (model as RealtimeModel)
+      : "gpt-realtime-mini",
+    openaiVoice: isRealtimeVoice(openaiVoice) ? openaiVoice : "marin",
+    geminiVoice: GEMINI_LIVE_VOICES.some((candidate) => candidate === geminiVoice)
+      ? (geminiVoice as GeminiLiveVoice)
+      : "Kore",
+  };
+}
+
+async function persistLocalVoiceModePreferences(preferences: VoiceModePreferences): Promise<void> {
+  await Promise.all([
+    storage().set(agentStorageKey(VOICE_PROVIDER_KEY), preferences.provider),
+    storage().set(agentStorageKey(VOICE_MODEL_KEY), preferences.model),
+    storage().set(agentStorageKey(VOICE_KEY), preferences.openaiVoice),
+    storage().set(agentStorageKey(GEMINI_VOICE_KEY), preferences.geminiVoice),
+  ]);
+}
+
+const VOICE_MODE_CACHE_MS = 5_000;
+let voiceModePreferencesPromise: Promise<VoiceModePreferences> | null = null;
+let voiceModePreferencesLoadedAt = 0;
+
+function resetVoiceModePreferences(): void {
+  voiceModePreferencesPromise = null;
+  voiceModePreferencesLoadedAt = 0;
+}
+
+async function loadVoiceModePreferences(): Promise<VoiceModePreferences> {
+  if (
+    voiceModePreferencesPromise &&
+    Date.now() - voiceModePreferencesLoadedAt < VOICE_MODE_CACHE_MS
+  )
+    return voiceModePreferencesPromise;
+  voiceModePreferencesLoadedAt = Date.now();
+  voiceModePreferencesPromise = (async () => {
+    const local = await loadLocalVoiceModePreferences();
+    try {
+      const pendingKey = agentStorageKey(VOICE_MODE_PENDING_SYNC_KEY);
+      if ((await storage().get(pendingKey)) === "true") {
+        await patchAppPreferences({ voiceMode: local });
+        await storage().remove(pendingKey);
+        return local;
+      }
+      const remote = (await loadAppPreferences()).preferences.voiceMode;
+      if (remote) {
+        await persistLocalVoiceModePreferences(remote);
+        return remote;
+      }
+      await patchAppPreferences({ voiceMode: local });
+    } catch {
+      // Local preferences remain usable while the server is unavailable.
+    }
+    return local;
+  })();
+  return voiceModePreferencesPromise;
+}
+
+async function saveVoiceModePreference(
+  update: Partial<VoiceModePreferences>,
+): Promise<VoiceModePreferences> {
+  const current = await loadVoiceModePreferences();
+  const next = { ...current, ...update };
+  await persistLocalVoiceModePreferences(next);
+  const pendingKey = agentStorageKey(VOICE_MODE_PENDING_SYNC_KEY);
+  await storage().set(pendingKey, "true");
+  voiceModePreferencesPromise = Promise.resolve(next);
+  voiceModePreferencesLoadedAt = Date.now();
+  try {
+    await patchAppPreferences({ voiceMode: next });
+    await storage().remove(pendingKey);
+  } catch {
+    // Keep the pending marker so the local preference syncs on the next launch.
+  }
+  return next;
+}
+
 export async function loadRealtimeVoice(): Promise<RealtimeVoice> {
-  const value =
-    Platform.OS === "web"
-      ? (globalThis.localStorage?.getItem(VOICE_KEY) ?? null)
-      : await SecureStore.getItemAsync(VOICE_KEY);
-  return isRealtimeVoice(value) ? value : "marin";
+  return (await loadVoiceModePreferences()).openaiVoice;
 }
 
 export async function saveRealtimeVoice(voice: RealtimeVoice): Promise<void> {
-  await storage().set(VOICE_KEY, voice);
+  await saveVoiceModePreference({ openaiVoice: voice });
 }
 
 export async function loadRealtimeModel(): Promise<RealtimeModel> {
-  const value = await storage().get(VOICE_MODEL_KEY);
-  return REALTIME_MODELS.some((model) => model === value)
-    ? (value as RealtimeModel)
-    : "gpt-realtime-mini";
+  return (await loadVoiceModePreferences()).model;
 }
 
 export async function saveRealtimeModel(model: RealtimeModel): Promise<void> {
-  await storage().set(VOICE_MODEL_KEY, model);
+  await saveVoiceModePreference({ model });
 }
 
 export async function loadLiveVoiceProvider(): Promise<LiveVoiceProviderPreference> {
-  const value = await storage().get(VOICE_PROVIDER_KEY);
-  return LIVE_VOICE_PROVIDERS.some((provider) => provider === value)
-    ? (value as LiveVoiceProviderPreference)
-    : "auto";
+  return (await loadVoiceModePreferences()).provider;
 }
 
 export async function saveLiveVoiceProvider(provider: LiveVoiceProviderPreference): Promise<void> {
-  await storage().set(VOICE_PROVIDER_KEY, provider);
+  await saveVoiceModePreference({ provider });
 }
 
 export async function loadGeminiLiveVoice(): Promise<GeminiLiveVoice> {
-  const value = await storage().get(GEMINI_VOICE_KEY);
-  return GEMINI_LIVE_VOICES.some((voice) => voice === value) ? (value as GeminiLiveVoice) : "Kore";
+  return (await loadVoiceModePreferences()).geminiVoice;
 }
 
 export async function saveGeminiLiveVoice(voice: GeminiLiveVoice): Promise<void> {
-  await storage().set(GEMINI_VOICE_KEY, voice);
+  await saveVoiceModePreference({ geminiVoice: voice });
 }
 
 export class ApiError extends Error {
@@ -209,19 +329,36 @@ export const vitoTokenStore = {
   set: saveToken,
 };
 
-export function driveFileSource(
+export function attachmentFileSource(
   path: string,
+  url?: string,
 ): { uri: string; headers?: { Authorization: string } } | undefined {
-  const marker = "/user/drive/";
-  const markerIndex = path.indexOf(marker);
-  if (markerIndex < 0) return undefined;
-  const relativePath = path
-    .slice(markerIndex + marker.length)
-    .split("/")
-    .map(encodeURIComponent)
-    .join("/");
+  const driveMarker = "/user/drive/";
+  const driveMarkerIndex = path.indexOf(driveMarker);
+  let uri: string | undefined;
+  if (driveMarkerIndex >= 0) {
+    const relativePath = path
+      .slice(driveMarkerIndex + driveMarker.length)
+      .split("/")
+      .map(encodeURIComponent)
+      .join("/");
+    uri = `${VITO_URL}/api/drive/file/${relativePath}`;
+  } else {
+    const attachmentMarker = "/data/attachments/";
+    const attachmentMarkerIndex = path.indexOf(attachmentMarker);
+    const attachmentId =
+      attachmentMarkerIndex >= 0
+        ? path.slice(attachmentMarkerIndex + attachmentMarker.length)
+        : url?.startsWith("/attachments/")
+          ? url.slice("/attachments/".length)
+          : undefined;
+    if (attachmentId && !attachmentId.includes("/")) {
+      uri = `${VITO_URL}/attachments/${encodeURIComponent(attachmentId)}`;
+    }
+  }
+  if (!uri) return undefined;
   return {
-    uri: `${VITO_URL}/api/drive/file/${relativePath}`,
+    uri,
     ...(authToken ? { headers: { Authorization: `Bearer ${authToken}` } } : {}),
   };
 }
@@ -251,6 +388,17 @@ export interface AuthStatus {
 
 export async function checkAuth(): Promise<AuthStatus> {
   return api<AuthStatus>("/api/auth/check");
+}
+
+export async function setupDashboard(): Promise<string> {
+  const result = await api<{ password?: string; token?: string }>("/api/auth/setup", {
+    method: "POST",
+  });
+  if (!result.password || !result.token) {
+    throw new Error("The server did not return setup credentials");
+  }
+  await saveToken(result.token);
+  return result.password;
 }
 
 export async function login(password: string): Promise<void> {

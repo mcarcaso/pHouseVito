@@ -5,35 +5,41 @@ import { labels } from "../../application/navigation/config";
 import type { MainRouteName } from "../../application/navigation/route-types";
 import { useThemeStyles, type VitoTheme } from "../../hooks/useVitoTheme";
 
-const visibleRoutes: MainRouteName[] = ["Home", "Chat", "Voice", "More"];
+export const visibleWorkspaceRoutes: MainRouteName[] = ["Home", "Chat", "Voice", "More"];
 
-export function MobileTabBar({ state, navigation }: BottomTabBarProps) {
+export function WorkspaceTabBar({
+  active,
+  onSelect,
+}: {
+  active: MainRouteName;
+  onSelect: (route: MainRouteName) => void;
+}) {
   const styles = useThemeStyles(createStyles);
-  const current = state.routeNames[state.index] as MainRouteName;
   return (
     <View style={styles.tabBar}>
       <View style={styles.tabList}>
-        {visibleRoutes.map((route) => {
+        {visibleWorkspaceRoutes.map((route) => {
           const item = labels[route];
-          const active = current === route;
+          const selected = active === route;
           return (
-            <Pressable
-              key={route}
-              onPress={() => navigation.navigate(route)}
-              style={styles.tabItem}
-            >
+            <Pressable key={route} onPress={() => onSelect(route)} style={styles.tabItem}>
               <Ionicons
                 name={item.icon}
                 size={20}
-                style={[styles.tabIcon, active && styles.activeText]}
+                style={[styles.tabIcon, selected && styles.activeText]}
               />
-              <Text style={[styles.tabLabel, active && styles.activeText]}>{item.label}</Text>
+              <Text style={[styles.tabLabel, selected && styles.activeText]}>{item.label}</Text>
             </Pressable>
           );
         })}
       </View>
     </View>
   );
+}
+
+export function MobileTabBar({ state, navigation }: BottomTabBarProps) {
+  const current = state.routeNames[state.index] as MainRouteName;
+  return <WorkspaceTabBar active={current} onSelect={(route) => navigation.navigate(route)} />;
 }
 
 const createStyles = (theme: VitoTheme) =>

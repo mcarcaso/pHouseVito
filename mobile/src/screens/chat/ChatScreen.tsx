@@ -1,5 +1,6 @@
 import { StyleSheet } from "react-native";
 import * as SecureStore from "expo-secure-store";
+import * as Clipboard from "expo-clipboard";
 import * as DocumentPicker from "expo-document-picker";
 import * as FileSystem from "expo-file-system/legacy";
 import { FontAwesome6, Ionicons } from "@expo/vector-icons";
@@ -9,6 +10,8 @@ import { HeaderButton } from "@react-navigation/elements";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import {
   ActivityIndicator,
+  Alert,
+  AppState,
   Image,
   Keyboard,
   Modal,
@@ -17,7 +20,6 @@ import {
   ScrollView,
   Text,
   TextInput,
-  useWindowDimensions,
   View,
 } from "react-native";
 import {
@@ -31,6 +33,7 @@ import {
   type VitoSession as Session,
 } from "@vito/client";
 import { useAgentName } from "../../contexts/agentIdentity";
+import { useCurrentRuns, type CurrentRun } from "../../hooks/useCurrentRuns";
 import {
   DESKTOP_BREAKPOINT,
   useThemeStyles,
@@ -205,6 +208,16 @@ export function ChatScreen({
 
   const sessionsQuery = useSessions({ refetchInterval: 5_000 });
   const sessions = sessionsQuery.data ?? [];
+  const { runs } = useCurrentRuns();
+  const runStatusBySession = useMemo(() => {
+    const statuses = new Map<string, CurrentRun["status"]>();
+    for (const run of runs) {
+      if (run.status === "active" || !statuses.has(run.sessionKey)) {
+        statuses.set(run.sessionKey, run.status);
+      }
+    }
+    return statuses;
+  }, [runs]);
   const messagesQuery = useSessionMessages(filtersReady ? sessionId : null, {
     limit: 20,
     hideThoughts: !filters.thoughts,
@@ -250,6 +263,42 @@ export function ChatScreen({
       }),
     );
     setAttachments((current) => [...current, ...next]);
+  };
+
+  const pasteClipboardImage = async () => {
+    const image = await Clipboard.getImageAsync({ format: "png" });
+    if (!image) {
+      setLocalError("The clipboard does not contain an image.");
+      return;
+    }
+    setLocalError(null);
+    setAttachments((current) => [
+      ...current,
+      {
+        data: image.data,
+        filename: `pasted-image-${Date.now()}.png`,
+        mimeType: "image/png",
+        type: "image",
+      },
+    ]);
+  };
+
+  const showAttachmentMenu = () => {
+    if (Platform.OS === "web") {
+      void pickAttachments().catch(handleError);
+      return;
+    }
+    Alert.alert("Add attachment", undefined, [
+      {
+        text: "Paste Image",
+        onPress: () => void pasteClipboardImage().catch(handleError),
+      },
+      {
+        text: "Choose File",
+        onPress: () => void pickAttachments().catch(handleError),
+      },
+      { text: "Cancel", style: "cancel" },
+    ]);
   };
 
   useEffect(() => {
@@ -387,21 +436,11 @@ export function ChatScreen({
           onPress={() => setMenuOpen((open) => !open)}
           tintColor={tintColor}
         >
-          <View style={styles.ellipsis}>
-            <View
-              style={[styles.ellipsisDot, { backgroundColor: tintColor ?? theme.colors.accent }]}
-            />
-            <View
-              style={[styles.ellipsisDot, { backgroundColor: tintColor ?? theme.colors.accent }]}
-            />
-            <View
-              style={[styles.ellipsisDot, { backgroundColor: tintColor ?? theme.colors.accent }]}
-            />
-          </View>
+          <Ionicons name="ellipsis-horizontal" size={23} color={tintColor ?? theme.colors.accent} />
         </HeaderButton>
       ),
     });
-  }, [menuOpen, navigation, selectedSession, selectedSessionId, styles, theme.colors.accent]);
+  }, [menuOpen, navigation, selectedSession, selectedSessionId, theme.colors.accent]);
 
   const conversation = sessionId ? (
     <Conversation
@@ -427,6 +466,7 @@ export function ChatScreen({
       attachments={attachments}
       sending={sendMessage.isPending || uploadAttachment.isPending}
       error={localError}
+      runStatus={runStatusBySession.get(sessionId) ?? null}
       scrollRef={scrollRef}
       onBack={
         onBack
@@ -439,7 +479,7 @@ export function ChatScreen({
       onMenu={() => setMenuOpen((open) => !open)}
       onFilters={setFilters}
       onInput={setInput}
-      onAttach={() => void pickAttachments().catch(handleError)}
+      onAttach={showAttachmentMenu}
       onRemoveAttachment={(index) =>
         setAttachments((current) => current.filter((_, itemIndex) => itemIndex !== index))
       }
@@ -463,6 +503,7 @@ export function ChatScreen({
             sessions={sessions}
             selectedId={sessionId}
             loading={sessionsQuery.isLoading}
+            runStatusBySession={runStatusBySession}
             onCreate={createChat}
             onSelect={selectSession}
           />
@@ -478,6 +519,7 @@ export function ChatScreen({
         sessions={sessions}
         selectedId={null}
         loading={sessionsQuery.isLoading}
+        runStatusBySession={runStatusBySession}
         onCreate={createChat}
         onSelect={selectSession}
       />
@@ -489,17 +531,20 @@ function SessionList({
   sessions,
   selectedId,
   loading,
+  runStatusBySession,
   onCreate,
   onSelect,
 }: {
   sessions: Session[];
   selectedId: string | null;
   loading: boolean;
+  runStatusBySession: ReadonlyMap<string, CurrentRun["status"]>;
   onCreate: () => void;
   onSelect: (session: Session) => void;
 }) {
   const styles = useThemeStyles(createStyles);
   const theme = useVitoTheme();
+  const agentName = useAgentName();
   const navigation = useNavigation();
   const [hiddenChannels, setHiddenChannels] = useState<string[]>([]);
   const [filterReady, setFilterReady] = useState(false);
@@ -620,9 +665,24 @@ function SessionList({
                 <Text style={styles.sessionTime}>{relativeTime(session.last_active_at)}</Text>
                 <Text style={styles.chevron}>›</Text>
               </View>
-              <Text style={styles.sessionPreview} numberOfLines={1}>
-                {session.channel} · {session.id}
-              </Text>
+              {runStatusBySession.has(session.id) ? (
+                <View style={styles.sessionActivity}>
+                  <View style={styles.typingDots}>
+                    <View style={styles.typingDot} />
+                    <View style={styles.typingDot} />
+                    <View style={styles.typingDot} />
+                  </View>
+                  <Text style={styles.sessionActivityText} numberOfLines={1}>
+                    {runStatusBySession.get(session.id) === "active"
+                      ? `${agentName} is working…`
+                      : "Waiting to start…"}
+                  </Text>
+                </View>
+              ) : (
+                <Text style={styles.sessionPreview} numberOfLines={1}>
+                  {session.last_message?.replace(/\s+/g, " ").trim() || "No messages yet"}
+                </Text>
+              )}
             </View>
           </Pressable>
         ))}
@@ -657,6 +717,7 @@ function Conversation({
   attachments,
   sending,
   error,
+  runStatus,
   scrollRef,
   onBack,
   onMenu,
@@ -678,6 +739,7 @@ function Conversation({
   attachments: PendingAttachment[];
   sending: boolean;
   error: string | null;
+  runStatus: CurrentRun["status"] | null;
   scrollRef: React.RefObject<ScrollView | null>;
   onBack?: () => void;
   onMenu: () => void;
@@ -694,7 +756,8 @@ function Conversation({
   const insets = useSafeAreaInsets();
   const [webInputHeight, setWebInputHeight] = useState(22);
   const [keyboardInset, setKeyboardInset] = useState(0);
-  const { height: windowHeight } = useWindowDimensions();
+  const lastKeyboardHeightRef = useRef(0);
+  const inputFocusedRef = useRef(false);
   const nearBottomRef = useRef(true);
   const scrollOffsetRef = useRef(0);
   const contentHeightRef = useRef(0);
@@ -706,15 +769,45 @@ function Conversation({
 
   useEffect(() => {
     if (Platform.OS !== "ios") return;
+
+    const syncKeyboardInset = () => {
+      const measuredHeight = Math.max(0, Keyboard.metrics()?.height ?? 0);
+      if (measuredHeight > 0) lastKeyboardHeightRef.current = measuredHeight;
+      setKeyboardInset(
+        measuredHeight > 0
+          ? measuredHeight
+          : inputFocusedRef.current
+            ? lastKeyboardHeightRef.current
+            : 0,
+      );
+    };
+
+    const resumeTimers = new Set<ReturnType<typeof setTimeout>>();
+    syncKeyboardInset();
     const frame = Keyboard.addListener("keyboardWillChangeFrame", (event) => {
-      setKeyboardInset(Math.max(0, windowHeight - event.endCoordinates.screenY));
+      const height = Math.max(0, event.endCoordinates.height);
+      if (height > 0) lastKeyboardHeightRef.current = height;
+      setKeyboardInset(height);
     });
     const hide = Keyboard.addListener("keyboardWillHide", () => setKeyboardInset(0));
+    const appState = AppState.addEventListener("change", (state) => {
+      if (state !== "active") return;
+      syncKeyboardInset();
+      for (const delay of [100, 300]) {
+        const timer = setTimeout(() => {
+          resumeTimers.delete(timer);
+          syncKeyboardInset();
+        }, delay);
+        resumeTimers.add(timer);
+      }
+    });
     return () => {
       frame.remove();
       hide.remove();
+      appState.remove();
+      for (const timer of resumeTimers) clearTimeout(timer);
     };
-  }, [windowHeight]);
+  }, []);
 
   const slashQuery = input.startsWith("/") && !input.includes(" ") ? input.toLowerCase() : null;
   const slashCommands = slashQuery
@@ -809,6 +902,25 @@ function Conversation({
           </View>
         )}
       </ScrollView>
+      {runStatus && (
+        <View
+          accessibilityLabel={
+            runStatus === "active"
+              ? `${agentName} is working on this conversation`
+              : "This conversation is waiting to start"
+          }
+          style={styles.conversationActivity}
+        >
+          <View style={styles.typingDots}>
+            <View style={styles.typingDot} />
+            <View style={styles.typingDot} />
+            <View style={styles.typingDot} />
+          </View>
+          <Text style={styles.conversationActivityText}>
+            {runStatus === "active" ? `${agentName} is working…` : "Waiting to start…"}
+          </Text>
+        </View>
+      )}
       {error && <Text style={styles.error}>{error}</Text>}
       {!!slashCommands.length && (
         <View style={styles.slashMenu}>
@@ -839,6 +951,7 @@ function Conversation({
       {!!attachments.length && (
         <ScrollView
           horizontal
+          style={styles.pendingAttachmentsScroll}
           showsHorizontalScrollIndicator={false}
           contentContainerStyle={styles.pendingAttachments}
         >
@@ -879,10 +992,26 @@ function Conversation({
         <TextInput
           value={input}
           onChangeText={onInput}
+          onFocus={() => {
+            inputFocusedRef.current = true;
+          }}
+          onBlur={() => {
+            inputFocusedRef.current = false;
+          }}
           placeholder={`Message ${agentName}`}
           placeholderTextColor={theme.colors.textMuted}
           multiline
           maxLength={12000}
+          onKeyPress={(event) => {
+            if (Platform.OS !== "web" || event.nativeEvent.key !== "Enter") return;
+            const keyboardEvent = event.nativeEvent as typeof event.nativeEvent & {
+              shiftKey?: boolean;
+              isComposing?: boolean;
+            };
+            if (keyboardEvent.shiftKey || keyboardEvent.isComposing) return;
+            event.preventDefault();
+            if ((input.trim() || attachments.length) && !sending) void onSend();
+          }}
           onContentSizeChange={(event) => {
             if (Platform.OS === "web")
               setWebInputHeight(Math.min(96, Math.max(22, event.nativeEvent.contentSize.height)));
@@ -1031,6 +1160,15 @@ const createStyles = (theme: VitoTheme) =>
     sessionTime: { color: theme.colors.textMuted, fontSize: 11 },
     chevron: { color: theme.colors.textMuted, fontSize: 20 },
     sessionPreview: { color: theme.colors.textMuted, fontSize: 12, marginTop: theme.space.xs },
+    sessionActivity: {
+      flexDirection: "row",
+      alignItems: "center",
+      gap: theme.space.sm,
+      marginTop: theme.space.xs,
+    },
+    sessionActivityText: { color: theme.colors.accent, fontSize: 12, fontWeight: "700" },
+    typingDots: { flexDirection: "row", alignItems: "center", gap: theme.space.xs },
+    typingDot: { width: 4, height: 4, borderRadius: 2, backgroundColor: theme.colors.accent },
     listLoader: { marginTop: theme.space.giant },
     emptySessionFilter: { alignItems: "center", gap: theme.space.sm, padding: theme.space.giant },
     emptyText: { color: theme.colors.textMuted, fontSize: 12, marginTop: theme.space.xs },
@@ -1050,13 +1188,6 @@ const createStyles = (theme: VitoTheme) =>
       backgroundColor: theme.colors.sidebar,
     },
     headerButton: { width: 50, height: 50, alignItems: "center", justifyContent: "center" },
-    ellipsis: {
-      flexDirection: "row",
-      alignItems: "center",
-      justifyContent: "center",
-      gap: theme.space.xs,
-    },
-    ellipsisDot: { width: 5, height: 5, borderRadius: 3 },
     hidden: { opacity: 0 },
     conversationTitle: {
       flex: 1,
@@ -1094,6 +1225,14 @@ const createStyles = (theme: VitoTheme) =>
     loader: { marginVertical: theme.space.giant },
     empty: { flex: 1, alignItems: "center", justifyContent: "center" },
     emptyTitle: { color: theme.colors.textSecondary, fontWeight: "700", fontSize: 16 },
+    conversationActivity: {
+      minHeight: 28,
+      flexDirection: "row",
+      alignItems: "center",
+      gap: theme.space.sm,
+      paddingHorizontal: theme.space.lg,
+    },
+    conversationActivityText: { color: theme.colors.accent, fontSize: 11, fontWeight: "700" },
     error: {
       color: theme.colors.danger,
       fontSize: 11,
@@ -1147,6 +1286,7 @@ const createStyles = (theme: VitoTheme) =>
       borderColor: theme.colors.separatorStrong,
       backgroundColor: theme.colors.surface,
     },
+    pendingAttachmentsScroll: { flexGrow: 0, height: 80 },
     pendingAttachments: {
       gap: theme.space.sm,
       paddingHorizontal: theme.space.md,

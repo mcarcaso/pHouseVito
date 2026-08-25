@@ -1,6 +1,14 @@
 import { Ionicons } from "@expo/vector-icons";
 import { useEffect, useState } from "react";
-import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
+import {
+  ActivityIndicator,
+  Linking,
+  Pressable,
+  ScrollView,
+  StyleSheet,
+  Text,
+  View,
+} from "react-native";
 import {
   GEMINI_LIVE_VOICES,
   getVoiceAvailability,
@@ -55,7 +63,7 @@ export function VoiceModeSettingsScreen() {
     void loadGeminiLiveVoice().then(setGeminiVoice);
   }, []);
 
-  const activeProvider = provider === "auto" ? (availability?.provider ?? "openai") : provider;
+  const activeProvider = provider === "auto" ? (availability?.provider ?? "gemini") : provider;
   const providerOptions: Array<{
     id: LiveVoiceProviderPreference;
     name: string;
@@ -66,7 +74,7 @@ export function VoiceModeSettingsScreen() {
     {
       id: "auto",
       name: "Automatic",
-      detail: `OpenAI first, then Gemini${availability?.provider ? ` · using ${availability.provider}` : ""}`,
+      detail: `Gemini first, then OpenAI${availability?.provider ? ` · using ${availability.provider}` : ""}`,
       icon: "git-compare-outline",
       available: availability?.available ?? true,
     },
@@ -153,6 +161,20 @@ export function VoiceModeSettingsScreen() {
       )}
 
       <Text style={styles.sectionTitle}>Voice</Text>
+      {activeProvider === "gemini" && (
+        <Pressable
+          onPress={() =>
+            void Linking.openURL(
+              "https://docs.cloud.google.com/text-to-speech/docs/gemini-tts#voice_options",
+            )
+          }
+          style={styles.externalPreviewLink}
+        >
+          <Ionicons name="play-circle-outline" size={17} color={theme.colors.accent} />
+          <Text style={styles.externalPreviewText}>Preview every Gemini voice on Google</Text>
+          <Ionicons name="open-outline" size={14} color={theme.colors.textMuted} />
+        </Pressable>
+      )}
       <View style={styles.voiceGrid}>
         {activeProvider === "openai"
           ? REALTIME_VOICES.map((option) => {
@@ -281,6 +303,19 @@ const createStyles = (theme: VitoTheme) =>
     },
     selectedRow: { borderColor: theme.colors.accent, backgroundColor: theme.colors.accentSurface },
     unavailable: { opacity: 0.45 },
+    externalPreviewLink: {
+      minHeight: 42,
+      flexDirection: "row",
+      alignItems: "center",
+      gap: theme.space.sm,
+      marginBottom: theme.space.md,
+    },
+    externalPreviewText: {
+      flex: 1,
+      color: theme.colors.accent,
+      fontSize: 12,
+      fontWeight: "700",
+    },
     voiceGrid: { flexDirection: "row", flexWrap: "wrap", gap: theme.space.sm },
     voiceOption: {
       width: "31%",

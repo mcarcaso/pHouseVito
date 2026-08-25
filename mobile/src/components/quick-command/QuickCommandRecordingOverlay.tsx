@@ -30,6 +30,13 @@ export function QuickCommandRecordingOverlay({
         </View>
       </Pressable>
       <Pressable
+        accessibilityLabel="Cancel Quick Command recording"
+        onPress={status.cancel}
+        style={styles.cancel}
+      >
+        <Ionicons name="close" size={20} color={theme.colors.textSecondary} />
+      </Pressable>
+      <Pressable
         accessibilityLabel="Stop and send Quick Command"
         onPress={status.stop}
         style={styles.stop}
@@ -85,6 +92,14 @@ const createStyles = (theme: VitoTheme) =>
       fontSize: 10,
       marginTop: theme.space.xs,
       fontVariant: ["tabular-nums"],
+    },
+    cancel: {
+      width: 40,
+      height: 40,
+      borderRadius: 13,
+      alignItems: "center",
+      justifyContent: "center",
+      backgroundColor: theme.colors.surface,
     },
     stop: {
       width: 40,

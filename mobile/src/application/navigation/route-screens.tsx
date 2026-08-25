@@ -431,6 +431,21 @@ export function MoreMenu({ onLogout }: { onLogout: () => void }) {
   const styles = useThemeStyles(createStyles);
   const agentName = useAgentName();
   const navigation = useNavigation<RootNavigation>();
+  const { width } = useWindowDimensions();
+  const desktop = Platform.OS === "web" && width >= DESKTOP_BREAKPOINT;
+  const openWorkspace = (
+    route:
+      | { name: "IdentityHome" }
+      | { name: "MemoryHome" }
+      | { name: "Operation"; params: { area: OperationArea } },
+  ) => {
+    if (desktop) {
+      navigation.reset({ index: 0, routes: [route] });
+      return;
+    }
+    if (route.name === "Operation") navigation.navigate(route.name, route.params);
+    else navigation.navigate(route.name);
+  };
   return (
     <ScrollView contentContainerStyle={styles.moreScreen}>
       <View style={styles.moreSection}>
@@ -474,7 +489,10 @@ export function MoreMenu({ onLogout }: { onLogout: () => void }) {
           <Text style={styles.moreSectionLabel}>{group === "Agent" ? agentName : group}</Text>
           {group === "Agent" && (
             <>
-              <Pressable onPress={() => navigation.navigate("IdentityHome")} style={styles.moreRow}>
+              <Pressable
+                onPress={() => openWorkspace({ name: "IdentityHome" })}
+                style={styles.moreRow}
+              >
                 <Ionicons name="finger-print-outline" size={18} style={styles.moreIcon} />
                 <View style={styles.moreRowText}>
                   <Text style={styles.moreTitle}>Identity</Text>
@@ -499,8 +517,8 @@ export function MoreMenu({ onLogout }: { onLogout: () => void }) {
                   key={item.id}
                   onPress={() =>
                     item.id === "memory"
-                      ? navigation.navigate("MemoryHome")
-                      : navigation.navigate("Operation", { area: item.id })
+                      ? openWorkspace({ name: "MemoryHome" })
+                      : openWorkspace({ name: "Operation", params: { area: item.id } })
                   }
                   style={styles.moreRow}
                 >

@@ -60,9 +60,7 @@ export const geminiLiveVoiceProvider: LiveVoiceProvider = {
   id: "gemini",
   async connect(options: LiveVoiceConnectOptions): Promise<LiveVoiceSession> {
     const config = metadata(options.metadata);
-    const socket = new WebSocket(
-      `wss://generativelanguage.googleapis.com/ws/google.ai.generativelanguage.v1beta.GenerativeService.BidiGenerateContentConstrained?access_token=${encodeURIComponent(options.credential)}`,
-    );
+    let socket: WebSocket;
     let ready = false;
     let closed = false;
     let userTranscript = "";
@@ -75,7 +73,7 @@ export const geminiLiveVoiceProvider: LiveVoiceProvider = {
     };
     const { createGeminiAudioTransport } = await import("./gemini-audio");
     const audio = await createGeminiAudioTransport((base64Pcm) => {
-      if (!ready || socket.readyState !== WebSocket.OPEN) return;
+      if (!socket || !ready || socket.readyState !== WebSocket.OPEN) return;
       socket.send(
         JSON.stringify({
           realtimeInput: {
@@ -84,6 +82,9 @@ export const geminiLiveVoiceProvider: LiveVoiceProvider = {
         }),
       );
     });
+    socket = new WebSocket(
+      `wss://generativelanguage.googleapis.com/ws/google.ai.generativelanguage.v1beta.GenerativeService.BidiGenerateContentConstrained?access_token=${encodeURIComponent(options.credential)}`,
+    );
 
     socket.onopen = () => {
       socket.send(

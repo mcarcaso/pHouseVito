@@ -10,7 +10,7 @@
  */
 
 import type { Context } from "../../../context/Context.js";
-import { xMessageStore } from "../../../lib/x.js";
+import { xMessageStore, xPushNotificationService } from "../../../lib/x.js";
 import type { MsgType } from "../../../stores/messages/MessageStore.js";
 import { ProxyPiRuntime } from "./ProxyPiRuntime.js";
 import type { PiRuntime, PiRuntimeCallbacks } from "./PiRuntime.js";
@@ -36,6 +36,7 @@ export class PersistencePiRuntime extends ProxyPiRuntime {
   private readonly userTimestamp: number;
   private readonly author: string | null;
   private assistantMessageIds: number[] = [];
+  private assistantContent = new Map<number, string>();
 
   constructor(delegate: PiRuntime, opts: PersistenceOptions) {
     super(delegate);
@@ -73,6 +74,7 @@ export class PersistencePiRuntime extends ProxyPiRuntime {
     signal?: AbortSignal,
   ): Promise<void> {
     this.assistantMessageIds = [];
+    this.assistantContent.clear();
 
     // Store user message before delegating (with author)
     this.insertMsg("user", this.userContent, this.userTimestamp, this.author);
@@ -84,6 +86,7 @@ export class PersistencePiRuntime extends ProxyPiRuntime {
         if (event.kind === "assistant" && event.content) {
           const msgId = this.insertMsg("thought", event.content);
           this.assistantMessageIds.push(msgId);
+          this.assistantContent.set(msgId, event.content);
         } else if (event.kind === "error") {
           this.insertMsg("assistant", `⚠️ ${event.message}`);
         }
@@ -123,6 +126,15 @@ export class PersistencePiRuntime extends ProxyPiRuntime {
         id: lastId,
         changes: { type: "assistant" },
       });
+      const content = this.assistantContent.get(lastId);
+      if (content) {
+        xPushNotificationService(this.x).enqueueForMessage(this.x, {
+          messageId: lastId,
+          sessionId: this.sessionId,
+          channel: this.channel,
+          content,
+        });
+      }
     }
   }
 }

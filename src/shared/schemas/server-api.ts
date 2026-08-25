@@ -16,6 +16,12 @@ export const serverStatusResponseSchema = z.object({
     external: z.number(),
     arrayBuffers: z.number(),
   }),
+  system: z.object({
+    cpuUsage: z.number().min(0).max(100),
+    memoryTotal: z.number().nonnegative(),
+    memoryUsed: z.number().nonnegative(),
+    memoryFree: z.number().nonnegative(),
+  }),
 });
 
 export const serverRestartResponseSchema = z.object({

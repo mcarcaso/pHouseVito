@@ -59,10 +59,10 @@ export class DefaultVoiceService implements VoiceService {
       openai: Boolean(xSecretService(x).get(x, "OPENAI_API_KEY")),
       gemini: Boolean(xSecretService(x).get(x, "GOOGLE_GENERATIVE_AI_API_KEY")),
     };
-    const provider = providers.openai
-      ? ("openai" as const)
-      : providers.gemini
-        ? ("gemini" as const)
+    const provider = providers.gemini
+      ? ("gemini" as const)
+      : providers.openai
+        ? ("openai" as const)
         : null;
     return {
       available: provider !== null,

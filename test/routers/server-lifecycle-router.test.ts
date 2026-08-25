@@ -19,6 +19,12 @@ const memoryUsage: NodeJS.MemoryUsage = {
   external: 4,
   arrayBuffers: 5,
 };
+const system = {
+  cpuUsage: 42,
+  memoryTotal: 1_000,
+  memoryUsed: 600,
+  memoryFree: 400,
+};
 
 class TestServerLifecycleService implements ServerLifecycleService {
   restartRequests: ServerRestartRequest[] = [];
@@ -28,7 +34,7 @@ class TestServerLifecycleService implements ServerLifecycleService {
   }
 
   getStatus(_x: Context): ServerStatus {
-    return { uptime: 12, pid: 34, nodeVersion: "v22.test", memoryUsage };
+    return { uptime: 12, pid: 34, nodeVersion: "v22.test", memoryUsage, system };
   }
 
   requestRestart(_x: Context, request: ServerRestartRequest): void {
@@ -75,6 +81,7 @@ describe("server lifecycle router", () => {
       pid: 34,
       nodeVersion: "v22.test",
       memoryUsage,
+      system,
     });
   });
 

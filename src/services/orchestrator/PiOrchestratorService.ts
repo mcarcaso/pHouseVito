@@ -391,6 +391,7 @@ export class PiOrchestratorService implements OrchestratorService {
           attachments: event.attachments.map((a) => ({
             type: a.type,
             path: a.path,
+            url: a.url,
             filename: a.filename,
             mimeType: a.mimeType,
           })),
@@ -662,7 +663,7 @@ export class PiOrchestratorService implements OrchestratorService {
   // ────────────────────────────────────────────────────────────────────────
 
   private async handleStopCommand(event: InboundEvent, channel: ChannelService): Promise<void> {
-    const sessionKey = `${event.channel}:${event.target}`;
+    const sessionKey = event.sessionKey;
     const handler = channel.createOutputHandler(this.x, event);
 
     const queue = this.sessionQueues.get(sessionKey);

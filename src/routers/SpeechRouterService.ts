@@ -6,7 +6,7 @@ import { xSecretService } from "../lib/x.js";
 import type { RouterService } from "./RouterService.js";
 import { emptyRouteSchema, registerRoute, unknownRouteSchema } from "./register-route.js";
 
-const providerSchema = z.enum(["openai", "elevenlabs", "openrouter"]);
+const providerSchema = z.enum(["gemini", "openai", "elevenlabs", "openrouter"]);
 const commonVoices = [
   "alloy",
   "ash",
@@ -19,6 +19,38 @@ const commonVoices = [
   "sage",
   "shimmer",
   "verse",
+];
+const geminiVoices = [
+  "Zephyr",
+  "Puck",
+  "Charon",
+  "Kore",
+  "Fenrir",
+  "Leda",
+  "Orus",
+  "Aoede",
+  "Callirrhoe",
+  "Autonoe",
+  "Enceladus",
+  "Iapetus",
+  "Umbriel",
+  "Algieba",
+  "Despina",
+  "Erinome",
+  "Algenib",
+  "Rasalgethi",
+  "Laomedeia",
+  "Achernar",
+  "Alnilam",
+  "Schedar",
+  "Gacrux",
+  "Pulcherrima",
+  "Achird",
+  "Zubenelgenubi",
+  "Vindemiatrix",
+  "Sadachbia",
+  "Sadaltager",
+  "Sulafat",
 ];
 const voiceSchema = z.object({ id: z.string(), name: z.string() });
 const speechModelSchema = z.object({
@@ -42,6 +74,54 @@ async function ensureResponse(response: Response, provider: string): Promise<Res
   throw new Error(`${provider} speech request failed (${response.status}): ${detail}`);
 }
 
+function pcmToWav(pcm: Buffer, sampleRate: number, channels: number): Buffer {
+  const header = Buffer.alloc(44);
+  const byteRate = sampleRate * channels * 2;
+  header.write("RIFF", 0);
+  header.writeUInt32LE(36 + pcm.length, 4);
+  header.write("WAVE", 8);
+  header.write("fmt ", 12);
+  header.writeUInt32LE(16, 16);
+  header.writeUInt16LE(1, 20);
+  header.writeUInt16LE(channels, 22);
+  header.writeUInt32LE(sampleRate, 24);
+  header.writeUInt32LE(byteRate, 28);
+  header.writeUInt16LE(channels * 2, 32);
+  header.writeUInt16LE(16, 34);
+  header.write("data", 36);
+  header.writeUInt32LE(pcm.length, 40);
+  return Buffer.concat([header, pcm]);
+}
+
+function geminiAudio(body: unknown): { data: string; sampleRate: number; channels: number } {
+  if (!body || typeof body !== "object" || !("steps" in body))
+    throw new Error("Gemini speech response did not contain audio");
+  const steps = (body as { steps?: unknown }).steps;
+  if (!Array.isArray(steps)) throw new Error("Gemini speech response did not contain audio");
+  for (const step of steps) {
+    if (!step || typeof step !== "object" || !("content" in step)) continue;
+    const content = (step as { content?: unknown }).content;
+    if (!Array.isArray(content)) continue;
+    for (const item of content) {
+      if (!item || typeof item !== "object") continue;
+      const audio = item as {
+        type?: unknown;
+        data?: unknown;
+        sample_rate?: unknown;
+        channels?: unknown;
+      };
+      if (audio.type === "audio" && typeof audio.data === "string") {
+        return {
+          data: audio.data,
+          sampleRate: typeof audio.sample_rate === "number" ? audio.sample_rate : 24_000,
+          channels: typeof audio.channels === "number" ? audio.channels : 1,
+        };
+      }
+    }
+  }
+  throw new Error("Gemini speech response did not contain audio");
+}
+
 export class SpeechRouterService implements RouterService {
   async createRouter(x: Context): Promise<Router> {
     const router = express.Router();
@@ -63,17 +143,20 @@ export class SpeechRouterService implements RouterService {
       handler: async (routeX, { data: { query } }) => {
         const secrets = xSecretService(routeX);
         const keyName =
-          query.provider === "openai"
-            ? "OPENAI_API_KEY"
-            : query.provider === "elevenlabs"
-              ? "ELEVEN_LABS_API_KEY"
-              : "OPENROUTER_API_KEY";
+          query.provider === "gemini"
+            ? "GOOGLE_GENERATIVE_AI_API_KEY"
+            : query.provider === "openai"
+              ? "OPENAI_API_KEY"
+              : query.provider === "elevenlabs"
+                ? "ELEVEN_LABS_API_KEY"
+                : "OPENROUTER_API_KEY";
         const key = secrets.get(routeX, keyName);
         if (!key) return { configured: false, voices: [], models: [] };
-        if (query.provider === "openai") {
+        if (query.provider === "openai" || query.provider === "gemini") {
+          const availableVoices = query.provider === "gemini" ? geminiVoices : commonVoices;
           return {
             configured: true,
-            voices: commonVoices.map((voice) => ({
+            voices: availableVoices.map((voice) => ({
               id: voice,
               name: voice[0].toUpperCase() + voice.slice(1),
             })),
@@ -142,9 +225,36 @@ export class SpeechRouterService implements RouterService {
           model: z.string().min(1).max(200).optional(),
         }),
       },
-      responseSchema: z.object({ data: z.string(), mimeType: z.literal("audio/mpeg") }),
+      responseSchema: z.object({
+        data: z.string(),
+        mimeType: z.enum(["audio/mpeg", "audio/wav"]),
+      }),
       handler: async (routeX, { data: { body } }) => {
         const secrets = xSecretService(routeX);
+        if (body.provider === "gemini") {
+          const key = secrets.get(routeX, "GOOGLE_GENERATIVE_AI_API_KEY");
+          if (!key) throw new Error("Google AI API key is not configured");
+          const response = await ensureResponse(
+            await fetch("https://generativelanguage.googleapis.com/v1beta/interactions", {
+              method: "POST",
+              headers: {
+                "Content-Type": "application/json",
+                "x-goog-api-key": key,
+                "Api-Revision": "2026-05-20",
+              },
+              body: JSON.stringify({
+                model: body.model || "gemini-3.1-flash-tts-preview",
+                input: `Read the following text exactly. Speak with a natural, understated New York wiseguy cadence and Italian-American energy. Keep it confident, subtle, and believable rather than exaggerated or cartoonish.\n\n${body.text}`,
+                response_format: { type: "audio" },
+                generation_config: { speech_config: [{ voice: body.voice }] },
+              }),
+            }),
+            "Gemini",
+          );
+          const audio = geminiAudio(await response.json());
+          const wav = pcmToWav(Buffer.from(audio.data, "base64"), audio.sampleRate, audio.channels);
+          return { data: wav.toString("base64"), mimeType: "audio/wav" as const };
+        }
         let response: Response;
         if (body.provider === "elevenlabs") {
           const key = secrets.get(routeX, "ELEVEN_LABS_API_KEY");
@@ -178,6 +288,8 @@ export class SpeechRouterService implements RouterService {
                   (openRouter ? "openai/gpt-4o-mini-tts-2025-12-15" : "gpt-4o-mini-tts"),
                 input: body.text,
                 voice: body.voice,
+                instructions:
+                  "Speak with a natural, understated New York wiseguy cadence and Italian-American mobster energy. Keep it believable, confident, and subtle rather than exaggerated or cartoonish.",
                 response_format: "mp3",
               }),
             },

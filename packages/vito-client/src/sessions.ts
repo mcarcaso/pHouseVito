@@ -8,6 +8,7 @@ export const sessionSchema = z.object({
   channel_target: z.string().optional(),
   last_active_at: z.number(),
   alias: z.string().nullable().optional(),
+  last_message: z.string().nullable().optional(),
   created_at: z.number().optional(),
 });
 export const messageSchema = z.object({

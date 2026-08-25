@@ -8,6 +8,7 @@ export interface SessionRow {
   last_active_at: number;
   config: string;
   alias: string | null;
+  last_message?: string | null;
 }
 
 export interface SessionFilter {
@@ -22,7 +23,7 @@ export interface SessionListArgs extends SessionFilter {
   limit?: number;
 }
 
-export type CreateSessionArgs = SessionRow;
+export type CreateSessionArgs = Omit<SessionRow, "last_message">;
 
 export interface UpdateSessionArgs {
   id: string;

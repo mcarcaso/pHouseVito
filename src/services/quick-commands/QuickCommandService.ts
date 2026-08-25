@@ -13,5 +13,4 @@ export interface QuickCommandService {
     },
   ): QuickCommandRow;
   get(x: Context, id: string): QuickCommandRow | null;
-  registerPushDevice(x: Context, input: { token: string; platform: string }): void;
 }

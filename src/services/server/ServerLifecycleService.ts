@@ -10,6 +10,12 @@ export interface ServerStatus {
   pid: number;
   nodeVersion: string;
   memoryUsage: NodeJS.MemoryUsage;
+  system: {
+    cpuUsage: number;
+    memoryTotal: number;
+    memoryUsed: number;
+    memoryFree: number;
+  };
 }
 
 export interface ServerRestartRequest {

@@ -61,7 +61,18 @@ export class SqliteSessionStore implements SessionStore {
 
     return xDb(x)
       .prepare(
-        `SELECT * FROM sessions${filter.clause} ORDER BY last_active_at ${order}${limitClause}`,
+        `SELECT sessions.*,
+                (
+                  SELECT messages.content
+                  FROM messages
+                  WHERE messages.session_id = sessions.id
+                    AND messages.archived = 0
+                    AND messages.type IN ('user', 'assistant')
+                  ORDER BY messages.id DESC
+                  LIMIT 1
+                ) AS last_message
+         FROM sessions${filter.clause}
+         ORDER BY last_active_at ${order}${limitClause}`,
       )
       .all(...params) as SessionRow[];
   }

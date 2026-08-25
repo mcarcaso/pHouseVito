@@ -28,6 +28,7 @@ const dashboardDependencyKeys = [
   "vitoService",
   "voiceService",
   "quickCommandService",
+  "pushNotificationService",
   "orchestratorService",
   "appProcessService",
   "dashboardAuthService",
@@ -45,6 +46,8 @@ const dashboardDependencyKeys = [
   "messageStore",
   "voiceTaskStore",
   "quickCommandStore",
+  "pushNotificationStore",
+  "appPreferenceStore",
   "traceStore",
   "traceEventStore",
 ] as const;

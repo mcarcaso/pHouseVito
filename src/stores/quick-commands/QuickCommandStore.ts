@@ -11,11 +11,6 @@ export interface QuickCommandRow {
   created_at: number;
   updated_at: number;
 }
-export interface PushDeviceRow {
-  token: string;
-  platform: string;
-  updated_at: number;
-}
 export interface QuickCommandStore {
   create(x: Context, row: QuickCommandRow): QuickCommandRow;
   get(x: Context, id: string): QuickCommandRow | null;
@@ -26,6 +21,4 @@ export interface QuickCommandStore {
       Pick<QuickCommandRow, "status" | "transcript" | "result" | "error" | "updated_at">
     >,
   ): QuickCommandRow;
-  upsertPushDevice(x: Context, row: PushDeviceRow): void;
-  listPushDevices(x: Context): PushDeviceRow[];
 }

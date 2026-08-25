@@ -8,6 +8,7 @@ import {
   xCronService,
   xEmbeddingDb,
   xOrchestratorService,
+  xPushNotificationService,
   xSecretService,
   xVitoService,
 } from "./lib/x.js";
@@ -67,6 +68,12 @@ async function main() {
   await orchestrator.start(x);
 
   console.log("\nVito is ready. Dashboard at http://localhost:3030\n");
+
+  void xPushNotificationService(x)
+    .notifyServerStarted(x)
+    .catch((error: unknown) =>
+      console.error("[Push] Failed to send server-start notification:", error),
+    );
 
   // Heartbeat log every 30 minutes
   setInterval(

@@ -39,4 +39,15 @@ describe("speech router", () => {
     assert.equal(body.configured, true);
     assert.ok(body.voices.some((voice) => voice.id === "alloy" && voice.name === "Alloy"));
   });
+
+  it("lists Gemini TTS voices", async () => {
+    const response = await fetch(`${baseUrl}/api/speech/voices?provider=gemini`);
+    assert.equal(response.status, 200);
+    const body = (await response.json()) as {
+      configured: boolean;
+      voices: Array<{ id: string; name: string }>;
+    };
+    assert.equal(body.configured, true);
+    assert.ok(body.voices.some((voice) => voice.id === "Enceladus"));
+  });
 });

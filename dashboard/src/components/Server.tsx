@@ -19,6 +19,10 @@ function formatBytes(bytes: number): string {
   return `${mb.toFixed(1)} MB`;
 }
 
+function formatSystemMemory(bytes: number): string {
+  return `${(bytes / (1024 * 1024 * 1024)).toFixed(1)} GB`;
+}
+
 export default function Server() {
   const statusQuery = useServerStatus();
   const restartServer = useRestartServer();
@@ -69,7 +73,20 @@ export default function Server() {
                 <span className="text-sm text-neutral-300 font-mono">{status.nodeVersion}</span>
               </div>
               <div className="flex justify-between items-center">
-                <span className="text-sm text-neutral-500">Memory (RSS)</span>
+                <span className="text-sm text-neutral-500">System CPU</span>
+                <span className="text-sm text-neutral-300 font-mono">
+                  {status.system.cpuUsage.toFixed(1)}%
+                </span>
+              </div>
+              <div className="flex justify-between items-center">
+                <span className="text-sm text-neutral-500">System RAM</span>
+                <span className="text-sm text-neutral-300 font-mono">
+                  {formatSystemMemory(status.system.memoryUsed)} /{" "}
+                  {formatSystemMemory(status.system.memoryTotal)}
+                </span>
+              </div>
+              <div className="flex justify-between items-center">
+                <span className="text-sm text-neutral-500">Process Memory (RSS)</span>
                 <span className="text-sm text-neutral-300 font-mono">
                   {formatBytes(status.memoryUsage.rss)}
                 </span>

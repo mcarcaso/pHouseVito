@@ -33,12 +33,3 @@ test("quick command store persists lifecycle updates", () => {
   assert.equal(store.get(x, row.id)?.result, "done");
   db.close();
 });
-
-test("push device registration is idempotent", () => {
-  const { db, x, store } = setup();
-  store.upsertPushDevice(x, { token: "ExponentPushToken[test]", platform: "ios", updated_at: 1 });
-  store.upsertPushDevice(x, { token: "ExponentPushToken[test]", platform: "ios", updated_at: 2 });
-  assert.equal(store.listPushDevices(x).length, 1);
-  assert.equal(store.listPushDevices(x)[0]?.updated_at, 2);
-  db.close();
-});

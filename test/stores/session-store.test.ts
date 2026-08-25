@@ -63,6 +63,26 @@ describe("SqliteSessionStore", () => {
     }
   });
 
+  it("includes the latest visible chat message in session summaries", () => {
+    const { db, x, store } = createHarness();
+    try {
+      store.create(x, session("a"));
+      const insertMessage = db.prepare(
+        `INSERT INTO messages
+           (session_id, channel, channel_target, timestamp, type, content, archived, author)
+         VALUES (?, 'dashboard', 'a', ?, ?, ?, ?, NULL)`,
+      );
+      insertMessage.run("a", 1, "user", "First message", 0);
+      insertMessage.run("a", 2, "thought", "Internal thought", 0);
+      insertMessage.run("a", 3, "assistant", "Latest reply", 0);
+      insertMessage.run("a", 4, "user", "Archived message", 1);
+
+      assert.equal(store.list(x, { ids: ["a"] })[0]?.last_message, "Latest reply");
+    } finally {
+      db.close();
+    }
+  });
+
   it("updates mutable fields and returns the updated record", () => {
     const { db, x, store } = createHarness();
     try {

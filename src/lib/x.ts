@@ -31,6 +31,9 @@ import type { TraceStore } from "../stores/traces/TraceStore.js";
 import type { VoiceTaskStore } from "../stores/voice/VoiceTaskStore.js";
 import type { QuickCommandStore } from "../stores/quick-commands/QuickCommandStore.js";
 import type { QuickCommandService } from "../services/quick-commands/QuickCommandService.js";
+import type { PushNotificationService } from "../services/push-notifications/PushNotificationService.js";
+import type { PushNotificationStore } from "../stores/push-notifications/PushNotificationStore.js";
+import type { AppPreferenceStore } from "../stores/app-preferences/AppPreferenceStore.js";
 
 // Context accessors are the intentional casting boundary for opaque scopes.
 export const xDashboardUser = (x: Context): DashboardUser =>
@@ -61,6 +64,8 @@ export const xVitoService = (x: Context): VitoService => x.get("vitoService") as
 export const xVoiceService = (x: Context): VoiceService => x.get("voiceService") as VoiceService;
 export const xQuickCommandService = (x: Context): QuickCommandService =>
   x.get("quickCommandService") as QuickCommandService;
+export const xPushNotificationService = (x: Context): PushNotificationService =>
+  x.get("pushNotificationService") as PushNotificationService;
 export const xAppProcessService = (x: Context): AppProcessService =>
   x.get("appProcessService") as AppProcessService;
 export const xAskApiService = (x: Context): AskApiService =>
@@ -96,6 +101,10 @@ export const xVoiceTaskStore = (x: Context): VoiceTaskStore =>
   x.get("voiceTaskStore") as VoiceTaskStore;
 export const xQuickCommandStore = (x: Context): QuickCommandStore =>
   x.get("quickCommandStore") as QuickCommandStore;
+export const xPushNotificationStore = (x: Context): PushNotificationStore =>
+  x.get("pushNotificationStore") as PushNotificationStore;
+export const xAppPreferenceStore = (x: Context): AppPreferenceStore =>
+  x.get("appPreferenceStore") as AppPreferenceStore;
 export const xTraceStore = (x: Context): TraceStore => x.get("traceStore") as TraceStore;
 export const xTraceEventStore = (x: Context): TraceEventStore =>
   x.get("traceEventStore") as TraceEventStore;

@@ -60,6 +60,8 @@ const SYSTEM_KEYS: Record<string, string> = {
   DASHBOARD_PASSWORD_HASH: "Dashboard password hash (managed automatically — do not edit manually)",
   BLAND_WEBHOOK_SECRET: "Bland AI webhook secret — add as ?secret=VALUE to your Bland webhook URL",
   ELEVEN_LABS_API_KEY: "ElevenLabs API key — https://elevenlabs.io/app/settings/api-keys",
+  PHOUSE_VITO_PUSH_KEY:
+    "pHouseVitoPush account key — used to register devices and send notifications through the shared gateway",
   ...Object.fromEntries(
     Object.values(PROVIDER_API_KEYS).map((provider) => [provider.envVar, provider.description]),
   ),

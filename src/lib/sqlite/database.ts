@@ -77,6 +77,30 @@ export function createDatabase(dbPath: string): Database.Database {
       platform TEXT NOT NULL,
       updated_at INTEGER NOT NULL
     );
+
+    CREATE TABLE IF NOT EXISTS app_preferences (
+      owner_id TEXT PRIMARY KEY,
+      preferences TEXT NOT NULL,
+      updated_at INTEGER NOT NULL
+    );
+
+    CREATE TABLE IF NOT EXISTS push_notification_outbox (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      message_id INTEGER NOT NULL,
+      device_token TEXT NOT NULL,
+      title TEXT NOT NULL,
+      body TEXT NOT NULL,
+      data TEXT NOT NULL,
+      status TEXT NOT NULL CHECK(status IN ('queued','sending','sent','failed')),
+      attempts INTEGER NOT NULL DEFAULT 0,
+      receipt_id TEXT,
+      error TEXT,
+      created_at INTEGER NOT NULL,
+      updated_at INTEGER NOT NULL,
+      UNIQUE(message_id, device_token),
+      FOREIGN KEY(message_id) REFERENCES messages(id)
+    );
+    CREATE INDEX IF NOT EXISTS idx_push_notification_outbox_pending ON push_notification_outbox(status, created_at);
   `);
 
   // Migrations for existing databases
@@ -205,6 +229,11 @@ export function createDatabase(dbPath: string): Database.Database {
   if (!msgColsForAuthor.some((c) => c.name === "author")) {
     db.exec("ALTER TABLE messages ADD COLUMN author TEXT DEFAULT NULL");
   }
+
+  // Supports session-list previews without scanning every unarchived message per session.
+  db.exec(
+    "CREATE INDEX IF NOT EXISTS idx_messages_session_archived_id ON messages(session_id, archived, id DESC)",
+  );
 
   return db;
 }

@@ -43,10 +43,6 @@ export class DefaultQuickCommandService implements QuickCommandService {
   get(x: Context, id: string): QuickCommandRow | null {
     return xQuickCommandStore(x).get(x, id);
   }
-  registerPushDevice(x: Context, input: { token: string; platform: string }): void {
-    xQuickCommandStore(x).upsertPushDevice(x, { ...input, updated_at: Date.now() });
-  }
-
   private async process(
     x: Context,
     input: {
@@ -89,7 +85,6 @@ export class DefaultQuickCommandService implements QuickCommandService {
         xSessionStore(x).update(x, { id: session, changes: { alias } });
       }
     }
-    await this.sendPush(x, input.id, session, transcript, result);
   }
 
   private async transcribe(x: Context, audioBase64: string, mimeType: string): Promise<string> {
@@ -167,30 +162,5 @@ export class DefaultQuickCommandService implements QuickCommandService {
   private async transcriptionText(response: Response): Promise<string> {
     const body = (await response.json()) as { text?: unknown };
     return typeof body.text === "string" ? body.text : "";
-  }
-
-  private async sendPush(
-    x: Context,
-    id: string,
-    session: string,
-    transcript: string,
-    result: string,
-  ): Promise<void> {
-    const devices = xQuickCommandStore(x).listPushDevices(x);
-    if (!devices.length) return;
-    const messages = devices.map((device) => ({
-      to: device.token,
-      sound: "default",
-      title: "Vito finished your command",
-      body: result.slice(0, 180),
-      data: { type: "quick-command", id, sessionId: session, transcript },
-    }));
-    const response = await fetch("https://exp.host/--/api/v2/push/send", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(messages),
-    });
-    if (!response.ok)
-      console.error(`[QuickCommand] Push delivery request failed (${response.status})`);
   }
 }

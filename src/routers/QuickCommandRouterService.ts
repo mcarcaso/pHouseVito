@@ -59,25 +59,6 @@ export class QuickCommandRouterService implements RouterService {
       handler: (routeX, { data: { params } }) =>
         xQuickCommandService(routeX).get(routeX, params.id),
     });
-    registerRoute(x, {
-      router,
-      method: "POST",
-      path: "/devices",
-      auth: "dashboard",
-      schemas: {
-        params: emptyRouteSchema,
-        query: emptyRouteSchema,
-        body: z.object({
-          token: z.string().startsWith("ExponentPushToken[").max(300),
-          platform: z.enum(["ios", "android"]),
-        }),
-      },
-      responseSchema: z.object({ ok: z.literal(true) }),
-      handler: (routeX, { data: { body } }) => {
-        xQuickCommandService(routeX).registerPushDevice(routeX, body);
-        return { ok: true as const };
-      },
-    });
     return router;
   }
 }

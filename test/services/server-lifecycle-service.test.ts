@@ -18,6 +18,7 @@ function waitForBackgroundWork(): Promise<void> {
 describe("DefaultServerLifecycleService", () => {
   it("reports deterministic health and runtime status", () => {
     const x = new ObjectContext({});
+    let cpuSample = 0;
     const service = new DefaultServerLifecycleService({
       now: () => new Date("2026-01-02T03:04:05.000Z"),
       runtime: {
@@ -25,6 +26,20 @@ describe("DefaultServerLifecycleService", () => {
         pid: 456,
         version: "v22.test",
         memoryUsage: () => memoryUsage,
+      },
+      system: {
+        cpus: () => {
+          const sample = cpuSample++;
+          return [
+            {
+              model: "test",
+              speed: 1,
+              times: { user: 100 + sample * 90, nice: 0, sys: 0, idle: 100 + sample * 10, irq: 0 },
+            },
+          ];
+        },
+        totalmem: () => 1_000,
+        freemem: () => 400,
       },
     });
 
@@ -37,6 +52,12 @@ describe("DefaultServerLifecycleService", () => {
       pid: 456,
       nodeVersion: "v22.test",
       memoryUsage,
+      system: {
+        cpuUsage: 90,
+        memoryTotal: 1_000,
+        memoryUsed: 600,
+        memoryFree: 400,
+      },
     });
   });
 

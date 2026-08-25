@@ -19,6 +19,7 @@ import { DefaultServerLifecycleService } from "../services/server/DefaultServerL
 import { FileVitoService } from "../services/vito/FileVitoService.js";
 import { DefaultVoiceService } from "../services/voice/DefaultVoiceService.js";
 import { DefaultQuickCommandService } from "../services/quick-commands/DefaultQuickCommandService.js";
+import { DefaultPushNotificationService } from "../services/push-notifications/DefaultPushNotificationService.js";
 import { FileAppStore } from "../stores/apps/FileAppStore.js";
 import { FileAttachmentStore } from "../stores/attachments/FileAttachmentStore.js";
 import { FileDriveStore } from "../stores/drive/FileDriveStore.js";
@@ -32,6 +33,8 @@ import { FileTraceEventStore } from "../stores/traces/FileTraceEventStore.js";
 import { FileTraceStore } from "../stores/traces/FileTraceStore.js";
 import { SqliteVoiceTaskStore } from "../stores/voice/SqliteVoiceTaskStore.js";
 import { SqliteQuickCommandStore } from "../stores/quick-commands/SqliteQuickCommandStore.js";
+import { SqlitePushNotificationStore } from "../stores/push-notifications/SqlitePushNotificationStore.js";
+import { SqliteAppPreferenceStore } from "../stores/app-preferences/SqliteAppPreferenceStore.js";
 import { xAskApiService } from "../lib/x.js";
 import { ObjectContext } from "./ObjectContext.js";
 import type { Context } from "./Context.js";
@@ -68,6 +71,7 @@ export function RootContext(args: RootContextArgs): Context {
     vitoService: () => new FileVitoService(),
     voiceService: (x) => new DefaultVoiceService(xAskApiService(x)),
     quickCommandService: (x) => new DefaultQuickCommandService(xAskApiService(x)),
+    pushNotificationService: () => new DefaultPushNotificationService(),
     fileService: () => new FileSystemFileService(),
     inboundAttachmentService: () => new DriveInboundAttachmentService(),
     appProcessService: () => new Pm2AppProcessService(),
@@ -94,6 +98,8 @@ export function RootContext(args: RootContextArgs): Context {
     messageStore: () => new SqliteMessageStore(),
     voiceTaskStore: () => new SqliteVoiceTaskStore(),
     quickCommandStore: () => new SqliteQuickCommandStore(),
+    pushNotificationStore: () => new SqlitePushNotificationStore(),
+    appPreferenceStore: () => new SqliteAppPreferenceStore(),
     traceStore: () => new FileTraceStore(),
     traceEventStore: () => new FileTraceEventStore(),
   });

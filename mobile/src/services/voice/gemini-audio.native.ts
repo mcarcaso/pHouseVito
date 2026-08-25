@@ -31,7 +31,8 @@ export async function createGeminiAudioTransport(
   await context.resume();
   const queue = context.createBufferQueueSource();
   queue.connect(context.destination);
-  queue.start();
+  // react-native-audio-api currently defaults queue offsets to -1, then rejects its own default.
+  queue.start(0, 0);
 
   const recorder = new AudioRecorder();
   const callback = recorder.onAudioReady(

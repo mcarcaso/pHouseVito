@@ -6,11 +6,13 @@ import App from "./App";
 import "./index.css";
 
 const queryClient = createVitoQueryClient();
+const routerBaseName =
+  import.meta.env.BASE_URL === "/" ? undefined : import.meta.env.BASE_URL.replace(/\/$/, "");
 
 ReactDOM.createRoot(document.getElementById("root")!).render(
   <React.StrictMode>
     <VitoClientProvider options={{}} queryClient={queryClient}>
-      <BrowserRouter>
+      <BrowserRouter basename={routerBaseName}>
         <App />
       </BrowserRouter>
     </VitoClientProvider>

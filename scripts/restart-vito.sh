@@ -10,11 +10,17 @@ npm ci --include=dev
 echo "[Vito] Synchronizing dashboard dependencies..."
 npm --prefix dashboard ci --include=dev
 
+echo "[Vito] Synchronizing mobile dependencies..."
+npm --prefix mobile ci --include=dev
+
 echo "[Vito] Building backend..."
 npm run build
 
-echo "[Vito] Building dashboard..."
+echo "[Vito] Building legacy dashboard..."
 npm run build:dashboard
+
+echo "[Vito] Building Rook web..."
+npm run build:mobile:web
 
 echo "[Vito] Restarting PM2 service..."
 pm2 restart vito-server

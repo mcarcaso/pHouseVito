@@ -37,6 +37,8 @@ import { VoiceRouterService } from "../../../routers/VoiceRouterService.js";
 import { QuickCommandRouterService } from "../../../routers/QuickCommandRouterService.js";
 import { RunRouterService } from "../../../routers/RunRouterService.js";
 import { SpeechRouterService } from "../../../routers/SpeechRouterService.js";
+import { PushNotificationRouterService } from "../../../routers/PushNotificationRouterService.js";
+import { AppPreferenceRouterService } from "../../../routers/AppPreferenceRouterService.js";
 import express from "express";
 import http from "node:http";
 const createServer = http.createServer.bind(http);
@@ -98,7 +100,18 @@ export class DashboardChannelService implements ChannelService {
     // Must precede body parsing so request bodies can stream to app processes.
     app.use(createAppProxyMiddleware(x));
 
-    app.use(express.static(path.join(__dirname, "../../../../dashboard/dist")));
+    const legacyDashboardDist = path.join(__dirname, "../../../../dashboard/dist");
+    const rookWebDist = path.join(__dirname, "../../../../mobile/dist");
+
+    // Keep the retired dashboard available during Rook's burn-in period.
+    app.use("/legacy", express.static(legacyDashboardDist));
+    app.get(/^\/legacy(?:\/.*)?$/, (_req, res) => {
+      res.sendFile(path.join(legacyDashboardDist, "index.html"));
+    });
+
+    // Rook is the default web client. API and Drive requests fall through when
+    // there is no matching static asset.
+    app.use(express.static(rookWebDist));
 
     // Public drive files and hosted sites are resolved through DriveStore.
     app.use("/d", await new PublicDriveRouterService().createRouter(x));
@@ -138,6 +151,8 @@ export class DashboardChannelService implements ChannelService {
     app.use("/api/voice", await new VoiceRouterService().createRouter(x));
     app.use("/api/speech", await new SpeechRouterService().createRouter(x));
     app.use("/api/quick-commands", await new QuickCommandRouterService().createRouter(x));
+    app.use("/api/push", await new PushNotificationRouterService().createRouter(x));
+    app.use("/api/app-preferences", await new AppPreferenceRouterService().createRouter(x));
     app.use("/api/runs", await new RunRouterService().createRouter(x));
 
     app.use("/api/apps", await new AppRouterService().createRouter(x));
@@ -148,9 +163,9 @@ export class DashboardChannelService implements ChannelService {
 
     app.use("/api/pi-sessions", await new PiSessionRouterService().createRouter(x));
 
-    // Serve the React app for all other routes
-    app.use((req, res) => {
-      res.sendFile(path.join(__dirname, "../../../../dashboard/dist/index.html"));
+    // Serve Rook for client-side routes and browser refreshes.
+    app.use((_req, res) => {
+      res.sendFile(path.join(rookWebDist, "index.html"));
     });
   }
 

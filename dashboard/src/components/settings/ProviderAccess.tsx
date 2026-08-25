@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { Link } from "react-router-dom";
 import {
   useProviderLoginStatus,
   useProviderLogout,
@@ -88,9 +89,9 @@ export default function ProviderAccess() {
             API keys are managed in Secrets. Subscription authentication can be managed here.
           </p>
         </div>
-        <a href="/secrets" className="text-xs text-blue-400 hover:text-blue-300">
+        <Link to="/secrets" className="text-xs text-blue-400 hover:text-blue-300">
           Manage keys
-        </a>
+        </Link>
       </div>
 
       {providersQuery.isPending ? (

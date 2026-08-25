@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { Link } from "react-router-dom";
 import {
   useAutoAliasChannel,
   useRegisterChannelCommands,
@@ -95,9 +96,9 @@ export default function BotChannelConfig({
               {tokenEnvironmentVariable}
             </code>{" "}
             in{" "}
-            <a href="/secrets" className="text-blue-400 hover:underline">
+            <Link to="/secrets" className="text-blue-400 hover:underline">
               Secrets
-            </a>
+            </Link>
           </span>
         </div>
       </div>

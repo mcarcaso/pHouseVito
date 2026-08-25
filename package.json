@@ -7,7 +7,7 @@
     "vito": "./vito"
   },
   "scripts": {
-    "start": "cd dashboard && rm -rf dist && npm run build && cd .. && pm2 start user/ecosystem.config.cjs",
+    "start": "npm run build:dashboard && npm run build:mobile:web && pm2 start user/ecosystem.config.cjs",
     "stop": "pm2 stop vito-server",
     "restart": "./scripts/restart-vito.sh",
     "logs": "pm2 logs vito-server",
@@ -25,6 +25,7 @@
     "postinstall": "node scripts/patch-croner-timeout.mjs",
     "dev": "tsx watch src/index.ts",
     "build:dashboard": "cd dashboard && npm run build",
+    "build:mobile:web": "npm --prefix mobile run export:web",
     "dev:dashboard": "cd dashboard && npm run dev",
     "dev:mobile": "npm --prefix mobile run start",
     "dev:mobile:web": "npm --prefix mobile run web",

@@ -42,7 +42,8 @@ echo ">>> Installing dependencies …"
 npm ci
 ./scripts/install-runtime-deps.sh
 cd dashboard && npm ci && npm run build && cd ..
-echo ">>> Building …"
+cd mobile && npm ci && npm run export:web && cd ..
+echo ">>> Building backend …"
 npm run build
 echo ">>> Restarting Vito …"
 pm2 restart vito-server --update-env

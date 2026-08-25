@@ -17,44 +17,10 @@ import { MarkdownText } from "../../components/markdown/MarkdownText";
 import { StructuredValue } from "../../components/StructuredValue";
 import { DESKTOP_BREAKPOINT, useThemeStyles, useVitoTheme } from "../../hooks/useVitoTheme";
 import { useSpeech } from "../../contexts/speech";
-
-type MessageAttachment = {
-  type: string;
-  path: string;
-  url?: string;
-  filename?: string;
-  mimeType?: string;
-};
-type MessageBody = { text: string; attachments: MessageAttachment[] };
-
-function unpackContent(content: string): MessageBody {
-  try {
-    const parsed = JSON.parse(content) as unknown;
-    if (typeof parsed === "string") return { text: parsed, attachments: [] };
-    if (parsed && typeof parsed === "object") {
-      const envelope = parsed as { text?: unknown; attachments?: unknown };
-      if (typeof envelope.text === "string") {
-        const attachments = Array.isArray(envelope.attachments)
-          ? envelope.attachments.filter((item): item is MessageAttachment =>
-              Boolean(
-                item &&
-                typeof item === "object" &&
-                typeof (item as MessageAttachment).type === "string" &&
-                typeof (item as MessageAttachment).path === "string",
-              ),
-            )
-          : [];
-        return { text: envelope.text, attachments };
-      }
-    }
-    return { text: JSON.stringify(parsed, null, 2), attachments: [] };
-  } catch {
-    return { text: content, attachments: [] };
-  }
-}
+import { unpackMessageContent, type MessageAttachment } from "./message-content";
 
 function cleanContent(content: string): string {
-  return unpackContent(content).text;
+  return unpackMessageContent(content).text;
 }
 
 function parseJsonString(value: unknown): unknown {
@@ -278,7 +244,7 @@ export function MessageRow({ message }: { message: Message }) {
   if (message.type === "tool_start" || message.type === "tool_end")
     return <ToolMessage message={message} />;
   const user = message.type === "user";
-  const body = unpackContent(message.content);
+  const body = unpackMessageContent(message.content);
   return (
     <View style={[styles.messageRow, user && styles.userRow]}>
       <View

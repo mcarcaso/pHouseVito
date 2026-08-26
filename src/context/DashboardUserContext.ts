@@ -27,6 +27,7 @@ const dashboardDependencyKeys = [
   "attachmentsDir",
   "vitoService",
   "voiceService",
+  "askApiService",
   "quickCommandService",
   "pushNotificationService",
   "orchestratorService",

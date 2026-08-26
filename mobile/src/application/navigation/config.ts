@@ -91,7 +91,7 @@ function operationForDeepLink(
 }
 
 export const linking: LinkingOptions<RootStackParamList> = {
-  prefixes: ["rook://", "https://mikes-mac-mini-1.tail1706d3.ts.net"],
+  prefixes: ["vito://", "https://mikes-mac-mini-1.tail1706d3.ts.net"],
   getStateFromPath: (path, options) => {
     const state = getStateFromPath(path, options);
     if (!state || state.routes[0]?.name === "Main") return state;

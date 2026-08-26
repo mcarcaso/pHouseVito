@@ -7,11 +7,19 @@ import { dashboardRouterContext } from "../support/dashboard-router-context.js";
 
 let server: Server;
 let baseUrl: string;
+let suggestionPrompt = "";
 
 before(async () => {
   const app = express();
   const x = dashboardRouterContext({
     secretService: () => ({ get: () => "configured-test-key" }),
+    vitoService: () => ({ getSoul: () => "Calm, dry, understated personality." }),
+    askApiService: () => ({
+      ask: async (_x: unknown, options: { question: string }) => {
+        suggestionPrompt = options.question;
+        return '"Speak calmly with a measured cadence, understated warmth, dry humor, and natural pauses."';
+      },
+    }),
   });
   app.use("/api/speech", await new SpeechRouterService().createRouter(x));
   await new Promise<void>((resolve) => {
@@ -54,6 +62,8 @@ describe("speech router", () => {
     };
     assert.equal(body.configured, true);
     assert.ok(body.voices.some((voice) => voice.id === "alloy" && voice.name === "Alloy"));
+    assert.ok(body.voices.some((voice) => voice.id === "marin" && voice.name === "Marin"));
+    assert.ok(body.voices.some((voice) => voice.id === "cedar" && voice.name === "Cedar"));
   });
 
   it("lists Gemini TTS voices", async () => {
@@ -67,12 +77,33 @@ describe("speech router", () => {
     assert.ok(body.voices.some((voice) => voice.id === "Enceladus"));
   });
 
+  it("suggests editable delivery instructions from the current Soul", async () => {
+    suggestionPrompt = "";
+    const response = await fetch(`${baseUrl}/api/speech/suggest-instructions`, {
+      method: "POST",
+    });
+    assert.equal(response.status, 200);
+    const body = (await response.json()) as { instructions: string };
+    assert.equal(
+      body.instructions,
+      "Speak calmly with a measured cadence, understated warmth, dry humor, and natural pauses.",
+    );
+    assert.match(suggestionPrompt, /Calm, dry, understated personality/);
+    assert.match(suggestionPrompt, /one direct imperative sentence/);
+    assert.match(suggestionPrompt, /under 240 characters/);
+  });
+
   it("proxies provider PCM without buffering it into JSON", async () => {
     const expected = Uint8Array.from([1, 2, 3, 4, 5, 6]);
     await withProviderFetch(
       async (_url, init) => {
-        const request = JSON.parse(String(init?.body)) as { response_format?: string };
+        const request = JSON.parse(String(init?.body)) as {
+          response_format?: string;
+          instructions?: string;
+        };
         assert.equal(request.response_format, "pcm");
+        assert.equal(request.instructions, undefined);
+        assert.doesNotMatch(String(init?.body), /wiseguy|mobster|Italian-American/i);
         return new Response(expected, { status: 200, headers: { "Content-Type": "audio/pcm" } });
       },
       async () => {
@@ -92,8 +123,10 @@ describe("speech router", () => {
     const expected = Uint8Array.from([9, 8, 7, 6]);
     await withProviderFetch(
       async (_url, init) => {
-        const request = JSON.parse(String(init?.body)) as { stream?: boolean };
+        const request = JSON.parse(String(init?.body)) as { stream?: boolean; input?: string };
         assert.equal(request.stream, true);
+        assert.match(request.input ?? "", /Measured documentary cadence/);
+        assert.doesNotMatch(request.input ?? "", /wiseguy|mobster|Italian-American/i);
         const event = JSON.stringify({
           event_type: "step.delta",
           delta: { type: "audio", data: Buffer.from(expected).toString("base64") },
@@ -107,7 +140,12 @@ describe("speech router", () => {
         const response = await fetch(`${baseUrl}/api/speech/stream`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ provider: "gemini", voice: "Enceladus", text: "Hello" }),
+          body: JSON.stringify({
+            provider: "gemini",
+            voice: "Enceladus",
+            text: "Hello",
+            instructions: "Measured documentary cadence",
+          }),
         });
         assert.equal(response.status, 200);
         assert.deepEqual(new Uint8Array(await response.arrayBuffer()), expected);

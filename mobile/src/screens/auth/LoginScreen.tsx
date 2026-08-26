@@ -149,7 +149,7 @@ export function LoginScreen({
                   </Text>
                 </Pressable>
                 <Pressable onPress={onSuccess} style={styles.button}>
-                  <Text style={styles.buttonText}>Continue to Rook</Text>
+                  <Text style={styles.buttonText}>Continue to Vito</Text>
                 </Pressable>
               </>
             ) : (
@@ -157,7 +157,7 @@ export function LoginScreen({
                 <Text style={styles.eyebrow}>FIRST-TIME SETUP</Text>
                 <Text style={styles.title}>Secure your agent.</Text>
                 <Text style={styles.body}>
-                  Generate a strong password to protect Rook and every private agent API.
+                  Generate a strong password to protect Vito and every private agent API.
                 </Text>
                 {agentUrlField}
                 {error && <Text style={styles.error}>{error}</Text>}

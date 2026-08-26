@@ -41,6 +41,13 @@ export function SpeechSettingsScreen() {
   const [voiceOpen, setVoiceOpen] = useState(false);
   const [modelOpen, setModelOpen] = useState(false);
   const [search, setSearch] = useState("");
+  const [instructionDraft, setInstructionDraft] = useState(speech.settings.instructions ?? "");
+  const [suggestingInstructions, setSuggestingInstructions] = useState(false);
+  const [instructionError, setInstructionError] = useState<string | null>(null);
+
+  useEffect(() => {
+    setInstructionDraft(speech.settings.instructions ?? "");
+  }, [speech.settings.instructions]);
 
   useEffect(() => {
     setLoading(true);
@@ -78,8 +85,37 @@ export function SpeechSettingsScreen() {
       voice: provider === "gemini" ? "Enceladus" : provider === "openai" ? "alloy" : "",
       model: provider === "openrouter" ? "" : undefined,
       rate: speech.settings.rate,
+      instructions: speech.settings.instructions,
     });
   };
+  const speechSettingsWithDraft = () => ({
+    ...speech.settings,
+    instructions: instructionDraft.trim() || undefined,
+  });
+  const saveInstructionDraft = async () => {
+    const next = speechSettingsWithDraft();
+    if (next.instructions === speech.settings.instructions) return;
+    await speech.updateSettings(next);
+  };
+  const suggestInstructions = async () => {
+    setSuggestingInstructions(true);
+    setInstructionError(null);
+    try {
+      await saveInstructionDraft();
+      const result = await api<{ instructions: string }>("/api/speech/suggest-instructions", {
+        method: "POST",
+      });
+      setInstructionDraft(result.instructions);
+      await speech.updateSettings({ ...speech.settings, instructions: result.instructions });
+    } catch (error) {
+      setInstructionError(
+        error instanceof Error ? error.message : "Could not suggest a speaking style",
+      );
+    } finally {
+      setSuggestingInstructions(false);
+    }
+  };
+  const supportsSpeakingStyle = speech.settings.provider !== "elevenlabs";
   const selectedModel = models.find((model) => model.id === speech.settings.model);
   const selectedVoice = voices.find((voice) => voice.id === speech.settings.voice);
   const filteredVoices = voices.filter((voice) =>
@@ -169,13 +205,53 @@ export function SpeechSettingsScreen() {
           </Pressable>
         ))}
       </View>
+      {supportsSpeakingStyle && (
+        <>
+          <Text style={styles.fieldLabel}>SPEAKING STYLE</Text>
+          <TextInput
+            value={instructionDraft}
+            onChangeText={setInstructionDraft}
+            onBlur={() => void saveInstructionDraft()}
+            placeholder="Natural, warm, conversational…"
+            placeholderTextColor={theme.colors.textMuted}
+            multiline
+            maxLength={1_000}
+            style={[styles.input, styles.instructionsInput]}
+          />
+          <Text style={styles.fieldHelp}>
+            Controls audible delivery. Leave blank to use the provider’s neutral default.
+          </Text>
+          <Pressable
+            disabled={suggestingInstructions}
+            onPress={() => void suggestInstructions()}
+            style={[styles.suggest, suggestingInstructions && styles.disabled]}
+          >
+            {suggestingInstructions ? (
+              <ActivityIndicator size="small" color={theme.colors.accent} />
+            ) : (
+              <Ionicons name="sparkles-outline" size={16} color={theme.colors.accent} />
+            )}
+            <Text style={styles.suggestText}>
+              {suggestingInstructions ? "Asking your agent…" : "Suggest from Soul"}
+            </Text>
+          </Pressable>
+          {!!instructionError && <Text style={styles.error}>{instructionError}</Text>}
+        </>
+      )}
       <Pressable
         disabled={!configured || !speech.settings.voice}
         onPress={() =>
-          void speech.toggle(
-            "voice-preview",
-            "This is how Vito will sound when reading messages aloud.",
-          )
+          void (async () => {
+            const next = speechSettingsWithDraft();
+            if (next.instructions !== speech.settings.instructions) {
+              await speech.updateSettings(next);
+            }
+            await speech.toggle(
+              "voice-preview",
+              "This is how your agent will sound when reading messages aloud.",
+              next,
+            );
+          })()
         }
         style={[styles.preview, (!configured || !speech.settings.voice) && styles.disabled]}
       >
@@ -347,6 +423,30 @@ const createStyles = (theme: VitoTheme) =>
       color: theme.colors.text,
       backgroundColor: theme.colors.surface,
     },
+    instructionsInput: {
+      minHeight: 104,
+      paddingTop: theme.space.md,
+      paddingBottom: theme.space.md,
+      textAlignVertical: "top",
+    },
+    fieldHelp: {
+      color: theme.colors.textMuted,
+      fontSize: 11,
+      lineHeight: 16,
+      marginTop: theme.space.sm,
+    },
+    suggest: {
+      minHeight: 42,
+      marginTop: theme.space.md,
+      flexDirection: "row",
+      alignItems: "center",
+      justifyContent: "center",
+      gap: theme.space.sm,
+      borderRadius: 12,
+      borderWidth: 1,
+      borderColor: theme.colors.separatorStrong,
+    },
+    suggestText: { color: theme.colors.accent, fontSize: 12, fontWeight: "800" },
     speedRow: { flexDirection: "row", gap: theme.space.sm },
     speed: {
       flex: 1,

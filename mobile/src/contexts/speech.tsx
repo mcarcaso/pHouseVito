@@ -17,6 +17,7 @@ export interface SpeechSettings {
   voice: string;
   model?: string;
   rate: number;
+  instructions?: string;
 }
 interface SpeechState {
   id: string | null;
@@ -45,7 +46,7 @@ function cacheAudio(key: string, chunks: Uint8Array[]) {
 }
 
 function cacheKey(settings: SpeechSettings, text: string) {
-  return `${settings.provider}:${settings.model ?? ""}:${settings.voice}:${text}`;
+  return `${settings.provider}:${settings.model ?? ""}:${settings.voice}:${settings.instructions ?? ""}:${text}`;
 }
 
 export function SpeechProviderContext({ children }: { children: ReactNode }) {

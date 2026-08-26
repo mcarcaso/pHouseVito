@@ -41,5 +41,7 @@ export interface ChannelService {
   stop(x: Context): Promise<void>;
   listen(x: Context, onEvent: InboundEventHandler): Promise<ChannelUnsubscribe>;
   createOutputHandler(x: Context, event: InboundEvent): OutputHandler;
+  /** Optional platform context gathered only when requireMention gates the current turn. */
+  gatherMentionContext?(x: Context, event: InboundEvent): Promise<string | undefined>;
   getCustomPrompt?(x: Context): string;
 }

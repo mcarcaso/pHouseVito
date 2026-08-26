@@ -2,7 +2,7 @@ import express from "express";
 import { z } from "zod";
 import type { Response as ExpressResponse, Router } from "express";
 import type { Context } from "../context/Context.js";
-import { xSecretService } from "../lib/x.js";
+import { xAskApiService, xSecretService, xVitoService } from "../lib/x.js";
 import type { RouterService } from "./RouterService.js";
 import {
   emptyRouteSchema,
@@ -17,6 +17,7 @@ const speechRequestSchema = z.object({
   voice: z.string().min(1).max(200),
   text: z.string().min(1).max(20_000),
   model: z.string().min(1).max(200).optional(),
+  instructions: z.string().max(1_000).optional(),
 });
 const commonVoices = [
   "alloy",
@@ -30,6 +31,8 @@ const commonVoices = [
   "sage",
   "shimmer",
   "verse",
+  "marin",
+  "cedar",
 ];
 const geminiVoices = [
   "Zephyr",
@@ -69,6 +72,13 @@ const speechModelSchema = z.object({
   name: z.string(),
   voices: z.array(voiceSchema),
 });
+
+function exactSpeechInput(text: string, instructions?: string): string {
+  const style = instructions?.trim();
+  return style
+    ? `Read the following text exactly without adding or removing words. Delivery style: ${style}\n\n${text}`
+    : `Read the following text exactly without adding or removing words.\n\n${text}`;
+}
 
 function voiceName(id: string): string {
   return id
@@ -290,6 +300,36 @@ export class SpeechRouterService implements RouterService {
         };
       },
     });
+    registerRoute(x, {
+      router,
+      method: "POST",
+      path: "/suggest-instructions",
+      auth: "dashboard",
+      schemas: {
+        params: emptyRouteSchema,
+        query: emptyRouteSchema,
+        body: unknownRouteSchema,
+      },
+      responseSchema: z.object({ instructions: z.string().min(1).max(1_000) }),
+      handler: async (routeX) => {
+        const soul = xVitoService(routeX).getSoul(routeX).trim();
+        const answer = await xAskApiService(routeX).ask(routeX, {
+          session: "direct:speech-style",
+          author: "speech-settings",
+          timeoutMs: 120_000,
+          question: `Create compact text-to-speech delivery instructions for this agent based on its Soul below. Describe only the most important audible qualities, such as accent, cadence, tone, warmth, humor, and restraint—not the agent's job, tools, policies, user, or response content. Return only one direct imperative sentence with no heading, labels, quotes, markdown, or explanation. Keep it under 240 characters so speech models can follow it reliably.\n\n<agent_soul>\n${soul.slice(0, 20_000)}\n</agent_soul>`,
+        });
+        const instructions = answer
+          .trim()
+          .replace(/^```(?:text)?\s*/i, "")
+          .replace(/\s*```$/, "")
+          .replace(/^["']|["']$/g, "")
+          .trim()
+          .slice(0, 1_000);
+        if (!instructions) throw new Error("The agent did not suggest a speaking style");
+        return { instructions };
+      },
+    });
     registerStreamRoute(x, {
       router,
       method: "POST",
@@ -323,7 +363,7 @@ export class SpeechRouterService implements RouterService {
               },
               body: JSON.stringify({
                 model: body.model || "gemini-3.1-flash-tts-preview",
-                input: `Read the following text exactly. Speak with a natural, understated New York wiseguy cadence and Italian-American energy. Keep it confident, subtle, and believable rather than exaggerated or cartoonish.\n\n${body.text}`,
+                input: exactSpeechInput(body.text, body.instructions),
                 response_format: { type: "audio" },
                 generation_config: { speech_config: [{ voice: body.voice }] },
                 stream: true,
@@ -376,8 +416,7 @@ export class SpeechRouterService implements RouterService {
                 model: body.model || "gpt-4o-mini-tts",
                 input: body.text,
                 voice: body.voice,
-                instructions:
-                  "Speak with a natural, understated New York wiseguy cadence and Italian-American mobster energy. Keep it believable, confident, and subtle rather than exaggerated or cartoonish.",
+                instructions: body.instructions?.trim() || undefined,
                 response_format: "pcm",
               }),
               signal: abort.signal,
@@ -426,7 +465,7 @@ export class SpeechRouterService implements RouterService {
               },
               body: JSON.stringify({
                 model: body.model || "gemini-3.1-flash-tts-preview",
-                input: `Read the following text exactly. Speak with a natural, understated New York wiseguy cadence and Italian-American energy. Keep it confident, subtle, and believable rather than exaggerated or cartoonish.\n\n${body.text}`,
+                input: exactSpeechInput(body.text, body.instructions),
                 response_format: { type: "audio" },
                 generation_config: { speech_config: [{ voice: body.voice }] },
               }),
@@ -469,8 +508,7 @@ export class SpeechRouterService implements RouterService {
                 model: body.model || "gpt-4o-mini-tts",
                 input: body.text,
                 voice: body.voice,
-                instructions:
-                  "Speak with a natural, understated New York wiseguy cadence and Italian-American mobster energy. Keep it believable, confident, and subtle rather than exaggerated or cartoonish.",
+                instructions: body.instructions?.trim() || undefined,
                 response_format: "mp3",
               }),
             },

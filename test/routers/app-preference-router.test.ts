@@ -44,7 +44,14 @@ describe("app preference router", () => {
     const speechResponse = await fetch(`${baseUrl}/api/app-preferences`, {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ speech: { provider: "openai", voice: "alloy", rate: 1 } }),
+      body: JSON.stringify({
+        speech: {
+          provider: "openai",
+          voice: "alloy",
+          rate: 1,
+          instructions: "Speak with calm precision.",
+        },
+      }),
     });
     assert.equal(speechResponse.status, 200);
 
@@ -62,9 +69,13 @@ describe("app preference router", () => {
     });
     assert.equal(voiceResponse.status, 200);
     const body = (await voiceResponse.json()) as {
-      preferences: { speech?: { voice: string }; voiceMode?: { provider: string } };
+      preferences: {
+        speech?: { voice: string; instructions?: string };
+        voiceMode?: { provider: string };
+      };
     };
     assert.equal(body.preferences.speech?.voice, "alloy");
+    assert.equal(body.preferences.speech?.instructions, "Speak with calm precision.");
     assert.equal(body.preferences.voiceMode?.provider, "gemini");
   });
 });

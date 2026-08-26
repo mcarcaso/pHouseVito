@@ -27,7 +27,7 @@ const app = express();
 registerRoute(
   new ObjectContext({
     dashboardAuthService: () => authenticatedDashboardAuthService,
-    askApiService: () => ({ privileged: true }),
+    rootOnlyDependency: () => ({ privileged: true }),
   }),
   {
     router: app,
@@ -44,7 +44,7 @@ registerRoute(
       excludesUnapprovedDependencies: z.literal(true),
     }),
     handler: (x) => {
-      assert.throws(() => x.get("askApiService"));
+      assert.throws(() => x.get("rootOnlyDependency"));
       return {
         userId: xDashboardUser(x).id,
         excludesUnapprovedDependencies: true as const,

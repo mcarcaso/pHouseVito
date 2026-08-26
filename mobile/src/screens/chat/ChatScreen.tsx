@@ -758,6 +758,7 @@ function Conversation({
   const [keyboardInset, setKeyboardInset] = useState(0);
   const lastKeyboardHeightRef = useRef(0);
   const inputFocusedRef = useRef(false);
+  const composerInputRef = useRef<TextInput>(null);
   const nearBottomRef = useRef(true);
   const scrollOffsetRef = useRef(0);
   const contentHeightRef = useRef(0);
@@ -808,6 +809,46 @@ function Conversation({
       for (const timer of resumeTimers) clearTimeout(timer);
     };
   }, []);
+
+  const keepWebComposerFocused = () => {
+    if (Platform.OS !== "web") return;
+    globalThis.requestAnimationFrame(() => composerInputRef.current?.focus());
+  };
+  const sendFromComposer = () => {
+    onSend();
+    keepWebComposerFocused();
+  };
+
+  useEffect(() => {
+    if (Platform.OS !== "web") return;
+    const handleUnfocusedEnter = (event: globalThis.KeyboardEvent) => {
+      if (
+        event.key !== "Enter" ||
+        event.shiftKey ||
+        event.metaKey ||
+        event.ctrlKey ||
+        event.altKey ||
+        event.isComposing ||
+        event.repeat ||
+        menuOpen ||
+        sending ||
+        (!input.trim() && attachments.length === 0)
+      )
+        return;
+      const activeElement = globalThis.document?.activeElement;
+      if (
+        activeElement &&
+        activeElement !== globalThis.document.body &&
+        activeElement !== globalThis.document.documentElement
+      )
+        return;
+      event.preventDefault();
+      composerInputRef.current?.focus();
+      onSend();
+    };
+    globalThis.addEventListener("keydown", handleUnfocusedEnter);
+    return () => globalThis.removeEventListener("keydown", handleUnfocusedEnter);
+  }, [attachments.length, input, menuOpen, onSend, sending]);
 
   const slashQuery = input.startsWith("/") && !input.includes(" ") ? input.toLowerCase() : null;
   const slashCommands = slashQuery
@@ -863,6 +904,7 @@ function Conversation({
         ref={scrollRef}
         style={styles.messages}
         contentContainerStyle={styles.messageContent}
+        keyboardDismissMode="on-drag"
         scrollEventThrottle={16}
         onScroll={(event) => {
           const { contentOffset, contentSize, layoutMeasurement } = event.nativeEvent;
@@ -990,6 +1032,7 @@ function Conversation({
           <Ionicons name="add" size={24} color={theme.colors.textSecondary} />
         </Pressable>
         <TextInput
+          ref={composerInputRef}
           value={input}
           onChangeText={onInput}
           onFocus={() => {
@@ -1010,7 +1053,7 @@ function Conversation({
             };
             if (keyboardEvent.shiftKey || keyboardEvent.isComposing) return;
             event.preventDefault();
-            if ((input.trim() || attachments.length) && !sending) void onSend();
+            if ((input.trim() || attachments.length) && !sending) sendFromComposer();
           }}
           onContentSizeChange={(event) => {
             if (Platform.OS === "web")
@@ -1024,7 +1067,7 @@ function Conversation({
         />
         <Pressable
           disabled={(!input.trim() && !attachments.length) || sending}
-          onPress={onSend}
+          onPress={sendFromComposer}
           style={[
             styles.send,
             ((!input.trim() && !attachments.length) || sending) && styles.sendDisabled,

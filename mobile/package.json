@@ -1,5 +1,5 @@
 {
-  "name": "mobile",
+  "name": "phouse-vito-react-native",
   "version": "1.0.0",
   "main": "index.ts",
   "dependencies": {
@@ -50,8 +50,9 @@
     "android": "expo start --android",
     "ios": "expo start --ios",
     "ios:device": "expo run:ios --device",
-    "build:ios:development:local": "mkdir -p builds && npx eas-cli build --local --platform ios --profile development --output ./builds/rook-development.ipa",
-    "build:ios:preview:local": "mkdir -p builds && npx eas-cli build --local --platform ios --profile preview --output ./builds/rook-preview.ipa",
+    "build:ios:local": "node ../user/skills/vito-native-builds/build-and-publish.mjs all",
+    "build:ios:development:local": "node ../user/skills/vito-native-builds/build-and-publish.mjs development",
+    "build:ios:preview:local": "node ../user/skills/vito-native-builds/build-and-publish.mjs preview",
     "web": "expo start --web",
     "typecheck": "tsc --noEmit",
     "export:web": "expo export --platform web",

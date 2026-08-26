@@ -400,22 +400,11 @@ export class PiOrchestratorService implements OrchestratorService {
 
     const effectiveSettings = getEffectiveSettings(this.config, event.channel, event.sessionKey);
 
-    // requireMention — store silently and bail if not addressed.
+    // requireMention — ignore unaddressed chatter. Mention-aware channels can
+    // fetch a small platform-native context window when Vito is addressed.
     const requireMention = effectiveSettings.requireMention !== false;
     const hasMention = event.hasMention !== false;
-    if (requireMention && !hasMention) {
-      xMessageStore(this.x).create(this.x, {
-        session_id: vitoSession.id,
-        channel: event.channel,
-        channel_target: event.target,
-        timestamp: event.timestamp,
-        type: "user",
-        content: JSON.stringify(userContent),
-        archived: 0,
-        author: event.author ?? null,
-      });
-      return;
-    }
+    if (requireMention && !hasMention) return;
 
     console.log(
       `[Orchestrator] ${event.sessionKey}: streamMode=${effectiveSettings.streamMode}, model=${this.getModelString(effectiveSettings)}`,
@@ -482,6 +471,17 @@ export class PiOrchestratorService implements OrchestratorService {
           ?.map((a) => a.path)
           .filter((p): p is string => Boolean(p)),
       });
+
+      if (requireMention && hasMention && channel?.gatherMentionContext) {
+        try {
+          const mentionContext = await channel.gatherMentionContext(this.x, event);
+          if (mentionContext) promptText = `${mentionContext}\n\n${promptText}`;
+        } catch (err) {
+          console.warn(
+            `[Orchestrator] Failed to gather mention context for ${event.sessionKey}: ${err instanceof Error ? err.message : String(err)}`,
+          );
+        }
+      }
 
       // If this run is going to create a BRAND-NEW pi AgentSession, seed
       // the first prompt with the tail of this Vito session's SQLite history.

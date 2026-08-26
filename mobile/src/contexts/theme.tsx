@@ -217,6 +217,8 @@ export const themes: Record<VitoThemeName, VitoTheme> = {
     accent: "#d6a56f",
     accentSurface: "#412d1d",
     text: "#f5eadf",
+    textSecondary: "#cdbbac",
+    textMuted: "#aa9585",
   }),
   oxblood: makeTheme("oxblood", true, {
     canvas: "#13090c",

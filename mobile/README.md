@@ -1,6 +1,6 @@
-# Rook
+# pHouseVitoReactNative
 
-Expo companion app for connecting to a personally named agent on native and web.
+Expo companion app for connecting to a personally named Vito agent on native and web. The installed product name is **Vito**; `phouse-vito-react-native` is the internal project/package name.
 
 ## Run
 
@@ -18,7 +18,19 @@ EXPO_PUBLIC_VITO_URL=http://localhost:3030 npm run web
 
 For a physical phone, use a URL the phone can reach (the production HTTPS endpoint is preferred).
 
-For the EAS development client, start Metro in tunnel mode and enter the generated
+## Local iOS builds
+
+Development and preview IPAs are compiled locally with Xcode, signed, verified, and published to the Vito installer website:
+
+```bash
+npm run build:ios:local
+npm run build:ios:development:local
+npm run build:ios:preview:local
+```
+
+Installer: https://theworstproductions.com/d/builds/vito/
+
+For the development client, start Metro in tunnel mode and enter the generated
 `https://<subdomain>.exp.direct` URL manually in the app. iOS rejects the tunnel when
 entered as plain HTTP.
 

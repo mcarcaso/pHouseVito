@@ -74,6 +74,7 @@ function Chat() {
     } catch {}
   }, [filterState]);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const messageInputRef = useRef<HTMLTextAreaElement>(null);
   const lastAssistantTsRef = useRef<number | null>(null);
   const sessionsQuery = useSessions({ refetchInterval: POLL_INTERVAL });
   const sessions = sessionsQuery.data ?? [];
@@ -209,6 +210,7 @@ function Chat() {
     const currentAttachments = [...attachments];
     setInput("");
     setAttachments([]);
+    requestAnimationFrame(() => messageInputRef.current?.focus());
 
     const uploaded: Attachment[] = [];
     for (const att of currentAttachments) {
@@ -443,6 +445,7 @@ function Chat() {
             +
           </button>
           <textarea
+            ref={messageInputRef}
             value={input}
             onChange={(e) => setInput(e.target.value)}
             onKeyPress={handleKeyPress}

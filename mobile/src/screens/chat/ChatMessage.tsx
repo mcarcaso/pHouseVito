@@ -75,7 +75,7 @@ async function imageBase64(source: ImageSource): Promise<string> {
   }
 
   if (!FileSystem.cacheDirectory) throw new Error("No cache directory is available");
-  const destination = `${FileSystem.cacheDirectory}rook-image-${Date.now()}`;
+  const destination = `${FileSystem.cacheDirectory}vito-image-${Date.now()}`;
   const downloaded = await FileSystem.downloadAsync(source.uri, destination, {
     headers: source.headers,
   });
@@ -230,6 +230,84 @@ function MessageImage({ source, label }: { source: ImageSource; label: string })
   );
 }
 
+async function downloadWebAttachment(source: ImageSource, filename: string): Promise<void> {
+  const response = await fetch(source.uri, { headers: source.headers });
+  if (!response.ok) throw new Error(`Attachment request failed (${response.status})`);
+  const objectUrl = URL.createObjectURL(await response.blob());
+  try {
+    const anchor = document.createElement("a");
+    anchor.href = objectUrl;
+    anchor.download = filename;
+    anchor.style.display = "none";
+    document.body.appendChild(anchor);
+    anchor.click();
+    anchor.remove();
+  } finally {
+    window.setTimeout(() => URL.revokeObjectURL(objectUrl), 1_000);
+  }
+}
+
+function MessageFile({
+  source,
+  filename,
+  mimeType,
+}: {
+  source?: ImageSource;
+  filename: string;
+  mimeType?: string;
+}) {
+  const styles = useThemeStyles(createStyles);
+  const theme = useVitoTheme();
+  const [downloading, setDownloading] = useState(false);
+  const [failed, setFailed] = useState(false);
+  const canDownload = Platform.OS === "web" && Boolean(source);
+
+  const download = async () => {
+    if (!source || !canDownload || downloading) return;
+    setDownloading(true);
+    setFailed(false);
+    try {
+      await downloadWebAttachment(source, filename);
+    } catch {
+      setFailed(true);
+    } finally {
+      setDownloading(false);
+    }
+  };
+
+  const contents = (
+    <>
+      <Ionicons name="document-outline" size={18} style={styles.attachmentFileIcon} />
+      <View style={styles.attachmentFileBody}>
+        <Text numberOfLines={1} style={styles.attachmentFileName}>
+          {filename}
+        </Text>
+        <Text style={[styles.attachmentFileType, failed && styles.attachmentFileError]}>
+          {failed ? "Download failed" : mimeType || "File"}
+        </Text>
+      </View>
+      {canDownload &&
+        (downloading ? (
+          <ActivityIndicator color={theme.colors.accent} size="small" />
+        ) : (
+          <Ionicons name="download-outline" size={19} style={styles.attachmentFileAction} />
+        ))}
+    </>
+  );
+
+  if (!canDownload) return <View style={styles.attachmentFile}>{contents}</View>;
+  return (
+    <Pressable
+      accessibilityLabel={`Download ${filename}`}
+      accessibilityRole="link"
+      onPress={() => void download()}
+      style={({ pressed }) => [styles.attachmentFile, pressed && styles.attachmentFilePressed]}
+    >
+      {contents}
+    </Pressable>
+  );
+}
+
 function MessageAttachments({ attachments }: { attachments: MessageAttachment[] }) {
   const styles = useThemeStyles(createStyles);
   if (!attachments.length) return null;
@@ -248,17 +326,12 @@ function MessageAttachments({ attachments }: { attachments: MessageAttachment[] 
             />
           );
         return (
-          <View key={key} style={styles.attachmentFile}>
-            <Ionicons name="document-outline" size={18} style={styles.attachmentFileIcon} />
-            <View style={styles.attachmentFileBody}>
-              <Text numberOfLines={1} style={styles.attachmentFileName}>
-                {attachment.filename ?? "Attachment"}
-              </Text>
-              {attachment.mimeType && (
-                <Text style={styles.attachmentFileType}>{attachment.mimeType}</Text>
-              )}
-            </View>
-          </View>
+          <MessageFile
+            key={key}
+            source={source}
+            filename={attachment.filename ?? "Attachment"}
+            mimeType={attachment.mimeType}
+          />
         );
       })}
     </View>
@@ -455,6 +528,9 @@ const createStyles = (theme: VitoTheme) =>
     attachmentFileBody: { flex: 1, minWidth: 0 },
     attachmentFileName: { color: theme.colors.text, fontSize: 13, fontWeight: "700" },
     attachmentFileType: { color: theme.colors.textMuted, fontSize: 11, marginTop: theme.space.xxs },
+    attachmentFileError: { color: theme.colors.danger },
+    attachmentFileAction: { color: theme.colors.textMuted },
+    attachmentFilePressed: { opacity: 0.72 },
     toolPrimitive: {
       color: theme.colors.textSecondary,
       fontSize: 11,
@@ -535,7 +611,7 @@ const createStyles = (theme: VitoTheme) =>
     messageRow: { flexDirection: "row" },
     userRow: { justifyContent: "flex-end" },
     bubble: {
-      maxWidth: "82%",
+      maxWidth: "88%",
       borderRadius: 19,
       paddingHorizontal: theme.space.md,
       paddingVertical: theme.space.sm,
@@ -543,7 +619,13 @@ const createStyles = (theme: VitoTheme) =>
     desktopBubble: { maxWidth: 680 },
     desktopAttachmentBubble: { width: 480 },
     userBubble: { backgroundColor: theme.colors.accent, borderBottomRightRadius: 5 },
-    assistantBubble: { backgroundColor: theme.colors.separator, borderBottomLeftRadius: 5 },
+    assistantBubble: {
+      width: "100%",
+      maxWidth: "100%",
+      paddingHorizontal: theme.space.sm,
+      backgroundColor: "transparent",
+      borderBottomLeftRadius: 0,
+    },
     speechButton: {
       alignSelf: "flex-end",
       width: 30,

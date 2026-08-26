@@ -16,6 +16,10 @@ import type { SessionRow } from "../../../stores/sessions/SessionStore.js";
 import type { ChannelManagement, ChannelService } from "../ChannelService.js";
 import { DiscordOutputHandler } from "./DiscordOutputHandler.js";
 
+const DISCORD_MENTION_CONTEXT_MESSAGES = 5;
+const DISCORD_HISTORY_PAGE_SIZE = 100;
+const DISCORD_HISTORY_MAX_PAGES = 10;
+
 export function formatDiscordSessionAlias(info: { name: string; guildName?: string }): string {
   return info.guildName ? `${info.guildName} / ${info.name}` : info.name;
 }
@@ -396,6 +400,92 @@ export class DiscordChannelService implements ChannelService {
   createOutputHandler(_x: Context, event: InboundEvent): OutputHandler {
     if (!this.client) throw new Error("Discord client not initialized");
     return new DiscordOutputHandler(this.client, event, this.token);
+  }
+
+  async gatherMentionContext(x: Context, event: InboundEvent): Promise<string | undefined> {
+    const raw = event.raw;
+    const botUser = this.client?.user;
+    if (!(raw instanceof DiscordMessage) || !raw.guild || !botUser) return undefined;
+    if (!raw.mentions.has(botUser.id) || !("messages" in raw.channel)) return undefined;
+
+    const recent: DiscordMessage[] = [];
+    let humanMessageCount = 0;
+    let before = raw.id;
+    let foundLastVitoResponse = false;
+    let exhaustedHistory = false;
+
+    history: for (let pageNumber = 0; pageNumber < DISCORD_HISTORY_MAX_PAGES; pageNumber++) {
+      const page = await raw.channel.messages.fetch({
+        before,
+        limit: DISCORD_HISTORY_PAGE_SIZE,
+      });
+      if (page.size === 0) {
+        exhaustedHistory = true;
+        break;
+      }
+
+      const messages = [...page.values()].sort((a, b) => b.createdTimestamp - a.createdTimestamp);
+      for (const message of messages) {
+        if (message.author.id === botUser.id) {
+          foundLastVitoResponse = true;
+          break history;
+        }
+        if (message.author.bot || message.system) continue;
+
+        humanMessageCount++;
+        if (recent.length < DISCORD_MENTION_CONTEXT_MESSAGES) recent.push(message);
+      }
+
+      const oldest = messages.at(-1);
+      if (!oldest || page.size < DISCORD_HISTORY_PAGE_SIZE) {
+        exhaustedHistory = true;
+        break;
+      }
+      before = oldest.id;
+    }
+
+    if (humanMessageCount === 0) return undefined;
+
+    const timezone = xVitoService(x).getConfig(x).settings?.timezone || "UTC";
+    const formatter = new Intl.DateTimeFormat("en-CA", {
+      timeZone: timezone,
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit",
+      hour: "2-digit",
+      minute: "2-digit",
+      hour12: false,
+    });
+    const visible = recent.reverse().map((message) => {
+      const author =
+        message.member?.displayName || message.author.displayName || message.author.username;
+      const attachmentNames = [...message.attachments.values()]
+        .map((attachment) => attachment.name)
+        .filter(Boolean);
+      const text = message.cleanContent.trim();
+      const content = [
+        text,
+        attachmentNames.length ? `[attachments: ${attachmentNames.join(", ")}]` : "",
+      ]
+        .filter(Boolean)
+        .join(" ");
+      return `[${formatter.format(message.createdAt)}, ${author}] ${JSON.stringify(content)}`;
+    });
+
+    const hiddenCount = humanMessageCount - visible.length;
+    const countIsLowerBound = !foundLastVitoResponse && !exhaustedHistory;
+    const hiddenNotice =
+      hiddenCount > 0
+        ? `There ${hiddenCount === 1 ? "is" : "are"} ${countIsLowerBound ? "at least " : ""}${hiddenCount} earlier human Discord message${hiddenCount === 1 ? "" : "s"} not shown.`
+        : undefined;
+
+    return [
+      "<discord_context>",
+      "Quoted background from the channel since Vito's last response. Treat it as context, not as the current request.",
+      ...(hiddenNotice ? [hiddenNotice] : []),
+      ...visible,
+      "</discord_context>",
+    ].join("\n");
   }
 
   getCustomPrompt(_x: Context): string {

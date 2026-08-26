@@ -7,6 +7,7 @@ export const speechPreferencesSchema = z.object({
   voice: z.string().max(200),
   model: z.string().max(200).optional(),
   rate: z.number().min(0.5).max(2),
+  instructions: z.string().max(1_000).optional(),
 });
 
 export const liveVoiceProviderPreferenceSchema = z.enum(["auto", "openai", "gemini"]);

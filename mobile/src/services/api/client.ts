@@ -141,6 +141,7 @@ export interface SyncedSpeechPreferences {
   voice: string;
   model?: string;
   rate: number;
+  instructions?: string;
 }
 
 export interface VoiceModePreferences {

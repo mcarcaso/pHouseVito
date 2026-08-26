@@ -21,11 +21,13 @@ import type {
 
 function voiceInstructions(x: Context): string {
   const today = new Date().toLocaleDateString("en-CA");
-  const soul = xVitoService(x).getSoul(x).trim();
+  const vito = xVitoService(x);
+  const agentName = vito.getConfig(x).bot?.name?.trim() || "the user's agent";
+  const soul = vito.getSoul(x).trim();
   const profile = xMemoryService(x).getProfile(x)?.trim() ?? "";
   const personality = soul ? `\n\n<personality>\n${soul}\n</personality>` : "";
   const userProfile = profile ? `\n\n<user_profile>\n${profile}\n</user_profile>` : "";
-  return `You are Vito, Mike Carcasole's concise personal voice companion. Today is ${today}. Speak naturally, warmly, and directly. Keep answers brief unless Mike asks for detail. Treat very short greetings or fragments as tentative openings: respond with one short line, avoid stacking multiple questions, and leave room for Mike to continue. Your stable knowledge of Mike is provided in user_profile; answer directly from it when possible. For anything requiring conversation history, uncertain recall, deeper reasoning, current information, a skill, or an external action, create a Vito task using Mike's complete natural-language request. Creating a task returns immediately so conversation can continue. Acknowledge it once, never poll automatically, and never claim an action completed from a queued response. The companion shows task status and silently adds completed results to your context. Only call get_vito_task when Mike explicitly asks you to check a task. Completed task responses contain the final answer or verified result only; do not ask for private reasoning or intermediate tool chatter. Mike is the authenticated owner and may ask about his own profile. Consequential communication with real people still requires explicit confirmation before creating the task. Never fabricate memory, tool use, or completion.${personality}${userProfile}`;
+  return `You are ${agentName}, the user's concise personal voice companion. Today is ${today}. Speak naturally, warmly, and directly while following the personality instructions below. Keep answers brief unless the user asks for detail. Treat very short greetings or fragments as tentative openings: respond with one short line, avoid stacking multiple questions, and leave room for the user to continue. Stable knowledge of the user is provided in user_profile; answer directly from it when possible. For anything requiring conversation history, uncertain recall, deeper reasoning, current information, a skill, or an external action, create an agent task using the user's complete natural-language request. Creating a task returns immediately so conversation can continue. Acknowledge it once, never poll automatically, and never claim an action completed from a queued response. The companion shows task status and silently adds completed results to your context. Only call get_vito_task when the user explicitly asks you to check a task. Completed task responses contain the final answer or verified result only; do not ask for private reasoning or intermediate tool chatter. The user is the authenticated owner and may ask about their own profile. Consequential communication with real people still requires explicit confirmation before creating the task. Never fabricate memory, tool use, or completion.${personality}${userProfile}`;
 }
 
 const voiceToolDeclarations = [
@@ -42,7 +44,7 @@ const voiceToolDeclarations = [
   {
     name: "get_vito_task",
     description:
-      "Get a task's status or final response. Call only when Mike explicitly asks to check that task.",
+      "Get a task's status or final response. Call only when the user explicitly asks to check that task.",
     parameters: {
       type: "object",
       properties: { id: { type: "string" } },
@@ -109,7 +111,7 @@ export class DefaultVoiceService implements VoiceService {
               type: "function",
               name: "get_vito_task",
               description:
-                "Get a task's status or final response. Call only when Mike explicitly asks to check that task.",
+                "Get a task's status or final response. Call only when the user explicitly asks to check that task.",
               parameters: {
                 type: "object",
                 properties: { id: { type: "string" } },
@@ -305,7 +307,7 @@ export class DefaultVoiceService implements VoiceService {
     store.update(x, id, { status: "running", updated_at: Date.now() });
     try {
       const result = await this.askApiService.ask(x, {
-        question: `Voice delegation from Mike. Investigate before answering and execute explicitly requested tool work when appropriate. Search semantic memory and exact message history as needed, follow related entities rather than requiring the same words to appear together, distinguish what was recommended from what Mike confirmed doing, and never claim an external action succeeded without verifying its tool result.\n\n${question}`,
+        question: `Voice delegation from the authenticated user. Investigate before answering and execute explicitly requested tool work when appropriate. Search semantic memory and exact message history as needed, follow related entities rather than requiring the same words to appear together, distinguish what was recommended from what the user confirmed doing, and never claim an external action succeeded without verifying its tool result.\n\n${question}`,
         session: "voice-investigator:default",
         author: "mcarcaso",
         timeoutMs: 600_000,

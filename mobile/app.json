@@ -1,8 +1,8 @@
 {
   "expo": {
-    "name": "Rook",
+    "name": "Vito",
     "slug": "vito-mobile",
-    "scheme": "rook",
+    "scheme": "vito",
     "version": "0.1.0",
     "orientation": "default",
     "icon": "./assets/icon.png",
@@ -10,10 +10,10 @@
     "ios": {
       "supportsTablet": true,
       "bundleIdentifier": "com.phouse.vito",
-      "buildNumber": "5",
+      "buildNumber": "9",
       "infoPlist": {
         "ITSAppUsesNonExemptEncryption": false,
-        "NSMicrophoneUsageDescription": "Rook uses the microphone for live voice conversations."
+        "NSMicrophoneUsageDescription": "Vito uses the microphone for live voice conversations."
       }
     },
     "android": {
@@ -21,9 +21,9 @@
         "foregroundImage": "./assets/android-icon-foreground.png",
         "backgroundImage": "./assets/android-icon-background.png",
         "monochromeImage": "./assets/android-icon-monochrome.png",
-        "backgroundColor": "#e3ded6"
+        "backgroundColor": "#1b2746"
       },
-      "package": "com.phouse.rook"
+      "package": "com.phouse.vito"
     },
     "web": {
       "favicon": "./assets/favicon.png"
@@ -37,7 +37,7 @@
         "expo-audio",
         {
           "enableBackgroundRecording": true,
-          "microphonePermission": "Rook uses the microphone for live voice conversations."
+          "microphonePermission": "Vito uses the microphone for live voice conversations."
         }
       ],
       "expo-font"

@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" role="img" aria-labelledby="title desc">
+  <title id="title">Vito app icon</title>
+  <desc id="desc">A folded orange V monogram on a midnight navy field.</desc>
+  <rect width="1024" height="1024" fill="#1B2746"/>
+  <path d="M190 225h186l136 355 136-355h186L603 776h-91-91L190 225Z" fill="#FF811D"/>
+  <path d="M190 225h186l136 355-40 96-152-396Z" fill="#E96912"/>
+</svg>

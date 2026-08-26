@@ -1,14 +1,15 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
-import * as FileSystem from "expo-file-system/legacy";
-import { createAudioPlayer, setAudioModeAsync, type AudioPlayer } from "expo-audio";
 import { createContext, useContext, useEffect, useRef, useState, type ReactNode } from "react";
-import { Platform } from "react-native";
 import {
   agentStorageKey,
-  api,
+  apiStream,
   loadAppPreferences,
   patchAppPreferences,
 } from "../services/api/client";
+import {
+  createSpeechStreamPlayer,
+  type SpeechStreamPlayer,
+} from "../services/speech/speech-stream-player";
 
 export type SpeechProvider = "gemini" | "openai" | "elevenlabs" | "openrouter";
 export interface SpeechSettings {
@@ -34,7 +35,14 @@ const STORAGE_KEY = "vito-app-speech-settings-v1";
 const PENDING_SYNC_KEY = "vito-app-speech-settings-pending-sync-v1";
 const defaults: SpeechSettings = { provider: "openai", voice: "alloy", rate: 1 };
 const SpeechContext = createContext<SpeechContextValue | null>(null);
-const cache = new Map<string, string>();
+const cache = new Map<string, Uint8Array[]>();
+const STREAM_BUFFER_BYTES = 8_192;
+
+function cacheAudio(key: string, chunks: Uint8Array[]) {
+  cache.delete(key);
+  cache.set(key, chunks);
+  while (cache.size > 20) cache.delete(cache.keys().next().value as string);
+}
 
 function cacheKey(settings: SpeechSettings, text: string) {
   return `${settings.provider}:${settings.model ?? ""}:${settings.voice}:${text}`;
@@ -43,7 +51,9 @@ function cacheKey(settings: SpeechSettings, text: string) {
 export function SpeechProviderContext({ children }: { children: ReactNode }) {
   const [settings, setSettings] = useState<SpeechSettings>(defaults);
   const [state, setState] = useState<SpeechState>({ id: null, status: "idle" });
-  const playerRef = useRef<AudioPlayer | null>(null);
+  const playerRef = useRef<SpeechStreamPlayer | null>(null);
+  const abortRef = useRef<AbortController | null>(null);
+  const runRef = useRef(0);
   const editedRef = useRef(false);
 
   useEffect(() => {
@@ -84,12 +94,18 @@ export function SpeechProviderContext({ children }: { children: ReactNode }) {
     })();
     return () => {
       cancelled = true;
-      playerRef.current?.remove();
+      runRef.current += 1;
+      abortRef.current?.abort();
+      playerRef.current?.stop();
     };
   }, []);
 
   const stop = () => {
-    playerRef.current?.pause();
+    runRef.current += 1;
+    abortRef.current?.abort();
+    abortRef.current = null;
+    playerRef.current?.stop();
+    playerRef.current = null;
     setState({ id: null, status: "idle" });
   };
 
@@ -111,53 +127,99 @@ export function SpeechProviderContext({ children }: { children: ReactNode }) {
 
   const toggle = async (id: string, text: string, override?: SpeechSettings) => {
     if (state.id === id && state.status === "playing") {
-      playerRef.current?.pause();
+      await playerRef.current?.pause();
       setState({ id, status: "paused" });
       return;
     }
     if (state.id === id && state.status === "paused") {
-      playerRef.current?.play();
+      await playerRef.current?.resume();
       setState({ id, status: "playing" });
       return;
     }
-    playerRef.current?.pause();
+
+    runRef.current += 1;
+    const run = runRef.current;
+    abortRef.current?.abort();
+    playerRef.current?.stop();
+    const abort = new AbortController();
+    abortRef.current = abort;
     setState({ id, status: "loading" });
+
     try {
       const activeSettings = override ?? settings;
       const key = cacheKey(activeSettings, text);
-      let uri = cache.get(key);
-      if (!uri) {
-        const result = await api<{ data: string; mimeType: string }>("/api/speech/synthesize", {
-          method: "POST",
-          body: JSON.stringify({ ...activeSettings, text }),
-        });
-        if (Platform.OS === "web") uri = `data:${result.mimeType};base64,${result.data}`;
-        else {
-          const extension = result.mimeType === "audio/wav" ? "wav" : "mp3";
-          uri = `${FileSystem.cacheDirectory}vito-speech-${Date.now()}.${extension}`;
-          await FileSystem.writeAsStringAsync(uri, result.data, {
-            encoding: FileSystem.EncodingType.Base64,
-          });
-        }
-        cache.set(key, uri);
+      const player = await createSpeechStreamPlayer({
+        rate: activeSettings.rate,
+        onStarted: () => {
+          if (runRef.current === run) setState({ id, status: "playing" });
+        },
+        onEnded: () => {
+          if (runRef.current === run) {
+            playerRef.current = null;
+            abortRef.current = null;
+            setState({ id: null, status: "idle" });
+          }
+        },
+      });
+      if (runRef.current !== run) {
+        player.stop();
+        return;
       }
-      playerRef.current?.remove();
-      await setAudioModeAsync({
-        allowsRecording: false,
-        playsInSilentMode: true,
-        interruptionMode: "duckOthers",
-        shouldPlayInBackground: false,
-        shouldRouteThroughEarpiece: false,
-      });
-      const player = createAudioPlayer(uri);
-      player.setPlaybackRate(activeSettings.rate);
-      player.addListener("playbackStatusUpdate", (status) => {
-        if (status.didJustFinish) setState({ id: null, status: "idle" });
-      });
       playerRef.current = player;
-      player.play();
-      setState({ id, status: "playing" });
+
+      const cached = cache.get(key);
+      if (cached) {
+        for (const chunk of cached) await player.enqueue(chunk);
+        player.finish();
+        return;
+      }
+
+      const response = await apiStream("/api/speech/stream", {
+        method: "POST",
+        body: JSON.stringify({ ...activeSettings, text }),
+        signal: abort.signal,
+      });
+      if (!response.ok) {
+        const body = (await response.json().catch(() => undefined)) as
+          { error?: string; message?: string } | undefined;
+        throw new Error(body?.error ?? body?.message ?? `Speech failed (${response.status})`);
+      }
+      if (!response.body) throw new Error("Speech provider returned an empty stream");
+
+      const chunks: Uint8Array[] = [];
+      const reader = response.body.getReader();
+      let pending = new Uint8Array(0);
+      while (runRef.current === run) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        const combined = new Uint8Array(pending.byteLength + value.byteLength);
+        combined.set(pending);
+        combined.set(value, pending.byteLength);
+        let offset = 0;
+        while (combined.byteLength - offset >= STREAM_BUFFER_BYTES) {
+          const chunk = combined.slice(offset, offset + STREAM_BUFFER_BYTES);
+          chunks.push(chunk);
+          await player.enqueue(chunk);
+          offset += STREAM_BUFFER_BYTES;
+        }
+        pending = combined.slice(offset);
+      }
+      if (runRef.current !== run) {
+        await reader.cancel();
+        return;
+      }
+      if (pending.byteLength > 0) {
+        chunks.push(pending);
+        await player.enqueue(pending);
+      }
+      if (chunks.length === 0) throw new Error("Speech provider returned no audio");
+      cacheAudio(key, chunks);
+      player.finish();
     } catch (cause) {
+      if (abort.signal.aborted || runRef.current !== run) return;
+      playerRef.current?.stop();
+      playerRef.current = null;
+      abortRef.current = null;
       setState({
         id,
         status: "idle",

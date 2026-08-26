@@ -1,3 +1,4 @@
+import { fetch as expoFetch, type FetchRequestInit } from "expo/fetch";
 import { Platform } from "react-native";
 import * as SecureStore from "expo-secure-store";
 
@@ -361,6 +362,14 @@ export function attachmentFileSource(
     uri,
     ...(authToken ? { headers: { Authorization: `Bearer ${authToken}` } } : {}),
   };
+}
+
+export async function apiStream(path: string, init?: FetchRequestInit): Promise<Response> {
+  const headers = new Headers(init?.headers);
+  const token = authToken ?? (await loadToken());
+  if (token) headers.set("Authorization", `Bearer ${token}`);
+  if (init?.body && !headers.has("Content-Type")) headers.set("Content-Type", "application/json");
+  return expoFetch(`${VITO_URL}${path}`, { ...init, headers });
 }
 
 export async function api<T>(path: string, init?: RequestInit): Promise<T> {

@@ -103,8 +103,11 @@ npm run check
 printf '==> Building backend\n'
 npm run build
 
-printf '==> Building dashboard\n'
+printf '==> Building legacy dashboard\n'
 npm run build:dashboard
+
+printf '==> Building Vito companion web client\n'
+npm run build:mobile:web
 
 # Migrate only after the new code has installed, verified, and built. If an
 # earlier step fails, the existing configuration remains untouched.

@@ -19,7 +19,7 @@ npm run build
 echo "[Vito] Building legacy dashboard..."
 npm run build:dashboard
 
-echo "[Vito] Building Rook web..."
+echo "[Vito] Building companion web client..."
 npm run build:mobile:web
 
 echo "[Vito] Restarting PM2 service..."

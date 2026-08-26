@@ -101,17 +101,17 @@ export class DashboardChannelService implements ChannelService {
     app.use(createAppProxyMiddleware(x));
 
     const legacyDashboardDist = path.join(__dirname, "../../../../dashboard/dist");
-    const rookWebDist = path.join(__dirname, "../../../../mobile/dist");
+    const companionWebDist = path.join(__dirname, "../../../../mobile/dist");
 
-    // Keep the retired dashboard available during Rook's burn-in period.
+    // Keep the legacy dashboard available during the companion's burn-in period.
     app.use("/legacy", express.static(legacyDashboardDist));
     app.get(/^\/legacy(?:\/.*)?$/, (_req, res) => {
       res.sendFile(path.join(legacyDashboardDist, "index.html"));
     });
 
-    // Rook is the default web client. API and Drive requests fall through when
-    // there is no matching static asset.
-    app.use(express.static(rookWebDist));
+    // The Vito companion is the default web client. API and Drive requests
+    // fall through when there is no matching static asset.
+    app.use(express.static(companionWebDist));
 
     // Public drive files and hosted sites are resolved through DriveStore.
     app.use("/d", await new PublicDriveRouterService().createRouter(x));
@@ -163,9 +163,9 @@ export class DashboardChannelService implements ChannelService {
 
     app.use("/api/pi-sessions", await new PiSessionRouterService().createRouter(x));
 
-    // Serve Rook for client-side routes and browser refreshes.
+    // Serve the companion for client-side routes and browser refreshes.
     app.use((_req, res) => {
-      res.sendFile(path.join(rookWebDist, "index.html"));
+      res.sendFile(path.join(companionWebDist, "index.html"));
     });
   }
 

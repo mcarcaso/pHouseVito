@@ -361,6 +361,66 @@ function AppContent() {
                 options={({ route, navigation }) => {
                   const area = route.params.area;
                   const title = operationAreas.find((item) => item.id === area)?.label ?? "";
+                  const headerActions =
+                    area === "secrets" ? (
+                      <Pressable
+                        accessibilityLabel="Add secret"
+                        onPress={() => navigation.navigate("SecretNew")}
+                        style={{
+                          width: 44,
+                          height: 44,
+                          alignItems: "center",
+                          justifyContent: "center",
+                        }}
+                      >
+                        <Ionicons name="add" size={25} color={theme.colors.accent} />
+                      </Pressable>
+                    ) : area === "jobs" ? (
+                      <View style={{ flexDirection: "row", alignItems: "center" }}>
+                        <Pressable
+                          accessibilityLabel="Refresh jobs"
+                          onPress={() => navigation.setParams({ refreshKey: Date.now() })}
+                          style={{
+                            width: 40,
+                            height: 44,
+                            alignItems: "center",
+                            justifyContent: "center",
+                          }}
+                        >
+                          <Ionicons name="refresh" size={20} color={theme.colors.accent} />
+                        </Pressable>
+                        <Pressable
+                          accessibilityLabel="New job"
+                          onPress={() => navigation.navigate("JobDetail", {})}
+                          style={{
+                            width: 40,
+                            height: 44,
+                            alignItems: "center",
+                            justifyContent: "center",
+                          }}
+                        >
+                          <Ionicons name="add" size={25} color={theme.colors.accent} />
+                        </Pressable>
+                      </View>
+                    ) : area === "pi" ? (
+                      <HeaderButton
+                        accessibilityLabel="Refresh Pi sessions"
+                        onPress={() => navigation.setParams({ refreshKey: Date.now() })}
+                        tintColor={theme.colors.accent}
+                      >
+                        <Ionicons name="refresh" size={21} color={theme.colors.accent} />
+                      </HeaderButton>
+                    ) : (
+                        ["apps", "drive", "traces", "providers", "server"] as OperationArea[]
+                      ).includes(area) ? (
+                      <HeaderButton
+                        accessibilityLabel={`Refresh ${title}`}
+                        onPress={() => navigation.setParams({ refreshKey: Date.now() })}
+                        tintColor={theme.colors.accent}
+                      >
+                        <Ionicons name="refresh" size={20} color={theme.colors.accent} />
+                      </HeaderButton>
+                    ) : undefined;
                   return {
                     headerShown: true,
                     headerTransparent: false,
@@ -369,80 +429,7 @@ function AppContent() {
                     headerTintColor: theme.colors.accent,
                     headerTitleStyle: { color: theme.colors.text },
                     headerShadowVisible: false,
-                    headerRight:
-                      area === "secrets"
-                        ? () => (
-                            <Pressable
-                              accessibilityLabel="Add secret"
-                              onPress={() => navigation.navigate("SecretNew")}
-                              style={{
-                                width: 44,
-                                height: 44,
-                                alignItems: "center",
-                                justifyContent: "center",
-                              }}
-                            >
-                              <Ionicons name="add" size={25} color={theme.colors.accent} />
-                            </Pressable>
-                          )
-                        : area === "jobs"
-                          ? () => (
-                              <View style={{ flexDirection: "row", alignItems: "center" }}>
-                                <Pressable
-                                  accessibilityLabel="Refresh jobs"
-                                  onPress={() => navigation.setParams({ refreshKey: Date.now() })}
-                                  style={{
-                                    width: 40,
-                                    height: 44,
-                                    alignItems: "center",
-                                    justifyContent: "center",
-                                  }}
-                                >
-                                  <Ionicons name="refresh" size={20} color={theme.colors.accent} />
-                                </Pressable>
-                                <Pressable
-                                  accessibilityLabel="New job"
-                                  onPress={() => navigation.navigate("JobDetail", {})}
-                                  style={{
-                                    width: 40,
-                                    height: 44,
-                                    alignItems: "center",
-                                    justifyContent: "center",
-                                  }}
-                                >
-                                  <Ionicons name="add" size={25} color={theme.colors.accent} />
-                                </Pressable>
-                              </View>
-                            )
-                          : area === "pi"
-                            ? ({ tintColor }) => (
-                                <HeaderButton
-                                  accessibilityLabel="Refresh Pi sessions"
-                                  onPress={() => navigation.setParams({ refreshKey: Date.now() })}
-                                  tintColor={tintColor}
-                                >
-                                  <Ionicons name="refresh" size={21} color={tintColor} />
-                                </HeaderButton>
-                              )
-                            : (
-                                  [
-                                    "apps",
-                                    "drive",
-                                    "traces",
-                                    "providers",
-                                    "server",
-                                  ] as OperationArea[]
-                                ).includes(area)
-                              ? ({ tintColor }) => (
-                                  <HeaderButton
-                                    accessibilityLabel={`Refresh ${title}`}
-                                    onPress={() => navigation.setParams({ refreshKey: Date.now() })}
-                                    tintColor={tintColor}
-                                  >
-                                    <Ionicons name="refresh" size={20} color={tintColor} />
-                                  </HeaderButton>
-                                )
-                              : undefined,
+                    headerRight: headerActions ? () => headerActions : undefined,
                     header:
                       Platform.OS === "web"
                         ? () => (
@@ -461,6 +448,7 @@ function AppContent() {
                                       })
                                   : undefined
                               }
+                              right={headerActions}
                             />
                           )
                         : undefined,

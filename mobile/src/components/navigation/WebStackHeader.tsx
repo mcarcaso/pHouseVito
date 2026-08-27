@@ -44,7 +44,7 @@ export function WebStackHeader({
           />
         </View>
       )}
-      {right}
+      {right && <View style={styles.webHeaderRight}>{right}</View>}
     </View>
   );
 }
@@ -83,5 +83,10 @@ const createStyles = (theme: VitoTheme) =>
       color: theme.colors.text,
       fontSize: 15,
       paddingVertical: theme.space.md,
+    },
+    webHeaderRight: {
+      marginLeft: "auto",
+      flexDirection: "row",
+      alignItems: "center",
     },
   });

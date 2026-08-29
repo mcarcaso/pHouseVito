@@ -16,10 +16,18 @@ class QueuedFactExtractor implements FactExtractor {
   readonly version = "test-v1";
   readonly outputs: ExtractedFactCandidate[][] = [];
   readonly inputs: FactExtractionInput[] = [];
+  delayMs = 0;
+  active = 0;
+  maxActive = 0;
 
   async extract(_x: unknown, input: FactExtractionInput): Promise<ExtractedFactCandidate[]> {
     this.inputs.push(input);
-    return this.outputs.shift() ?? [];
+    const output = this.outputs.shift() ?? [];
+    this.active += 1;
+    this.maxActive = Math.max(this.maxActive, this.active);
+    if (this.delayMs > 0) await new Promise((resolve) => setTimeout(resolve, this.delayMs));
+    this.active -= 1;
+    return output;
   }
 }
 
@@ -56,6 +64,11 @@ function setup() {
   const x = new ObjectContext({
     db: () => db,
     embeddingDb: () => embeddingDb,
+    embeddingService: () => ({
+      create: async () => new Float32Array([1, 0]),
+      createMany: async (_context: unknown, texts: string[]) =>
+        texts.map(() => new Float32Array([1, 0])),
+    }),
     factExtractor: () => extractor,
     factStore: () => store,
     factService: () => service,
@@ -95,6 +108,28 @@ function setup() {
 }
 
 describe("atomic fact ingestion", () => {
+  it("extracts three chunks concurrently before ordered reconciliation", async () => {
+    const fixture = setup();
+    try {
+      fixture.extractor.delayMs = 20;
+      fixture.addUserMessage("First fact window.", 1_000);
+      fixture.addUserMessage("Second fact window.", 2_000);
+      fixture.addUserMessage("Third fact window.", 3_000);
+      fixture.extractor.outputs.push([], [], []);
+
+      const result = await fixture.service.backfill(fixture.x, { limit: 3, concurrency: 3 });
+      assert.equal(result.batchesProcessed, 3);
+      assert.equal(fixture.extractor.maxActive, 3);
+      assert.deepEqual(
+        fixture.extractor.inputs.map((input) => input.chunkId),
+        [1, 2, 3],
+      );
+    } finally {
+      fixture.db.close();
+      fixture.embeddingDb.close();
+    }
+  });
+
   it("excludes thoughts and raw tool events from model extraction", async () => {
     const fixture = setup();
     try {

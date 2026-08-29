@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto";
 import type { Context } from "../../context/Context.js";
-import { xFactExtractor, xFactStore, xMessageStore } from "../../lib/x.js";
+import { xEmbeddingService, xFactExtractor, xFactStore, xMessageStore } from "../../lib/x.js";
 import type { MessageRow } from "../../stores/messages/MessageStore.js";
 import type {
   AtomicFact,
@@ -192,6 +192,19 @@ function strongerStatus(status: FactStatus): boolean {
   return status === "active" || status === "disputed";
 }
 
+function cosineSimilarity(a: Float32Array, b: Float32Array): number {
+  if (a.length !== b.length || a.length === 0) return 0;
+  let dot = 0;
+  let normA = 0;
+  let normB = 0;
+  for (let index = 0; index < a.length; index += 1) {
+    dot += a[index] * b[index];
+    normA += a[index] * a[index];
+    normB += b[index] * b[index];
+  }
+  return normA > 0 && normB > 0 ? dot / Math.sqrt(normA * normB) : 0;
+}
+
 export class DefaultFactService implements FactService {
   private ingestionInProgress = false;
 
@@ -226,6 +239,7 @@ export class DefaultFactService implements FactService {
   async backfill(x: Context, options: FactBackfillOptions = {}): Promise<FactIngestResult> {
     return this.processAvailableChunks(x, {
       limit: options.limit ?? 25,
+      concurrency: options.concurrency ?? 1,
       extractorModel: options.extractorModel,
     });
   }
@@ -236,6 +250,7 @@ export class DefaultFactService implements FactService {
       sessionId?: string;
       afterMessageId?: number;
       limit: number;
+      concurrency?: number;
       extractorModel?: FactIngestOptions["extractorModel"];
     },
   ): Promise<FactIngestResult> {
@@ -258,44 +273,62 @@ export class DefaultFactService implements FactService {
           chunkId: chunk.id,
           extractorVersion: extractor.version,
         });
-        try {
-          const messages = xMessageStore(x)
-            .list(x, {
-              sessionIds: [chunk.sessionId],
-              afterId: chunk.messageIdStart - 1,
-              throughId: chunk.messageIdEnd,
-              types: ["user", "assistant"],
-              order: "oldest",
-            })
-            .map(toExtractionMessage)
-            .filter((message): message is FactExtractionMessage => message !== null);
-          result.messagesConsidered += messages.length;
-          const candidates = await extractor.extract(
-            x,
-            {
-              chunkId: chunk.id,
-              contextualizedText: chunk.contextualizedText,
-              context: chunk.context,
-              messages,
-            },
-            { model: options.extractorModel },
-          );
-          const chunkResult = this.reconcileCandidates(x, candidates, messages);
-          result.inserted.push(...chunkResult.inserted);
-          result.supported.push(...chunkResult.supported);
-          result.superseded.push(...chunkResult.superseded);
-          result.rejected.push(...chunkResult.rejected);
-          result.batchesProcessed += 1;
-          xFactStore(x).cmd(x, {
-            type: "complete_chunk",
-            chunkId: chunk.id,
-            extractorVersion: extractor.version,
-            inserted: chunkResult.inserted.length,
-            supported: chunkResult.supported.length,
-            rejected: chunkResult.rejected.length,
-          });
-        } catch (error) {
-          const message = error instanceof Error ? error.message : String(error);
+      }
+
+      type ExtractedChunk = {
+        messages: FactExtractionMessage[];
+        candidates?: ExtractedFactCandidate[];
+        error?: string;
+      };
+      const extracted: ExtractedChunk[] = new Array(chunks.length);
+      let nextIndex = 0;
+      const worker = async () => {
+        while (true) {
+          const index = nextIndex++;
+          if (index >= chunks.length) return;
+          const chunk = chunks[index];
+          try {
+            const messages = xMessageStore(x)
+              .list(x, {
+                sessionIds: [chunk.sessionId],
+                afterId: chunk.messageIdStart - 1,
+                throughId: chunk.messageIdEnd,
+                types: ["user", "assistant"],
+                order: "oldest",
+              })
+              .map(toExtractionMessage)
+              .filter((message): message is FactExtractionMessage => message !== null);
+            const candidates = await extractor.extract(
+              x,
+              {
+                chunkId: chunk.id,
+                contextualizedText: chunk.contextualizedText,
+                context: chunk.context,
+                messages,
+              },
+              { model: options.extractorModel },
+            );
+            extracted[index] = { messages, candidates };
+          } catch (error) {
+            extracted[index] = {
+              messages: [],
+              error: error instanceof Error ? error.message : String(error),
+            };
+          }
+        }
+      };
+      await Promise.all(
+        Array.from({ length: Math.max(1, Math.min(options.concurrency ?? 1, chunks.length)) }, () =>
+          worker(),
+        ),
+      );
+
+      // Extraction is parallel, but reconciliation is deliberately committed
+      // in chronological chunk order so temporal supersession stays stable.
+      for (const [index, chunk] of chunks.entries()) {
+        const item = extracted[index];
+        if (item.error || !item.candidates) {
+          const message = item.error ?? "Fact extractor returned no result";
           xFactStore(x).cmd(x, {
             type: "fail_chunk",
             chunkId: chunk.id,
@@ -303,7 +336,28 @@ export class DefaultFactService implements FactService {
             error: message,
           });
           console.error(`[Facts] Chunk ${chunk.id} failed: ${message}`);
+          continue;
         }
+        result.messagesConsidered += item.messages.length;
+        const chunkResult = this.reconcileCandidates(x, item.candidates, item.messages);
+        result.inserted.push(...chunkResult.inserted);
+        result.supported.push(...chunkResult.supported);
+        result.superseded.push(...chunkResult.superseded);
+        result.rejected.push(...chunkResult.rejected);
+        result.batchesProcessed += 1;
+        xFactStore(x).cmd(x, {
+          type: "complete_chunk",
+          chunkId: chunk.id,
+          extractorVersion: extractor.version,
+          inserted: chunkResult.inserted.length,
+          supported: chunkResult.supported.length,
+          rejected: chunkResult.rejected.length,
+        });
+      }
+      try {
+        await this.embedMissing(x, 200);
+      } catch (error) {
+        console.error("[Facts] Failed to embed extracted facts:", error);
       }
       result.durationMs = Date.now() - start;
       return result;
@@ -412,6 +466,23 @@ export class DefaultFactService implements FactService {
     return result;
   }
 
+  async embedMissing(x: Context, limit = 200): Promise<number> {
+    const facts = xFactStore(x).listFactsMissingEmbeddings(x, limit);
+    if (facts.length === 0) return 0;
+    const service = xEmbeddingService(x);
+    const texts = facts.map((fact) =>
+      [fact.canonicalText, fact.slotKey, ...fact.entities].filter(Boolean).join("\n"),
+    );
+    const vectors = service.createMany
+      ? await service.createMany(x, texts)
+      : await Promise.all(texts.map((text) => service.create(x, text)));
+    xFactStore(x).putFactEmbeddings(
+      x,
+      facts.map((fact, index) => ({ factId: fact.id, vector: vectors[index] })),
+    );
+    return facts.length;
+  }
+
   async search(
     x: Context,
     query: string,
@@ -422,24 +493,53 @@ export class DefaultFactService implements FactService {
       ? (["active", "disputed"] satisfies FactStatus[])
       : (options.statuses ?? ["active", "historical", "disputed"]);
     const terms = getSearchTerms(query);
-    let scored: Array<{ fact: AtomicFact; score: number }> = [];
+    let lexical: Array<{ fact: AtomicFact; score: number }> = [];
     if (terms.length > 0) {
       const ftsQuery = terms.map((term) => `"${term.replaceAll('"', '""')}"`).join(" OR ");
       try {
-        scored = xFactStore(x).searchFts(x, { query: ftsQuery, limit: limit * 3, statuses });
+        lexical = xFactStore(x).searchFts(x, { query: ftsQuery, limit: limit * 5, statuses });
       } catch {
-        scored = [];
+        lexical = [];
       }
     }
+
+    let semantic: AtomicFact[] = [];
+    try {
+      const queryVector = await xEmbeddingService(x).create(x, query);
+      const rankedIds = xFactStore(x)
+        .listFactVectors(x)
+        .map((item) => ({ factId: item.factId, score: cosineSimilarity(queryVector, item.vector) }))
+        .sort((a, b) => b.score - a.score)
+        .slice(0, limit * 10)
+        .map((item) => item.factId);
+      const byId = new Map(
+        xFactStore(x)
+          .list(x, { ids: rankedIds })
+          .map((fact) => [fact.id, fact]),
+      );
+      semantic = rankedIds.map((id) => byId.get(id)).filter((fact): fact is AtomicFact => !!fact);
+    } catch (error) {
+      console.error("[Facts] Semantic search unavailable, using lexical search:", error);
+    }
+
+    const byId = new Map<number, { fact: AtomicFact; score: number }>();
+    const addRanked = (facts: AtomicFact[]) => {
+      facts.forEach((fact, index) => {
+        const item = byId.get(fact.id) ?? { fact, score: 0 };
+        item.score += 1 / (60 + index + 1);
+        byId.set(fact.id, item);
+      });
+    };
+    addRanked(lexical.map((item) => item.fact));
+    addRanked(semantic);
+    let scored = [...byId.values()].sort((a, b) => b.score - a.score);
     if (scored.length === 0) {
       scored = xFactStore(x)
         .list(x, { statuses, order: "recent", limit: limit * 3 })
-        .map((fact, index) => ({
-          fact,
-          score: 1 / (index + 1),
-        }));
+        .map((fact, index) => ({ fact, score: 1 / (index + 1) }));
     }
     return scored
+      .filter(({ fact }) => statuses.includes(fact.status))
       .filter(({ fact }) => !options.kinds || options.kinds.includes(fact.kind))
       .filter(({ fact }) => !options.authorities || options.authorities.includes(fact.authority))
       .filter(({ fact }) => {

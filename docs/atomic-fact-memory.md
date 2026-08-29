@@ -56,11 +56,10 @@ Facts are never physically deleted through `FactStore`.
 ./vito memory backfill-facts --all [--batch 25]
 ```
 
-`memory recall` queries relevant profile sections, atomic facts, and transcript search together. The `memory-recall` and `fact-memory-search` skills document agent usage and evidence policy.
+`memory recall` queries relevant profile sections, atomic facts, and transcript search together. Facts have both FTS/entity/slot indexing and semantic vectors. The Expo companion's Memory workspace exposes separate Answer, Facts, and Transcripts pages; Answer uses Luna to synthesize profile, fact, and transcript evidence with structurally validated citations. The `memory-recall` and `fact-memory-search` skills document agent usage and evidence policy.
 
 ## Current limitations
 
-- Fact retrieval is FTS/entity/slot based; fact-vector retrieval is not yet implemented.
 - Explicit retraction without a replacement value needs a richer reconciliation operation.
 - Historical backfill is explicit and resumable; it is never started automatically.
 - Generated recall answers are produced by the calling agent and are not persisted as truth.

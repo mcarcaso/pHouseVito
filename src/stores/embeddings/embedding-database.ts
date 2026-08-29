@@ -65,6 +65,13 @@ export function createEmbeddingDatabase(path: string): Database.Database {
       FOREIGN KEY (supersedes_fact_id) REFERENCES facts(id)
     );
 
+    CREATE TABLE IF NOT EXISTS fact_embeddings (
+      fact_id INTEGER PRIMARY KEY,
+      vector BLOB NOT NULL,
+      updated_at INTEGER NOT NULL DEFAULT (unixepoch() * 1000),
+      FOREIGN KEY (fact_id) REFERENCES facts(id) ON DELETE CASCADE
+    );
+
     CREATE TABLE IF NOT EXISTS fact_sources (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       fact_id INTEGER NOT NULL,

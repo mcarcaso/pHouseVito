@@ -35,6 +35,7 @@ import {
   type IdentityDocument,
 } from "../../screens/identity/IdentityScreen";
 import { LoginScreen } from "../../screens/auth/LoginScreen";
+import { MemoryScreen } from "../../screens/memory/MemoryScreen";
 import { OperationWorkspace } from "../../screens/operations/OperationWorkspace";
 import { AppDetailScreen, AppsScreen } from "../../screens/apps/AppsScreen";
 import { ProviderModelsScreen, ProvidersScreen } from "../../screens/providers/ProvidersScreen";
@@ -78,28 +79,7 @@ import type { MainRouteName, MainTabParamList, RootStackParamList } from "./rout
 type RootNavigation = NativeStackNavigationProp<RootStackParamList>;
 
 export function RootMemoryScreen({ navigation }: { navigation: RootNavigation }) {
-  const styles = useThemeStyles(createStyles);
-  return (
-    <ScrollView
-      automaticallyAdjustContentInsets
-      contentInsetAdjustmentBehavior={Platform.OS === "ios" ? "automatic" : "never"}
-      automaticallyAdjustKeyboardInsets
-      automaticallyAdjustsScrollIndicatorInsets
-      keyboardDismissMode="interactive"
-      keyboardShouldPersistTaps="handled"
-      contentContainerStyle={styles.fullScreenOperation}
-    >
-      <OperationWorkspace
-        initialArea="memory"
-        showAreaTabs={false}
-        hideMemorySearch
-        onUnauthorized={() => navigation.navigate("Main", { screen: "More" })}
-        onMemorySearch={(query, mode, limit) =>
-          navigation.navigate("MemoryResults", { query, mode, limit })
-        }
-      />
-    </ScrollView>
-  );
+  return <MemoryScreen onUnauthorized={() => navigation.navigate("Main", { screen: "More" })} />;
 }
 
 export function JobDetailRoute({

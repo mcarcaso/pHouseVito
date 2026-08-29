@@ -51,6 +51,19 @@ export interface MemoryRecallResult {
   transcripts: SearchResult[];
 }
 
+export interface MemoryAnswerCitation {
+  provider: "profile" | "fact" | "transcript";
+  id: string;
+  label: string;
+}
+
+export interface MemoryAnswerResult {
+  answer: string;
+  citations: MemoryAnswerCitation[];
+  recall: MemoryRecallResult;
+  durationMs: number;
+}
+
 export interface MemoryIngestionOptions extends EmbedOptions {
   factExtractorModel?: FactIngestOptions["extractorModel"];
 }
@@ -64,6 +77,7 @@ export interface MemoryService {
   getProfile(x: Context): string | null;
   search(x: Context, query: string, options?: SearchOptions): Promise<SearchResult[]>;
   recall(x: Context, query: string, options?: MemoryRecallOptions): Promise<MemoryRecallResult>;
+  answer(x: Context, query: string, options?: MemoryRecallOptions): Promise<MemoryAnswerResult>;
   maybeProcessNewMemory(
     x: Context,
     sessionId: string,

@@ -11,6 +11,7 @@ import type {
   FactSource,
   FactStatus,
   FactStore,
+  FactVector,
   FactStoreCommand,
   UpdateFactArgs,
 } from "./FactStore.js";
@@ -346,6 +347,46 @@ export class SqliteFactStore implements FactStore {
       messageCount: row.msg_count,
       attempts: row.attempts,
     }));
+  }
+
+  listFactVectors(x: Context): FactVector[] {
+    const rows = xEmbeddingDb(x)
+      .prepare("SELECT fact_id, vector FROM fact_embeddings ORDER BY fact_id")
+      .all() as Array<{ fact_id: number; vector: Buffer }>;
+    return rows.map((row) => {
+      const bytes = Uint8Array.from(row.vector);
+      return { factId: row.fact_id, vector: new Float32Array(bytes.buffer) };
+    });
+  }
+
+  listFactsMissingEmbeddings(x: Context, limit: number): AtomicFact[] {
+    const rows = xEmbeddingDb(x)
+      .prepare(
+        `SELECT f.* FROM facts f
+         LEFT JOIN fact_embeddings e ON e.fact_id = f.id
+         WHERE e.fact_id IS NULL
+         ORDER BY f.id ASC LIMIT ?`,
+      )
+      .all(limit) as FactRow[];
+    return this.hydrate(x, rows);
+  }
+
+  putFactEmbeddings(x: Context, embeddings: FactVector[]): void {
+    const statement = xEmbeddingDb(x).prepare(
+      `INSERT INTO fact_embeddings (fact_id, vector, updated_at) VALUES (?, ?, ?)
+       ON CONFLICT(fact_id) DO UPDATE SET vector = excluded.vector, updated_at = excluded.updated_at`,
+    );
+    const write = xEmbeddingDb(x).transaction(() => {
+      for (const embedding of embeddings) {
+        const vector = Buffer.from(
+          embedding.vector.buffer,
+          embedding.vector.byteOffset,
+          embedding.vector.byteLength,
+        );
+        statement.run(embedding.factId, vector, Date.now());
+      }
+    });
+    write();
   }
 
   searchFts(

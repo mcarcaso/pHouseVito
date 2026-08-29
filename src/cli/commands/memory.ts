@@ -30,7 +30,7 @@ const help = `Usage:
   vito memory search <query> [options]
   vito memory facts <query> [options]
   vito memory recall <query> [--deep] [--current] [--as-of YYYY-MM-DD]
-  vito memory backfill-facts --all [--batch N]
+  vito memory backfill-facts --all [--batch N] [--concurrency N]
 
 Search options:
   --limit N       Number of results (default: 5)
@@ -248,15 +248,17 @@ async function runFactBackfill(args: string[], x: Context): Promise<number> {
     return 2;
   }
   let batchSize = 25;
+  let concurrency = 3;
   let maxChunks: number | undefined;
   for (let index = 0; index < args.length; index += 1) {
     const option = args[index];
     if (option === "--all") continue;
-    if (option === "--batch" || option === "--max-chunks") {
+    if (option === "--batch" || option === "--max-chunks" || option === "--concurrency") {
       const value = args[++index];
       if (!value) throw new Error(`Missing value for ${option}`);
       const parsed = z.coerce.number().int().min(1).parse(value);
       if (option === "--batch") batchSize = Math.min(parsed, 100);
+      else if (option === "--concurrency") concurrency = Math.min(parsed, 8);
       else maxChunks = parsed;
     } else {
       throw new Error(`Unknown option: ${option}`);
@@ -272,7 +274,10 @@ async function runFactBackfill(args: string[], x: Context): Promise<number> {
     const requestLimit =
       maxChunks === undefined ? batchSize : Math.min(batchSize, maxChunks - attemptedThisRun);
     if (requestLimit <= 0) break;
-    const result = await xFactService(x).backfill(x, { limit: requestLimit });
+    const result = await xFactService(x).backfill(x, {
+      limit: requestLimit,
+      concurrency,
+    });
     const progress = db
       .prepare(
         `SELECT COUNT(*) completed,

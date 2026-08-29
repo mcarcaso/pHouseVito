@@ -9,7 +9,7 @@ import { z } from "zod";
 import { RootContext } from "../../src/context/RootContext.js";
 import { dashboardRouterContext } from "../support/dashboard-router-context.js";
 import { createDatabase } from "../../src/lib/sqlite/database.js";
-import { xEmbeddingDb, xEmbeddingStore, xSessionStore } from "../../src/lib/x.js";
+import { xEmbeddingDb, xEmbeddingStore, xFactStore, xSessionStore } from "../../src/lib/x.js";
 import { MemoryRouterService } from "../../src/routers/MemoryRouterService.js";
 
 const userDir = mkdtempSync(join(tmpdir(), "vito-memory-router-"));
@@ -28,6 +28,29 @@ sessionStore.create(x, {
   last_active_at: 1,
   config: "{}",
   alias: "Alpha Session",
+});
+xFactStore(x).create(x, {
+  fingerprint: "alpha-fact",
+  canonicalText: "Mike chose the alpha project.",
+  kind: "decision",
+  slotKey: "mike.project.alpha.status",
+  canonicalValue: "chosen",
+  status: "active",
+  authority: "user_explicit",
+  validFrom: "2026-01-01",
+  validTo: null,
+  observedAt: 1,
+  supersedesFactId: null,
+  entities: ["Mike", "Alpha"],
+  sources: [
+    {
+      messageId: 1,
+      sessionId: "session:a",
+      messageType: "user",
+      quote: "I chose alpha.",
+      sourceTimestamp: 1,
+    },
+  ],
 });
 xEmbeddingStore(x).createChunk(x, {
   sessionId: "session:a",
@@ -120,6 +143,22 @@ describe("memory router", () => {
     assert.equal(result.results.length, 1);
     assert.equal(result.results[0]?.session_id, "session:a");
     assert.equal(result.results[0]?.chunk_index, 3);
+  });
+
+  it("searches evidence-backed atomic facts", async () => {
+    const response = await fetch(`${baseUrl}/api/memory/facts/search?q=alpha&limit=10`);
+    assert.equal(response.status, 200);
+    const body = z
+      .object({
+        results: z.array(
+          z.object({
+            fact: z.object({ canonicalText: z.string(), sources: z.array(z.unknown()) }),
+          }),
+        ),
+      })
+      .parse(await response.json());
+    assert.equal(body.results[0]?.fact.canonicalText, "Mike chose the alpha project.");
+    assert.equal(body.results[0]?.fact.sources.length, 1);
   });
 
   it("returns structured errors for invalid search inputs", async () => {

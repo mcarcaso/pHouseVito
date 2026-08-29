@@ -59,6 +59,11 @@ export interface CreateFactArgs {
   sources: Array<Omit<FactSource, "id" | "factId">>;
 }
 
+export interface FactVector {
+  factId: number;
+  vector: Float32Array;
+}
+
 export interface FactExtractionChunk {
   id: number;
   sessionId: string;
@@ -150,6 +155,9 @@ export interface FactStore extends Store<
     args: { query: string; limit: number; statuses?: FactStatus[] },
   ): Array<{ fact: AtomicFact; score: number }>;
   listExtractionChunks(x: Context, args: FactChunkListArgs): FactExtractionChunk[];
+  listFactVectors(x: Context): FactVector[];
+  listFactsMissingEmbeddings(x: Context, limit: number): AtomicFact[];
+  putFactEmbeddings(x: Context, embeddings: FactVector[]): void;
 }
 
 export class ProxyFactStore implements FactStore {
@@ -178,5 +186,14 @@ export class ProxyFactStore implements FactStore {
   }
   listExtractionChunks(x: Context, args: FactChunkListArgs) {
     return this.inner.listExtractionChunks(x, args);
+  }
+  listFactVectors(x: Context) {
+    return this.inner.listFactVectors(x);
+  }
+  listFactsMissingEmbeddings(x: Context, limit: number) {
+    return this.inner.listFactsMissingEmbeddings(x, limit);
+  }
+  putFactEmbeddings(x: Context, embeddings: FactVector[]) {
+    return this.inner.putFactEmbeddings(x, embeddings);
   }
 }

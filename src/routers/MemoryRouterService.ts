@@ -1,9 +1,13 @@
 import express from "express";
 import type { Router } from "express";
 import type { Context } from "../context/Context.js";
-import { memorySearchQuerySchema } from "../shared/schemas/memory-api.js";
+import {
+  factSearchQuerySchema,
+  memoryAnswerRequestSchema,
+  memorySearchQuerySchema,
+} from "../shared/schemas/memory-api.js";
 import type { RouterService } from "./RouterService.js";
-import { xMemoryService, xSessionStore } from "../lib/x.js";
+import { xFactService, xMemoryService, xSessionStore } from "../lib/x.js";
 import { emptyRouteSchema, unknownRouteSchema, registerRoute } from "./register-route.js";
 import { jsonResponseSchema } from "../shared/schemas/json.js";
 export class MemoryRouterService implements RouterService {
@@ -112,6 +116,58 @@ export class MemoryRouterService implements RouterService {
             error: error instanceof Error ? error.message : String(error),
           });
         }
+      },
+    });
+
+    registerRoute(x, {
+      router,
+      method: "GET",
+      path: "/facts/search",
+      auth: "dashboard",
+      schemas: {
+        params: emptyRouteSchema,
+        query: factSearchQuerySchema,
+        body: unknownRouteSchema,
+      },
+      responseSchema: jsonResponseSchema,
+      handler: async (routeX, { data: { query } }) => {
+        const start = Date.now();
+        const results = await xFactService(routeX).search(routeX, query.q, {
+          limit: query.limit,
+          currentOnly: query.current === "true",
+          asOf: query.asOf,
+        });
+        return { query: query.q, duration_ms: Date.now() - start, results };
+      },
+    });
+
+    registerRoute(x, {
+      router,
+      method: "POST",
+      path: "/answer",
+      auth: "dashboard",
+      schemas: {
+        params: emptyRouteSchema,
+        query: emptyRouteSchema,
+        body: memoryAnswerRequestSchema,
+      },
+      responseSchema: jsonResponseSchema,
+      handler: async (routeX, { data: { body } }) => {
+        const result = await xMemoryService(routeX).answer(routeX, body.query, {
+          currentOnly: body.currentOnly,
+          asOf: body.asOf,
+          depth: "deep",
+        });
+        return {
+          answer: result.answer,
+          citations: result.citations,
+          duration_ms: result.durationMs,
+          provider_counts: {
+            profile: result.recall.profile.length,
+            facts: result.recall.facts.length,
+            transcripts: result.recall.transcripts.length,
+          },
+        };
       },
     });
 

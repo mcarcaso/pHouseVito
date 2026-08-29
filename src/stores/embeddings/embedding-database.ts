@@ -5,6 +5,26 @@ export function createEmbeddingDatabase(path: string): Database.Database {
   db.pragma("journal_mode = WAL");
   db.pragma("foreign_keys = ON");
   db.exec(`
+    CREATE TABLE IF NOT EXISTS fact_sets (
+      id TEXT PRIMARY KEY,
+      status TEXT NOT NULL CHECK(status IN ('building', 'ready', 'active', 'retired')),
+      source_set_id TEXT,
+      policy_version TEXT NOT NULL,
+      created_at INTEGER NOT NULL DEFAULT (unixepoch() * 1000),
+      completed_at INTEGER
+    );
+
+    CREATE TABLE IF NOT EXISTS fact_store_state (
+      id INTEGER PRIMARY KEY CHECK(id = 1),
+      active_set_id TEXT NOT NULL,
+      updated_at INTEGER NOT NULL DEFAULT (unixepoch() * 1000)
+    );
+
+    INSERT OR IGNORE INTO fact_sets (id, status, policy_version)
+      VALUES ('v3', 'active', 'atomic-facts-v3-contextualized-chunks');
+    INSERT OR IGNORE INTO fact_store_state (id, active_set_id)
+      VALUES (1, 'v3');
+
     CREATE TABLE IF NOT EXISTS chunks (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       session_id TEXT NOT NULL,
@@ -100,6 +120,19 @@ export function createEmbeddingDatabase(path: string): Database.Database {
       PRIMARY KEY(session_id, extractor_version)
     );
 
+    CREATE TABLE IF NOT EXISTS fact_reconciliation_decisions (
+      fact_set_id TEXT NOT NULL,
+      old_fact_id INTEGER NOT NULL,
+      new_fact_id INTEGER,
+      action TEXT NOT NULL,
+      target_ids TEXT NOT NULL DEFAULT '[]',
+      reason TEXT NOT NULL,
+      duration_ms INTEGER NOT NULL DEFAULT 0,
+      created_at INTEGER NOT NULL DEFAULT (unixepoch() * 1000),
+      PRIMARY KEY(fact_set_id, old_fact_id),
+      FOREIGN KEY(new_fact_id) REFERENCES facts(id) ON DELETE SET NULL
+    );
+
     CREATE TABLE IF NOT EXISTS fact_chunk_runs (
       chunk_id INTEGER NOT NULL,
       extractor_version TEXT NOT NULL,
@@ -146,6 +179,17 @@ export function createEmbeddingDatabase(path: string): Database.Database {
       INSERT INTO facts_fts(rowid, canonical_text, slot_key, canonical_value, entity_text)
       VALUES (new.id, new.canonical_text, new.slot_key, new.canonical_value, new.entity_text);
     END;
+  `);
+
+  const factColumns = db.prepare("PRAGMA table_info(facts)").all() as Array<{ name: string }>;
+  if (!factColumns.some((column) => column.name === "fact_set_id")) {
+    db.exec("ALTER TABLE facts ADD COLUMN fact_set_id TEXT NOT NULL DEFAULT 'v3'");
+  }
+  db.exec(`
+    CREATE INDEX IF NOT EXISTS idx_facts_set_slot_status
+      ON facts(fact_set_id, slot_key, status);
+    CREATE INDEX IF NOT EXISTS idx_facts_set_status_observed
+      ON facts(fact_set_id, status, observed_at DESC);
   `);
   return db;
 }

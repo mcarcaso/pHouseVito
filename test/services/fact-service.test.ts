@@ -351,4 +351,55 @@ describe("atomic fact ingestion", () => {
       fixture.embeddingDb.close();
     }
   });
+
+  it("isolates facts and vectors behind the active fact-set pointer", () => {
+    const fixture = setup();
+    try {
+      const create = (fingerprint: string, text: string) =>
+        fixture.store.create(fixture.x, {
+          fingerprint,
+          canonicalText: text,
+          kind: "preference",
+          slotKey: "mike.preference.color",
+          canonicalValue: text,
+          status: "active",
+          authority: "user_explicit",
+          validFrom: null,
+          validTo: null,
+          observedAt: 1,
+          supersedesFactId: null,
+          entities: ["Mike"],
+          sources: [],
+        });
+      const v3 = create("v3-fingerprint", "Mike prefers blue.");
+      fixture.store.putFactEmbeddings(fixture.x, [
+        { factId: v3.id, vector: new Float32Array([1, 0]) },
+      ]);
+
+      fixture.embeddingDb
+        .prepare(
+          "INSERT INTO fact_sets (id, status, source_set_id, policy_version) VALUES ('v4', 'ready', 'v3', 'v4')",
+        )
+        .run();
+      fixture.embeddingDb
+        .prepare("UPDATE fact_store_state SET active_set_id = 'v4', updated_at = ? WHERE id = 1")
+        .run(Date.now());
+      const v4 = create("v4-fingerprint", "Mike prefers green.");
+      fixture.store.putFactEmbeddings(fixture.x, [
+        { factId: v4.id, vector: new Float32Array([0, 1]) },
+      ]);
+
+      assert.deepEqual(
+        fixture.store.list(fixture.x, {}).map((fact) => fact.canonicalText),
+        ["Mike prefers green."],
+      );
+      assert.deepEqual(
+        fixture.store.listFactVectors(fixture.x).map((item) => item.factId),
+        [v4.id],
+      );
+    } finally {
+      fixture.db.close();
+      fixture.embeddingDb.close();
+    }
+  });
 });

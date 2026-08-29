@@ -18,6 +18,7 @@ import type {
 
 interface FactRow {
   id: number;
+  fact_set_id: string;
   fingerprint: string;
   canonical_text: string;
   kind: AtomicFact["kind"];
@@ -60,6 +61,13 @@ function parseCanonicalValue(value: string | null): unknown {
 
 function normalizeEntity(value: string): string {
   return value.trim().toLocaleLowerCase();
+}
+
+function activeFactSetId(x: Context): string {
+  const row = xEmbeddingDb(x)
+    .prepare("SELECT active_set_id FROM fact_store_state WHERE id = 1")
+    .get() as { active_set_id: string } | undefined;
+  return row?.active_set_id ?? "v3";
 }
 
 export class SqliteFactStore implements FactStore {
@@ -120,8 +128,8 @@ export class SqliteFactStore implements FactStore {
     if (args.ids?.length === 0 || args.fingerprints?.length === 0 || args.slotKeys?.length === 0) {
       return [];
     }
-    const clauses: string[] = [];
-    const params: unknown[] = [];
+    const clauses: string[] = ["fact_set_id = ?"];
+    const params: unknown[] = [activeFactSetId(x)];
     const addIn = (column: string, values: readonly unknown[] | undefined) => {
       if (!values) return;
       clauses.push(`${column} IN (${values.map(() => "?").join(", ")})`);
@@ -161,13 +169,14 @@ export class SqliteFactStore implements FactStore {
       const row = db
         .prepare(
           `INSERT INTO facts (
-             fingerprint, canonical_text, kind, slot_key, canonical_value,
+             fact_set_id, fingerprint, canonical_text, kind, slot_key, canonical_value,
              status, authority, valid_from, valid_to, observed_at,
              supersedes_fact_id, entity_text
-           ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+           ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
            RETURNING *`,
         )
         .get(
+          activeFactSetId(x),
           args.fingerprint,
           args.canonicalText,
           args.kind,
@@ -209,9 +218,10 @@ export class SqliteFactStore implements FactStore {
     const values = entries.map(([, value]) => value);
     const row = xEmbeddingDb(x)
       .prepare(
-        `UPDATE facts SET ${assignments.join(", ")}, updated_at = ? WHERE id = ? RETURNING *`,
+        `UPDATE facts SET ${assignments.join(", ")}, updated_at = ?
+         WHERE id = ? AND fact_set_id = ? RETURNING *`,
       )
-      .get(...values, Date.now(), args.id) as FactRow | undefined;
+      .get(...values, Date.now(), args.id, activeFactSetId(x)) as FactRow | undefined;
     if (!row) throw new StoreRecordNotFoundError(`Fact not found: ${args.id}`);
     return this.hydrate(x, [row])[0];
   }
@@ -351,8 +361,13 @@ export class SqliteFactStore implements FactStore {
 
   listFactVectors(x: Context): FactVector[] {
     const rows = xEmbeddingDb(x)
-      .prepare("SELECT fact_id, vector FROM fact_embeddings ORDER BY fact_id")
-      .all() as Array<{ fact_id: number; vector: Buffer }>;
+      .prepare(
+        `SELECT e.fact_id, e.vector FROM fact_embeddings e
+         JOIN facts f ON f.id = e.fact_id
+         WHERE f.fact_set_id = ?
+         ORDER BY e.fact_id`,
+      )
+      .all(activeFactSetId(x)) as Array<{ fact_id: number; vector: Buffer }>;
     return rows.map((row) => {
       const bytes = Uint8Array.from(row.vector);
       return { factId: row.fact_id, vector: new Float32Array(bytes.buffer) };
@@ -364,10 +379,10 @@ export class SqliteFactStore implements FactStore {
       .prepare(
         `SELECT f.* FROM facts f
          LEFT JOIN fact_embeddings e ON e.fact_id = f.id
-         WHERE e.fact_id IS NULL
+         WHERE f.fact_set_id = ? AND e.fact_id IS NULL
          ORDER BY f.id ASC LIMIT ?`,
       )
-      .all(limit) as FactRow[];
+      .all(activeFactSetId(x), limit) as FactRow[];
     return this.hydrate(x, rows);
   }
 
@@ -401,11 +416,13 @@ export class SqliteFactStore implements FactStore {
         `SELECT f.*, facts_fts.rank * -1 AS search_score
          FROM facts_fts
          JOIN facts f ON f.id = facts_fts.rowid
-         WHERE facts_fts MATCH ? AND f.status IN (${placeholders})
+         WHERE facts_fts MATCH ? AND f.fact_set_id = ? AND f.status IN (${placeholders})
          ORDER BY facts_fts.rank
          LIMIT ?`,
       )
-      .all(args.query, ...statuses, args.limit) as Array<FactRow & { search_score: number }>;
+      .all(args.query, activeFactSetId(x), ...statuses, args.limit) as Array<
+      FactRow & { search_score: number }
+    >;
     const facts = this.hydrate(x, rows);
     return facts.map((fact, index) => ({ fact, score: rows[index].search_score }));
   }

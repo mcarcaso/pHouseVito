@@ -166,13 +166,8 @@ export function MemoryAdvancedSheet({
                   styles={styles}
                 />
                 <Metric
-                  label="Current batch"
-                  value={`${status.processingChunks} chunks`}
-                  styles={styles}
-                />
-                <Metric
-                  label="Parallel workers"
-                  value={status.active ? "3" : "0"}
+                  label="Processing speed"
+                  value={status.active ? "3 chunks at a time" : "Stopped"}
                   styles={styles}
                 />
                 <Metric

@@ -186,11 +186,9 @@ export function MemoryScreen({
                 onChangeText={setQuery}
                 placeholder={placeholder}
                 placeholderTextColor={theme.colors.textMuted}
-                multiline={page === "answer"}
                 returnKeyType="search"
-                blurOnSubmit={false}
                 onSubmitEditing={() => void run()}
-                style={[styles.input, page === "answer" && styles.answerInput]}
+                style={styles.input}
               />
             </View>
             <Pressable
@@ -367,7 +365,6 @@ function createStyles(theme: VitoTheme) {
       paddingHorizontal: theme.space.md,
     },
     input: { flex: 1, color: theme.colors.text, fontSize: 15, paddingVertical: theme.space.sm },
-    answerInput: { minHeight: 64, textAlignVertical: "top" },
     searchButton: {
       width: 46,
       alignItems: "center",

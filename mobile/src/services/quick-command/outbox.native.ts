@@ -30,6 +30,12 @@ async function save(entries: QuickCommandOutboxEntry[]) {
   await AsyncStorage.setItem(OUTBOX_KEY, JSON.stringify(entries));
 }
 
+function recordingUri(storedUri: string): string {
+  const filename = storedUri.split("/").pop();
+  if (!filename) throw new Error("Saved recording path is invalid");
+  return `${DIRECTORY}${filename}`;
+}
+
 export async function enqueueQuickCommand(
   sourceUri: string,
   durationMs: number,
@@ -38,11 +44,14 @@ export async function enqueueQuickCommand(
   await FileSystem.makeDirectoryAsync(DIRECTORY, { intermediates: true });
   const id = `${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
   const extension = sourceUri.match(/\.[a-z0-9]+(?:\?|$)/i)?.[0]?.replace("?", "") ?? ".m4a";
-  const uri = `${DIRECTORY}${id}${extension}`;
+  const filename = `${id}${extension}`;
+  const uri = `${DIRECTORY}${filename}`;
   await FileSystem.copyAsync({ from: sourceUri, to: uri });
   const entry: QuickCommandOutboxEntry = {
     id,
-    uri,
+    // Store only a stable filename. The iOS sandbox container path can change
+    // after TestFlight updates even though the Documents contents are retained.
+    uri: filename,
     durationMs,
     session: destinationSession || `quick-command:${id}`,
     createdAt: Date.now(),
@@ -64,10 +73,11 @@ async function performQuickCommandSync(): Promise<QuickCommandOutboxEntry[]> {
     );
     await save(entries);
     try {
-      const audioBase64 = await FileSystem.readAsStringAsync(entry.uri, {
+      const uri = recordingUri(entry.uri);
+      const audioBase64 = await FileSystem.readAsStringAsync(uri, {
         encoding: FileSystem.EncodingType.Base64,
       });
-      const extension = entry.uri.split(".").pop()?.toLowerCase();
+      const extension = uri.split(".").pop()?.toLowerCase();
       const mimeType =
         extension === "webm" ? "audio/webm" : extension === "wav" ? "audio/wav" : "audio/m4a";
       await api(`/api/quick-commands`, {
@@ -80,7 +90,7 @@ async function performQuickCommandSync(): Promise<QuickCommandOutboxEntry[]> {
           session: entry.session || `quick-command:${entry.id}`,
         }),
       });
-      await FileSystem.deleteAsync(entry.uri, { idempotent: true });
+      await FileSystem.deleteAsync(uri, { idempotent: true });
       entries = entries.filter((item) => item.id !== entry.id);
     } catch (cause) {
       entries = entries.map((item) =>
@@ -109,6 +119,6 @@ export function syncQuickCommandOutbox(): Promise<QuickCommandOutboxEntry[]> {
 export async function removeQuickCommand(id: string): Promise<void> {
   const entries = await listQuickCommandOutbox();
   const target = entries.find((entry) => entry.id === id);
-  if (target) await FileSystem.deleteAsync(target.uri, { idempotent: true });
+  if (target) await FileSystem.deleteAsync(recordingUri(target.uri), { idempotent: true });
   await save(entries.filter((entry) => entry.id !== id));
 }

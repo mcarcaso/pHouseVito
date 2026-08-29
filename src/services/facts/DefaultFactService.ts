@@ -11,15 +11,13 @@ import type {
 import { getSearchTerms } from "../memory/search-excerpt.js";
 import type { ExtractedFactCandidate, FactExtractionMessage } from "./FactExtractor.js";
 import type {
+  FactBackfillOptions,
   FactIngestOptions,
   FactIngestResult,
   FactSearchOptions,
   FactSearchResult,
   FactService,
 } from "./FactService.js";
-
-const MIN_BATCH_CHARS = 2000;
-const MAX_BATCH_CHARS = 4000;
 
 function emptyResult(start: number, skipped?: string): FactIngestResult {
   return {
@@ -90,43 +88,6 @@ function toExtractionMessage(row: MessageRow): FactExtractionMessage | null {
       text: row.content,
     };
   }
-}
-
-function messageSize(message: FactExtractionMessage): number {
-  return message.text.length + 100;
-}
-
-function createTurnBatches(
-  messages: FactExtractionMessage[],
-  force: boolean,
-): FactExtractionMessage[][] {
-  const turns: FactExtractionMessage[][] = [];
-  let currentTurn: FactExtractionMessage[] = [];
-  for (const message of messages) {
-    if (message.type === "user") {
-      if (currentTurn.length > 0) turns.push(currentTurn);
-      currentTurn = [message];
-    } else if (currentTurn.length > 0) {
-      currentTurn.push(message);
-    }
-  }
-  if (currentTurn.length > 0) turns.push(currentTurn);
-
-  const batches: FactExtractionMessage[][] = [];
-  let current: FactExtractionMessage[] = [];
-  let currentChars = 0;
-  for (const turn of turns) {
-    const turnChars = turn.reduce((sum, message) => sum + messageSize(message), 0);
-    if (current.length > 0 && currentChars + turnChars > MAX_BATCH_CHARS) {
-      batches.push(current);
-      current = [];
-      currentChars = 0;
-    }
-    current.push(...turn);
-    currentChars += turnChars;
-  }
-  if (current.length > 0 && (force || currentChars >= MIN_BATCH_CHARS)) batches.push(current);
-  return batches;
 }
 
 function normalizeText(value: string): string {
@@ -239,164 +200,215 @@ export class DefaultFactService implements FactService {
     sessionId: string,
     options: FactIngestOptions = {},
   ): Promise<FactIngestResult> {
+    const extractor = xFactExtractor(x);
+    const storedBoundary = xFactStore(x).cmd(x, {
+      type: "get_checkpoint",
+      sessionId,
+      extractorVersion: extractor.version,
+    }) as number | null;
+    const boundary = storedBoundary ?? options.initialAfterMessageId ?? 0;
+    if (storedBoundary === null) {
+      xFactStore(x).cmd(x, {
+        type: "set_checkpoint",
+        sessionId,
+        extractorVersion: extractor.version,
+        messageId: boundary,
+      });
+    }
+    return this.processAvailableChunks(x, {
+      sessionId,
+      afterMessageId: boundary,
+      limit: options.limit ?? 20,
+      extractorModel: options.extractorModel,
+    });
+  }
+
+  async backfill(x: Context, options: FactBackfillOptions = {}): Promise<FactIngestResult> {
+    return this.processAvailableChunks(x, {
+      limit: options.limit ?? 25,
+      extractorModel: options.extractorModel,
+    });
+  }
+
+  private async processAvailableChunks(
+    x: Context,
+    options: {
+      sessionId?: string;
+      afterMessageId?: number;
+      limit: number;
+      extractorModel?: FactIngestOptions["extractorModel"];
+    },
+  ): Promise<FactIngestResult> {
     const start = Date.now();
     if (this.ingestionInProgress) return emptyResult(start, "lock_held");
     this.ingestionInProgress = true;
+    const extractor = xFactExtractor(x);
     try {
-      return await this.ingestUnlocked(x, sessionId, options, start);
-    } catch (error) {
-      console.error(`[Facts] Error during incremental extraction for ${sessionId}:`, error);
-      return emptyResult(start, `error: ${error instanceof Error ? error.message : String(error)}`);
+      const chunks = xFactStore(x).listExtractionChunks(x, {
+        extractorVersion: extractor.version,
+        sessionId: options.sessionId,
+        afterMessageId: options.afterMessageId,
+        limit: options.limit,
+      });
+      if (chunks.length === 0) return emptyResult(start, "no_unprocessed_chunks");
+      const result = emptyResult(start);
+      for (const chunk of chunks) {
+        xFactStore(x).cmd(x, {
+          type: "begin_chunk",
+          chunkId: chunk.id,
+          extractorVersion: extractor.version,
+        });
+        try {
+          const messages = xMessageStore(x)
+            .list(x, {
+              sessionIds: [chunk.sessionId],
+              afterId: chunk.messageIdStart - 1,
+              throughId: chunk.messageIdEnd,
+              types: ["user", "assistant"],
+              order: "oldest",
+            })
+            .map(toExtractionMessage)
+            .filter((message): message is FactExtractionMessage => message !== null);
+          result.messagesConsidered += messages.length;
+          const candidates = await extractor.extract(
+            x,
+            {
+              chunkId: chunk.id,
+              contextualizedText: chunk.contextualizedText,
+              context: chunk.context,
+              messages,
+            },
+            { model: options.extractorModel },
+          );
+          const chunkResult = this.reconcileCandidates(x, candidates, messages);
+          result.inserted.push(...chunkResult.inserted);
+          result.supported.push(...chunkResult.supported);
+          result.superseded.push(...chunkResult.superseded);
+          result.rejected.push(...chunkResult.rejected);
+          result.batchesProcessed += 1;
+          xFactStore(x).cmd(x, {
+            type: "complete_chunk",
+            chunkId: chunk.id,
+            extractorVersion: extractor.version,
+            inserted: chunkResult.inserted.length,
+            supported: chunkResult.supported.length,
+            rejected: chunkResult.rejected.length,
+          });
+        } catch (error) {
+          const message = error instanceof Error ? error.message : String(error);
+          xFactStore(x).cmd(x, {
+            type: "fail_chunk",
+            chunkId: chunk.id,
+            extractorVersion: extractor.version,
+            error: message,
+          });
+          console.error(`[Facts] Chunk ${chunk.id} failed: ${message}`);
+        }
+      }
+      result.durationMs = Date.now() - start;
+      return result;
     } finally {
       this.ingestionInProgress = false;
     }
   }
 
-  private async ingestUnlocked(
+  private reconcileCandidates(
     x: Context,
-    sessionId: string,
-    options: FactIngestOptions,
-    start: number,
-  ): Promise<FactIngestResult> {
-    const extractor = xFactExtractor(x);
-    const storedCheckpoint = xFactStore(x).cmd(x, {
-      type: "get_checkpoint",
-      sessionId,
-      extractorVersion: extractor.version,
-    }) as number | null;
-    const afterId = storedCheckpoint ?? options.initialAfterMessageId ?? 0;
-    const messages = xMessageStore(x)
-      .list(x, {
-        sessionIds: [sessionId],
-        afterId,
-        types: ["user", "assistant", "tool_end"],
-        order: "oldest",
-      })
-      .map(toExtractionMessage)
-      .filter((message): message is FactExtractionMessage => message !== null);
-    if (messages.length === 0) return emptyResult(start, "no_unprocessed_messages");
-
-    const batches = createTurnBatches(messages, options.force === true);
-    if (batches.length === 0) {
-      const result = emptyResult(start, "below_threshold");
-      result.messagesConsidered = messages.length;
-      return result;
-    }
-
-    const result = emptyResult(start);
-    result.messagesConsidered = messages.length;
-    for (const batch of batches) {
-      const candidates = await extractor.extract(
-        x,
-        { messages: batch },
-        { model: options.extractorModel },
+    candidates: ExtractedFactCandidate[],
+    messages: FactExtractionMessage[],
+  ): Pick<FactIngestResult, "inserted" | "supported" | "superseded" | "rejected"> {
+    const result = {
+      inserted: [] as number[],
+      supported: [] as number[],
+      superseded: [] as number[],
+      rejected: [] as Array<{ canonicalText: string; reason: string }>,
+    };
+    const messageById = new Map(messages.map((message) => [message.id, message]));
+    for (const candidate of candidates) {
+      const validation = validateCandidate(candidate, messageById);
+      if (typeof validation === "string") {
+        result.rejected.push({ canonicalText: candidate.canonicalText, reason: validation });
+        continue;
+      }
+      let candidateFingerprint = fingerprint(candidate);
+      const observedAt = Math.max(...validation.sources.map((source) => source.sourceTimestamp));
+      const activeInSlot = candidate.slotKey
+        ? xFactStore(x).list(x, {
+            slotKeys: [candidate.slotKey],
+            statuses: ["active", "disputed"],
+            order: "recent",
+          })
+        : [];
+      const sameActiveValue = activeInSlot.find(
+        (existing) =>
+          JSON.stringify(stableValue(existing.canonicalValue)) ===
+          JSON.stringify(stableValue(candidate.canonicalValue)),
       );
-      const messageById = new Map(batch.map((message) => [message.id, message]));
-      for (const candidate of candidates) {
-        const validation = validateCandidate(candidate, messageById);
-        if (typeof validation === "string") {
-          result.rejected.push({ canonicalText: candidate.canonicalText, reason: validation });
-          continue;
-        }
-        let candidateFingerprint = fingerprint(candidate);
-        const observedAt = Math.max(...validation.sources.map((source) => source.sourceTimestamp));
-        const activeInSlot = candidate.slotKey
-          ? xFactStore(x).list(x, {
-              slotKeys: [candidate.slotKey],
-              statuses: ["active", "disputed"],
-              order: "recent",
-            })
-          : [];
-        const sameActiveValue = activeInSlot.find(
-          (existing) =>
-            JSON.stringify(stableValue(existing.canonicalValue)) ===
-            JSON.stringify(stableValue(candidate.canonicalValue)),
-        );
-        const exactDuplicate = xFactStore(x).list(x, {
-          fingerprints: [candidateFingerprint],
-          limit: 1,
-        })[0];
-        const duplicate =
-          candidate.status === "active" && candidate.slotKey ? sameActiveValue : exactDuplicate;
-        if (duplicate) {
-          xFactStore(x).cmd(x, {
-            type: "add_sources",
-            factId: duplicate.id,
-            sources: validation.sources,
-            authority: validation.authority,
-            observedAt,
-          });
-          if (candidate.status === "disputed" && duplicate.status === "active") {
-            xFactStore(x).update(x, {
-              id: duplicate.id,
-              changes: { status: "disputed" },
-            });
-          }
-          result.supported.push(duplicate.id);
-          continue;
-        }
-
-        // A replaceable value can legitimately return after being superseded
-        // (blue → green → blue). Preserve both validity intervals by creating a
-        // new occurrence rather than reviving the old row.
-        if (exactDuplicate) {
-          candidateFingerprint = createHash("sha256")
-            .update(
-              `${candidateFingerprint}:${observedAt}:${validation.sources
-                .map((source) => source.messageId)
-                .join(",")}`,
-            )
-            .digest("hex");
-        }
-
-        let supersedesFactId: number | null = null;
-        const replaced: AtomicFact[] = [];
-        if (candidate.slotKey && candidate.status === "active") {
-          for (const existing of activeInSlot) {
-            if (existing.observedAt <= observedAt && strongerStatus(existing.status))
-              replaced.push(existing);
-          }
-          supersedesFactId = replaced[0]?.id ?? null;
-        }
-
-        const created = xFactStore(x).create(x, {
-          fingerprint: candidateFingerprint,
-          canonicalText: candidate.canonicalText,
-          kind: candidate.kind,
-          slotKey: candidate.slotKey,
-          canonicalValue: candidate.canonicalValue,
-          status: candidate.status,
-          authority: validation.authority,
-          validFrom: candidate.validFrom,
-          validTo: candidate.validTo,
-          observedAt,
-          supersedesFactId,
-          entities: [...new Set(candidate.entities.map((entity) => entity.trim()).filter(Boolean))],
+      const exactDuplicate = xFactStore(x).list(x, {
+        fingerprints: [candidateFingerprint],
+        limit: 1,
+      })[0];
+      const duplicate =
+        candidate.status === "active" && candidate.slotKey ? sameActiveValue : exactDuplicate;
+      if (duplicate) {
+        xFactStore(x).cmd(x, {
+          type: "add_sources",
+          factId: duplicate.id,
           sources: validation.sources,
+          authority: validation.authority,
+          observedAt,
         });
-        result.inserted.push(created.id);
-
-        if (candidate.status === "active") {
-          const replacementDay = candidate.validFrom ?? sourceDay(observedAt);
-          for (const existing of replaced) {
-            xFactStore(x).update(x, {
-              id: existing.id,
-              changes: { status: "superseded", validTo: replacementDay },
-            });
-            result.superseded.push(existing.id);
-          }
+        if (candidate.status === "disputed" && duplicate.status === "active") {
+          xFactStore(x).update(x, { id: duplicate.id, changes: { status: "disputed" } });
+        }
+        result.supported.push(duplicate.id);
+        continue;
+      }
+      if (exactDuplicate) {
+        candidateFingerprint = createHash("sha256")
+          .update(
+            `${candidateFingerprint}:${observedAt}:${validation.sources
+              .map((source) => source.messageId)
+              .join(",")}`,
+          )
+          .digest("hex");
+      }
+      let supersedesFactId: number | null = null;
+      const replaced: AtomicFact[] = [];
+      if (candidate.slotKey && candidate.status === "active") {
+        for (const existing of activeInSlot) {
+          if (existing.observedAt <= observedAt && strongerStatus(existing.status))
+            replaced.push(existing);
+        }
+        supersedesFactId = replaced[0]?.id ?? null;
+      }
+      const created = xFactStore(x).create(x, {
+        fingerprint: candidateFingerprint,
+        canonicalText: candidate.canonicalText,
+        kind: candidate.kind,
+        slotKey: candidate.slotKey,
+        canonicalValue: candidate.canonicalValue,
+        status: candidate.status,
+        authority: validation.authority,
+        validFrom: candidate.validFrom,
+        validTo: candidate.validTo,
+        observedAt,
+        supersedesFactId,
+        entities: [...new Set(candidate.entities.map((entity) => entity.trim()).filter(Boolean))],
+        sources: validation.sources,
+      });
+      result.inserted.push(created.id);
+      if (candidate.status === "active") {
+        const replacementDay = candidate.validFrom ?? sourceDay(observedAt);
+        for (const existing of replaced) {
+          xFactStore(x).update(x, {
+            id: existing.id,
+            changes: { status: "superseded", validTo: replacementDay },
+          });
+          result.superseded.push(existing.id);
         }
       }
-      const lastMessageId = batch[batch.length - 1].id;
-      xFactStore(x).cmd(x, {
-        type: "set_checkpoint",
-        sessionId,
-        extractorVersion: extractor.version,
-        messageId: lastMessageId,
-      });
-      result.batchesProcessed += 1;
     }
-    result.durationMs = Date.now() - start;
     return result;
   }
 

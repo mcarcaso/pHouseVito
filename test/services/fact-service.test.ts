@@ -61,8 +61,9 @@ function setup() {
     factService: () => service,
     messageStore: () => messageStore,
   });
-  const addUserMessage = (text: string, timestamp: number) =>
-    messageStore.create(x, {
+  let chunkIndex = 0;
+  const addUserMessage = (text: string, timestamp: number) => {
+    const message = messageStore.create(x, {
       session_id: "test:session",
       channel: "test",
       channel_target: "session",
@@ -72,6 +73,24 @@ function setup() {
       archived: 0,
       author: "Mike",
     });
+    embeddingDb
+      .prepare(
+        `INSERT INTO chunks
+         (session_id, day, chunk_index, text, context, embedded_text,
+          msg_id_start, msg_id_end, msg_count)
+         VALUES (?, '1970-01-01', ?, ?, ?, ?, ?, ?, 1)`,
+      )
+      .run(
+        "test:session",
+        chunkIndex++,
+        text,
+        "Preference discussion.",
+        `Preference discussion.\n\n${text}`,
+        message.id,
+        message.id,
+      );
+    return message;
+  };
   return { db, embeddingDb, extractor, store, service, x, addUserMessage };
 }
 
@@ -81,13 +100,14 @@ describe("atomic fact ingestion", () => {
     try {
       fixture.addUserMessage("Remember my preference.", 1_000);
       const messageStore = new SqliteMessageStore();
+      let lastMessageId = 0;
       for (const [type, content, timestamp] of [
         ["thought", "private reasoning", 1_100],
         ["tool_start", { toolName: "read", args: {} }, 1_200],
         ["tool_end", { toolName: "read", result: "very large raw result" }, 1_300],
         ["assistant", "I'll remember it.", 1_400],
       ] as const) {
-        messageStore.create(fixture.x, {
+        const created = messageStore.create(fixture.x, {
           session_id: "test:session",
           channel: "test",
           channel_target: "session",
@@ -97,9 +117,13 @@ describe("atomic fact ingestion", () => {
           archived: 0,
           author: type === "assistant" ? "Vito" : null,
         });
+        lastMessageId = created.id;
       }
+      fixture.embeddingDb
+        .prepare("UPDATE chunks SET msg_id_end = ?, msg_count = 5 WHERE chunk_index = 0")
+        .run(lastMessageId);
 
-      await fixture.service.ingestNew(fixture.x, "test:session", { force: true });
+      await fixture.service.ingestNew(fixture.x, "test:session");
       assert.deepEqual(
         fixture.extractor.inputs[0].messages.map((message) => message.type),
         ["user", "assistant"],
@@ -126,7 +150,7 @@ describe("atomic fact ingestion", () => {
           quote: "I prefer blue.",
         }),
       ]);
-      const first = await fixture.service.ingestNew(fixture.x, "test:session", { force: true });
+      const first = await fixture.service.ingestNew(fixture.x, "test:session");
       assert.equal(first.inserted.length, 1);
 
       const secondMessage = fixture.addUserMessage("Blue is still my preference.", 2_000);
@@ -138,7 +162,7 @@ describe("atomic fact ingestion", () => {
           quote: "Blue is still my preference.",
         }),
       ]);
-      const second = await fixture.service.ingestNew(fixture.x, "test:session", { force: true });
+      const second = await fixture.service.ingestNew(fixture.x, "test:session");
       assert.deepEqual(second.supported, first.inserted);
       const supported = fixture.store.list(fixture.x, { ids: first.inserted });
       assert.equal(supported[0].sources.length, 2);
@@ -152,7 +176,7 @@ describe("atomic fact ingestion", () => {
           quote: "I prefer green now.",
         }),
       ]);
-      const third = await fixture.service.ingestNew(fixture.x, "test:session", { force: true });
+      const third = await fixture.service.ingestNew(fixture.x, "test:session");
       assert.equal(third.inserted.length, 1);
       assert.deepEqual(third.superseded, first.inserted);
       assert.equal(fixture.store.list(fixture.x, { ids: first.inserted })[0].status, "superseded");
@@ -169,7 +193,7 @@ describe("atomic fact ingestion", () => {
           quote: "I switched back to blue.",
         }),
       ]);
-      const fourth = await fixture.service.ingestNew(fixture.x, "test:session", { force: true });
+      const fourth = await fixture.service.ingestNew(fixture.x, "test:session");
       assert.equal(fourth.inserted.length, 1);
       assert.deepEqual(fourth.superseded, third.inserted);
       const returned = fixture.store.list(fixture.x, { ids: fourth.inserted })[0];
@@ -193,7 +217,7 @@ describe("atomic fact ingestion", () => {
           quote: "I prefer red.",
         }),
       ]);
-      const result = await fixture.service.ingestNew(fixture.x, "test:session", { force: true });
+      const result = await fixture.service.ingestNew(fixture.x, "test:session");
       assert.equal(result.inserted.length, 0);
       assert.equal(result.rejected.length, 1);
       assert.match(result.rejected[0].reason, /exact substring/);
@@ -221,7 +245,7 @@ describe("atomic fact ingestion", () => {
           slotKey: "mike.credential.openai",
         },
       ]);
-      const result = await fixture.service.ingestNew(fixture.x, "test:session", { force: true });
+      const result = await fixture.service.ingestNew(fixture.x, "test:session");
       assert.equal(result.inserted.length, 0);
       assert.match(result.rejected[0].reason, /credential-like/);
     } finally {
@@ -242,7 +266,7 @@ describe("atomic fact ingestion", () => {
           quote: "I prefer blue.",
         }),
       ]);
-      await fixture.service.ingestNew(fixture.x, "test:session", { force: true });
+      await fixture.service.ingestNew(fixture.x, "test:session");
       const results = await fixture.service.search(fixture.x, "Mike blue preference", {
         currentOnly: true,
       });

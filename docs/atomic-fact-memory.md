@@ -15,7 +15,7 @@ Raw messages remain authoritative. Atomic facts are derived, replaceable, and re
 - Transcript chunk contextualization and embedding
 - Atomic-fact extraction and reconciliation
 
-Both use the existing 2–4K character cadence. Fact batches preserve complete user/final-assistant turns and retain raw message IDs. Thoughts, `tool_start`, and raw `tool_end` payloads are excluded. Embedding and fact checkpoints are independent, so either branch can retry without duplicating the other. A new installation begins fact extraction at the existing embedding boundary instead of silently backfilling all historical messages.
+The successfully stored contextualized embedding chunk is the fact-extraction work unit. Luna receives the same `context + text` payload used for embedding plus typed raw-message mappings. Thoughts, `tool_start`, and raw `tool_end` payloads are excluded by the transcript chunker. The generated context may guide interpretation but can never serve as evidence. Per-chunk, per-extractor-version run records provide independent retries and idempotency.
 
 Fact extraction defaults to `openai-codex/gpt-5.6-luna` through Pi authentication. It can be overridden with `settings.memory.factExtractorModel`. Retrieved conversation content is explicitly treated as untrusted quoted data.
 
@@ -53,6 +53,7 @@ Facts are never physically deleted through `FactStore`.
 ```bash
 ./vito memory facts "query" [--current] [--as-of YYYY-MM-DD]
 ./vito memory recall "query" [--deep] [--current] [--as-of YYYY-MM-DD]
+./vito memory backfill-facts --all [--batch 25]
 ```
 
 `memory recall` queries relevant profile sections, atomic facts, and transcript search together. The `memory-recall` and `fact-memory-search` skills document agent usage and evidence policy.
@@ -61,5 +62,5 @@ Facts are never physically deleted through `FactStore`.
 
 - Fact retrieval is FTS/entity/slot based; fact-vector retrieval is not yet implemented.
 - Explicit retraction without a replacement value needs a richer reconciliation operation.
-- Historical backfill is intentionally not automatic.
+- Historical backfill is explicit and resumable; it is never started automatically.
 - Generated recall answers are produced by the calling agent and are not persisted as truth.

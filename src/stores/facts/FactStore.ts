@@ -59,6 +59,26 @@ export interface CreateFactArgs {
   sources: Array<Omit<FactSource, "id" | "factId">>;
 }
 
+export interface FactExtractionChunk {
+  id: number;
+  sessionId: string;
+  day: string;
+  contextualizedText: string;
+  context: string | null;
+  messageIdStart: number;
+  messageIdEnd: number;
+  messageCount: number;
+  attempts: number;
+}
+
+export interface FactChunkListArgs {
+  extractorVersion: string;
+  sessionId?: string;
+  afterMessageId?: number;
+  includeCompleted?: boolean;
+  limit?: number;
+}
+
 export interface FactListArgs {
   ids?: number[];
   fingerprints?: string[];
@@ -94,6 +114,21 @@ export type FactStoreCommand =
       sessionId: string;
       extractorVersion: string;
       messageId: number;
+    }
+  | { type: "begin_chunk"; chunkId: number; extractorVersion: string }
+  | {
+      type: "complete_chunk";
+      chunkId: number;
+      extractorVersion: string;
+      inserted: number;
+      supported: number;
+      rejected: number;
+    }
+  | {
+      type: "fail_chunk";
+      chunkId: number;
+      extractorVersion: string;
+      error: string;
     };
 
 export interface FactStore extends Store<
@@ -114,6 +149,7 @@ export interface FactStore extends Store<
     x: Context,
     args: { query: string; limit: number; statuses?: FactStatus[] },
   ): Array<{ fact: AtomicFact; score: number }>;
+  listExtractionChunks(x: Context, args: FactChunkListArgs): FactExtractionChunk[];
 }
 
 export class ProxyFactStore implements FactStore {
@@ -139,5 +175,8 @@ export class ProxyFactStore implements FactStore {
   }
   searchFts(x: Context, args: { query: string; limit: number; statuses?: FactStatus[] }) {
     return this.inner.searchFts(x, args);
+  }
+  listExtractionChunks(x: Context, args: FactChunkListArgs) {
+    return this.inner.listExtractionChunks(x, args);
   }
 }

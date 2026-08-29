@@ -5,6 +5,8 @@ import type {
   AtomicFact,
   CreateFactArgs,
   FactAuthority,
+  FactChunkListArgs,
+  FactExtractionChunk,
   FactListArgs,
   FactSource,
   FactStatus,
@@ -237,6 +239,43 @@ export class SqliteFactStore implements FactStore {
       ).run(command.sessionId, command.extractorVersion, command.messageId, Date.now());
       return undefined;
     }
+    if (command.type === "begin_chunk") {
+      const now = Date.now();
+      db.prepare(
+        `INSERT INTO fact_chunk_runs
+         (chunk_id, extractor_version, status, attempts, started_at, updated_at)
+         VALUES (?, ?, 'processing', 1, ?, ?)
+         ON CONFLICT(chunk_id, extractor_version) DO UPDATE SET
+           status = 'processing', attempts = attempts + 1, last_error = NULL,
+           started_at = excluded.started_at, updated_at = excluded.updated_at`,
+      ).run(command.chunkId, command.extractorVersion, now, now);
+      return undefined;
+    }
+    if (command.type === "complete_chunk") {
+      const now = Date.now();
+      db.prepare(
+        `UPDATE fact_chunk_runs SET status = 'completed', facts_inserted = ?,
+         facts_supported = ?, facts_rejected = ?, last_error = NULL,
+         completed_at = ?, updated_at = ?
+         WHERE chunk_id = ? AND extractor_version = ?`,
+      ).run(
+        command.inserted,
+        command.supported,
+        command.rejected,
+        now,
+        now,
+        command.chunkId,
+        command.extractorVersion,
+      );
+      return undefined;
+    }
+    if (command.type === "fail_chunk") {
+      db.prepare(
+        `UPDATE fact_chunk_runs SET status = 'failed', last_error = ?, updated_at = ?
+         WHERE chunk_id = ? AND extractor_version = ?`,
+      ).run(command.error.slice(0, 2000), Date.now(), command.chunkId, command.extractorVersion);
+      return undefined;
+    }
 
     const current = this.list(x, { ids: [command.factId] })[0];
     if (!current) throw new StoreRecordNotFoundError(`Fact not found: ${command.factId}`);
@@ -252,6 +291,61 @@ export class SqliteFactStore implements FactStore {
     });
     add();
     return this.list(x, { ids: [command.factId] })[0];
+  }
+
+  listExtractionChunks(x: Context, args: FactChunkListArgs): FactExtractionChunk[] {
+    const clauses = ["c.msg_id_start IS NOT NULL", "c.msg_id_end IS NOT NULL"];
+    const params: unknown[] = [args.extractorVersion];
+    if (!args.includeCompleted) {
+      clauses.push(
+        "(r.status IS NULL OR (r.status = 'failed' AND r.attempts < 3) OR (r.status = 'processing' AND r.attempts < 3 AND r.updated_at < ?))",
+      );
+      params.push(Date.now() - 15 * 60 * 1000);
+    }
+    if (args.sessionId) {
+      clauses.push("c.session_id = ?");
+      params.push(args.sessionId);
+    }
+    if (args.afterMessageId !== undefined) {
+      clauses.push("c.msg_id_end > ?");
+      params.push(args.afterMessageId);
+    }
+    params.push(args.limit ?? 100);
+    const rows = xEmbeddingDb(x)
+      .prepare(
+        `SELECT c.id, c.session_id, c.day,
+                COALESCE(c.embedded_text, CASE WHEN c.context IS NULL THEN c.text ELSE c.context || '\n\n' || c.text END) contextualized_text,
+                c.context, c.msg_id_start, c.msg_id_end, c.msg_count,
+                COALESCE(r.attempts, 0) attempts
+         FROM chunks c
+         LEFT JOIN fact_chunk_runs r
+           ON r.chunk_id = c.id AND r.extractor_version = ?
+         WHERE ${clauses.join(" AND ")}
+         ORDER BY c.msg_id_start ASC, c.id ASC
+         LIMIT ?`,
+      )
+      .all(...params) as Array<{
+      id: number;
+      session_id: string;
+      day: string;
+      contextualized_text: string;
+      context: string | null;
+      msg_id_start: number;
+      msg_id_end: number;
+      msg_count: number;
+      attempts: number;
+    }>;
+    return rows.map((row) => ({
+      id: row.id,
+      sessionId: row.session_id,
+      day: row.day,
+      contextualizedText: row.contextualized_text,
+      context: row.context,
+      messageIdStart: row.msg_id_start,
+      messageIdEnd: row.msg_id_end,
+      messageCount: row.msg_count,
+      attempts: row.attempts,
+    }));
   }
 
   searchFts(

@@ -1,17 +1,21 @@
+import { homedir } from "node:os";
 import { join, resolve } from "node:path";
 import { z } from "zod";
 import type { Context } from "../../context/Context.js";
 import { ObjectContext } from "../../context/ObjectContext.js";
-import { xEmbeddingDb, xFactService, xMemoryService } from "../../lib/x.js";
+import { createDatabase } from "../../lib/sqlite/database.js";
+import { xDb, xEmbeddingDb, xFactService, xMemoryService } from "../../lib/x.js";
 import { OpenAiEmbeddingService } from "../../services/memory/OpenAiEmbeddingService.js";
 import { DefaultMemoryService } from "../../services/memory/DefaultMemoryService.js";
 import { DefaultFactService } from "../../services/facts/DefaultFactService.js";
+import { FACT_EXTRACTOR_VERSION, PiFactExtractor } from "../../services/facts/PiFactExtractor.js";
 import type { SearchResult } from "../../services/memory/MemoryService.js";
 import { extractRelevantExcerpt } from "../../services/memory/search-excerpt.js";
 import { FileSecretService } from "../../services/secrets/FileSecretService.js";
 import { createEmbeddingDatabase } from "../../stores/embeddings/embedding-database.js";
 import { SqliteEmbeddingStore } from "../../stores/embeddings/SqliteEmbeddingStore.js";
 import { SqliteFactStore } from "../../stores/facts/SqliteFactStore.js";
+import { SqliteMessageStore } from "../../stores/messages/SqliteMessageStore.js";
 
 const searchOptionsSchema = z.object({
   query: z.string().trim().min(1),
@@ -26,6 +30,7 @@ const help = `Usage:
   vito memory search <query> [options]
   vito memory facts <query> [options]
   vito memory recall <query> [--deep] [--current] [--as-of YYYY-MM-DD]
+  vito memory backfill-facts --all [--batch N]
 
 Search options:
   --limit N       Number of results (default: 5)
@@ -38,18 +43,23 @@ Fact options:
   --as-of DATE    Return facts valid on YYYY-MM-DD
 
 Recall queries profile, facts, and raw transcripts together. Add --deep for wider retrieval.
+Fact backfill processes every stored contextualized embedding chunk chronologically and resumes safely.
 `;
 
 function createMemoryCliContext(projectRoot: string): Context {
   const userDir = resolve(projectRoot, "user");
   return new ObjectContext({
     userDir: () => userDir,
+    piAuthPath: () => join(homedir(), ".pi", "agent", "auth.json"),
     secretsPath: () => join(userDir, "secrets.json"),
     secretService: () => new FileSecretService(),
+    db: () => createDatabase(join(userDir, "vito.db")),
+    messageStore: () => new SqliteMessageStore(),
     embeddingDb: () => createEmbeddingDatabase(join(userDir, "embeddings.db")),
     embeddingStore: () => new SqliteEmbeddingStore(),
     embeddingService: () => new OpenAiEmbeddingService(),
     factStore: () => new SqliteFactStore(),
+    factExtractor: () => new PiFactExtractor(),
     factService: () => new DefaultFactService(),
     memoryService: () => new DefaultMemoryService(),
   });
@@ -232,13 +242,85 @@ async function runRecall(args: string[], x: Context): Promise<number> {
   return 0;
 }
 
+async function runFactBackfill(args: string[], x: Context): Promise<number> {
+  if (!args.includes("--all")) {
+    console.error("Full fact backfill requires explicit --all");
+    return 2;
+  }
+  let batchSize = 25;
+  let maxChunks: number | undefined;
+  for (let index = 0; index < args.length; index += 1) {
+    const option = args[index];
+    if (option === "--all") continue;
+    if (option === "--batch" || option === "--max-chunks") {
+      const value = args[++index];
+      if (!value) throw new Error(`Missing value for ${option}`);
+      const parsed = z.coerce.number().int().min(1).parse(value);
+      if (option === "--batch") batchSize = Math.min(parsed, 100);
+      else maxChunks = parsed;
+    } else {
+      throw new Error(`Unknown option: ${option}`);
+    }
+  }
+
+  const db = xEmbeddingDb(x);
+  const total = (db.prepare("SELECT COUNT(*) count FROM chunks").get() as { count: number }).count;
+  const startedAt = Date.now();
+  console.log(`Starting contextualized-chunk fact backfill across ${total} chunks...`);
+  let attemptedThisRun = 0;
+  while (true) {
+    const requestLimit =
+      maxChunks === undefined ? batchSize : Math.min(batchSize, maxChunks - attemptedThisRun);
+    if (requestLimit <= 0) break;
+    const result = await xFactService(x).backfill(x, { limit: requestLimit });
+    const progress = db
+      .prepare(
+        `SELECT COUNT(*) completed,
+                COALESCE(SUM(facts_inserted), 0) inserted,
+                COALESCE(SUM(facts_supported), 0) supported,
+                COALESCE(SUM(facts_rejected), 0) rejected
+         FROM fact_chunk_runs
+         WHERE extractor_version = ?
+           AND status = 'completed'`,
+      )
+      .get(FACT_EXTRACTOR_VERSION) as {
+      completed: number;
+      inserted: number;
+      supported: number;
+      rejected: number;
+    };
+    const failed = (
+      db
+        .prepare(
+          `SELECT COUNT(*) count FROM fact_chunk_runs
+           WHERE extractor_version = ?
+             AND status = 'failed' AND attempts >= 3`,
+        )
+        .get(FACT_EXTRACTOR_VERSION) as { count: number }
+    ).count;
+    if (result.skipped !== "no_unprocessed_chunks") attemptedThisRun += requestLimit;
+    console.log(
+      `[Facts] ${progress.completed}/${total} chunks | ${progress.inserted} inserted | ${progress.supported} supported | ${progress.rejected} rejected | ${failed} exhausted failures`,
+    );
+    if (result.skipped === "no_unprocessed_chunks") break;
+    if (maxChunks !== undefined && attemptedThisRun >= maxChunks) break;
+  }
+  console.log(`Fact backfill finished in ${Math.round((Date.now() - startedAt) / 1000)}s.`);
+  return 0;
+}
+
 export async function runMemoryCommand(args: string[], projectRoot: string): Promise<number> {
   const [command, ...commandArgs] = args;
   if (!command || command === "help" || command === "--help" || command === "-h") {
     process.stdout.write(help);
     return 0;
   }
-  if (command !== "search" && command !== "facts" && command !== "recall") {
+  if (
+    command !== "search" &&
+    command !== "facts" &&
+    command !== "recall" &&
+    command !== "backfill-facts"
+  ) {
     console.error(`Unknown memory command: ${command}`);
     process.stderr.write(help);
     return 2;
@@ -252,6 +334,7 @@ export async function runMemoryCommand(args: string[], projectRoot: string): Pro
   try {
     if (command === "facts") return await runFactSearch(commandArgs, x);
     if (command === "recall") return await runRecall(commandArgs, x);
+    if (command === "backfill-facts") return await runFactBackfill(commandArgs, x);
 
     let options: SearchOptions;
     try {
@@ -275,5 +358,6 @@ export async function runMemoryCommand(args: string[], projectRoot: string): Pro
     return 1;
   } finally {
     xEmbeddingDb(x).close();
+    xDb(x).close();
   }
 }

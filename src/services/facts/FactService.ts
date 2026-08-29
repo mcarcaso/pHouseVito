@@ -8,9 +8,14 @@ import type {
 } from "../../stores/facts/FactStore.js";
 
 export interface FactIngestOptions {
-  force?: boolean;
   initialAfterMessageId?: number;
   extractorModel?: ModelConfig;
+  limit?: number;
+}
+
+export interface FactBackfillOptions {
+  extractorModel?: ModelConfig;
+  limit?: number;
 }
 
 export interface FactIngestResult {
@@ -41,6 +46,7 @@ export interface FactSearchResult {
 
 export interface FactService {
   ingestNew(x: Context, sessionId: string, options?: FactIngestOptions): Promise<FactIngestResult>;
+  backfill(x: Context, options?: FactBackfillOptions): Promise<FactIngestResult>;
   search(x: Context, query: string, options?: FactSearchOptions): Promise<FactSearchResult[]>;
   get(x: Context, factId: number): AtomicFact | null;
 }
@@ -50,6 +56,10 @@ export class ProxyFactService implements FactService {
 
   ingestNew(x: Context, sessionId: string, options?: FactIngestOptions) {
     return this.inner.ingestNew(x, sessionId, options);
+  }
+
+  backfill(x: Context, options?: FactBackfillOptions) {
+    return this.inner.backfill(x, options);
   }
 
   search(x: Context, query: string, options?: FactSearchOptions) {

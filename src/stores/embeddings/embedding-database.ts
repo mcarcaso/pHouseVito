@@ -93,6 +93,24 @@ export function createEmbeddingDatabase(path: string): Database.Database {
       PRIMARY KEY(session_id, extractor_version)
     );
 
+    CREATE TABLE IF NOT EXISTS fact_chunk_runs (
+      chunk_id INTEGER NOT NULL,
+      extractor_version TEXT NOT NULL,
+      status TEXT NOT NULL CHECK(status IN ('processing', 'completed', 'failed')),
+      attempts INTEGER NOT NULL DEFAULT 0,
+      facts_inserted INTEGER NOT NULL DEFAULT 0,
+      facts_supported INTEGER NOT NULL DEFAULT 0,
+      facts_rejected INTEGER NOT NULL DEFAULT 0,
+      last_error TEXT,
+      started_at INTEGER,
+      completed_at INTEGER,
+      updated_at INTEGER NOT NULL DEFAULT (unixepoch() * 1000),
+      PRIMARY KEY(chunk_id, extractor_version),
+      FOREIGN KEY (chunk_id) REFERENCES chunks(id) ON DELETE CASCADE
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_fact_chunk_runs_status
+      ON fact_chunk_runs(extractor_version, status, updated_at);
     CREATE INDEX IF NOT EXISTS idx_facts_slot_status ON facts(slot_key, status);
     CREATE INDEX IF NOT EXISTS idx_facts_status_observed ON facts(status, observed_at DESC);
     CREATE INDEX IF NOT EXISTS idx_fact_sources_message ON fact_sources(message_id);

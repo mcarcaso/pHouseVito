@@ -127,14 +127,13 @@ export class DefaultMemoryService implements MemoryService {
       // first deployment, facts start at the same unembedded boundary rather
       // than silently backfilling the entire historical database.
       const initialAfterMessageId = xEmbeddingStore(x).getLastEmbeddedMessageId(x, sessionId);
-      const [embedding, facts] = await Promise.all([
-        this.maybeEmbedNewChunks(x, sessionId, options),
-        xFactService(x).ingestNew(x, sessionId, {
-          force: options.force,
-          initialAfterMessageId,
-          extractorModel: options.factExtractorModel,
-        }),
-      ]);
+      // A successfully stored embedding chunk is the fact-extraction work
+      // unit. Run sequentially so the fact branch sees chunks created above.
+      const embedding = await this.maybeEmbedNewChunks(x, sessionId, options);
+      const facts = await xFactService(x).ingestNew(x, sessionId, {
+        initialAfterMessageId,
+        extractorModel: options.factExtractorModel,
+      });
       return { embedding, facts };
     } finally {
       this.ingestionInProgress = false;

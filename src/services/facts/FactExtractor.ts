@@ -29,6 +29,9 @@ export interface ExtractedFactCandidate {
 }
 
 export interface FactExtractionInput {
+  chunkId: number;
+  contextualizedText: string;
+  context: string | null;
   messages: FactExtractionMessage[];
 }
 

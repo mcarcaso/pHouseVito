@@ -1,22 +1,26 @@
 import { ModelRuntime } from "@earendil-works/pi-coding-agent";
 import Database from "better-sqlite3";
 import { createHash } from "node:crypto";
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { appendFileSync, existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 
 const ROOT = resolve(process.cwd());
 const DB_PATH = join(ROOT, "user", "embeddings.db");
+const FULL_RUN = process.argv.includes("--all");
 const OUT_DIR = join(
   ROOT,
   "user",
   "drive",
   "private",
   "memory-debug",
-  "fact-reconciliation-pilot-v4",
+  FULL_RUN ? "fact-reconciliation-full-v4" : "fact-reconciliation-pilot-v4",
 );
 const STATE_PATH = join(OUT_DIR, "state.json");
 const REPORT_PATH = join(OUT_DIR, "report.md");
+const DECISIONS_PATH = join(OUT_DIR, "decisions.jsonl");
+const SAMPLE_IDS_PATH = join(OUT_DIR, "candidate-ids.json");
+const PROGRESS_PATH = join(OUT_DIR, "progress.json");
 const SAMPLE_SIZE = 75;
 const MODEL = { provider: "openai-codex", name: "gpt-5.6-luna" } as const;
 
@@ -91,6 +95,7 @@ type State = {
   version: 1;
   sampleIds: number[];
   cursor: number;
+  nextId: number;
   accepted: AcceptedFact[];
   decisions: Array<{
     oldFactId: number;
@@ -186,6 +191,12 @@ function selectSample(db: Database.Database): number[] {
     .slice(0, SAMPLE_SIZE);
 }
 
+function selectAllCandidates(db: Database.Database): number[] {
+  return (
+    db.prepare("SELECT id FROM facts ORDER BY observed_at, id").all() as Array<{ id: number }>
+  ).map((row) => row.id);
+}
+
 function loadFact(db: Database.Database, id: number): FactRow {
   return db
     .prepare(
@@ -196,6 +207,8 @@ function loadFact(db: Database.Database, id: number): FactRow {
     .get(id) as FactRow;
 }
 
+const acceptedVectorCache = new Map<string, { key: string; vector: Float32Array | null }>();
+
 function relatedFacts(
   candidateId: number,
   accepted: AcceptedFact[],
@@ -204,7 +217,11 @@ function relatedFacts(
   const candidateVector = vectors.get(candidateId);
   return accepted
     .map((fact) => {
-      const vector = averageVectors(fact.vectorSourceIds, vectors);
+      const key = fact.vectorSourceIds.join(",");
+      const cached = acceptedVectorCache.get(fact.id);
+      const vector =
+        cached?.key === key ? cached.vector : averageVectors(fact.vectorSourceIds, vectors);
+      if (cached?.key !== key) acceptedVectorCache.set(fact.id, { key, vector });
       const semantic = candidateVector && vector ? cosine(candidateVector, vector) : 0;
       const slotBoost =
         fact.slotKey && fact.slotKey === loadCache.get(candidateId)?.slot_key ? 1 : 0;
@@ -346,22 +363,49 @@ function applyDecision(state: State, candidate: FactRow, decision: Decision): vo
         candidate.valid_from ?? new Date(candidate.observed_at).toISOString().slice(0, 10);
     }
   if (decision.action === "conflict") for (const target of targets) target.status = "disputed";
-  const id = `v4-${String(state.accepted.length + 1).padStart(4, "0")}`;
+  const id = `v4-${String(state.nextId).padStart(6, "0")}`;
+  state.nextId += 1;
   const created = makeAccepted(id, candidate, decision);
   if (decision.action === "conflict") created.status = "disputed";
   state.accepted.push(created);
 }
 
+let persistedCursor = 0;
+
 function save(state: State): void {
-  writeFileSync(STATE_PATH, JSON.stringify(state, null, 2));
+  if (!FULL_RUN) {
+    writeFileSync(STATE_PATH, JSON.stringify(state, null, 2));
+    return;
+  }
+  if (!existsSync(SAMPLE_IDS_PATH)) writeFileSync(SAMPLE_IDS_PATH, JSON.stringify(state.sampleIds));
+  if (state.cursor > persistedCursor) {
+    const latest = state.decisions[state.decisions.length - 1];
+    appendFileSync(DECISIONS_PATH, `${JSON.stringify(latest)}\n`, "utf8");
+    persistedCursor = state.cursor;
+  }
+  writeFileSync(
+    PROGRESS_PATH,
+    JSON.stringify(
+      {
+        total: state.sampleIds.length,
+        processed: state.cursor,
+        accepted: state.accepted.length,
+        nextId: state.nextId,
+        updatedAt: new Date().toISOString(),
+      },
+      null,
+      2,
+    ),
+  );
 }
 
 function writeReport(state: State): void {
+  if (FULL_RUN && state.cursor !== state.sampleIds.length && state.cursor % 500 !== 0) return;
   const counts = new Map<string, number>();
   for (const item of state.decisions)
     counts.set(item.decision.action, (counts.get(item.decision.action) ?? 0) + 1);
   const lines = [
-    "# Fact reconciliation v4 pilot",
+    FULL_RUN ? "# Full fact reconciliation v4" : "# Fact reconciliation v4 pilot",
     "",
     `- Input candidates: ${state.sampleIds.length}`,
     `- Processed: ${state.cursor}`,
@@ -380,7 +424,7 @@ function writeReport(state: State): void {
     if (item.decision.canonicalText) lines.push(`- Canonical: ${item.decision.canonicalText}`);
     lines.push(`- Reason: ${item.decision.reason}`, "");
   }
-  lines.push("## Canonical v4 pilot facts", "");
+  lines.push(FULL_RUN ? "## Canonical v4 facts" : "## Canonical v4 pilot facts", "");
   for (const fact of state.accepted)
     lines.push(
       `- **${fact.id}** [${fact.status}; ${fact.kind}] ${fact.canonicalText} _(v3: ${fact.oldFactIds.join(", ")})_`,
@@ -396,10 +440,51 @@ async function main(): Promise<void> {
     vector: Buffer;
   }>;
   const vectors = new Map(vectorRows.map((row) => [row.fact_id, vectorFromBuffer(row.vector)]));
-  let state: State = existsSync(STATE_PATH)
-    ? JSON.parse(readFileSync(STATE_PATH, "utf8"))
-    : { version: 1, sampleIds: selectSample(db), cursor: 0, accepted: [], decisions: [] };
-  for (const id of state.sampleIds) loadCache.set(id, loadFact(db, id));
+  const sampleIds = FULL_RUN
+    ? existsSync(SAMPLE_IDS_PATH)
+      ? (JSON.parse(readFileSync(SAMPLE_IDS_PATH, "utf8")) as number[])
+      : selectAllCandidates(db)
+    : existsSync(STATE_PATH)
+      ? (JSON.parse(readFileSync(STATE_PATH, "utf8")) as State).sampleIds
+      : selectSample(db);
+  for (const id of sampleIds) loadCache.set(id, loadFact(db, id));
+
+  let state: State;
+  if (FULL_RUN) {
+    state = {
+      version: 1,
+      sampleIds,
+      cursor: 0,
+      nextId: 1,
+      accepted: [],
+      decisions: [],
+    };
+    if (existsSync(DECISIONS_PATH)) {
+      const lines = readFileSync(DECISIONS_PATH, "utf8").split("\n").filter(Boolean);
+      for (const line of lines) {
+        const record = JSON.parse(line) as State["decisions"][number];
+        const candidate = loadCache.get(record.oldFactId);
+        if (!candidate) throw new Error(`Missing replay candidate ${record.oldFactId}`);
+        applyDecision(state, candidate, record.decision);
+        state.decisions.push(record);
+        state.cursor += 1;
+      }
+    }
+  } else if (existsSync(STATE_PATH)) {
+    state = JSON.parse(readFileSync(STATE_PATH, "utf8")) as State;
+    state.nextId ??=
+      Math.max(0, ...state.accepted.map((fact) => Number(fact.id.replace("v4-", "")))) + 1;
+  } else {
+    state = {
+      version: 1,
+      sampleIds,
+      cursor: 0,
+      nextId: 1,
+      accepted: [],
+      decisions: [],
+    };
+  }
+  persistedCursor = state.cursor;
   save(state);
 
   const runtime = await ModelRuntime.create({
@@ -416,19 +501,29 @@ async function main(): Promise<void> {
     const started = Date.now();
     let decision = deterministicAdmission(candidate);
     if (!decision) {
-      const response = await runtime.completeSimple(
-        model,
-        { messages: [{ role: "user", content: prompt, timestamp: Date.now() }] },
-        { maxTokens: 900, reasoning: "minimal" },
-      );
-      if (response.stopReason === "error")
-        throw new Error(response.errorMessage || "Reconciliation failed");
-      const raw = response.content
-        .filter((part) => part.type === "text")
-        .map((part) => part.text)
-        .join("")
-        .trim();
-      decision = parseDecision(raw);
+      let lastError: unknown;
+      for (let attempt = 1; attempt <= 3; attempt += 1) {
+        try {
+          const response = await runtime.completeSimple(
+            model,
+            { messages: [{ role: "user", content: prompt, timestamp: Date.now() }] },
+            { maxTokens: 900, reasoning: "minimal" },
+          );
+          if (response.stopReason === "error")
+            throw new Error(response.errorMessage || "Reconciliation failed");
+          const raw = response.content
+            .filter((part) => part.type === "text")
+            .map((part) => part.text)
+            .join("")
+            .trim();
+          decision = parseDecision(raw);
+          break;
+        } catch (error) {
+          lastError = error;
+          console.error(`Candidate ${candidate.id} attempt ${attempt} failed:`, error);
+        }
+      }
+      if (!decision) throw lastError instanceof Error ? lastError : new Error(String(lastError));
     }
     decision = enforceDecisionSemantics(candidate, decision);
     applyDecision(state, candidate, decision);
@@ -446,7 +541,7 @@ async function main(): Promise<void> {
     );
   }
   db.close();
-  console.log(`Pilot complete: ${REPORT_PATH}`);
+  console.log(`${FULL_RUN ? "Full reconciliation" : "Pilot"} complete: ${REPORT_PATH}`);
 }
 
 await main();

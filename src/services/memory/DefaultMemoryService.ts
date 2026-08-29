@@ -20,6 +20,13 @@ import type {
   SearchResult,
 } from "./MemoryService.js";
 
+export function shouldUseCurrentFacts(query: string, asOf?: string): boolean {
+  if (asOf) return false;
+  const historicalIntent =
+    /\b(history|historical|timeline|previously|formerly|earlier|prior|past|used to|back then|at the time|when did|what was|how (?:has|have|did).{0,40}chang(?:e|ed|ing)|evol(?:ve|ved|ving|ution))\b/i;
+  return !historicalIntent.test(query);
+}
+
 export class DefaultMemoryService implements MemoryService {
   private embeddingInProgress = false;
   private ingestionInProgress = false;
@@ -40,9 +47,7 @@ export class DefaultMemoryService implements MemoryService {
     options: MemoryRecallOptions = {},
   ): Promise<MemoryRecallResult> {
     const deep = options.depth === "deep";
-    const currentOnly =
-      options.currentOnly ??
-      /\b(current|currently|latest|final|now|still|today|present)\b/i.test(query);
+    const currentOnly = options.currentOnly ?? shouldUseCurrentFacts(query, options.asOf);
     const [facts, transcripts] = await Promise.all([
       xFactService(x).search(x, query, {
         limit: deep ? 20 : 8,

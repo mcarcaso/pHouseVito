@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import { ObjectContext } from "../../src/context/ObjectContext.js";
+import { shouldUseCurrentFacts } from "../../src/services/memory/DefaultMemoryService.js";
 import { searchMemory } from "../../src/services/memory/hybrid-search.js";
 import {
   extractRelevantExcerpt,
@@ -123,6 +124,19 @@ describe("memory search", () => {
     });
     const [result] = await searchMemory(x, "dated query", { mode: "bm25" });
     assert.equal(result.bm25Score, 0);
+  });
+});
+
+describe("memory answer fact scope", () => {
+  it("uses current facts by default without exposing a user-facing toggle", () => {
+    assert.equal(shouldUseCurrentFacts("What does Mike prefer?"), true);
+    assert.equal(shouldUseCurrentFacts("What is Mike doing now?"), true);
+  });
+
+  it("automatically includes history for historical and as-of questions", () => {
+    assert.equal(shouldUseCurrentFacts("How has Mike's opinion changed?"), false);
+    assert.equal(shouldUseCurrentFacts("When did Mike move?"), false);
+    assert.equal(shouldUseCurrentFacts("What does Mike prefer?", "2025-01-01"), false);
   });
 });
 

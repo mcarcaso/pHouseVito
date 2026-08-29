@@ -72,7 +72,6 @@ export function MemoryScreen({
   const theme = useVitoTheme();
   const [page, setPage] = useState<MemoryPage>("answer");
   const [query, setQuery] = useState("");
-  const [currentOnly, setCurrentOnly] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [answer, setAnswer] = useState<AnswerResponse | null>(null);
@@ -86,7 +85,7 @@ export function MemoryScreen({
     setError(null);
     const path =
       page === "facts"
-        ? `/api/memory/facts/recent?limit=20&current=${currentOnly}`
+        ? "/api/memory/facts/recent?limit=20"
         : "/api/memory/embeddings/recent?limit=20";
     void api<FactSearchResponse | TranscriptSearchResponse>(path)
       .then((result) => {
@@ -106,7 +105,7 @@ export function MemoryScreen({
     return () => {
       cancelled = true;
     };
-  }, [currentOnly, page]);
+  }, [page]);
 
   const run = async () => {
     const value = query.trim();
@@ -118,13 +117,13 @@ export function MemoryScreen({
         setAnswer(
           await api<AnswerResponse>("/api/memory/answer", {
             method: "POST",
-            body: JSON.stringify({ query: value, currentOnly }),
+            body: JSON.stringify({ query: value }),
           }),
         );
       } else if (page === "facts") {
         setFacts(
           await api<FactSearchResponse>(
-            `/api/memory/facts/search?q=${encodeURIComponent(value)}&limit=30&current=${currentOnly}`,
+            `/api/memory/facts/search?q=${encodeURIComponent(value)}&limit=30`,
           ),
         );
       } else {
@@ -215,19 +214,6 @@ export function MemoryScreen({
               )}
             </Pressable>
           </View>
-
-          {page !== "transcripts" && (
-            <Pressable onPress={() => setCurrentOnly((value) => !value)} style={styles.toggleRow}>
-              <Ionicons
-                name={currentOnly ? "checkbox" : "square-outline"}
-                size={20}
-                color={currentOnly ? theme.colors.accent : theme.colors.textMuted}
-              />
-              <Text style={styles.toggleText}>
-                {page === "answer" ? "Prefer current state" : "Current and disputed facts only"}
-              </Text>
-            </Pressable>
-          )}
 
           {error && <Text style={styles.error}>{error}</Text>}
           {page === "answer" && answer && <AnswerResult value={answer} styles={styles} />}
@@ -391,16 +377,9 @@ function createStyles(theme: VitoTheme) {
     },
     searchButtonDisabled: { opacity: 0.4 },
     pressed: { opacity: 0.72 },
-    toggleRow: {
-      flexDirection: "row",
-      alignItems: "center",
-      alignSelf: "flex-start",
-      gap: theme.space.sm,
-      paddingVertical: theme.space.md,
-    },
-    toggleText: { color: theme.colors.textSecondary, fontSize: 13 },
     error: { color: theme.colors.danger, fontSize: 13, paddingVertical: theme.space.md },
     results: {
+      marginTop: theme.space.lg,
       borderTopWidth: StyleSheet.hairlineWidth,
       borderTopColor: theme.colors.separator,
       paddingTop: theme.space.lg,

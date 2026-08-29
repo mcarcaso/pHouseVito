@@ -517,7 +517,7 @@ export class DefaultFactService implements FactService {
     const limit = options.limit ?? 10;
     const statuses = options.currentOnly
       ? (["active", "disputed"] satisfies FactStatus[])
-      : (options.statuses ?? ["active", "historical", "disputed"]);
+      : (options.statuses ?? ["active", "historical", "disputed", "superseded"]);
     const terms = getSearchTerms(query);
     let lexical: Array<{ fact: AtomicFact; score: number }> = [];
     if (terms.length > 0) {

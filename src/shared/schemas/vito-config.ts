@@ -36,6 +36,7 @@ export const settingsSchema = z
     memory: z
       .object({
         chunkContextualizerModel: modelSchema.optional(),
+        factExtractorModel: modelSchema.optional(),
       })
       .passthrough()
       .optional(),
@@ -68,6 +69,7 @@ export const settingsPatchSchema = z
     memory: z
       .object({
         chunkContextualizerModel: modelSchema.optional(),
+        factExtractorModel: modelSchema.optional(),
       })
       .passthrough()
       .nullable()

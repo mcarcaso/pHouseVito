@@ -13,9 +13,12 @@ import type { AppStore } from "../stores/apps/AppStore.js";
 import type { AttachmentStore } from "../stores/attachments/AttachmentStore.js";
 import type { DriveStore } from "../stores/drive/DriveStore.js";
 import type { EmbeddingStore } from "../stores/embeddings/EmbeddingStore.js";
+import type { FactStore } from "../stores/facts/FactStore.js";
 import type { CronService } from "../services/cron/CronService.js";
 import type { EmbeddingService } from "../services/memory/EmbeddingService.js";
 import type { MemoryService } from "../services/memory/MemoryService.js";
+import type { FactExtractor } from "../services/facts/FactExtractor.js";
+import type { FactService } from "../services/facts/FactService.js";
 import type { OrchestratorService } from "../services/orchestrator/OrchestratorService.js";
 import type { SecretService } from "../services/secrets/SecretService.js";
 import type { ServerLifecycleService } from "../services/server/ServerLifecycleService.js";
@@ -45,6 +48,10 @@ export const xEmbeddingStore = (x: Context): EmbeddingStore =>
   x.get("embeddingStore") as EmbeddingStore;
 export const xEmbeddingService = (x: Context): EmbeddingService =>
   x.get("embeddingService") as EmbeddingService;
+export const xFactStore = (x: Context): FactStore => x.get("factStore") as FactStore;
+export const xFactExtractor = (x: Context): FactExtractor =>
+  x.get("factExtractor") as FactExtractor;
+export const xFactService = (x: Context): FactService => x.get("factService") as FactService;
 export const xDriveStore = (x: Context): DriveStore => x.get("driveStore") as DriveStore;
 export const xAppStore = (x: Context): AppStore => x.get("appStore") as AppStore;
 export const xAttachmentStore = (x: Context): AttachmentStore =>

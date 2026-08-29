@@ -11,6 +11,8 @@ import { DriveInboundAttachmentService } from "../services/files/DriveInboundAtt
 import { FileSystemFileService } from "../services/files/FileSystemFileService.js";
 import { DefaultMemoryService } from "../services/memory/DefaultMemoryService.js";
 import { OpenAiEmbeddingService } from "../services/memory/OpenAiEmbeddingService.js";
+import { DefaultFactService } from "../services/facts/DefaultFactService.js";
+import { PiFactExtractor } from "../services/facts/PiFactExtractor.js";
 import { PiOrchestratorService } from "../services/orchestrator/PiOrchestratorService.js";
 import { DefaultProviderService } from "../services/providers/DefaultProviderService.js";
 import { FileSecretService } from "../services/secrets/FileSecretService.js";
@@ -25,6 +27,7 @@ import { FileAttachmentStore } from "../stores/attachments/FileAttachmentStore.j
 import { FileDriveStore } from "../stores/drive/FileDriveStore.js";
 import { createEmbeddingDatabase } from "../stores/embeddings/embedding-database.js";
 import { SqliteEmbeddingStore } from "../stores/embeddings/SqliteEmbeddingStore.js";
+import { SqliteFactStore } from "../stores/facts/SqliteFactStore.js";
 import { SqliteMessageStore } from "../stores/messages/SqliteMessageStore.js";
 import { FilePiSessionStore } from "../stores/pi-sessions/FilePiSessionStore.js";
 import { SqliteSessionStore } from "../stores/sessions/SqliteSessionStore.js";
@@ -87,6 +90,9 @@ export function RootContext(args: RootContextArgs): Context {
     embeddingDb: () => createEmbeddingDatabase(join(args.userDir, "embeddings.db")),
     embeddingStore: () => new SqliteEmbeddingStore(),
     embeddingService: () => new OpenAiEmbeddingService(),
+    factStore: () => new SqliteFactStore(),
+    factExtractor: () => new PiFactExtractor(),
+    factService: () => new DefaultFactService(),
     memoryService: () => new DefaultMemoryService(),
     orchestratorService: () => new PiOrchestratorService(),
     secretService: () => new FileSecretService(),

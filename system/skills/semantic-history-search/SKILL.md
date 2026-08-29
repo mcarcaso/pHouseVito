@@ -9,6 +9,8 @@ Search all past conversations by **meaning**, not just exact words. Uses hybrid 
 
 ## When to Use
 
+Before searching conversation history, check `user/profile.md` for durable identity, relationship, preference, safety, and current-policy facts. The profile is curated and authoritative for those facts; this skill retrieves underlying conversation evidence and episodic context.
+
 Use this skill when:
 
 - You need to **recall what was discussed** about a topic — "what did we talk about regarding X?"
@@ -68,5 +70,8 @@ Returns ranked results with:
 - **Hybrid mode** is best for most queries — catches both meaning and exact keywords
 - **BM25 mode** is fastest and best for exact terms (names, technical terms, specific phrases)
 - **Embedding mode** is best for fuzzy/conceptual queries where you don't know the exact words
-- Each chunk covers ~8K chars (~30-50 messages) — results give solid context windows
-- Higher RRF score = more relevant. Anything above 0.01 is a strong signal
+- New chunks are normally 2–4K characters; the CLI returns a query-relevant evidence window rather than blindly showing the start of each chunk
+- Search five results first; use `--limit 10` when evidence is incomplete rather than changing the query to include the answer
+- Prefer direct user statements over assistant recommendations, and distinguish proposed work from confirmed completion
+- For `current`, `latest`, or `final` questions, inspect dates and explicit corrections; use exact history when results conflict
+- Higher RRF score means stronger fused rank, but treat source text—not the score—as evidence

@@ -1,6 +1,11 @@
 import type { Context } from "../../context/Context.js";
 import type { EmbedOptions, EmbeddingResult } from "./chunking.js";
 import type { EmbeddingStats } from "../../stores/embeddings/EmbeddingStore.js";
+import type {
+  FactIngestOptions,
+  FactIngestResult,
+  FactSearchResult,
+} from "../facts/FactService.js";
 
 export interface SearchResult {
   id: number;
@@ -28,9 +33,42 @@ export interface SearchOptions {
   mode?: "hybrid" | "embedding" | "bm25";
 }
 
+export interface ProfileSearchResult {
+  heading: string;
+  text: string;
+  score: number;
+}
+
+export interface MemoryRecallOptions {
+  depth?: "quick" | "deep";
+  currentOnly?: boolean;
+  asOf?: string;
+}
+
+export interface MemoryRecallResult {
+  profile: ProfileSearchResult[];
+  facts: FactSearchResult[];
+  transcripts: SearchResult[];
+}
+
+export interface MemoryIngestionOptions extends EmbedOptions {
+  factExtractorModel?: FactIngestOptions["extractorModel"];
+}
+
+export interface MemoryIngestionResult {
+  embedding: EmbeddingResult;
+  facts: FactIngestResult;
+}
+
 export interface MemoryService {
   getProfile(x: Context): string | null;
   search(x: Context, query: string, options?: SearchOptions): Promise<SearchResult[]>;
+  recall(x: Context, query: string, options?: MemoryRecallOptions): Promise<MemoryRecallResult>;
+  maybeProcessNewMemory(
+    x: Context,
+    sessionId: string,
+    options?: MemoryIngestionOptions,
+  ): Promise<MemoryIngestionResult>;
   maybeEmbedNewChunks(
     x: Context,
     sessionId: string,

@@ -549,25 +549,39 @@ export class PiOrchestratorService implements OrchestratorService {
         this.activeRequests.delete(event.sessionKey);
       }
 
-      // Background: chunk + embed; periodic profile update.
+      // Background: build transcript embeddings and evidence-backed atomic
+      // facts from the same newly persisted message cadence.
       const contextualizerModel = effectiveSettings.memory?.chunkContextualizerModel;
+      const factExtractorModel = effectiveSettings.memory?.factExtractorModel;
       xMemoryService(this.x)
-        .maybeEmbedNewChunks(this.x, vitoSession.id, { contextualizerModel })
-        .then((embResult) => {
-          if (embResult) {
-            tracedRuntime.writePostRunLine({
-              type: "embedding_result",
-              skipped: embResult.skipped,
-              chunks_created: embResult.chunks_created,
-              chunks: embResult.chunks,
-              unembedded_messages: embResult.unembedded_messages,
-              unembedded_chars: embResult.unembedded_chars,
-              duration_ms: embResult.duration_ms,
-            });
-          }
+        .maybeProcessNewMemory(this.x, vitoSession.id, {
+          contextualizerModel,
+          factExtractorModel,
+        })
+        .then(({ embedding, facts }) => {
+          tracedRuntime.writePostRunLine({
+            type: "embedding_result",
+            skipped: embedding.skipped,
+            chunks_created: embedding.chunks_created,
+            chunks: embedding.chunks,
+            unembedded_messages: embedding.unembedded_messages,
+            unembedded_chars: embedding.unembedded_chars,
+            duration_ms: embedding.duration_ms,
+          });
+          tracedRuntime.writePostRunLine({
+            type: "fact_ingestion_result",
+            skipped: facts.skipped,
+            inserted: facts.inserted,
+            supported: facts.supported,
+            superseded: facts.superseded,
+            rejected_count: facts.rejected.length,
+            batches_processed: facts.batchesProcessed,
+            messages_considered: facts.messagesConsidered,
+            duration_ms: facts.durationMs,
+          });
         })
         .catch((err) => {
-          console.error(`[Embeddings] Background embedding failed:`, err);
+          console.error(`[Memory] Background ingestion failed:`, err);
         });
     } catch (err) {
       // Safety net: stop typing on any error before/during run setup.
@@ -771,19 +785,27 @@ export class PiOrchestratorService implements OrchestratorService {
       // Background force-embed. Errors logged, not surfaced to the user.
       const newSettings = getEffectiveSettings(this.config, event.channel, event.sessionKey);
       const contextualizerModel = newSettings.memory?.chunkContextualizerModel;
+      const factExtractorModel = newSettings.memory?.factExtractorModel;
       xMemoryService(this.x)
-        .maybeEmbedNewChunks(this.x, vitoSession.id, { force: true, contextualizerModel })
-        .then((embResult) => {
-          if (embResult?.skipped) {
-            console.log(`[/new] background embed skipped: ${embResult.skipped}`);
+        .maybeProcessNewMemory(this.x, vitoSession.id, {
+          force: true,
+          contextualizerModel,
+          factExtractorModel,
+        })
+        .then(({ embedding, facts }) => {
+          if (embedding.skipped) {
+            console.log(`[/new] background embed skipped: ${embedding.skipped}`);
           } else {
             console.log(
-              `[/new] background embed complete — ${embResult?.chunks_created ?? 0} chunk(s) for ${vitoSession.id}`,
+              `[/new] background embed complete — ${embedding.chunks_created} chunk(s) for ${vitoSession.id}`,
             );
           }
+          console.log(
+            `[/new] background facts complete — ${facts.inserted.length} inserted, ${facts.supported.length} supported`,
+          );
         })
         .catch((err) => {
-          console.error(`[/new] background embed failed for ${vitoSession.id}:`, err);
+          console.error(`[/new] background memory ingestion failed for ${vitoSession.id}:`, err);
         });
     } catch (err) {
       console.error("[/new] reset failed:", err);

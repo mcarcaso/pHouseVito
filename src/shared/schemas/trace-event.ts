@@ -170,6 +170,20 @@ const embeddingResultSchema = z
   })
   .strict();
 
+const factIngestionResultSchema = z
+  .object({
+    type: z.literal("fact_ingestion_result"),
+    skipped: z.string().optional(),
+    inserted: z.array(z.number().int().positive()),
+    supported: z.array(z.number().int().positive()),
+    superseded: z.array(z.number().int().positive()),
+    rejected_count: z.number().int().nonnegative(),
+    batches_processed: z.number().int().nonnegative(),
+    messages_considered: z.number().int().nonnegative(),
+    duration_ms: z.number().nonnegative(),
+  })
+  .strict();
+
 const profileUpdateSchema = z
   .object({
     type: z.literal("profile_update"),
@@ -229,6 +243,7 @@ export const writableTraceEventDataSchema = z.discriminatedUnion("type", [
   currentContextFilterSchema,
   autoClassifierSchema,
   embeddingResultSchema,
+  factIngestionResultSchema,
   profileUpdateSchema,
   footerSchema,
   truncatedSchema,

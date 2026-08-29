@@ -44,25 +44,12 @@ function jsonText(value: unknown): string {
 }
 
 function toExtractionMessage(row: MessageRow): FactExtractionMessage | null {
-  if (row.type !== "user" && row.type !== "assistant" && row.type !== "tool_end") return null;
+  // Fact extraction operates on the conversational record only. Thoughts and
+  // raw tool events are both noisy and potentially enormous; verified action
+  // outcomes belong in a separate deterministic ingestion path.
+  if (row.type !== "user" && row.type !== "assistant") return null;
   try {
     const content = JSON.parse(row.content) as unknown;
-    if (row.type === "tool_end") {
-      const record =
-        content && typeof content === "object" && !Array.isArray(content)
-          ? (content as Record<string, unknown>)
-          : {};
-      return {
-        id: row.id,
-        sessionId: row.session_id,
-        timestamp: row.timestamp,
-        type: row.type,
-        author: row.author,
-        text: jsonText(record.result ?? content),
-        toolName: typeof record.toolName === "string" ? record.toolName : undefined,
-        toolSucceeded: record.isError !== true,
-      };
-    }
     if (typeof content === "string") {
       return {
         id: row.id,
@@ -182,13 +169,11 @@ function fingerprint(candidate: ExtractedFactCandidate): string {
 }
 
 function authorityFor(messages: FactExtractionMessage[]): FactAuthority {
-  if (messages.some((message) => message.type === "tool_end" && message.toolSucceeded)) {
-    return "tool_verified";
-  }
-  // A requested action plus an assistant claim of completion is still only an
-  // assistant report when no successful tool evidence is cited.
-  if (messages.some((message) => message.type === "assistant")) return "assistant_reported";
-  return "user_explicit";
+  // Explicit user evidence remains authoritative even when the extractor also
+  // cites the assistant's final acknowledgement. Assistant-only claims remain
+  // reports until a separate deterministic action-result path verifies them.
+  if (messages.some((message) => message.type === "user")) return "user_explicit";
+  return "assistant_reported";
 }
 
 function sourceDay(timestamp: number): string {

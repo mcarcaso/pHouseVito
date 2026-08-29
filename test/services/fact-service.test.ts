@@ -15,8 +15,10 @@ import { SqliteMessageStore } from "../../src/stores/messages/SqliteMessageStore
 class QueuedFactExtractor implements FactExtractor {
   readonly version = "test-v1";
   readonly outputs: ExtractedFactCandidate[][] = [];
+  readonly inputs: FactExtractionInput[] = [];
 
-  async extract(_x: unknown, _input: FactExtractionInput): Promise<ExtractedFactCandidate[]> {
+  async extract(_x: unknown, input: FactExtractionInput): Promise<ExtractedFactCandidate[]> {
+    this.inputs.push(input);
     return this.outputs.shift() ?? [];
   }
 }
@@ -74,6 +76,44 @@ function setup() {
 }
 
 describe("atomic fact ingestion", () => {
+  it("excludes thoughts and raw tool events from model extraction", async () => {
+    const fixture = setup();
+    try {
+      fixture.addUserMessage("Remember my preference.", 1_000);
+      const messageStore = new SqliteMessageStore();
+      for (const [type, content, timestamp] of [
+        ["thought", "private reasoning", 1_100],
+        ["tool_start", { toolName: "read", args: {} }, 1_200],
+        ["tool_end", { toolName: "read", result: "very large raw result" }, 1_300],
+        ["assistant", "I'll remember it.", 1_400],
+      ] as const) {
+        messageStore.create(fixture.x, {
+          session_id: "test:session",
+          channel: "test",
+          channel_target: "session",
+          timestamp,
+          type,
+          content: JSON.stringify(content),
+          archived: 0,
+          author: type === "assistant" ? "Vito" : null,
+        });
+      }
+
+      await fixture.service.ingestNew(fixture.x, "test:session", { force: true });
+      assert.deepEqual(
+        fixture.extractor.inputs[0].messages.map((message) => message.type),
+        ["user", "assistant"],
+      );
+      assert.equal(
+        fixture.extractor.inputs[0].messages.some((message) => message.text.includes("raw result")),
+        false,
+      );
+    } finally {
+      fixture.db.close();
+      fixture.embeddingDb.close();
+    }
+  });
+
   it("adds evidence to deterministic duplicates and supersedes a changed slot", async () => {
     const fixture = setup();
     try {

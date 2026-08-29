@@ -78,8 +78,6 @@ function buildPrompt(input: FactExtractionInput): string {
     timestamp: new Date(message.timestamp).toISOString(),
     type: message.type,
     author: message.author,
-    ...(message.toolName ? { toolName: message.toolName } : {}),
-    ...(message.toolSucceeded !== undefined ? { toolSucceeded: message.toolSucceeded } : {}),
     text: message.text,
   }));
 
@@ -92,7 +90,7 @@ Return one JSON object with exactly this shape:
 
 Rules:
 - Extract explicit user claims, preferences, decisions, relationships, measurements, events, and useful current state.
-- Extract completed actions only when an assistant report or successful tool result supports completion.
+- An assistant claim that an action completed is assistant-reported evidence, not tool verification.
 - Assistant advice is kind=recommendation; never turn it into a user belief or decision.
 - A source quote MUST be an exact substring of that message's text. Do not cite summaries or invent quotes.
 - Use multiple sources when a user request and a later result together establish completion.

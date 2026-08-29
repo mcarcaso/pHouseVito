@@ -6,11 +6,9 @@ export interface FactExtractionMessage {
   id: number;
   sessionId: string;
   timestamp: number;
-  type: "user" | "assistant" | "tool_end";
+  type: "user" | "assistant";
   author: string | null;
   text: string;
-  toolName?: string;
-  toolSucceeded?: boolean;
 }
 
 export interface ExtractedFactSource {

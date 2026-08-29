@@ -15,7 +15,7 @@ Raw messages remain authoritative. Atomic facts are derived, replaceable, and re
 - Transcript chunk contextualization and embedding
 - Atomic-fact extraction and reconciliation
 
-Both use the existing 2–4K character cadence. Fact batches preserve complete user turns and retain raw message IDs. Embedding and fact checkpoints are independent, so either branch can retry without duplicating the other. A new installation begins fact extraction at the existing embedding boundary instead of silently backfilling all historical messages.
+Both use the existing 2–4K character cadence. Fact batches preserve complete user/final-assistant turns and retain raw message IDs. Thoughts, `tool_start`, and raw `tool_end` payloads are excluded. Embedding and fact checkpoints are independent, so either branch can retry without duplicating the other. A new installation begins fact extraction at the existing embedding boundary instead of silently backfilling all historical messages.
 
 Fact extraction defaults to `openai-codex/gpt-5.6-luna` through Pi authentication. It can be overridden with `settings.memory.factExtractorModel`. Retrieved conversation content is explicitly treated as untrusted quoted data.
 
@@ -30,11 +30,11 @@ Every extracted fact must cite one or more source messages. Persistence rejects 
 
 Authority is derived from cited source types rather than trusted from model output:
 
-- `tool_verified`
 - `user_explicit`
 - `assistant_reported`
+- `tool_verified` is reserved for a future deterministic action-result ingestion path
 
-Assistant recommendations remain recommendations and do not become user decisions.
+Raw tool output is never sent to the fact-extraction model. Assistant recommendations remain recommendations and do not become user decisions.
 
 ## Duplicate and temporal handling
 

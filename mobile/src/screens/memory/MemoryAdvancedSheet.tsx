@@ -167,7 +167,7 @@ export function MemoryAdvancedSheet({
                 />
                 <Metric
                   label="Processing speed"
-                  value={status.active ? "3 chunks at a time" : "Stopped"}
+                  value={status.active ? "1 chunk at a time" : "Stopped"}
                   styles={styles}
                 />
                 <Metric

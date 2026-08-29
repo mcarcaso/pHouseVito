@@ -10,13 +10,10 @@ import type {
 export interface FactIngestOptions {
   initialAfterMessageId?: number;
   extractorModel?: ModelConfig;
-  limit?: number;
 }
 
 export interface FactBackfillOptions {
   extractorModel?: ModelConfig;
-  limit?: number;
-  concurrency?: number;
 }
 
 export interface FactIngestResult {

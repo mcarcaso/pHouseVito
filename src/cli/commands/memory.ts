@@ -31,7 +31,7 @@ const help = `Usage:
   vito memory search <query> [options]
   vito memory facts <query> [options]
   vito memory recall <query> [--deep] [--current] [--as-of YYYY-MM-DD]
-  vito memory backfill-facts --all [--batch N] [--concurrency N]
+  vito memory backfill-facts --all [--max-chunks N]
 
 Search options:
   --limit N       Number of results (default: 5)
@@ -248,25 +248,28 @@ async function runFactBackfill(args: string[], x: Context): Promise<number> {
     console.error("Full fact backfill requires explicit --all");
     return 2;
   }
-  let batchSize = 25;
-  let concurrency = 3;
   let maxChunks: number | undefined;
   for (let index = 0; index < args.length; index += 1) {
     const option = args[index];
     if (option === "--all") continue;
-    if (option === "--batch" || option === "--max-chunks" || option === "--concurrency") {
+    if (option === "--max-chunks") {
       const value = args[++index];
       if (!value) throw new Error(`Missing value for ${option}`);
-      const parsed = z.coerce.number().int().min(1).parse(value);
-      if (option === "--batch") batchSize = Math.min(parsed, 100);
-      else if (option === "--concurrency") concurrency = Math.min(parsed, 8);
-      else maxChunks = parsed;
+      maxChunks = z.coerce.number().int().min(1).parse(value);
     } else {
       throw new Error(`Unknown option: ${option}`);
     }
   }
 
   const db = xEmbeddingDb(x);
+  db.prepare(
+    `UPDATE fact_chunk_runs
+     SET status = 'failed',
+         attempts = MAX(0, attempts - 1),
+         last_error = 'Recovered after interrupted backfill',
+         updated_at = ?
+     WHERE extractor_version = ? AND status = 'processing'`,
+  ).run(Date.now(), FACT_EXTRACTOR_VERSION);
   const total = (db.prepare("SELECT COUNT(*) count FROM chunks").get() as { count: number }).count;
   const startedAt = Date.now();
   const markerPath = join(xUserDir(x), "logs", "fact-backfill-active.pid");
@@ -291,13 +294,8 @@ async function runFactBackfill(args: string[], x: Context): Promise<number> {
   let attemptedThisRun = 0;
   try {
     while (true) {
-      const requestLimit =
-        maxChunks === undefined ? batchSize : Math.min(batchSize, maxChunks - attemptedThisRun);
-      if (requestLimit <= 0) break;
-      const result = await xFactService(x).backfill(x, {
-        limit: requestLimit,
-        concurrency,
-      });
+      if (maxChunks !== undefined && attemptedThisRun >= maxChunks) break;
+      const result = await xFactService(x).backfill(x);
       const progress = db
         .prepare(
           `SELECT COUNT(*) completed,
@@ -323,12 +321,13 @@ async function runFactBackfill(args: string[], x: Context): Promise<number> {
           )
           .get(FACT_EXTRACTOR_VERSION) as { count: number }
       ).count;
-      if (result.skipped !== "no_unprocessed_chunks") attemptedThisRun += requestLimit;
-      console.log(
-        `[Facts] ${progress.completed}/${total} chunks | ${progress.inserted} inserted | ${progress.supported} supported | ${progress.rejected} rejected | ${failed} exhausted failures`,
-      );
+      if (result.skipped !== "no_unprocessed_chunks") attemptedThisRun += 1;
+      if (attemptedThisRun % 25 === 0 || result.skipped === "no_unprocessed_chunks") {
+        console.log(
+          `[Facts] ${progress.completed}/${total} chunks | ${progress.inserted} inserted | ${progress.supported} supported | ${progress.rejected} rejected | ${failed} exhausted failures`,
+        );
+      }
       if (result.skipped === "no_unprocessed_chunks") break;
-      if (maxChunks !== undefined && attemptedThisRun >= maxChunks) break;
     }
     let embedded = 0;
     do {

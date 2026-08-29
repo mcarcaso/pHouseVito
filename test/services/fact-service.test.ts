@@ -109,22 +109,40 @@ function setup() {
 }
 
 describe("atomic fact ingestion", () => {
-  it("extracts three chunks concurrently before ordered reconciliation", async () => {
+  it("extracts and reconciles historical chunks one at a time in chronological order", async () => {
     const fixture = setup();
     try {
-      fixture.extractor.delayMs = 20;
-      fixture.addUserMessage("First fact window.", 1_000);
-      fixture.addUserMessage("Second fact window.", 2_000);
-      fixture.addUserMessage("Third fact window.", 3_000);
-      fixture.extractor.outputs.push([], [], []);
-
-      const result = await fixture.service.backfill(fixture.x, { limit: 3, concurrency: 3 });
-      assert.equal(result.batchesProcessed, 3);
-      assert.equal(fixture.extractor.maxActive, 3);
-      assert.deepEqual(
-        fixture.extractor.inputs.map((input) => input.chunkId),
-        [1, 2, 3],
+      const first = fixture.addUserMessage("I prefer red.", 1_000);
+      const second = fixture.addUserMessage("I now prefer blue.", 2_000);
+      fixture.extractor.outputs.push(
+        [
+          candidate({
+            text: "Mike prefers red.",
+            value: "red",
+            messageId: first.id,
+            quote: "I prefer red.",
+          }),
+        ],
+        [
+          candidate({
+            text: "Mike prefers blue.",
+            value: "blue",
+            messageId: second.id,
+            quote: "I now prefer blue.",
+          }),
+        ],
       );
+
+      const firstResult = await fixture.service.backfill(fixture.x);
+      assert.equal(firstResult.batchesProcessed, 1);
+      assert.equal(fixture.store.list(fixture.x, { order: "oldest" })[0]?.status, "active");
+
+      const secondResult = await fixture.service.backfill(fixture.x);
+      assert.equal(secondResult.batchesProcessed, 1);
+      const facts = fixture.store.list(fixture.x, { order: "oldest" });
+      assert.equal(facts[0]?.status, "superseded");
+      assert.equal(facts[1]?.status, "active");
+      assert.equal(fixture.extractor.maxActive, 1);
     } finally {
       fixture.db.close();
       fixture.embeddingDb.close();

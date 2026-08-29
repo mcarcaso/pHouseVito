@@ -300,11 +300,11 @@ export class MemoryRouterService implements RouterService {
         const projectDir = xProjectDir(routeX);
         const logPath = join(xUserDir(routeX), "logs", "fact-backfill-v3.log");
         const output = openSync(logPath, "a");
-        const child = spawn(
-          join(projectDir, "vito"),
-          ["memory", "backfill-facts", "--all", "--batch", "30", "--concurrency", "3"],
-          { cwd: projectDir, detached: true, stdio: ["ignore", output, output] },
-        );
+        const child = spawn(join(projectDir, "vito"), ["memory", "backfill-facts", "--all"], {
+          cwd: projectDir,
+          detached: true,
+          stdio: ["ignore", output, output],
+        });
         closeSync(output);
         child.unref();
         res.status(202);

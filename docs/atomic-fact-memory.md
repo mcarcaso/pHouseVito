@@ -17,7 +17,7 @@ Raw messages remain authoritative. Atomic facts are derived, replaceable, and re
 
 The successfully stored contextualized embedding chunk is the fact-extraction work unit. Luna receives the same `context + text` payload used for embedding plus typed raw-message mappings. Thoughts, `tool_start`, and raw `tool_end` payloads are excluded by the transcript chunker. The generated context may guide interpretation but can never serve as evidence. Per-chunk, per-extractor-version run records provide independent retries and idempotency.
 
-Normal live ingestion handles exactly one chunk per pass: extraction is followed immediately by reconciliation and persistence for that bounded unit. Historical catch-up remains an explicit backfill operation. Fact extraction defaults to `openai-codex/gpt-5.6-luna` through Pi authentication. It can be overridden with `settings.memory.factExtractorModel`. Retrieved conversation content is explicitly treated as untrusted quoted data.
+Live ingestion and historical backfill use the same sequential unit of work: take the earliest pending chunk, extract its candidates, reconcile and persist them immediately, then move to the next chunk. Historical catch-up remains an explicit resumable operation. Fact extraction defaults to `openai-codex/gpt-5.6-luna` through Pi authentication. It can be overridden with `settings.memory.factExtractorModel`. Retrieved conversation content is explicitly treated as untrusted quoted data.
 
 ## Provenance
 
@@ -53,7 +53,7 @@ Facts are never physically deleted through `FactStore`.
 ```bash
 ./vito memory facts "query" [--current] [--as-of YYYY-MM-DD]
 ./vito memory recall "query" [--deep] [--current] [--as-of YYYY-MM-DD]
-./vito memory backfill-facts --all [--batch 25]
+./vito memory backfill-facts --all [--max-chunks N]
 ```
 
 `memory recall` queries relevant profile sections, atomic facts, and transcript search together. Facts have both FTS/entity/slot indexing and semantic vectors. The Expo companion's Memory workspace exposes separate Answer, Facts, and Transcripts pages; Answer uses Luna to synthesize profile, fact, and transcript evidence with structurally validated citations. The `memory-recall` and `fact-memory-search` skills document agent usage and evidence policy.

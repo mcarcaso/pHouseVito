@@ -254,31 +254,22 @@ export class DefaultFactService implements FactService {
         messageId: boundary,
       });
     }
-    return this.processAvailableChunks(x, {
+    return this.processNextChunk(x, {
       sessionId,
       afterMessageId: boundary,
-      // Live ingestion is deliberately one chunk per pass: extract, reconcile,
-      // and persist one bounded unit without turning a normal turn into catch-up work.
-      limit: options.limit ?? 1,
       extractorModel: options.extractorModel,
     });
   }
 
   async backfill(x: Context, options: FactBackfillOptions = {}): Promise<FactIngestResult> {
-    return this.processAvailableChunks(x, {
-      limit: options.limit ?? 25,
-      concurrency: options.concurrency ?? 1,
-      extractorModel: options.extractorModel,
-    });
+    return this.processNextChunk(x, { extractorModel: options.extractorModel });
   }
 
-  private async processAvailableChunks(
+  private async processNextChunk(
     x: Context,
     options: {
       sessionId?: string;
       afterMessageId?: number;
-      limit: number;
-      concurrency?: number;
       extractorModel?: FactIngestOptions["extractorModel"];
     },
   ): Promise<FactIngestResult> {
@@ -287,92 +278,47 @@ export class DefaultFactService implements FactService {
     this.ingestionInProgress = true;
     const extractor = xFactExtractor(x);
     try {
-      const chunks = xFactStore(x).listExtractionChunks(x, {
+      const chunk = xFactStore(x).listExtractionChunks(x, {
         extractorVersion: extractor.version,
         sessionId: options.sessionId,
         afterMessageId: options.afterMessageId,
-        limit: options.limit,
-      });
-      if (chunks.length === 0) return emptyResult(start, "no_unprocessed_chunks");
+        limit: 1,
+      })[0];
+      if (!chunk) return emptyResult(start, "no_unprocessed_chunks");
       const result = emptyResult(start);
-      for (const chunk of chunks) {
-        xFactStore(x).cmd(x, {
-          type: "begin_chunk",
-          chunkId: chunk.id,
-          extractorVersion: extractor.version,
-        });
-      }
-
-      type ExtractedChunk = {
-        messages: FactExtractionMessage[];
-        candidates?: ExtractedFactCandidate[];
-        error?: string;
-      };
-      const extracted: ExtractedChunk[] = new Array(chunks.length);
-      let nextIndex = 0;
-      const worker = async () => {
-        while (true) {
-          const index = nextIndex++;
-          if (index >= chunks.length) return;
-          const chunk = chunks[index];
-          try {
-            const messages = xMessageStore(x)
-              .list(x, {
-                sessionIds: [chunk.sessionId],
-                afterId: chunk.messageIdStart - 1,
-                throughId: chunk.messageIdEnd,
-                types: ["user", "assistant"],
-                order: "oldest",
-              })
-              .map(toExtractionMessage)
-              .filter((message): message is FactExtractionMessage => message !== null);
-            const candidates = await extractor.extract(
-              x,
-              {
-                chunkId: chunk.id,
-                contextualizedText: chunk.contextualizedText,
-                context: chunk.context,
-                messages,
-              },
-              { model: options.extractorModel },
-            );
-            extracted[index] = { messages, candidates };
-          } catch (error) {
-            extracted[index] = {
-              messages: [],
-              error: error instanceof Error ? error.message : String(error),
-            };
-          }
-        }
-      };
-      await Promise.all(
-        Array.from({ length: Math.max(1, Math.min(options.concurrency ?? 1, chunks.length)) }, () =>
-          worker(),
-        ),
-      );
-
-      // Extraction is parallel, but reconciliation is deliberately committed
-      // in chronological chunk order so temporal supersession stays stable.
-      for (const [index, chunk] of chunks.entries()) {
-        const item = extracted[index];
-        if (item.error || !item.candidates) {
-          const message = item.error ?? "Fact extractor returned no result";
-          xFactStore(x).cmd(x, {
-            type: "fail_chunk",
+      xFactStore(x).cmd(x, {
+        type: "begin_chunk",
+        chunkId: chunk.id,
+        extractorVersion: extractor.version,
+      });
+      try {
+        const messages = xMessageStore(x)
+          .list(x, {
+            sessionIds: [chunk.sessionId],
+            afterId: chunk.messageIdStart - 1,
+            throughId: chunk.messageIdEnd,
+            types: ["user", "assistant"],
+            order: "oldest",
+          })
+          .map(toExtractionMessage)
+          .filter((message): message is FactExtractionMessage => message !== null);
+        const candidates = await extractor.extract(
+          x,
+          {
             chunkId: chunk.id,
-            extractorVersion: extractor.version,
-            error: message,
-          });
-          console.error(`[Facts] Chunk ${chunk.id} failed: ${message}`);
-          continue;
-        }
-        result.messagesConsidered += item.messages.length;
-        const chunkResult = this.reconcileCandidates(x, item.candidates, item.messages);
+            contextualizedText: chunk.contextualizedText,
+            context: chunk.context,
+            messages,
+          },
+          { model: options.extractorModel },
+        );
+        result.messagesConsidered = messages.length;
+        const chunkResult = this.reconcileCandidates(x, candidates, messages);
         result.inserted.push(...chunkResult.inserted);
         result.supported.push(...chunkResult.supported);
         result.superseded.push(...chunkResult.superseded);
         result.rejected.push(...chunkResult.rejected);
-        result.batchesProcessed += 1;
+        result.batchesProcessed = 1;
         xFactStore(x).cmd(x, {
           type: "complete_chunk",
           chunkId: chunk.id,
@@ -381,6 +327,15 @@ export class DefaultFactService implements FactService {
           supported: chunkResult.supported.length,
           rejected: chunkResult.rejected.length,
         });
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        xFactStore(x).cmd(x, {
+          type: "fail_chunk",
+          chunkId: chunk.id,
+          extractorVersion: extractor.version,
+          error: message,
+        });
+        console.error(`[Facts] Chunk ${chunk.id} failed: ${message}`);
       }
       try {
         await this.embedMissing(x, 200);

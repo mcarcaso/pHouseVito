@@ -102,10 +102,12 @@ export async function enqueueQuickCommand(
   return entry;
 }
 
-export async function syncQuickCommandOutbox(): Promise<QuickCommandOutboxEntry[]> {
+let activeSync: Promise<QuickCommandOutboxEntry[]> | null = null;
+
+async function performQuickCommandSync(): Promise<QuickCommandOutboxEntry[]> {
   let entries = await listQuickCommandOutbox();
   for (const entry of entries.filter(
-    (item) => item.status === "queued" || item.status === "failed",
+    (item) => item.status === "queued" || item.status === "uploading" || item.status === "failed",
   )) {
     entries = entries.map((item) =>
       item.id === entry.id ? { ...item, status: "uploading", error: undefined } : item,
@@ -140,6 +142,14 @@ export async function syncQuickCommandOutbox(): Promise<QuickCommandOutboxEntry[
     await save(entries);
   }
   return entries;
+}
+
+export function syncQuickCommandOutbox(): Promise<QuickCommandOutboxEntry[]> {
+  if (activeSync) return activeSync;
+  activeSync = performQuickCommandSync().finally(() => {
+    activeSync = null;
+  });
+  return activeSync;
 }
 
 export async function removeQuickCommand(id: string): Promise<void> {

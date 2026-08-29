@@ -45,9 +45,11 @@ export interface QuickCommandRecordingStatus {
 export function HomeScreen({
   onRecordingStatusChange,
   onOpenRun,
+  onUnauthorized,
 }: {
   onRecordingStatusChange?: (status: QuickCommandRecordingStatus | null) => void;
   onOpenRun: (sessionKey: string) => void;
+  onUnauthorized: () => void;
 }) {
   const styles = useThemeStyles(createStyles);
   const theme = useVitoTheme();
@@ -59,6 +61,8 @@ export function HomeScreen({
   const [sessionSearch, setSessionSearch] = useState("");
   const [ready, setReady] = useState(false);
   const [queued, setQueued] = useState(0);
+  const [outboxError, setOutboxError] = useState<string | null>(null);
+  const [syncingOutbox, setSyncingOutbox] = useState(false);
   const [message, setMessage] = useState("Ready when you are");
   const { runs, loading: runsLoading } = useCurrentRuns();
   const stopping = useRef(false);
@@ -76,6 +80,20 @@ export function HomeScreen({
       );
     })
     .slice(0, 30);
+
+  const syncOutbox = useCallback(async () => {
+    setSyncingOutbox(true);
+    try {
+      const remaining = await syncQuickCommandOutbox();
+      setQueued(remaining.length);
+      const error = remaining.find((entry) => entry.error)?.error ?? null;
+      setOutboxError(error);
+      if (error?.toLowerCase().includes("unauthorized")) onUnauthorized();
+      return remaining;
+    } finally {
+      setSyncingOutbox(false);
+    }
+  }, [onUnauthorized]);
 
   const start = useCallback(async () => {
     if (recorder.isRecording || stopping.current) return;
@@ -115,8 +133,7 @@ export function HomeScreen({
         if (uri && durationMs >= MIN_RECORDING_MS && containsSpeech) {
           await enqueueQuickCommand(uri, durationMs, destinationSession ?? undefined);
           setMessage("Saved and queued for Vito");
-          const remaining = await syncQuickCommandOutbox();
-          setQueued(remaining.length);
+          const remaining = await syncOutbox();
           if (!remaining.length) setMessage("Sent to Vito");
         } else {
           setMessage(containsSpeech ? "Nothing recorded" : "No speech detected");
@@ -128,7 +145,7 @@ export function HomeScreen({
         await setAudioModeAsync({ allowsRecording: false });
       }
     },
-    [destinationSession, recorder, recorderState.metering],
+    [destinationSession, recorder, recorderState.metering, syncOutbox],
   );
 
   const stop = useCallback(() => finishRecording(true), [finishRecording]);
@@ -143,10 +160,11 @@ export function HomeScreen({
       setEnabled(stored === "true");
       setDestinationSession(destination || null);
       setQueued(entries.length);
+      setOutboxError(entries.find((entry) => entry.error)?.error ?? null);
       setReady(true);
-      void syncQuickCommandOutbox().then((remaining) => setQueued(remaining.length));
+      void syncOutbox();
     });
-  }, []);
+  }, [syncOutbox]);
 
   useEffect(() => {
     if (
@@ -188,12 +206,18 @@ export function HomeScreen({
     const subscription = AppState.addEventListener("change", (state) => {
       if (state !== "active") void stop();
       else {
-        void syncQuickCommandOutbox().then((remaining) => setQueued(remaining.length));
+        void syncOutbox();
         if (enabled) void start();
       }
     });
     return () => subscription.remove();
-  }, [enabled, start, stop]);
+  }, [enabled, start, stop, syncOutbox]);
+
+  useEffect(() => {
+    if (!queued) return;
+    const timer = setInterval(() => void syncOutbox(), 30_000);
+    return () => clearInterval(timer);
+  }, [queued, syncOutbox]);
 
   const updateEnabled = async (value: boolean) => {
     setEnabled(value);
@@ -309,17 +333,25 @@ export function HomeScreen({
           )}
         </View>
         {!!queued && (
-          <View style={styles.outbox}>
-            <Ionicons name="cloud-upload-outline" size={19} color={theme.colors.warning} />
+          <Pressable onPress={() => void syncOutbox()} style={styles.outbox}>
+            {syncingOutbox ? (
+              <ActivityIndicator size="small" color={theme.colors.warning} />
+            ) : (
+              <Ionicons name="cloud-upload-outline" size={19} color={theme.colors.warning} />
+            )}
             <View style={styles.settingCopy}>
               <Text style={styles.outboxTitle}>
                 {queued} saved command{queued === 1 ? "" : "s"}
               </Text>
-              <Text style={styles.settingText}>
-                Safely stored on this device and waiting to upload.
+              <Text style={[styles.settingText, outboxError && styles.outboxError]}>
+                {syncingOutbox
+                  ? "Uploading to Vito…"
+                  : outboxError
+                    ? `${outboxError} Tap to retry.`
+                    : "Safely stored on this device. Tap to upload now."}
               </Text>
             </View>
-          </View>
+          </Pressable>
         )}
       </ScrollView>
       <Modal
@@ -550,6 +582,7 @@ const createStyles = (theme: VitoTheme) =>
       backgroundColor: theme.colors.surface,
     },
     outboxTitle: { color: theme.colors.text, fontSize: 13, fontWeight: "800" },
+    outboxError: { color: theme.colors.danger },
     modalBackdrop: { flex: 1, justifyContent: "flex-end", backgroundColor: "rgba(0,0,0,0.45)" },
     destinationSheet: {
       maxHeight: "82%",

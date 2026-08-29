@@ -845,6 +845,7 @@ function MainTabs({
           <HomeScreen
             onRecordingStatusChange={onQuickCommandRecordingChange}
             onOpenRun={(sessionId) => rootNavigation.navigate("ChatConversation", { sessionId })}
+            onUnauthorized={onUnauthorized}
           />
         )}
       </Tabs.Screen>

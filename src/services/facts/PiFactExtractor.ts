@@ -72,7 +72,7 @@ function parseJsonObject(raw: string): unknown {
   }
 }
 
-function buildPrompt(input: FactExtractionInput): string {
+export function buildFactExtractionPrompt(input: FactExtractionInput): string {
   const messages = input.messages.map((message) => ({
     id: message.id,
     timestamp: new Date(message.timestamp).toISOString(),
@@ -138,7 +138,11 @@ export class PiFactExtractor implements FactExtractor {
       throw new Error(`Unknown fact extractor model: ${modelConfig.provider}/${modelConfig.name}`);
     const response = await runtime.completeSimple(
       model,
-      { messages: [{ role: "user", content: buildPrompt(input), timestamp: Date.now() }] },
+      {
+        messages: [
+          { role: "user", content: buildFactExtractionPrompt(input), timestamp: Date.now() },
+        ],
+      },
       { maxTokens: 4000, reasoning: "minimal" },
     );
     if (response.stopReason === "error") {

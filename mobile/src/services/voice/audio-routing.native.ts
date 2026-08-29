@@ -8,6 +8,7 @@ async function configureRecordingSession() {
     allowsRecording: true,
     playsInSilentMode: true,
     shouldPlayInBackground: true,
+    allowsBackgroundRecording: true,
     interruptionMode: "doNotMix",
   });
 }

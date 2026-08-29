@@ -17,7 +17,7 @@ Raw messages remain authoritative. Atomic facts are derived, replaceable, and re
 
 The successfully stored contextualized embedding chunk is the fact-extraction work unit. Luna receives the same `context + text` payload used for embedding plus typed raw-message mappings. Thoughts, `tool_start`, and raw `tool_end` payloads are excluded by the transcript chunker. The generated context may guide interpretation but can never serve as evidence. Per-chunk, per-extractor-version run records provide independent retries and idempotency.
 
-Fact extraction defaults to `openai-codex/gpt-5.6-luna` through Pi authentication. It can be overridden with `settings.memory.factExtractorModel`. Retrieved conversation content is explicitly treated as untrusted quoted data.
+Normal live ingestion handles exactly one chunk per pass: extraction is followed immediately by reconciliation and persistence for that bounded unit. Historical catch-up remains an explicit backfill operation. Fact extraction defaults to `openai-codex/gpt-5.6-luna` through Pi authentication. It can be overridden with `settings.memory.factExtractorModel`. Retrieved conversation content is explicitly treated as untrusted quoted data.
 
 ## Provenance
 

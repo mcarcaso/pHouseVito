@@ -257,7 +257,9 @@ export class DefaultFactService implements FactService {
     return this.processAvailableChunks(x, {
       sessionId,
       afterMessageId: boundary,
-      limit: options.limit ?? 20,
+      // Live ingestion is deliberately one chunk per pass: extract, reconcile,
+      // and persist one bounded unit without turning a normal turn into catch-up work.
+      limit: options.limit ?? 1,
       extractorModel: options.extractorModel,
     });
   }

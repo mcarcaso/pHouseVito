@@ -131,6 +131,26 @@ describe("atomic fact ingestion", () => {
     }
   });
 
+  it("processes one live chunk per ingestion pass", async () => {
+    const fixture = setup();
+    try {
+      fixture.addUserMessage("First live chunk.", 1_000);
+      fixture.addUserMessage("Second live chunk.", 2_000);
+      fixture.extractor.outputs.push([], []);
+
+      const first = await fixture.service.ingestNew(fixture.x, "test:session");
+      assert.equal(first.batchesProcessed, 1);
+      assert.equal(fixture.extractor.inputs.length, 1);
+
+      const second = await fixture.service.ingestNew(fixture.x, "test:session");
+      assert.equal(second.batchesProcessed, 1);
+      assert.equal(fixture.extractor.inputs.length, 2);
+    } finally {
+      fixture.db.close();
+      fixture.embeddingDb.close();
+    }
+  });
+
   it("excludes thoughts and raw tool events from model extraction", async () => {
     const fixture = setup();
     try {

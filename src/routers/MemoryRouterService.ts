@@ -1,15 +1,86 @@
+import { spawn } from "node:child_process";
+import { closeSync, existsSync, openSync, readFileSync, rmSync, statSync } from "node:fs";
+import { join } from "node:path";
 import express from "express";
 import type { Router } from "express";
 import type { Context } from "../context/Context.js";
 import {
   factSearchQuerySchema,
   memoryAnswerRequestSchema,
+  memoryRecentQuerySchema,
   memorySearchQuerySchema,
 } from "../shared/schemas/memory-api.js";
 import type { RouterService } from "./RouterService.js";
-import { xFactService, xMemoryService, xSessionStore } from "../lib/x.js";
+import {
+  xEmbeddingDb,
+  xEmbeddingStore,
+  xFactService,
+  xFactStore,
+  xMemoryService,
+  xProjectDir,
+  xSessionStore,
+  xUserDir,
+} from "../lib/x.js";
 import { emptyRouteSchema, unknownRouteSchema, registerRoute } from "./register-route.js";
 import { jsonResponseSchema } from "../shared/schemas/json.js";
+import { FACT_EXTRACTOR_VERSION } from "../services/facts/PiFactExtractor.js";
+
+function activeBackfill(x: Context): {
+  active: boolean;
+  pid: number | null;
+  startedAt: number | null;
+} {
+  const marker = join(xUserDir(x), "logs", "fact-backfill-active.pid");
+  if (!existsSync(marker)) return { active: false, pid: null, startedAt: null };
+  const pid = Number(readFileSync(marker, "utf-8").trim());
+  if (Number.isInteger(pid) && pid > 0) {
+    try {
+      process.kill(pid, 0);
+      return { active: true, pid, startedAt: statSync(marker).mtimeMs };
+    } catch {
+      // Remove stale process markers below.
+    }
+  }
+  rmSync(marker, { force: true });
+  return { active: false, pid: null, startedAt: null };
+}
+
+function backfillStatus(x: Context) {
+  const db = xEmbeddingDb(x);
+  const totalChunks = (db.prepare("SELECT COUNT(*) count FROM chunks").get() as { count: number })
+    .count;
+  const runs = db
+    .prepare(
+      `SELECT
+         SUM(CASE WHEN status = 'completed' THEN 1 ELSE 0 END) completed,
+         SUM(CASE WHEN status = 'processing' THEN 1 ELSE 0 END) processing,
+         SUM(CASE WHEN status = 'failed' AND attempts >= 3 THEN 1 ELSE 0 END) failed
+       FROM fact_chunk_runs
+       WHERE extractor_version = ?`,
+    )
+    .get(FACT_EXTRACTOR_VERSION) as {
+    completed: number | null;
+    processing: number | null;
+    failed: number | null;
+  };
+  const embeddedFacts = (
+    db.prepare("SELECT COUNT(*) count FROM fact_embeddings").get() as { count: number }
+  ).count;
+  const process = activeBackfill(x);
+  const completedChunks = runs.completed ?? 0;
+  return {
+    ...process,
+    totalChunks,
+    completedChunks,
+    pendingChunks: Math.max(0, totalChunks - completedChunks),
+    processingChunks: runs.processing ?? 0,
+    failedChunks: runs.failed ?? 0,
+    totalFacts: xFactStore(x).count(x, {}),
+    embeddedFacts,
+    percent: totalChunks > 0 ? Math.round((completedChunks / totalChunks) * 10_000) / 100 : 100,
+  };
+}
+
 export class MemoryRouterService implements RouterService {
   async createRouter(x: Context): Promise<Router> {
     const router = express.Router();
@@ -61,6 +132,43 @@ export class MemoryRouterService implements RouterService {
             last_day: session.lastDay,
             alias: aliases[session.sessionId] || null,
           })),
+        };
+      },
+    });
+
+    registerRoute(x, {
+      router,
+      method: "GET",
+      path: "/embeddings/recent",
+      auth: "dashboard",
+      schemas: {
+        params: emptyRouteSchema,
+        query: memoryRecentQuerySchema,
+        body: unknownRouteSchema,
+      },
+      responseSchema: jsonResponseSchema,
+      handler: (routeX, { data: { query } }) => {
+        const aliases = Object.fromEntries(
+          xSessionStore(routeX)
+            .list(routeX, { hasAlias: true })
+            .map((session) => [session.id, session.alias]),
+        );
+        return {
+          duration_ms: 0,
+          mode: "recent",
+          results: xEmbeddingStore(routeX)
+            .listRecentChunks(routeX, query.limit)
+            .map((chunk) => ({
+              id: chunk.id,
+              session_id: chunk.sessionId,
+              alias: aliases[chunk.sessionId] || null,
+              day: chunk.day,
+              chunk_index: chunk.chunkIndex,
+              text: chunk.text,
+              context: chunk.context,
+              msg_count: chunk.messageCount,
+              rrfScore: 0,
+            })),
         };
       },
     });
@@ -122,6 +230,30 @@ export class MemoryRouterService implements RouterService {
     registerRoute(x, {
       router,
       method: "GET",
+      path: "/facts/recent",
+      auth: "dashboard",
+      schemas: {
+        params: emptyRouteSchema,
+        query: memoryRecentQuerySchema,
+        body: unknownRouteSchema,
+      },
+      responseSchema: jsonResponseSchema,
+      handler: (routeX, { data: { query } }) => ({
+        duration_ms: 0,
+        mode: "recent",
+        results: xFactStore(routeX)
+          .list(routeX, {
+            limit: query.limit,
+            order: "recent",
+            statuses: query.current === "true" ? ["active", "disputed"] : undefined,
+          })
+          .map((fact) => ({ fact, score: 0, conflicts: [] })),
+      }),
+    });
+
+    registerRoute(x, {
+      router,
+      method: "GET",
       path: "/facts/search",
       auth: "dashboard",
       schemas: {
@@ -138,6 +270,59 @@ export class MemoryRouterService implements RouterService {
           asOf: query.asOf,
         });
         return { query: query.q, duration_ms: Date.now() - start, results };
+      },
+    });
+
+    registerRoute(x, {
+      router,
+      method: "GET",
+      path: "/facts/backfill/status",
+      auth: "dashboard",
+      schemas: {
+        params: emptyRouteSchema,
+        query: emptyRouteSchema,
+        body: unknownRouteSchema,
+      },
+      responseSchema: jsonResponseSchema,
+      handler: (routeX) => backfillStatus(routeX),
+    });
+
+    registerRoute(x, {
+      router,
+      method: "POST",
+      path: "/facts/backfill/start",
+      auth: "dashboard",
+      schemas: { params: emptyRouteSchema, query: emptyRouteSchema, body: emptyRouteSchema },
+      responseSchema: jsonResponseSchema,
+      handler: (routeX, { res }) => {
+        const status = backfillStatus(routeX);
+        if (status.active) return status;
+        const projectDir = xProjectDir(routeX);
+        const logPath = join(xUserDir(routeX), "logs", "fact-backfill-v3.log");
+        const output = openSync(logPath, "a");
+        const child = spawn(
+          join(projectDir, "vito"),
+          ["memory", "backfill-facts", "--all", "--batch", "30", "--concurrency", "3"],
+          { cwd: projectDir, detached: true, stdio: ["ignore", output, output] },
+        );
+        closeSync(output);
+        child.unref();
+        res.status(202);
+        return { ...status, starting: true, pid: child.pid ?? null };
+      },
+    });
+
+    registerRoute(x, {
+      router,
+      method: "POST",
+      path: "/facts/backfill/stop",
+      auth: "dashboard",
+      schemas: { params: emptyRouteSchema, query: emptyRouteSchema, body: emptyRouteSchema },
+      responseSchema: jsonResponseSchema,
+      handler: (routeX) => {
+        const status = activeBackfill(routeX);
+        if (status.active && status.pid) process.kill(status.pid, "SIGTERM");
+        return { stopping: status.active, pid: status.pid };
       },
     });
 

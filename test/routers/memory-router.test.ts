@@ -145,6 +145,48 @@ describe("memory router", () => {
     assert.equal(result.results[0]?.chunk_index, 3);
   });
 
+  it("returns recent facts and transcript chunks without a search query", async () => {
+    const factsResponse = await fetch(`${baseUrl}/api/memory/facts/recent?limit=20`);
+    assert.equal(factsResponse.status, 200);
+    const facts = z
+      .object({
+        mode: z.literal("recent"),
+        results: z.array(z.object({ fact: z.object({ id: z.number() }) })),
+      })
+      .parse(await factsResponse.json());
+    assert.equal(facts.results.length, 1);
+
+    const transcriptsResponse = await fetch(`${baseUrl}/api/memory/embeddings/recent?limit=20`);
+    assert.equal(transcriptsResponse.status, 200);
+    const transcripts = z
+      .object({
+        mode: z.literal("recent"),
+        results: z.array(z.object({ session_id: z.string(), alias: z.string().nullable() })),
+      })
+      .parse(await transcriptsResponse.json());
+    assert.equal(transcripts.results[0]?.session_id, "session:a");
+    assert.equal(transcripts.results[0]?.alias, "Alpha Session");
+  });
+
+  it("reports resumable historical backfill status", async () => {
+    const response = await fetch(`${baseUrl}/api/memory/facts/backfill/status`);
+    assert.equal(response.status, 200);
+    const status = z
+      .object({
+        active: z.boolean(),
+        totalChunks: z.number(),
+        completedChunks: z.number(),
+        pendingChunks: z.number(),
+        totalFacts: z.number(),
+        embeddedFacts: z.number(),
+        percent: z.number(),
+      })
+      .parse(await response.json());
+    assert.equal(status.active, false);
+    assert.equal(status.totalChunks, 1);
+    assert.equal(status.totalFacts, 1);
+  });
+
   it("searches evidence-backed atomic facts", async () => {
     const response = await fetch(`${baseUrl}/api/memory/facts/search?q=alpha&limit=10`);
     assert.equal(response.status, 200);

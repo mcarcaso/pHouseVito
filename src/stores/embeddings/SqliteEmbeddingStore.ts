@@ -2,6 +2,7 @@ import type { Context } from "../../context/Context.js";
 import { xEmbeddingDb } from "../../lib/x.js";
 import type {
   CreateEmbeddingChunkArgs,
+  EmbeddingChunk,
   EmbeddingChunkWithVector,
   EmbeddingStats,
   EmbeddingStore,
@@ -115,6 +116,26 @@ export class SqliteEmbeddingStore implements EmbeddingStore {
         vector: new Float32Array(bytes.buffer),
       };
     });
+  }
+
+  listRecentChunks(x: Context, limit: number): EmbeddingChunk[] {
+    const rows = xEmbeddingDb(x)
+      .prepare(
+        `SELECT id, session_id, day, chunk_index, text, context, msg_count
+         FROM chunks
+         ORDER BY msg_id_end DESC, id DESC
+         LIMIT ?`,
+      )
+      .all(limit) as Array<Omit<ChunkVectorRow, "vector">>;
+    return rows.map((row) => ({
+      id: row.id,
+      sessionId: row.session_id,
+      day: row.day,
+      chunkIndex: row.chunk_index,
+      text: row.text,
+      context: row.context,
+      messageCount: row.msg_count,
+    }));
   }
 
   searchFts(

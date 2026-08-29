@@ -14,7 +14,7 @@ import {
 } from "@react-navigation/native-stack";
 import { Ionicons } from "@expo/vector-icons";
 import { StatusBar } from "expo-status-bar";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useState } from "react";
 import {
   ActivityIndicator,
   Alert,
@@ -35,7 +35,8 @@ import {
   type IdentityDocument,
 } from "../../screens/identity/IdentityScreen";
 import { LoginScreen } from "../../screens/auth/LoginScreen";
-import { MemoryScreen } from "../../screens/memory/MemoryScreen";
+import { MemoryAdvancedSheet } from "../../screens/memory/MemoryAdvancedSheet";
+import { MemoryScreen, type MemoryPage } from "../../screens/memory/MemoryScreen";
 import { OperationWorkspace } from "../../screens/operations/OperationWorkspace";
 import { AppDetailScreen, AppsScreen } from "../../screens/apps/AppsScreen";
 import { ProviderModelsScreen, ProvidersScreen } from "../../screens/providers/ProvidersScreen";
@@ -79,7 +80,48 @@ import type { MainRouteName, MainTabParamList, RootStackParamList } from "./rout
 type RootNavigation = NativeStackNavigationProp<RootStackParamList>;
 
 export function RootMemoryScreen({ navigation }: { navigation: RootNavigation }) {
-  return <MemoryScreen onUnauthorized={() => navigation.navigate("Main", { screen: "More" })} />;
+  const theme = useVitoTheme();
+  const [advanced, setAdvanced] = useState(false);
+  const [memoryPage, setMemoryPage] = useState<MemoryPage>("answer");
+  const onUnauthorized = useCallback(
+    () => navigation.navigate("Main", { screen: "More" }),
+    [navigation],
+  );
+
+  useLayoutEffect(() => {
+    const advancedButton = (
+      <Pressable
+        accessibilityLabel="Advanced memory settings"
+        onPress={() => setAdvanced(true)}
+        hitSlop={10}
+      >
+        <Ionicons name="ellipsis-horizontal-circle-outline" size={24} color={theme.colors.accent} />
+      </Pressable>
+    );
+    navigation.setOptions({
+      headerRight: memoryPage === "facts" ? () => advancedButton : undefined,
+      header:
+        Platform.OS === "web"
+          ? () => (
+              <WebStackHeader
+                onBack={navigation.canGoBack() ? () => navigation.goBack() : undefined}
+                right={memoryPage === "facts" ? advancedButton : undefined}
+              />
+            )
+          : undefined,
+    });
+  }, [memoryPage, navigation, theme]);
+
+  return (
+    <>
+      <MemoryScreen onUnauthorized={onUnauthorized} onPageChange={setMemoryPage} />
+      <MemoryAdvancedSheet
+        visible={advanced}
+        onClose={() => setAdvanced(false)}
+        onUnauthorized={onUnauthorized}
+      />
+    </>
+  );
 }
 
 export function JobDetailRoute({

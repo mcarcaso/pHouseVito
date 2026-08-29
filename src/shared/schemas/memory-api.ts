@@ -22,6 +22,13 @@ export const factSearchQuerySchema = z
   })
   .strict();
 
+export const memoryRecentQuerySchema = z
+  .object({
+    limit: z.coerce.number().int().positive().max(100).default(20),
+    current: z.enum(["true", "false"]).optional(),
+  })
+  .strict();
+
 export const memoryAnswerRequestSchema = z
   .object({
     query: z.string().trim().min(1),

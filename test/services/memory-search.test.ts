@@ -45,6 +45,19 @@ function createContext(args: {
         messageCount: 1,
         vector: chunk.vector,
       })),
+    listRecentChunks: (_x, limit) =>
+      args.chunks
+        .slice(-limit)
+        .reverse()
+        .map((chunk) => ({
+          id: chunk.id,
+          sessionId: "test:session",
+          day: chunk.day,
+          chunkIndex: chunk.id,
+          text: chunk.text ?? `chunk ${chunk.id}`,
+          context: chunk.context ?? null,
+          messageCount: 1,
+        })),
     searchFts: (_x, options) => {
       args.observedFtsLimits?.push(options.limit);
       return (args.fts ?? []).slice(0, options.limit);

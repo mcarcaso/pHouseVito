@@ -1,6 +1,6 @@
 import type { Context } from "../../context/Context.js";
 
-export interface EmbeddingChunkWithVector {
+export interface EmbeddingChunk {
   id: number;
   sessionId: string;
   day: string;
@@ -8,6 +8,9 @@ export interface EmbeddingChunkWithVector {
   text: string;
   context: string | null;
   messageCount: number;
+}
+
+export interface EmbeddingChunkWithVector extends EmbeddingChunk {
   vector: Float32Array;
 }
 
@@ -46,6 +49,7 @@ export interface EmbeddingStore {
   getPreviousChunkText(x: Context, sessionId: string): string | null;
   createChunk(x: Context, args: CreateEmbeddingChunkArgs): number;
   listChunksWithVectors(x: Context, sessionId?: string): EmbeddingChunkWithVector[];
+  listRecentChunks(x: Context, limit: number): EmbeddingChunk[];
   searchFts(
     x: Context,
     args: {

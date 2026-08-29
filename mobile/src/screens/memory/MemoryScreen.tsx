@@ -1,5 +1,5 @@
 import { Ionicons } from "@expo/vector-icons";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import {
   ActivityIndicator,
   Pressable,
@@ -13,7 +13,7 @@ import { MarkdownText } from "../../components/markdown/MarkdownText";
 import { useThemeStyles, useVitoTheme, type VitoTheme } from "../../hooks/useVitoTheme";
 import { api } from "../../services/api/client";
 
-type MemoryPage = "answer" | "facts" | "transcripts";
+export type MemoryPage = "answer" | "facts" | "transcripts";
 type FactSource = {
   id: number;
   messageId: number;
@@ -33,6 +33,7 @@ type Fact = {
 };
 type FactSearchResponse = {
   duration_ms: number;
+  mode?: "recent";
   results: Array<{ fact: Fact; score: number; conflicts: Fact[] }>;
 };
 type TranscriptSearchResponse = {
@@ -60,7 +61,13 @@ type AnswerResponse = {
   provider_counts: { profile: number; facts: number; transcripts: number };
 };
 
-export function MemoryScreen({ onUnauthorized }: { onUnauthorized: () => void }) {
+export function MemoryScreen({
+  onUnauthorized,
+  onPageChange,
+}: {
+  onUnauthorized: () => void;
+  onPageChange?: (page: MemoryPage) => void;
+}) {
   const styles = useThemeStyles(createStyles);
   const theme = useVitoTheme();
   const [page, setPage] = useState<MemoryPage>("answer");
@@ -71,6 +78,35 @@ export function MemoryScreen({ onUnauthorized }: { onUnauthorized: () => void })
   const [answer, setAnswer] = useState<AnswerResponse | null>(null);
   const [facts, setFacts] = useState<FactSearchResponse | null>(null);
   const [transcripts, setTranscripts] = useState<TranscriptSearchResponse | null>(null);
+
+  useEffect(() => {
+    if (page === "answer") return;
+    let cancelled = false;
+    setLoading(true);
+    setError(null);
+    const path =
+      page === "facts"
+        ? `/api/memory/facts/recent?limit=20&current=${currentOnly}`
+        : "/api/memory/embeddings/recent?limit=20";
+    void api<FactSearchResponse | TranscriptSearchResponse>(path)
+      .then((result) => {
+        if (cancelled) return;
+        if (page === "facts") setFacts(result as FactSearchResponse);
+        else setTranscripts(result as TranscriptSearchResponse);
+      })
+      .catch((cause) => {
+        if (cancelled) return;
+        const message = cause instanceof Error ? cause.message : "Could not load recent memory";
+        if (message.toLowerCase().includes("unauthorized")) onUnauthorized();
+        setError(message);
+      })
+      .finally(() => {
+        if (!cancelled) setLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [currentOnly, page]);
 
   const run = async () => {
     const value = query.trim();
@@ -124,6 +160,7 @@ export function MemoryScreen({ onUnauthorized }: { onUnauthorized: () => void })
             accessibilityState={{ selected: page === item }}
             onPress={() => {
               setPage(item);
+              onPageChange?.(item);
               setError(null);
             }}
             style={[styles.tab, page === item && styles.tabActive]}
@@ -245,7 +282,8 @@ function FactResults({
   return (
     <View style={styles.results}>
       <Text style={styles.meta}>
-        {value.results.length} facts · {value.duration_ms}ms
+        {value.mode === "recent" ? "Latest" : "Found"} {value.results.length} facts
+        {value.mode === "recent" ? "" : ` · ${value.duration_ms}ms`}
       </Text>
       {value.results.map(({ fact, score, conflicts }) => (
         <View key={fact.id} style={styles.resultRow}>
@@ -253,7 +291,7 @@ function FactResults({
             <Text style={styles.factId}>FACT {fact.id}</Text>
             <Text style={styles.factKind}>{fact.kind}</Text>
             <Text style={styles.factStatus}>{fact.status}</Text>
-            <Text style={styles.score}>{score.toFixed(4)}</Text>
+            {score > 0 && <Text style={styles.score}>{score.toFixed(4)}</Text>}
           </View>
           <Text style={styles.factText}>{fact.canonicalText}</Text>
           {fact.slotKey && <Text style={styles.slot}>{fact.slotKey}</Text>}
@@ -291,13 +329,15 @@ function TranscriptResults({
   return (
     <View style={styles.results}>
       <Text style={styles.meta}>
-        {value.results.length} transcripts · {value.duration_ms}ms · {value.mode}
+        {value.mode === "recent" ? "Latest" : "Found"} {value.results.length} transcripts
+        {value.mode === "recent" ? "" : ` · ${value.duration_ms}ms · ${value.mode}`}
       </Text>
       {value.results.map((result) => (
         <View key={result.id} style={styles.resultRow}>
           <Text style={styles.transcriptTitle}>{result.alias || result.session_id}</Text>
           <Text style={styles.transcriptMeta}>
-            {result.day} · {result.msg_count} messages · RRF {result.rrfScore.toFixed(4)}
+            {result.day} · {result.msg_count} messages
+            {result.rrfScore > 0 ? ` · RRF ${result.rrfScore.toFixed(4)}` : ""}
           </Text>
           {result.context && <Text style={styles.context}>{result.context}</Text>}
           <Text style={styles.transcriptText}>{result.text}</Text>

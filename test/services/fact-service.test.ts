@@ -63,6 +63,7 @@ function setup() {
   ).run();
   const x = new ObjectContext({
     db: () => db,
+    userDir: () => "/tmp/vito-fact-service-test",
     embeddingDb: () => embeddingDb,
     embeddingService: () => ({
       create: async () => new Float32Array([1, 0]),

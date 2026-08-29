@@ -1,10 +1,11 @@
+import { mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { join, resolve } from "node:path";
 import { z } from "zod";
 import type { Context } from "../../context/Context.js";
 import { ObjectContext } from "../../context/ObjectContext.js";
 import { createDatabase } from "../../lib/sqlite/database.js";
-import { xDb, xEmbeddingDb, xFactService, xMemoryService } from "../../lib/x.js";
+import { xDb, xEmbeddingDb, xFactService, xMemoryService, xUserDir } from "../../lib/x.js";
 import { OpenAiEmbeddingService } from "../../services/memory/OpenAiEmbeddingService.js";
 import { DefaultMemoryService } from "../../services/memory/DefaultMemoryService.js";
 import { DefaultFactService } from "../../services/facts/DefaultFactService.js";
@@ -268,50 +269,74 @@ async function runFactBackfill(args: string[], x: Context): Promise<number> {
   const db = xEmbeddingDb(x);
   const total = (db.prepare("SELECT COUNT(*) count FROM chunks").get() as { count: number }).count;
   const startedAt = Date.now();
+  const markerPath = join(xUserDir(x), "logs", "fact-backfill-active.pid");
+  mkdirSync(join(xUserDir(x), "logs"), { recursive: true });
+  writeFileSync(markerPath, String(process.pid), "utf-8");
+  const cleanupMarker = () => {
+    try {
+      if (readFileSync(markerPath, "utf-8").trim() === String(process.pid)) {
+        rmSync(markerPath, { force: true });
+      }
+    } catch {
+      // Marker was already removed.
+    }
+  };
+  const stop = () => {
+    cleanupMarker();
+    process.exit(0);
+  };
+  process.once("SIGINT", stop);
+  process.once("SIGTERM", stop);
   console.log(`Starting contextualized-chunk fact backfill across ${total} chunks...`);
   let attemptedThisRun = 0;
-  while (true) {
-    const requestLimit =
-      maxChunks === undefined ? batchSize : Math.min(batchSize, maxChunks - attemptedThisRun);
-    if (requestLimit <= 0) break;
-    const result = await xFactService(x).backfill(x, {
-      limit: requestLimit,
-      concurrency,
-    });
-    const progress = db
-      .prepare(
-        `SELECT COUNT(*) completed,
+  try {
+    while (true) {
+      const requestLimit =
+        maxChunks === undefined ? batchSize : Math.min(batchSize, maxChunks - attemptedThisRun);
+      if (requestLimit <= 0) break;
+      const result = await xFactService(x).backfill(x, {
+        limit: requestLimit,
+        concurrency,
+      });
+      const progress = db
+        .prepare(
+          `SELECT COUNT(*) completed,
                 COALESCE(SUM(facts_inserted), 0) inserted,
                 COALESCE(SUM(facts_supported), 0) supported,
                 COALESCE(SUM(facts_rejected), 0) rejected
          FROM fact_chunk_runs
          WHERE extractor_version = ?
            AND status = 'completed'`,
-      )
-      .get(FACT_EXTRACTOR_VERSION) as {
-      completed: number;
-      inserted: number;
-      supported: number;
-      rejected: number;
-    };
-    const failed = (
-      db
-        .prepare(
-          `SELECT COUNT(*) count FROM fact_chunk_runs
+        )
+        .get(FACT_EXTRACTOR_VERSION) as {
+        completed: number;
+        inserted: number;
+        supported: number;
+        rejected: number;
+      };
+      const failed = (
+        db
+          .prepare(
+            `SELECT COUNT(*) count FROM fact_chunk_runs
            WHERE extractor_version = ?
              AND status = 'failed' AND attempts >= 3`,
-        )
-        .get(FACT_EXTRACTOR_VERSION) as { count: number }
-    ).count;
-    if (result.skipped !== "no_unprocessed_chunks") attemptedThisRun += requestLimit;
-    console.log(
-      `[Facts] ${progress.completed}/${total} chunks | ${progress.inserted} inserted | ${progress.supported} supported | ${progress.rejected} rejected | ${failed} exhausted failures`,
-    );
-    if (result.skipped === "no_unprocessed_chunks") break;
-    if (maxChunks !== undefined && attemptedThisRun >= maxChunks) break;
+          )
+          .get(FACT_EXTRACTOR_VERSION) as { count: number }
+      ).count;
+      if (result.skipped !== "no_unprocessed_chunks") attemptedThisRun += requestLimit;
+      console.log(
+        `[Facts] ${progress.completed}/${total} chunks | ${progress.inserted} inserted | ${progress.supported} supported | ${progress.rejected} rejected | ${failed} exhausted failures`,
+      );
+      if (result.skipped === "no_unprocessed_chunks") break;
+      if (maxChunks !== undefined && attemptedThisRun >= maxChunks) break;
+    }
+    console.log(`Fact backfill finished in ${Math.round((Date.now() - startedAt) / 1000)}s.`);
+    return 0;
+  } finally {
+    process.off("SIGINT", stop);
+    process.off("SIGTERM", stop);
+    cleanupMarker();
   }
-  console.log(`Fact backfill finished in ${Math.round((Date.now() - startedAt) / 1000)}s.`);
-  return 0;
 }
 
 export async function runMemoryCommand(args: string[], projectRoot: string): Promise<number> {

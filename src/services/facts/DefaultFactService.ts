@@ -1,6 +1,14 @@
 import { createHash } from "node:crypto";
+import { existsSync, readFileSync, rmSync } from "node:fs";
+import { join } from "node:path";
 import type { Context } from "../../context/Context.js";
-import { xEmbeddingService, xFactExtractor, xFactStore, xMessageStore } from "../../lib/x.js";
+import {
+  xEmbeddingService,
+  xFactExtractor,
+  xFactStore,
+  xMessageStore,
+  xUserDir,
+} from "../../lib/x.js";
 import type { MessageRow } from "../../stores/messages/MessageStore.js";
 import type {
   AtomicFact,
@@ -188,6 +196,22 @@ function validateCandidate(
   return { sources, authority: authorityFor(sourceMessages) };
 }
 
+function historicalBackfillRunning(x: Context): boolean {
+  const path = join(xUserDir(x), "logs", "fact-backfill-active.pid");
+  if (!existsSync(path)) return false;
+  const pid = Number(readFileSync(path, "utf-8").trim());
+  if (Number.isInteger(pid) && pid > 0) {
+    try {
+      process.kill(pid, 0);
+      return true;
+    } catch {
+      // Stale process marker; clean it up below.
+    }
+  }
+  rmSync(path, { force: true });
+  return false;
+}
+
 function strongerStatus(status: FactStatus): boolean {
   return status === "active" || status === "disputed";
 }
@@ -213,6 +237,8 @@ export class DefaultFactService implements FactService {
     sessionId: string,
     options: FactIngestOptions = {},
   ): Promise<FactIngestResult> {
+    const start = Date.now();
+    if (historicalBackfillRunning(x)) return emptyResult(start, "historical_backfill_active");
     const extractor = xFactExtractor(x);
     const storedBoundary = xFactStore(x).cmd(x, {
       type: "get_checkpoint",

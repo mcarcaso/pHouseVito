@@ -13,7 +13,7 @@ import { Ionicons } from "@expo/vector-icons";
 import { HeaderButton } from "@react-navigation/elements";
 import { StatusBar } from "expo-status-bar";
 import * as Notifications from "expo-notifications";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   ActivityIndicator,
   Alert,
@@ -67,6 +67,7 @@ import { GlobalVoiceOverlay } from "../components/voice/GlobalVoiceOverlay";
 import { AgentIdentityProvider, useAgentName } from "../contexts/agentIdentity";
 import { DESKTOP_BREAKPOINT, useThemeStyles, useVitoTheme } from "../hooks/useVitoTheme";
 import { registerPushNotifications } from "../services/push-notifications/registration";
+import { AuthGenerationGuard } from "../services/auth/auth-generation-guard";
 
 import type {
   MainRouteName,
@@ -127,6 +128,12 @@ function AppContent() {
   const [authState, setAuthState] = useState<"loading" | "authenticated" | "login" | "setup">(
     "loading",
   );
+  const authGuard = useRef(new AuthGenerationGuard()).current;
+  const acceptUnauthorized = useMemo(() => authGuard.capture(), [authGuard, authState]);
+  const markAuthenticated = useCallback(() => {
+    authGuard.advance();
+    setAuthState("authenticated");
+  }, [authGuard]);
   const [voiceStatus, setVoiceStatus] = useState<VoiceOverlayStatus>(idleVoiceStatus);
   const [voiceControls, setVoiceControls] = useState<VoiceOverlayControls | null>(null);
   const [quickCommandRecording, setQuickCommandRecording] =
@@ -190,18 +197,19 @@ function AppContent() {
       await loadToken();
       try {
         const status = await checkAuth();
-        setAuthState(
-          status.authenticated ? "authenticated" : status.passwordSet ? "login" : "setup",
-        );
+        if (status.authenticated) markAuthenticated();
+        else setAuthState(status.passwordSet ? "login" : "setup");
       } catch {
         setAuthState("login");
       }
     })();
-  }, []);
+  }, [markAuthenticated]);
   const unauthorized = useCallback(() => {
-    void saveToken(null);
-    setAuthState("login");
-  }, []);
+    if (!acceptUnauthorized()) return;
+    // Finish clearing the rejected token before showing login. Otherwise a fast
+    // password-manager login can race the old SecureStore deletion.
+    void saveToken(null).then(() => setAuthState("login"));
+  }, [acceptUnauthorized]);
   if (authState === "loading")
     return (
       <SafeAreaView style={styles.loading}>
@@ -215,7 +223,7 @@ function AppContent() {
         <StatusBar style={theme.dark ? "light" : "dark"} />
         <LoginScreen
           mode={authState}
-          onSuccess={() => setAuthState("authenticated")}
+          onSuccess={markAuthenticated}
           onPasswordAlreadySet={() => setAuthState("login")}
         />
       </SafeAreaView>

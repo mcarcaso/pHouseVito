@@ -330,6 +330,11 @@ async function runFactBackfill(args: string[], x: Context): Promise<number> {
       if (result.skipped === "no_unprocessed_chunks") break;
       if (maxChunks !== undefined && attemptedThisRun >= maxChunks) break;
     }
+    let embedded = 0;
+    do {
+      embedded = await xFactService(x).embedMissing(x, 500);
+      if (embedded > 0) console.log(`[Facts] Embedded ${embedded} remaining facts.`);
+    } while (embedded > 0);
     console.log(`Fact backfill finished in ${Math.round((Date.now() - startedAt) / 1000)}s.`);
     return 0;
   } finally {

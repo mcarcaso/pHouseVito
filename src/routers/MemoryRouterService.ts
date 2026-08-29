@@ -339,7 +339,6 @@ export class MemoryRouterService implements RouterService {
       responseSchema: jsonResponseSchema,
       handler: async (routeX, { data: { body } }) => {
         const result = await xMemoryService(routeX).answer(routeX, body.query, {
-          currentOnly: body.currentOnly,
           asOf: body.asOf,
           depth: "deep",
         });

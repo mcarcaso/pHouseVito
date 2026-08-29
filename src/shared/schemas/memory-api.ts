@@ -32,7 +32,6 @@ export const memoryRecentQuerySchema = z
 export const memoryAnswerRequestSchema = z
   .object({
     query: z.string().trim().min(1),
-    currentOnly: z.boolean().optional(),
     asOf: z
       .string()
       .regex(/^\d{4}-\d{2}-\d{2}$/)

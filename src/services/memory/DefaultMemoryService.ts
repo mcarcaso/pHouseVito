@@ -23,7 +23,7 @@ import type {
 export function shouldUseCurrentFacts(query: string, asOf?: string): boolean {
   if (asOf) return false;
   const historicalIntent =
-    /\b(history|historical|timeline|previously|formerly|earlier|prior|past|used to|back then|at the time|when did|what was|how (?:has|have|did).{0,40}chang(?:e|ed|ing)|evol(?:ve|ved|ving|ution))\b/i;
+    /\b(history|historical|timeline|previously|formerly|earlier|prior|past|used to|back then|at the time|when did|what happened|what was|(?:what|why|how|where|which|who) (?:did|was|were|had)\b|grew up|growing up|childhood|how (?:has|have|did).{0,40}chang(?:e|ed|ing)|evol(?:ve|ved|ving|ution)|during (?:19|20)\d{2}|(?:on|by|as of) [A-Z][a-z]+ \d{1,2}(?:, (?:19|20)\d{2})?)\b/i;
   return !historicalIntent.test(query);
 }
 

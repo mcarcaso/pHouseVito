@@ -133,9 +133,12 @@ describe("memory answer fact scope", () => {
     assert.equal(shouldUseCurrentFacts("What is Mike doing now?"), true);
   });
 
-  it("automatically includes history for historical and as-of questions", () => {
+  it("automatically includes history for historical, past-tense, dated, and as-of questions", () => {
     assert.equal(shouldUseCurrentFacts("How has Mike's opinion changed?"), false);
     assert.equal(shouldUseCurrentFacts("When did Mike move?"), false);
+    assert.equal(shouldUseCurrentFacts("What happened during the deployment?"), false);
+    assert.equal(shouldUseCurrentFacts("Which movie did Mike watch growing up?"), false);
+    assert.equal(shouldUseCurrentFacts("What did Mike do on March 31, 2026?"), false);
     assert.equal(shouldUseCurrentFacts("What does Mike prefer?", "2025-01-01"), false);
   });
 });

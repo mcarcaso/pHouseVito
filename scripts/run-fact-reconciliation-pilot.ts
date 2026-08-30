@@ -29,6 +29,7 @@ const REPORT_PATH = join(OUT_DIR, "report.md");
 const DECISIONS_PATH = join(OUT_DIR, "decisions.jsonl");
 const SAMPLE_IDS_PATH = join(OUT_DIR, "candidate-ids.json");
 const PROGRESS_PATH = join(OUT_DIR, "progress.json");
+const CONFLICT_REMEDIATIONS_PATH = join(OUT_DIR, "conflict-remediations.jsonl");
 const SAMPLE_SIZE = 75;
 const MODEL = { provider: "openai-codex", name: "gpt-5.6-luna" } as const;
 
@@ -278,14 +279,17 @@ function deterministicAdmission(candidate: FactRow): Decision | null {
 
 function enforceDecisionSemantics(candidate: FactRow, decision: Decision): Decision {
   if (decision.action === "discard" || decision.action === "duplicate") return decision;
-  if (decision.status) return decision;
   const kind = decision.kind ?? candidate.kind;
-  let status: Decision["status"] = "historical";
-  if (["identity", "relationship", "preference"].includes(kind)) status = "active";
-  else if (decision.action === "update" || decision.action === "conflict")
-    status = decision.action === "conflict" ? "disputed" : "active";
-  else if (candidate.status === "active") status = "active";
-  return { ...decision, status };
+  if (decision.action === "conflict") return { ...decision, status: "disputed" };
+  // A completed occurrence is historical by definition. Ongoing conditions
+  // belong under state, while stable identity/relationship/preferences remain
+  // active unless a later update supersedes them.
+  if (kind === "event") return { ...decision, status: "historical" };
+  if (["identity", "relationship", "preference"].includes(kind))
+    return { ...decision, status: "active" };
+  if (decision.action === "update") return { ...decision, status: decision.status ?? "active" };
+  if (decision.status) return decision;
+  return { ...decision, status: candidate.status === "active" ? "active" : "historical" };
 }
 
 function makeAccepted(id: string, candidate: FactRow, decision: Decision): AcceptedFact {
@@ -338,13 +342,7 @@ function applyDecision(state: State, candidate: FactRow, decision: Decision): vo
     primary.kind = decision.kind ?? primary.kind;
     primary.slotKey = decision.slotKey ?? primary.slotKey;
     primary.canonicalValue = decision.canonicalValue ?? primary.canonicalValue;
-    const mergedStatus = decision.status ?? primary.status;
-    primary.status =
-      mergedStatus === "disputed"
-        ? "disputed"
-        : primary.status === "active" || candidate.status === "active"
-          ? "active"
-          : mergedStatus;
+    primary.status = decision.status ?? primary.status;
     primary.observedAt = Math.max(primary.observedAt, candidate.observed_at);
     return;
   }
@@ -425,12 +423,33 @@ function writeReport(state: State): void {
   writeFileSync(REPORT_PATH, lines.join("\n"));
 }
 
+function applyConflictRemediations(state: State): void {
+  if (!existsSync(CONFLICT_REMEDIATIONS_PATH)) return;
+  const lines = readFileSync(CONFLICT_REMEDIATIONS_PATH, "utf8").split("\n").filter(Boolean);
+  const expected = state.decisions.filter((item) => item.decision.action === "conflict").length;
+  if (lines.length !== expected)
+    throw new Error(`Conflict remediation is incomplete: ${lines.length}/${expected}`);
+  const byId = new Map(state.accepted.map((fact) => [fact.id, fact]));
+  for (const line of lines) {
+    const remediation = JSON.parse(line) as {
+      statuses: Array<{ logicalId: string; status: AcceptedFact["status"] }>;
+    };
+    for (const item of remediation.statuses) {
+      const fact = byId.get(item.logicalId);
+      if (fact) fact.status = item.status;
+    }
+  }
+  for (const fact of state.accepted)
+    if (fact.kind === "event" && fact.status === "active") fact.status = "historical";
+}
+
 function materializeFactSet(
   state: State,
   vectors: Map<number, Float32Array>,
 ): { facts: number; embeddings: number; decisions: number } {
   if (!FULL_RUN || state.cursor !== state.sampleIds.length)
     throw new Error("Full reconciliation must complete before materialization");
+  applyConflictRemediations(state);
   const db = createEmbeddingDatabase(DB_PATH);
   const insertFact = db.prepare(
     `INSERT INTO facts (
@@ -600,8 +619,9 @@ async function main(): Promise<void> {
         const record = JSON.parse(line) as State["decisions"][number];
         const candidate = loadCache.get(record.oldFactId);
         if (!candidate) throw new Error(`Missing replay candidate ${record.oldFactId}`);
-        applyDecision(state, candidate, record.decision);
-        state.decisions.push(record);
+        const decision = enforceDecisionSemantics(candidate, record.decision);
+        applyDecision(state, candidate, decision);
+        state.decisions.push({ ...record, decision });
         state.cursor += 1;
       }
     }

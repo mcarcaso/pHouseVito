@@ -466,8 +466,13 @@ function materializeFactSet(
     ).run(FACT_MEMORY_POLICY_VERSION, Date.now());
 
     const logicalToDb = new Map<string, number>();
+    const materializableFacts = state.accepted.filter((fact) =>
+      fact.sources.some(
+        (source) => source.messageType === "user" || source.messageType === "assistant",
+      ),
+    );
     let embeddingCount = 0;
-    for (const fact of state.accepted) {
+    for (const fact of materializableFacts) {
       const fingerprint = `v4:${createHash("sha256")
         .update(
           JSON.stringify({
@@ -494,7 +499,8 @@ function materializeFactSet(
       );
       const factId = Number(result.lastInsertRowid);
       logicalToDb.set(fact.id, factId);
-      for (const source of fact.sources)
+      for (const source of fact.sources) {
+        if (source.messageType !== "user" && source.messageType !== "assistant") continue;
         insertSource.run(
           factId,
           source.messageId,
@@ -503,6 +509,7 @@ function materializeFactSet(
           source.quote,
           source.timestamp,
         );
+      }
       for (const entity of [...new Set(fact.entities.map((value) => value.trim()).filter(Boolean))])
         insertEntity.run(factId, entity, entity.toLocaleLowerCase());
       const vector = averageVectors(fact.vectorSourceIds, vectors);
@@ -515,7 +522,7 @@ function materializeFactSet(
         embeddingCount += 1;
       }
     }
-    for (const fact of state.accepted) {
+    for (const fact of materializableFacts) {
       if (!fact.supersedesId) continue;
       const factId = logicalToDb.get(fact.id);
       const supersedesId = logicalToDb.get(fact.supersedesId);
@@ -526,7 +533,9 @@ function materializeFactSet(
         );
     }
     for (const record of state.decisions) {
-      const canonical = state.accepted.find((fact) => fact.oldFactIds.includes(record.oldFactId));
+      const canonical = materializableFacts.find((fact) =>
+        fact.oldFactIds.includes(record.oldFactId),
+      );
       insertDecision.run(
         record.oldFactId,
         canonical ? (logicalToDb.get(canonical.id) ?? null) : null,
@@ -548,7 +557,7 @@ function materializeFactSet(
     ).run(FACT_EXTRACTOR_VERSION, Date.now());
     db.prepare("UPDATE fact_sets SET status='ready', completed_at=? WHERE id='v4'").run(Date.now());
     return {
-      facts: state.accepted.length,
+      facts: materializableFacts.length,
       embeddings: embeddingCount,
       decisions: state.decisions.length,
     };

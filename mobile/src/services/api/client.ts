@@ -373,6 +373,13 @@ export async function apiStream(path: string, init?: FetchRequestInit): Promise<
   return expoFetch(`${VITO_URL}${path}`, { ...init, headers });
 }
 
+export async function getConfiguredSecretKeys(): Promise<Set<string>> {
+  const secrets = await api<Array<{ key: string; value: string }>>("/api/secrets");
+  return new Set(
+    secrets.filter((secret) => secret.value.trim().length > 0).map((secret) => secret.key),
+  );
+}
+
 export async function api<T>(path: string, init?: RequestInit): Promise<T> {
   const headers = new Headers(init?.headers);
   headers.set("Accept", "application/json");

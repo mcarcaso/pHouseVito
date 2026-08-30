@@ -2,7 +2,9 @@ import { Ionicons } from "@expo/vector-icons";
 import { useEffect, useState } from "react";
 import {
   ActivityIndicator,
+  KeyboardAvoidingView,
   Modal,
+  Platform,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -11,7 +13,7 @@ import {
   View,
 } from "react-native";
 import { useSpeech, type SpeechProvider } from "../../contexts/speech";
-import { api } from "../../services/api/client";
+import { api, getConfiguredSecretKeys } from "../../services/api/client";
 import { useThemeStyles, useVitoTheme, type VitoTheme } from "../../hooks/useVitoTheme";
 
 interface Voice {
@@ -37,6 +39,9 @@ export function SpeechSettingsScreen() {
   const [voices, setVoices] = useState<Voice[]>([]);
   const [models, setModels] = useState<SpeechModel[]>([]);
   const [configured, setConfigured] = useState(true);
+  const [providerAvailability, setProviderAvailability] = useState<
+    Partial<Record<SpeechProvider, boolean>>
+  >({});
   const [loading, setLoading] = useState(true);
   const [voiceOpen, setVoiceOpen] = useState(false);
   const [modelOpen, setModelOpen] = useState(false);
@@ -50,12 +55,29 @@ export function SpeechSettingsScreen() {
   }, [speech.settings.instructions]);
 
   useEffect(() => {
+    void getConfiguredSecretKeys()
+      .then((keys) =>
+        setProviderAvailability({
+          gemini: keys.has("GOOGLE_GENERATIVE_AI_API_KEY"),
+          openai: keys.has("OPENAI_API_KEY"),
+          elevenlabs: keys.has("ELEVEN_LABS_API_KEY"),
+          openrouter: keys.has("OPENROUTER_API_KEY"),
+        }),
+      )
+      .catch(() => undefined);
+  }, []);
+
+  useEffect(() => {
     setLoading(true);
     void api<{ configured: boolean; voices: Voice[]; models: SpeechModel[] }>(
       `/api/speech/voices?provider=${speech.settings.provider}`,
     )
       .then((result) => {
         setConfigured(result.configured);
+        setProviderAvailability((current) => ({
+          ...current,
+          [speech.settings.provider]: result.configured,
+        }));
         setModels(result.models);
         if (speech.settings.provider !== "openrouter") {
           setVoices(result.voices);
@@ -123,237 +145,250 @@ export function SpeechSettingsScreen() {
   );
 
   return (
-    <ScrollView contentContainerStyle={styles.root}>
-      <Text style={styles.sectionTitle}>Speech</Text>
-      <Text style={styles.sectionDescription}>Choose how assistant messages are read aloud.</Text>
-      <View style={styles.providerList}>
-        {providers.map((provider) => {
-          const selected = speech.settings.provider === provider.id;
-          return (
-            <Pressable
-              key={provider.id}
-              onPress={() => void updateProvider(provider.id)}
-              style={[styles.providerRow, selected && styles.providerRowSelected]}
-            >
-              <View style={styles.providerIcon}>
-                <Ionicons
-                  name="volume-high-outline"
-                  size={18}
-                  color={selected ? theme.colors.accent : theme.colors.textMuted}
-                />
-              </View>
-              <View style={styles.copy}>
-                <Text style={styles.providerName}>{provider.name}</Text>
-                <Text style={styles.providerDetail}>{provider.detail}</Text>
-              </View>
-              {selected && (
-                <Ionicons name="checkmark-circle" size={21} color={theme.colors.accent} />
-              )}
-            </Pressable>
-          );
-        })}
-      </View>
-      {!configured && (
-        <View style={styles.warning}>
-          <Ionicons name="key-outline" size={17} color={theme.colors.warning} />
-          <Text style={styles.warningText}>
-            This provider’s API key is not configured in Secrets.
-          </Text>
-        </View>
-      )}
-      {speech.settings.provider === "openrouter" && (
-        <>
-          <Text style={styles.fieldLabel}>MODEL</Text>
-          <Pressable
-            disabled={loading || !configured || models.length === 0}
-            onPress={() => setModelOpen(true)}
-            style={styles.selector}
-          >
-            <Text style={styles.selectorText}>{selectedModel?.name ?? "Choose a model"}</Text>
-            <Ionicons name="chevron-down" size={17} color={theme.colors.textMuted} />
-          </Pressable>
-        </>
-      )}
-      <Text style={styles.fieldLabel}>VOICE</Text>
-      <Pressable
-        disabled={loading || !configured || voices.length === 0}
-        onPress={() => setVoiceOpen(true)}
-        style={styles.selector}
+    <KeyboardAvoidingView
+      behavior={Platform.OS === "ios" ? "padding" : undefined}
+      style={styles.keyboardRoot}
+    >
+      <ScrollView
+        contentContainerStyle={styles.root}
+        keyboardDismissMode={Platform.OS === "ios" ? "interactive" : "on-drag"}
+        keyboardShouldPersistTaps="handled"
       >
-        {loading ? (
-          <ActivityIndicator size="small" color={theme.colors.accent} />
-        ) : (
-          <Text style={styles.selectorText}>
-            {selectedVoice?.name || (configured ? "Choose a voice" : "Unavailable")}
-          </Text>
-        )}
-        <Ionicons name="chevron-down" size={17} color={theme.colors.textMuted} />
-      </Pressable>
-      <Text style={styles.fieldLabel}>PLAYBACK SPEED</Text>
-      <View style={styles.speedRow}>
-        {[0.8, 1, 1.2, 1.5].map((rate) => (
-          <Pressable
-            key={rate}
-            onPress={() => void speech.updateSettings({ ...speech.settings, rate })}
-            style={[styles.speed, speech.settings.rate === rate && styles.speedSelected]}
-          >
-            <Text
-              style={[styles.speedText, speech.settings.rate === rate && styles.speedTextSelected]}
-            >
-              {rate}×
-            </Text>
-          </Pressable>
-        ))}
-      </View>
-      {supportsSpeakingStyle && (
-        <>
-          <Text style={styles.fieldLabel}>SPEAKING STYLE</Text>
-          <TextInput
-            value={instructionDraft}
-            onChangeText={setInstructionDraft}
-            onBlur={() => void saveInstructionDraft()}
-            placeholder="Natural, warm, conversational…"
-            placeholderTextColor={theme.colors.textMuted}
-            multiline
-            maxLength={1_000}
-            style={[styles.input, styles.instructionsInput]}
-          />
-          <Text style={styles.fieldHelp}>
-            Controls audible delivery. Leave blank to use the provider’s neutral default.
-          </Text>
-          <Pressable
-            disabled={suggestingInstructions}
-            onPress={() => void suggestInstructions()}
-            style={[styles.suggest, suggestingInstructions && styles.disabled]}
-          >
-            {suggestingInstructions ? (
-              <ActivityIndicator size="small" color={theme.colors.accent} />
-            ) : (
-              <Ionicons name="sparkles-outline" size={16} color={theme.colors.accent} />
-            )}
-            <Text style={styles.suggestText}>
-              {suggestingInstructions ? "Asking your agent…" : "Suggest from Soul"}
-            </Text>
-          </Pressable>
-          {!!instructionError && <Text style={styles.error}>{instructionError}</Text>}
-        </>
-      )}
-      <Pressable
-        disabled={!configured || !speech.settings.voice}
-        onPress={() =>
-          void (async () => {
-            const next = speechSettingsWithDraft();
-            if (next.instructions !== speech.settings.instructions) {
-              await speech.updateSettings(next);
-            }
-            await speech.toggle(
-              "voice-preview",
-              "This is how your agent will sound when reading messages aloud.",
-              next,
+        <Text style={styles.sectionTitle}>Speech</Text>
+        <Text style={styles.sectionDescription}>Choose how assistant messages are read aloud.</Text>
+        <View style={styles.providerList}>
+          {providers.map((provider) => {
+            const selected = speech.settings.provider === provider.id;
+            const available = providerAvailability[provider.id] ?? true;
+            return (
+              <Pressable
+                key={provider.id}
+                disabled={!available}
+                onPress={() => void updateProvider(provider.id)}
+                style={[
+                  styles.providerRow,
+                  selected && styles.providerRowSelected,
+                  !available && styles.unavailable,
+                ]}
+              >
+                <View style={styles.providerIcon}>
+                  <Ionicons
+                    name="volume-high-outline"
+                    size={18}
+                    color={selected ? theme.colors.accent : theme.colors.textMuted}
+                  />
+                </View>
+                <View style={styles.copy}>
+                  <Text style={styles.providerName}>{provider.name}</Text>
+                  <Text style={styles.providerDetail}>
+                    {available ? provider.detail : `${provider.detail} · API key required`}
+                  </Text>
+                </View>
+                {selected && (
+                  <Ionicons name="checkmark-circle" size={21} color={theme.colors.accent} />
+                )}
+              </Pressable>
             );
-          })()
-        }
-        style={[styles.preview, (!configured || !speech.settings.voice) && styles.disabled]}
-      >
-        {speech.state.id === "voice-preview" && speech.state.status === "loading" ? (
-          <ActivityIndicator color={theme.colors.accentText} />
-        ) : (
-          <Ionicons
-            name={
-              speech.state.id === "voice-preview" && speech.state.status === "playing"
-                ? "pause"
-                : "play"
-            }
-            size={17}
-            color={theme.colors.accentText}
-          />
+          })}
+        </View>
+        {speech.settings.provider === "openrouter" && (
+          <>
+            <Text style={styles.fieldLabel}>MODEL</Text>
+            <Pressable
+              disabled={loading || !configured || models.length === 0}
+              onPress={() => setModelOpen(true)}
+              style={styles.selector}
+            >
+              <Text style={styles.selectorText}>{selectedModel?.name ?? "Choose a model"}</Text>
+              <Ionicons name="chevron-down" size={17} color={theme.colors.textMuted} />
+            </Pressable>
+          </>
         )}
-        <Text style={styles.previewText}>Preview voice</Text>
-      </Pressable>
-      {!!speech.state.error && <Text style={styles.error}>{speech.state.error}</Text>}
-      <Modal
-        transparent
-        visible={modelOpen}
-        animationType="slide"
-        onRequestClose={() => setModelOpen(false)}
-      >
-        <Pressable style={styles.backdrop} onPress={() => setModelOpen(false)}>
-          <Pressable style={styles.sheet} onPress={(event) => event.stopPropagation()}>
-            <View style={styles.handle} />
-            <Text style={styles.sheetTitle}>Choose a model</Text>
-            <ScrollView keyboardShouldPersistTaps="handled">
-              {models.map((model) => (
-                <Pressable
-                  key={model.id}
-                  onPress={() => {
-                    const nextVoice = model.voices[0]?.id ?? "";
-                    setVoices(model.voices);
-                    void speech.updateSettings({
-                      ...speech.settings,
-                      model: model.id,
-                      voice: nextVoice,
-                    });
-                    setModelOpen(false);
-                  }}
-                  style={styles.voiceRow}
-                >
-                  <View style={styles.modelCopy}>
-                    <Text style={styles.voiceName}>{model.name}</Text>
-                    <Text style={styles.modelDetail}>{model.voices.length} voices</Text>
-                  </View>
-                  {speech.settings.model === model.id && (
-                    <Ionicons name="checkmark" size={20} color={theme.colors.accent} />
-                  )}
-                </Pressable>
-              ))}
-            </ScrollView>
-          </Pressable>
+        <Text style={styles.fieldLabel}>VOICE</Text>
+        <Pressable
+          disabled={loading || !configured || voices.length === 0}
+          onPress={() => setVoiceOpen(true)}
+          style={styles.selector}
+        >
+          {loading ? (
+            <ActivityIndicator size="small" color={theme.colors.accent} />
+          ) : (
+            <Text style={styles.selectorText}>
+              {selectedVoice?.name || (configured ? "Choose a voice" : "Unavailable")}
+            </Text>
+          )}
+          <Ionicons name="chevron-down" size={17} color={theme.colors.textMuted} />
         </Pressable>
-      </Modal>
-      <Modal
-        transparent
-        visible={voiceOpen}
-        animationType="slide"
-        onRequestClose={() => setVoiceOpen(false)}
-      >
-        <Pressable style={styles.backdrop} onPress={() => setVoiceOpen(false)}>
-          <Pressable style={styles.sheet} onPress={(event) => event.stopPropagation()}>
-            <View style={styles.handle} />
-            <Text style={styles.sheetTitle}>Choose a voice</Text>
+        <Text style={styles.fieldLabel}>PLAYBACK SPEED</Text>
+        <View style={styles.speedRow}>
+          {[0.8, 1, 1.2, 1.5].map((rate) => (
+            <Pressable
+              key={rate}
+              onPress={() => void speech.updateSettings({ ...speech.settings, rate })}
+              style={[styles.speed, speech.settings.rate === rate && styles.speedSelected]}
+            >
+              <Text
+                style={[
+                  styles.speedText,
+                  speech.settings.rate === rate && styles.speedTextSelected,
+                ]}
+              >
+                {rate}×
+              </Text>
+            </Pressable>
+          ))}
+        </View>
+        {supportsSpeakingStyle && (
+          <>
+            <Text style={styles.fieldLabel}>SPEAKING STYLE</Text>
             <TextInput
-              value={search}
-              onChangeText={setSearch}
-              placeholder="Search voices"
+              value={instructionDraft}
+              onChangeText={setInstructionDraft}
+              onBlur={() => void saveInstructionDraft()}
+              placeholder="Natural, warm, conversational…"
               placeholderTextColor={theme.colors.textMuted}
-              style={styles.input}
+              multiline
+              maxLength={1_000}
+              style={[styles.input, styles.instructionsInput]}
             />
-            <ScrollView keyboardShouldPersistTaps="handled">
-              {filteredVoices.map((voice) => (
-                <Pressable
-                  key={voice.id}
-                  onPress={() => {
-                    void speech.updateSettings({ ...speech.settings, voice: voice.id });
-                    setVoiceOpen(false);
-                    setSearch("");
-                  }}
-                  style={styles.voiceRow}
-                >
-                  <Text style={styles.voiceName}>{voice.name}</Text>
-                  {speech.settings.voice === voice.id && (
-                    <Ionicons name="checkmark" size={20} color={theme.colors.accent} />
-                  )}
-                </Pressable>
-              ))}
-            </ScrollView>
-          </Pressable>
+            <Text style={styles.fieldHelp}>
+              Controls audible delivery. Leave blank to use the provider’s neutral default.
+            </Text>
+            <Pressable
+              disabled={suggestingInstructions}
+              onPress={() => void suggestInstructions()}
+              style={[styles.suggest, suggestingInstructions && styles.disabled]}
+            >
+              {suggestingInstructions ? (
+                <ActivityIndicator size="small" color={theme.colors.accent} />
+              ) : (
+                <Ionicons name="sparkles-outline" size={16} color={theme.colors.accent} />
+              )}
+              <Text style={styles.suggestText}>
+                {suggestingInstructions ? "Asking your agent…" : "Suggest from Soul"}
+              </Text>
+            </Pressable>
+            {!!instructionError && <Text style={styles.error}>{instructionError}</Text>}
+          </>
+        )}
+        <Pressable
+          disabled={!configured || !speech.settings.voice}
+          onPress={() =>
+            void (async () => {
+              const next = speechSettingsWithDraft();
+              if (next.instructions !== speech.settings.instructions) {
+                await speech.updateSettings(next);
+              }
+              await speech.toggle(
+                "voice-preview",
+                "This is how your agent will sound when reading messages aloud.",
+                next,
+              );
+            })()
+          }
+          style={[styles.preview, (!configured || !speech.settings.voice) && styles.disabled]}
+        >
+          {speech.state.id === "voice-preview" && speech.state.status === "loading" ? (
+            <ActivityIndicator color={theme.colors.accentText} />
+          ) : (
+            <Ionicons
+              name={
+                speech.state.id === "voice-preview" && speech.state.status === "playing"
+                  ? "pause"
+                  : "play"
+              }
+              size={17}
+              color={theme.colors.accentText}
+            />
+          )}
+          <Text style={styles.previewText}>Preview voice</Text>
         </Pressable>
-      </Modal>
-    </ScrollView>
+        {!!speech.state.error && <Text style={styles.error}>{speech.state.error}</Text>}
+        <Modal
+          transparent
+          visible={modelOpen}
+          animationType="slide"
+          onRequestClose={() => setModelOpen(false)}
+        >
+          <Pressable style={styles.backdrop} onPress={() => setModelOpen(false)}>
+            <Pressable style={styles.sheet} onPress={(event) => event.stopPropagation()}>
+              <View style={styles.handle} />
+              <Text style={styles.sheetTitle}>Choose a model</Text>
+              <ScrollView keyboardShouldPersistTaps="handled">
+                {models.map((model) => (
+                  <Pressable
+                    key={model.id}
+                    onPress={() => {
+                      const nextVoice = model.voices[0]?.id ?? "";
+                      setVoices(model.voices);
+                      void speech.updateSettings({
+                        ...speech.settings,
+                        model: model.id,
+                        voice: nextVoice,
+                      });
+                      setModelOpen(false);
+                    }}
+                    style={styles.voiceRow}
+                  >
+                    <View style={styles.modelCopy}>
+                      <Text style={styles.voiceName}>{model.name}</Text>
+                      <Text style={styles.modelDetail}>{model.voices.length} voices</Text>
+                    </View>
+                    {speech.settings.model === model.id && (
+                      <Ionicons name="checkmark" size={20} color={theme.colors.accent} />
+                    )}
+                  </Pressable>
+                ))}
+              </ScrollView>
+            </Pressable>
+          </Pressable>
+        </Modal>
+        <Modal
+          transparent
+          visible={voiceOpen}
+          animationType="slide"
+          onRequestClose={() => setVoiceOpen(false)}
+        >
+          <Pressable style={styles.backdrop} onPress={() => setVoiceOpen(false)}>
+            <Pressable style={styles.sheet} onPress={(event) => event.stopPropagation()}>
+              <View style={styles.handle} />
+              <Text style={styles.sheetTitle}>Choose a voice</Text>
+              <TextInput
+                value={search}
+                onChangeText={setSearch}
+                placeholder="Search voices"
+                placeholderTextColor={theme.colors.textMuted}
+                style={styles.input}
+              />
+              <ScrollView keyboardShouldPersistTaps="handled">
+                {filteredVoices.map((voice) => (
+                  <Pressable
+                    key={voice.id}
+                    onPress={() => {
+                      void speech.updateSettings({ ...speech.settings, voice: voice.id });
+                      setVoiceOpen(false);
+                      setSearch("");
+                    }}
+                    style={styles.voiceRow}
+                  >
+                    <Text style={styles.voiceName}>{voice.name}</Text>
+                    {speech.settings.voice === voice.id && (
+                      <Ionicons name="checkmark" size={20} color={theme.colors.accent} />
+                    )}
+                  </Pressable>
+                ))}
+              </ScrollView>
+            </Pressable>
+          </Pressable>
+        </Modal>
+      </ScrollView>
+    </KeyboardAvoidingView>
   );
 }
 
 const createStyles = (theme: VitoTheme) =>
   StyleSheet.create({
+    keyboardRoot: { flex: 1 },
     root: {
       width: "100%",
       maxWidth: 680,
@@ -388,16 +423,7 @@ const createStyles = (theme: VitoTheme) =>
     copy: { flex: 1 },
     providerName: { color: theme.colors.text, fontSize: 14, fontWeight: "800" },
     providerDetail: { color: theme.colors.textMuted, fontSize: 11, marginTop: theme.space.xs },
-    warning: {
-      flexDirection: "row",
-      alignItems: "center",
-      gap: theme.space.sm,
-      marginTop: theme.space.md,
-      padding: theme.space.md,
-      borderRadius: 12,
-      backgroundColor: theme.colors.surface,
-    },
-    warningText: { flex: 1, color: theme.colors.warning, fontSize: 11, fontWeight: "700" },
+    unavailable: { opacity: 0.45 },
     fieldLabel: {
       color: theme.colors.textMuted,
       fontSize: 9,

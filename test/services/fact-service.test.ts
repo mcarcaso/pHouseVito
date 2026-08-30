@@ -16,6 +16,7 @@ import { SqliteMessageStore } from "../../src/stores/messages/SqliteMessageStore
 
 class QueuedFactExtractor implements FactExtractor {
   readonly version = "test-v1";
+  factSetId?: string;
   readonly outputs: ExtractedFactCandidate[][] = [];
   readonly inputs: FactExtractionInput[] = [];
   readonly reconciliationOutputs: FactReconciliationDecision[] = [];
@@ -187,6 +188,32 @@ describe("atomic fact ingestion", () => {
       assert.equal(facts[0]?.status, "superseded");
       assert.equal(facts[1]?.status, "active");
       assert.equal(fixture.extractor.maxActive, 1);
+    } finally {
+      fixture.db.close();
+      fixture.embeddingDb.close();
+    }
+  });
+
+  it("does not ingest into a fact set other than the extractor target", async () => {
+    const fixture = setup();
+    try {
+      fixture.extractor.factSetId = "v4";
+      fixture.addUserMessage("Remember this only in v4.", 1_000);
+      const skipped = await fixture.service.backfill(fixture.x);
+      assert.equal(skipped.skipped, "target_fact_set_inactive");
+      assert.equal(fixture.extractor.inputs.length, 0);
+      fixture.embeddingDb
+        .prepare(
+          "INSERT INTO fact_sets (id,status,source_set_id,policy_version) VALUES ('v4','ready','v3','v4')",
+        )
+        .run();
+      fixture.embeddingDb
+        .prepare("UPDATE fact_store_state SET active_set_id='v4',updated_at=? WHERE id=1")
+        .run(Date.now());
+      fixture.extractor.outputs.push([]);
+      const processed = await fixture.service.backfill(fixture.x);
+      assert.equal(processed.batchesProcessed, 1);
+      assert.equal(fixture.extractor.inputs.length, 1);
     } finally {
       fixture.db.close();
       fixture.embeddingDb.close();

@@ -67,6 +67,7 @@ export interface FactReconciliationDecision {
 
 export interface FactExtractor {
   readonly version: string;
+  readonly factSetId?: string;
   extract(
     x: Context,
     input: FactExtractionInput,
@@ -84,6 +85,10 @@ export class ProxyFactExtractor implements FactExtractor {
 
   get version(): string {
     return this.inner.version;
+  }
+
+  get factSetId(): string | undefined {
+    return this.inner.factSetId;
   }
 
   extract(x: Context, input: FactExtractionInput, options?: FactExtractorOptions) {

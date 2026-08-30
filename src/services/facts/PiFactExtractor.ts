@@ -191,6 +191,7 @@ export const FACT_EXTRACTOR_VERSION = "atomic-facts-v4-semantic-reconciliation";
 
 export class PiFactExtractor implements FactExtractor {
   readonly version = FACT_EXTRACTOR_VERSION;
+  readonly factSetId = "v4";
   private runtime?: Promise<ModelRuntime>;
 
   async extract(

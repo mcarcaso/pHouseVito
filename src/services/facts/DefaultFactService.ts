@@ -352,6 +352,9 @@ export class DefaultFactService implements FactService {
     this.ingestionInProgress = true;
     const extractor = xFactExtractor(x);
     try {
+      const activeFactSetId = xFactStore(x).cmd(x, { type: "get_active_set" }) as string;
+      if (extractor.factSetId && extractor.factSetId !== activeFactSetId)
+        return emptyResult(start, "target_fact_set_inactive");
       const chunk = xFactStore(x).listExtractionChunks(x, {
         extractorVersion: extractor.version,
         sessionId: options.sessionId,

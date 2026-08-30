@@ -11,13 +11,19 @@ import {
 } from "../../lib/x.js";
 import type { MessageRow } from "../../stores/messages/MessageStore.js";
 import type {
+  ApplyFactReconciliationResult,
   AtomicFact,
   FactAuthority,
   FactSource,
   FactStatus,
 } from "../../stores/facts/FactStore.js";
 import { getSearchTerms } from "../memory/search-excerpt.js";
-import type { ExtractedFactCandidate, FactExtractionMessage } from "./FactExtractor.js";
+import type {
+  ExtractedFactCandidate,
+  FactExtractionMessage,
+  FactReconciliationDecision,
+} from "./FactExtractor.js";
+import { deterministicFactRejection } from "./fact-memory-policy.js";
 import type {
   FactBackfillOptions,
   FactIngestOptions,
@@ -137,6 +143,11 @@ function fingerprint(candidate: ExtractedFactCandidate): string {
   return createHash("sha256").update(JSON.stringify(identity)).digest("hex");
 }
 
+function activeFingerprint(x: Context, candidate: ExtractedFactCandidate): string {
+  const factSetId = xFactStore(x).cmd(x, { type: "get_active_set" }) as string;
+  return `${factSetId}:${fingerprint(candidate)}`;
+}
+
 function authorityFor(messages: FactExtractionMessage[]): FactAuthority {
   // Explicit user evidence remains authoritative even when the extractor also
   // cites the assistant's final acknowledgement. Assistant-only claims remain
@@ -145,8 +156,8 @@ function authorityFor(messages: FactExtractionMessage[]): FactAuthority {
   return "assistant_reported";
 }
 
-function sourceDay(timestamp: number): string {
-  return new Date(timestamp).toISOString().slice(0, 10);
+function authorityRank(value: FactAuthority): number {
+  return value === "tool_verified" ? 2 : value === "user_explicit" ? 1 : 0;
 }
 
 function containsCredentialValue(value: string): boolean {
@@ -212,8 +223,71 @@ function historicalBackfillRunning(x: Context): boolean {
   return false;
 }
 
-function strongerStatus(status: FactStatus): boolean {
-  return status === "active" || status === "disputed";
+function normalizeReconciliationDecision(
+  candidate: ExtractedFactCandidate,
+  decision: FactReconciliationDecision,
+  relatedFacts: AtomicFact[],
+): FactReconciliationDecision {
+  const requiresTarget = ["duplicate", "update", "conflict", "merge"].includes(decision.action);
+  if (requiresTarget !== decision.targetIds.length > 0)
+    throw new Error(`Invalid target count for reconciliation action ${decision.action}`);
+  if (decision.action === "duplicate" && decision.targetIds.length !== 1)
+    throw new Error("Duplicate reconciliation requires exactly one target");
+  if (decision.action === "duplicate" && candidate.status === "active" && candidate.slotKey) {
+    const duplicate = relatedFacts.find((fact) => fact.id === decision.targetIds[0]);
+    const current = relatedFacts.find(
+      (fact) =>
+        fact.slotKey === candidate.slotKey &&
+        (fact.status === "active" || fact.status === "disputed"),
+    );
+    if (duplicate?.status === "superseded" && current)
+      return {
+        ...decision,
+        action: "update",
+        targetIds: [current.id],
+        canonicalText: decision.canonicalText ?? candidate.canonicalText,
+        kind: decision.kind ?? candidate.kind,
+        slotKey: decision.slotKey ?? candidate.slotKey,
+        canonicalValue: decision.canonicalValue ?? candidate.canonicalValue,
+        status: "active",
+        reason: `${decision.reason} A superseded prior value cannot support the current A→B→A state; update the current value instead.`,
+      };
+  }
+  if (decision.action === "discard" || decision.action === "duplicate") return decision;
+  const kind = decision.kind ?? candidate.kind;
+  if (decision.action === "conflict") return { ...decision, status: "disputed" };
+  if (kind === "event") return { ...decision, status: "historical" };
+  if (["identity", "relationship", "preference"].includes(kind))
+    return { ...decision, status: "active" };
+  if (decision.action === "update") return { ...decision, status: decision.status ?? "active" };
+  return { ...decision, status: decision.status ?? candidate.status };
+}
+
+function reconciliationCandidate(
+  candidate: ExtractedFactCandidate,
+  decision: FactReconciliationDecision,
+): ExtractedFactCandidate {
+  return {
+    canonicalText: decision.canonicalText ?? candidate.canonicalText,
+    kind: decision.kind ?? candidate.kind,
+    slotKey: decision.slotKey ?? candidate.slotKey,
+    canonicalValue: decision.canonicalValue ?? candidate.canonicalValue,
+    status: decision.status ?? candidate.status,
+    validFrom: candidate.validFrom,
+    validTo: candidate.validTo,
+    entities: candidate.entities,
+    sources: candidate.sources,
+  };
+}
+
+function uniqueSources(
+  sources: Array<Omit<FactSource, "id" | "factId">>,
+): Array<Omit<FactSource, "id" | "factId">> {
+  return [
+    ...new Map(
+      sources.map((source) => [`${source.messageId}:${source.quote}`, source] as const),
+    ).values(),
+  ];
 }
 
 function cosineSimilarity(a: Float32Array, b: Float32Array): number {
@@ -313,7 +387,13 @@ export class DefaultFactService implements FactService {
           { model: options.extractorModel },
         );
         result.messagesConsidered = messages.length;
-        const chunkResult = this.reconcileCandidates(x, candidates, messages);
+        const chunkResult = await this.reconcileCandidates(
+          x,
+          chunk.id,
+          candidates,
+          messages,
+          options.extractorModel,
+        );
         result.inserted.push(...chunkResult.inserted);
         result.supported.push(...chunkResult.supported);
         result.superseded.push(...chunkResult.superseded);
@@ -349,17 +429,20 @@ export class DefaultFactService implements FactService {
     }
   }
 
-  private reconcileCandidates(
+  private async reconcileCandidates(
     x: Context,
+    chunkId: number,
     candidates: ExtractedFactCandidate[],
     messages: FactExtractionMessage[],
-  ): Pick<FactIngestResult, "inserted" | "supported" | "superseded" | "rejected"> {
+    model?: FactIngestOptions["extractorModel"],
+  ): Promise<Pick<FactIngestResult, "inserted" | "supported" | "superseded" | "rejected">> {
     const result = {
       inserted: [] as number[],
       supported: [] as number[],
       superseded: [] as number[],
       rejected: [] as Array<{ canonicalText: string; reason: string }>,
     };
+    const extractor = xFactExtractor(x);
     const messageById = new Map(messages.map((message) => [message.id, message]));
     for (const candidate of candidates) {
       const validation = validateCandidate(candidate, messageById);
@@ -367,86 +450,137 @@ export class DefaultFactService implements FactService {
         result.rejected.push({ canonicalText: candidate.canonicalText, reason: validation });
         continue;
       }
-      let candidateFingerprint = fingerprint(candidate);
       const observedAt = Math.max(...validation.sources.map((source) => source.sourceTimestamp));
-      const activeInSlot = candidate.slotKey
-        ? xFactStore(x).list(x, {
-            slotKeys: [candidate.slotKey],
-            statuses: ["active", "disputed"],
-            order: "recent",
-          })
-        : [];
-      const sameActiveValue = activeInSlot.find(
-        (existing) =>
-          JSON.stringify(stableValue(existing.canonicalValue)) ===
-          JSON.stringify(stableValue(candidate.canonicalValue)),
-      );
-      const exactDuplicate = xFactStore(x).list(x, {
-        fingerprints: [candidateFingerprint],
-        limit: 1,
-      })[0];
-      const duplicate =
-        candidate.status === "active" && candidate.slotKey ? sameActiveValue : exactDuplicate;
-      if (duplicate) {
+      const deterministicReason = deterministicFactRejection(candidate, validation.authority);
+      if (deterministicReason) {
         xFactStore(x).cmd(x, {
-          type: "add_sources",
-          factId: duplicate.id,
-          sources: validation.sources,
-          authority: validation.authority,
-          observedAt,
+          type: "apply_reconciliation",
+          chunkId,
+          action: "discard",
+          targetIds: [],
+          candidateText: candidate.canonicalText,
+          reason: `Deterministic policy: ${deterministicReason}.`,
         });
-        if (candidate.status === "disputed" && duplicate.status === "active") {
-          xFactStore(x).update(x, { id: duplicate.id, changes: { status: "disputed" } });
-        }
-        result.supported.push(duplicate.id);
+        result.rejected.push({
+          canonicalText: candidate.canonicalText,
+          reason: deterministicReason,
+        });
         continue;
       }
-      if (exactDuplicate) {
+      const related = await this.relatedFacts(x, candidate);
+      const decision = normalizeReconciliationDecision(
+        candidate,
+        await extractor.reconcile(
+          x,
+          { candidate, authority: validation.authority, observedAt, relatedFacts: related },
+          { model },
+        ),
+        related,
+      );
+      if (decision.action === "discard") {
+        xFactStore(x).cmd(x, {
+          type: "apply_reconciliation",
+          chunkId,
+          action: "discard",
+          targetIds: [],
+          candidateText: candidate.canonicalText,
+          reason: decision.reason,
+        });
+        result.rejected.push({ canonicalText: candidate.canonicalText, reason: decision.reason });
+        continue;
+      }
+      const targetById = new Map(related.map((fact) => [fact.id, fact]));
+      const targets = decision.targetIds
+        .map((id) => targetById.get(id))
+        .filter((fact): fact is AtomicFact => !!fact);
+      if (targets.length !== new Set(decision.targetIds).size)
+        throw new Error("Fact reconciler selected an unavailable target");
+      const reconciled = reconciliationCandidate(candidate, decision);
+      const mergedSources =
+        decision.action === "merge"
+          ? [
+              ...validation.sources,
+              ...targets.flatMap((fact) =>
+                fact.sources
+                  .filter((source) => source.messageType !== "tool_end")
+                  .map(({ id: _id, factId: _factId, ...source }) => source),
+              ),
+            ]
+          : validation.sources;
+      const authority =
+        decision.action === "merge"
+          ? [validation.authority, ...targets.map((fact) => fact.authority)].sort(
+              (left, right) => authorityRank(right) - authorityRank(left),
+            )[0]
+          : validation.authority;
+      let candidateFingerprint = activeFingerprint(x, reconciled);
+      if (xFactStore(x).list(x, { fingerprints: [candidateFingerprint], limit: 1 }).length > 0)
         candidateFingerprint = createHash("sha256")
-          .update(
-            `${candidateFingerprint}:${observedAt}:${validation.sources
-              .map((source) => source.messageId)
-              .join(",")}`,
-          )
+          .update(`${candidateFingerprint}:${observedAt}:${decision.targetIds.join(",")}`)
           .digest("hex");
-      }
-      let supersedesFactId: number | null = null;
-      const replaced: AtomicFact[] = [];
-      if (candidate.slotKey && candidate.status === "active") {
-        for (const existing of activeInSlot) {
-          if (existing.observedAt <= observedAt && strongerStatus(existing.status))
-            replaced.push(existing);
-        }
-        supersedesFactId = replaced[0]?.id ?? null;
-      }
-      const created = xFactStore(x).create(x, {
-        fingerprint: candidateFingerprint,
-        canonicalText: candidate.canonicalText,
-        kind: candidate.kind,
-        slotKey: candidate.slotKey,
-        canonicalValue: candidate.canonicalValue,
-        status: candidate.status,
-        authority: validation.authority,
-        validFrom: candidate.validFrom,
-        validTo: candidate.validTo,
-        observedAt,
-        supersedesFactId,
-        entities: [...new Set(candidate.entities.map((entity) => entity.trim()).filter(Boolean))],
-        sources: validation.sources,
-      });
-      result.inserted.push(created.id);
-      if (candidate.status === "active") {
-        const replacementDay = candidate.validFrom ?? sourceDay(observedAt);
-        for (const existing of replaced) {
-          xFactStore(x).update(x, {
-            id: existing.id,
-            changes: { status: "superseded", validTo: replacementDay },
-          });
-          result.superseded.push(existing.id);
-        }
+      const applied = xFactStore(x).cmd(x, {
+        type: "apply_reconciliation",
+        chunkId,
+        action: decision.action,
+        targetIds: decision.targetIds,
+        candidateText: candidate.canonicalText,
+        reason: decision.reason,
+        fact: {
+          fingerprint: candidateFingerprint,
+          canonicalText: reconciled.canonicalText,
+          kind: reconciled.kind,
+          slotKey: reconciled.slotKey,
+          canonicalValue: reconciled.canonicalValue,
+          status: reconciled.status,
+          authority,
+          validFrom: reconciled.validFrom,
+          validTo: reconciled.validTo,
+          observedAt: Math.max(observedAt, ...targets.map((fact) => fact.observedAt)),
+          supersedesFactId: null,
+          entities: [
+            ...new Set([
+              ...reconciled.entities.map((entity) => entity.trim()).filter(Boolean),
+              ...(decision.action === "merge" ? targets.flatMap((fact) => fact.entities) : []),
+            ]),
+          ],
+          sources: uniqueSources(mergedSources),
+        },
+      }) as ApplyFactReconciliationResult;
+      result.supported.push(...applied.supportedIds);
+      result.superseded.push(...applied.supersededIds);
+      if (applied.created) {
+        result.inserted.push(applied.created.id);
+        await this.embedFact(x, applied.created);
       }
     }
     return result;
+  }
+
+  private async relatedFacts(x: Context, candidate: ExtractedFactCandidate): Promise<AtomicFact[]> {
+    const ranked = (
+      await this.search(x, candidate.canonicalText, {
+        limit: 12,
+        currentOnly: false,
+      })
+    ).map((result) => result.fact);
+    const exactSlot = candidate.slotKey
+      ? xFactStore(x).list(x, { slotKeys: [candidate.slotKey], order: "recent", limit: 12 })
+      : [];
+    const exactFingerprint = xFactStore(x).list(x, {
+      fingerprints: [activeFingerprint(x, candidate)],
+      limit: 1,
+    });
+    return [
+      ...new Map(
+        [...exactSlot, ...exactFingerprint, ...ranked].map((fact) => [fact.id, fact]),
+      ).values(),
+    ].slice(0, 12);
+  }
+
+  private async embedFact(x: Context, fact: AtomicFact): Promise<void> {
+    const text = [fact.canonicalText, fact.slotKey, ...fact.entities].filter(Boolean).join("\n");
+    const vector = await xEmbeddingService(x).create(x, text);
+    xFactStore(x).putFactEmbeddings(x, [{ factId: fact.id, vector }]);
   }
 
   async embedMissing(x: Context, limit = 200): Promise<number> {

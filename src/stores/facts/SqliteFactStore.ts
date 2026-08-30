@@ -2,6 +2,7 @@ import type { Context } from "../../context/Context.js";
 import { xEmbeddingDb } from "../../lib/x.js";
 import { StoreRecordNotFoundError, UnsupportedStoreOperationError } from "../Store.js";
 import type {
+  ApplyFactReconciliationResult,
   AtomicFact,
   CreateFactArgs,
   FactAuthority,
@@ -232,6 +233,120 @@ export class SqliteFactStore implements FactStore {
 
   cmd(x: Context, command: FactStoreCommand): unknown {
     const db = xEmbeddingDb(x);
+    if (command.type === "apply_reconciliation") {
+      const activeSetId = activeFactSetId(x);
+      const apply = db.transaction((): ApplyFactReconciliationResult => {
+        const targetRows = command.targetIds.length
+          ? (db
+              .prepare(
+                `SELECT * FROM facts WHERE fact_set_id = ? AND id IN (${command.targetIds.map(() => "?").join(", ")})`,
+              )
+              .all(activeSetId, ...command.targetIds) as FactRow[])
+          : [];
+        const targetById = new Map(targetRows.map((row) => [row.id, row]));
+        const targets = command.targetIds
+          .map((id) => targetById.get(id))
+          .filter((row): row is FactRow => !!row);
+        if (targets.length !== new Set(command.targetIds).size)
+          throw new StoreRecordNotFoundError(
+            "Reconciliation target is missing from the active set",
+          );
+        let createdRow: FactRow | null = null;
+        let newFactId: number | null = null;
+        const supportedIds: number[] = [];
+        const supersededIds: number[] = [];
+        if (command.action === "duplicate") {
+          const target = targets[0];
+          if (!target || !command.fact)
+            throw new Error("Duplicate reconciliation requires one target and fact evidence");
+          const authority =
+            authorityRank[command.fact.authority] > authorityRank[target.authority]
+              ? command.fact.authority
+              : target.authority;
+          this.insertSources(db, target.id, command.fact.sources);
+          db.prepare(
+            `UPDATE facts SET authority=?, observed_at=MAX(observed_at, ?), updated_at=?
+             WHERE id=? AND fact_set_id=?`,
+          ).run(authority, command.fact.observedAt, Date.now(), target.id, activeSetId);
+          supportedIds.push(target.id);
+          newFactId = target.id;
+        } else if (command.action !== "discard") {
+          if (!command.fact) throw new Error(`${command.action} reconciliation requires a fact`);
+          const replacementDay =
+            command.fact.validFrom ?? new Date(command.fact.observedAt).toISOString().slice(0, 10);
+          if (command.action === "update" || command.action === "merge") {
+            for (const target of targets) {
+              db.prepare(
+                `UPDATE facts SET status='superseded', valid_to=?, updated_at=?
+                 WHERE id=? AND fact_set_id=?`,
+              ).run(replacementDay, Date.now(), target.id, activeSetId);
+              supersededIds.push(target.id);
+            }
+          } else if (command.action === "conflict") {
+            for (const target of targets)
+              db.prepare(
+                `UPDATE facts SET status='disputed', updated_at=? WHERE id=? AND fact_set_id=?`,
+              ).run(Date.now(), target.id, activeSetId);
+          }
+          const supersedesFactId =
+            command.action === "update" || command.action === "merge"
+              ? (targets[0]?.id ?? null)
+              : null;
+          createdRow = db
+            .prepare(
+              `INSERT INTO facts (
+                 fact_set_id, fingerprint, canonical_text, kind, slot_key, canonical_value,
+                 status, authority, valid_from, valid_to, observed_at,
+                 supersedes_fact_id, entity_text
+               ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) RETURNING *`,
+            )
+            .get(
+              activeSetId,
+              command.fact.fingerprint,
+              command.fact.canonicalText,
+              command.fact.kind,
+              command.fact.slotKey,
+              command.fact.canonicalValue === null
+                ? null
+                : JSON.stringify(command.fact.canonicalValue),
+              command.action === "conflict" ? "disputed" : command.fact.status,
+              command.fact.authority,
+              command.fact.validFrom,
+              command.fact.validTo,
+              command.fact.observedAt,
+              supersedesFactId,
+              command.fact.entities.join(" "),
+            ) as FactRow;
+          newFactId = createdRow.id;
+          for (const entity of command.fact.entities)
+            db.prepare(
+              `INSERT OR IGNORE INTO fact_entities (fact_id, name, normalized_name)
+               VALUES (?, ?, ?)`,
+            ).run(createdRow.id, entity.trim(), normalizeEntity(entity));
+          this.insertSources(db, createdRow.id, command.fact.sources);
+        }
+        db.prepare(
+          `INSERT INTO fact_ingestion_decisions
+           (fact_set_id, chunk_id, candidate_text, action, target_ids, new_fact_id, reason)
+           VALUES (?, ?, ?, ?, ?, ?, ?)`,
+        ).run(
+          activeSetId,
+          command.chunkId,
+          command.candidateText,
+          command.action,
+          JSON.stringify(command.targetIds),
+          newFactId,
+          command.reason,
+        );
+        return {
+          created: createdRow ? this.hydrate(x, [createdRow])[0] : null,
+          supportedIds,
+          supersededIds,
+        };
+      });
+      return apply();
+    }
+    if (command.type === "get_active_set") return activeFactSetId(x);
     if (command.type === "get_checkpoint") {
       const row = db
         .prepare(

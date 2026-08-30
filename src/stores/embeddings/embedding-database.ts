@@ -133,6 +133,20 @@ export function createEmbeddingDatabase(path: string): Database.Database {
       FOREIGN KEY(new_fact_id) REFERENCES facts(id) ON DELETE SET NULL
     );
 
+    CREATE TABLE IF NOT EXISTS fact_ingestion_decisions (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      fact_set_id TEXT NOT NULL,
+      chunk_id INTEGER NOT NULL,
+      candidate_text TEXT NOT NULL,
+      action TEXT NOT NULL CHECK(action IN ('create','duplicate','update','conflict','merge','discard')),
+      target_ids TEXT NOT NULL DEFAULT '[]',
+      new_fact_id INTEGER,
+      reason TEXT NOT NULL,
+      created_at INTEGER NOT NULL DEFAULT (unixepoch() * 1000),
+      FOREIGN KEY (chunk_id) REFERENCES chunks(id) ON DELETE CASCADE,
+      FOREIGN KEY (new_fact_id) REFERENCES facts(id) ON DELETE SET NULL
+    );
+
     CREATE TABLE IF NOT EXISTS fact_chunk_runs (
       chunk_id INTEGER NOT NULL,
       extractor_version TEXT NOT NULL,
@@ -151,6 +165,8 @@ export function createEmbeddingDatabase(path: string): Database.Database {
 
     CREATE INDEX IF NOT EXISTS idx_fact_chunk_runs_status
       ON fact_chunk_runs(extractor_version, status, updated_at);
+    CREATE INDEX IF NOT EXISTS idx_fact_ingestion_decisions_chunk
+      ON fact_ingestion_decisions(fact_set_id, chunk_id, id);
     CREATE INDEX IF NOT EXISTS idx_facts_slot_status ON facts(slot_key, status);
     CREATE INDEX IF NOT EXISTS idx_facts_status_observed ON facts(status, observed_at DESC);
     CREATE INDEX IF NOT EXISTS idx_fact_sources_message ON fact_sources(message_id);

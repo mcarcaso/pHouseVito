@@ -1,6 +1,11 @@
 import type { Context } from "../../context/Context.js";
 import type { ModelConfig } from "../../shared/schemas/vito-config.js";
-import type { FactKind, FactStatus } from "../../stores/facts/FactStore.js";
+import type {
+  AtomicFact,
+  FactAuthority,
+  FactKind,
+  FactStatus,
+} from "../../stores/facts/FactStore.js";
 
 export interface FactExtractionMessage {
   id: number;
@@ -39,6 +44,27 @@ export interface FactExtractorOptions {
   model?: ModelConfig;
 }
 
+export type FactReconciliationAction =
+  "create" | "duplicate" | "update" | "conflict" | "merge" | "discard";
+
+export interface FactReconciliationInput {
+  candidate: ExtractedFactCandidate;
+  authority: FactAuthority;
+  observedAt: number;
+  relatedFacts: AtomicFact[];
+}
+
+export interface FactReconciliationDecision {
+  action: FactReconciliationAction;
+  targetIds: number[];
+  canonicalText: string | null;
+  kind: FactKind | null;
+  slotKey: string | null;
+  canonicalValue: unknown;
+  status: Extract<FactStatus, "active" | "historical" | "disputed"> | null;
+  reason: string;
+}
+
 export interface FactExtractor {
   readonly version: string;
   extract(
@@ -46,6 +72,11 @@ export interface FactExtractor {
     input: FactExtractionInput,
     options?: FactExtractorOptions,
   ): Promise<ExtractedFactCandidate[]>;
+  reconcile(
+    x: Context,
+    input: FactReconciliationInput,
+    options?: FactExtractorOptions,
+  ): Promise<FactReconciliationDecision>;
 }
 
 export class ProxyFactExtractor implements FactExtractor {
@@ -57,5 +88,9 @@ export class ProxyFactExtractor implements FactExtractor {
 
   extract(x: Context, input: FactExtractionInput, options?: FactExtractorOptions) {
     return this.inner.extract(x, input, options);
+  }
+
+  reconcile(x: Context, input: FactReconciliationInput, options?: FactExtractorOptions) {
+    return this.inner.reconcile(x, input, options);
   }
 }

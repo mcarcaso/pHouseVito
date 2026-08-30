@@ -6,6 +6,7 @@ import { homedir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { FACT_EXTRACTOR_VERSION } from "../src/services/facts/PiFactExtractor.js";
 import {
+  deterministicFactRejection,
   FACT_MEMORY_POLICY,
   FACT_MEMORY_POLICY_VERSION,
 } from "../src/services/facts/fact-memory-policy.js";
@@ -256,25 +257,15 @@ function discard(reason: string): Decision {
 }
 
 function deterministicAdmission(candidate: FactRow): Decision | null {
-  const slot = candidate.slot_key ?? "";
-  const text = candidate.canonical_text.toLocaleLowerCase();
-  if (/(?:^|\.)(?:qqq|btc|googl)(?:\.|$)/.test(slot) && /(?:market|price|close)/.test(slot))
-    return discard("Deterministic policy: routine market-price telemetry.");
-  if (/betting\.balance/.test(slot))
-    return discard("Deterministic policy: routine betting-balance telemetry.");
-  if (slot === "vito.server.status" || slot === "website_agency.linear.vito_task_status")
-    return discard("Deterministic policy: transient operational-status telemetry.");
-  if (candidate.authority === "assistant_reported" && candidate.kind === "recommendation")
-    return discard("Deterministic policy: assistant recommendation not adopted by Mike.");
-  if (
-    candidate.authority === "assistant_reported" &&
-    (candidate.kind === "state" || candidate.kind === "event") &&
-    /(?:server|dashboard|domain|linear task|configuration|deployment).{0,80}(?:online|status|pid|loaded|pending|fix|render)/.test(
-      text,
-    )
-  )
-    return discard("Deterministic policy: transient assistant-reported implementation state.");
-  return null;
+  const reason = deterministicFactRejection(
+    {
+      canonicalText: candidate.canonical_text,
+      kind: candidate.kind,
+      slotKey: candidate.slot_key,
+    },
+    candidate.authority,
+  );
+  return reason ? discard(`Deterministic policy: ${reason}.`) : null;
 }
 
 function enforceDecisionSemantics(candidate: FactRow, decision: Decision): Decision {

@@ -17,7 +17,7 @@ Raw messages remain authoritative. Atomic facts are derived, replaceable, and re
 
 The successfully stored contextualized embedding chunk is the fact-extraction work unit. Luna receives the same `context + text` payload used for embedding plus typed raw-message mappings. Thoughts, `tool_start`, and raw `tool_end` payloads are excluded by the transcript chunker. The generated context may guide interpretation but can never serve as evidence. Per-chunk, per-extractor-version run records provide independent retries and idempotency.
 
-Live ingestion and historical backfill use the same sequential unit of work: take the earliest pending chunk, extract its candidates, reconcile and persist them immediately, then move to the next chunk. Historical catch-up remains an explicit resumable operation. Fact extraction defaults to `openai-codex/gpt-5.6-luna` through Pi authentication. It can be overridden with `settings.memory.factExtractorModel`. Retrieved conversation content is explicitly treated as untrusted quoted data.
+Live ingestion and historical backfill use the same sequential unit of work: take the earliest pending chunk, extract its candidates, and process each candidate completely before moving on. Candidate processing is deterministic validation → deterministic admission filters → exact/semantic retrieval of related canonical facts → one Luna reconciliation decision → one transactional persistence operation → canonical embedding. Historical catch-up remains an explicit resumable operation. Extraction and reconciliation default to `openai-codex/gpt-5.6-luna` through Pi authentication and share `settings.memory.factExtractorModel`. Retrieved conversation content is explicitly treated as untrusted quoted data.
 
 ## Provenance
 
@@ -36,15 +36,20 @@ Authority is derived from cited source types rather than trusted from model outp
 
 Raw tool output is never sent to the fact-extraction model. Assistant recommendations remain recommendations and do not become user decisions.
 
-## Duplicate and temporal handling
+## Semantic reconciliation and temporal handling
 
-A deterministic SHA-256 fingerprint is built from the fact kind, normalized slot, stable canonical value, and temporal identity where appropriate.
+Each valid candidate retrieves related facts through exact slot/fingerprint lookup and hybrid semantic/lexical search. Luna then chooses one action:
 
-- Repeated active slot/value: add evidence to the existing fact
-- Repeated event: add evidence to the existing event
-- Changed active slot/value: insert a new fact and supersede the prior active value
-- Value returns later (A → B → A): create a new occurrence and preserve both earlier validity intervals
-- Invalid or invented evidence quote: reject the candidate
+- `create`: persist a distinct memory-worthy fact
+- `duplicate`: attach exact evidence to one existing canonical fact
+- `update`: create a changed current value and supersede its prior target
+- `conflict`: preserve incompatible unresolved claims as disputed
+- `merge`: create one canonical consolidation and supersede the fragments
+- `discard`: reject low-value, transient, or redundant material
+
+Obvious market-price telemetry, betting-balance telemetry, transient operational slots, and unadopted assistant recommendations are rejected deterministically before Luna. One-time events are normalized to historical status. A deterministic A → B → A guard prevents a returned value from being attached to its superseded earlier occurrence instead of replacing current B.
+
+The fact mutation, status changes, evidence, and `fact_ingestion_decisions` audit row are written in one SQLite transaction. The resulting canonical fact is embedded before the next candidate is reconciled. Fact-set-prefixed SHA-256 fingerprints provide idempotency without colliding across versioned sets. Invalid or invented evidence quotes are rejected before retrieval or reconciliation.
 
 Facts are never physically deleted through `FactStore`.
 

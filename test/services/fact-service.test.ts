@@ -7,6 +7,8 @@ import type {
   ExtractedFactCandidate,
   FactExtractionInput,
   FactExtractor,
+  FactReconciliationDecision,
+  FactReconciliationInput,
 } from "../../src/services/facts/FactExtractor.js";
 import { createEmbeddingDatabase } from "../../src/stores/embeddings/embedding-database.js";
 import { SqliteFactStore } from "../../src/stores/facts/SqliteFactStore.js";
@@ -16,6 +18,8 @@ class QueuedFactExtractor implements FactExtractor {
   readonly version = "test-v1";
   readonly outputs: ExtractedFactCandidate[][] = [];
   readonly inputs: FactExtractionInput[] = [];
+  readonly reconciliationOutputs: FactReconciliationDecision[] = [];
+  readonly reconciliationInputs: FactReconciliationInput[] = [];
   delayMs = 0;
   active = 0;
   maxActive = 0;
@@ -28,6 +32,46 @@ class QueuedFactExtractor implements FactExtractor {
     if (this.delayMs > 0) await new Promise((resolve) => setTimeout(resolve, this.delayMs));
     this.active -= 1;
     return output;
+  }
+
+  async reconcile(
+    _x: unknown,
+    input: FactReconciliationInput,
+  ): Promise<FactReconciliationDecision> {
+    this.reconciliationInputs.push(input);
+    const queued = this.reconciliationOutputs.shift();
+    if (queued) return queued;
+    const sameValue = input.relatedFacts.find(
+      (fact) =>
+        (fact.status === "active" || fact.status === "disputed") &&
+        fact.slotKey === input.candidate.slotKey &&
+        JSON.stringify(fact.canonicalValue) === JSON.stringify(input.candidate.canonicalValue),
+    );
+    if (sameValue)
+      return {
+        action: "duplicate",
+        targetIds: [sameValue.id],
+        canonicalText: null,
+        kind: null,
+        slotKey: null,
+        canonicalValue: null,
+        status: null,
+        reason: "Same canonical slot and value.",
+      };
+    const replaced = input.relatedFacts.find(
+      (fact) =>
+        fact.slotKey && fact.slotKey === input.candidate.slotKey && fact.status === "active",
+    );
+    return {
+      action: replaced ? "update" : "create",
+      targetIds: replaced ? [replaced.id] : [],
+      canonicalText: input.candidate.canonicalText,
+      kind: input.candidate.kind,
+      slotKey: input.candidate.slotKey,
+      canonicalValue: input.candidate.canonicalValue,
+      status: input.candidate.status,
+      reason: replaced ? "Changed canonical value." : "Distinct fact.",
+    };
   }
 }
 
@@ -273,6 +317,121 @@ describe("atomic fact ingestion", () => {
       const returned = fixture.store.list(fixture.x, { ids: fourth.inserted })[0];
       assert.equal(returned.canonicalValue, "blue");
       assert.equal(returned.supersedesFactId, third.inserted[0]);
+    } finally {
+      fixture.db.close();
+      fixture.embeddingDb.close();
+    }
+  });
+
+  it("rejects deterministic telemetry before paying for semantic reconciliation", async () => {
+    const fixture = setup();
+    try {
+      const message = fixture.addUserMessage("QQQ closed at $500.", 1_000);
+      fixture.extractor.outputs.push([
+        {
+          canonicalText: "QQQ closed at $500.",
+          kind: "measurement",
+          slotKey: "qqq.market.price",
+          canonicalValue: 500,
+          status: "historical",
+          validFrom: "1970-01-01",
+          validTo: null,
+          entities: ["QQQ"],
+          sources: [{ messageId: message.id, quote: "QQQ closed at $500." }],
+        },
+      ]);
+      const result = await fixture.service.ingestNew(fixture.x, "test:session");
+      assert.equal(result.inserted.length, 0);
+      assert.equal(result.rejected.length, 1);
+      assert.equal(fixture.extractor.reconciliationInputs.length, 0);
+      const audit = fixture.embeddingDb
+        .prepare("SELECT action, reason FROM fact_ingestion_decisions")
+        .get() as { action: string; reason: string };
+      assert.equal(audit.action, "discard");
+      assert.match(audit.reason, /market-price telemetry/);
+    } finally {
+      fixture.db.close();
+      fixture.embeddingDb.close();
+    }
+  });
+
+  it("applies semantic conflict and merge decisions transactionally with an audit trail", async () => {
+    const fixture = setup();
+    try {
+      const firstMessage = fixture.addUserMessage("I prefer blue.", 1_000);
+      fixture.extractor.outputs.push([
+        candidate({
+          text: "Mike prefers blue.",
+          value: "blue",
+          messageId: firstMessage.id,
+          quote: "I prefer blue.",
+        }),
+      ]);
+      const first = await fixture.service.ingestNew(fixture.x, "test:session");
+      const firstId = first.inserted[0];
+
+      const secondMessage = fixture.addUserMessage("Actually green is better.", 2_000);
+      fixture.extractor.outputs.push([
+        candidate({
+          text: "Mike prefers green.",
+          value: "green",
+          messageId: secondMessage.id,
+          quote: "Actually green is better.",
+        }),
+      ]);
+      fixture.extractor.reconciliationOutputs.push({
+        action: "conflict",
+        targetIds: [firstId],
+        canonicalText: "Mike may prefer green rather than blue.",
+        kind: "preference",
+        slotKey: "mike.preference.color",
+        canonicalValue: "green",
+        status: "active",
+        reason: "The preference is unresolved.",
+      });
+      const second = await fixture.service.ingestNew(fixture.x, "test:session");
+      const secondId = second.inserted[0];
+      assert.equal(fixture.store.list(fixture.x, { ids: [firstId] })[0].status, "disputed");
+      assert.equal(fixture.store.list(fixture.x, { ids: [secondId] })[0].status, "disputed");
+
+      const thirdMessage = fixture.addUserMessage("Blue, specifically navy.", 3_000);
+      fixture.extractor.outputs.push([
+        candidate({
+          text: "Mike prefers navy blue.",
+          value: "navy blue",
+          messageId: thirdMessage.id,
+          quote: "Blue, specifically navy.",
+        }),
+      ]);
+      fixture.extractor.reconciliationOutputs.push({
+        action: "merge",
+        targetIds: [firstId, secondId],
+        canonicalText: "Mike prefers navy blue.",
+        kind: "preference",
+        slotKey: "mike.preference.color",
+        canonicalValue: "navy blue",
+        status: "active",
+        reason: "The clarification resolves and consolidates the earlier color claims.",
+      });
+      const third = await fixture.service.ingestNew(fixture.x, "test:session");
+      assert.equal(third.inserted.length, 1);
+      assert.deepEqual(new Set(third.superseded), new Set([firstId, secondId]));
+      const merged = fixture.store.list(fixture.x, { ids: third.inserted })[0];
+      assert.equal(merged.status, "active");
+      assert.equal(merged.sources.length, 3);
+      assert.equal(
+        fixture.store.listFactVectors(fixture.x).some((item) => item.factId === merged.id),
+        true,
+      );
+      const audit = fixture.embeddingDb
+        .prepare("SELECT action, target_ids, new_fact_id FROM fact_ingestion_decisions ORDER BY id")
+        .all() as Array<{ action: string; target_ids: string; new_fact_id: number | null }>;
+      assert.deepEqual(
+        audit.map((item) => item.action),
+        ["create", "conflict", "merge"],
+      );
+      assert.equal(audit[2].new_fact_id, merged.id);
+      assert.deepEqual(JSON.parse(audit[2].target_ids), [firstId, secondId]);
     } finally {
       fixture.db.close();
       fixture.embeddingDb.close();

@@ -64,6 +64,21 @@ export interface FactVector {
   vector: Float32Array;
 }
 
+export interface ApplyFactReconciliationArgs {
+  chunkId: number;
+  action: "create" | "duplicate" | "update" | "conflict" | "merge" | "discard";
+  targetIds: number[];
+  candidateText: string;
+  reason: string;
+  fact?: CreateFactArgs;
+}
+
+export interface ApplyFactReconciliationResult {
+  created: AtomicFact | null;
+  supportedIds: number[];
+  supersededIds: number[];
+}
+
 export interface FactExtractionChunk {
   id: number;
   sessionId: string;
@@ -106,6 +121,7 @@ export interface UpdateFactArgs {
 }
 
 export type FactStoreCommand =
+  | ({ type: "apply_reconciliation" } & ApplyFactReconciliationArgs)
   | {
       type: "add_sources";
       factId: number;
@@ -113,6 +129,7 @@ export type FactStoreCommand =
       authority: FactAuthority;
       observedAt: number;
     }
+  | { type: "get_active_set" }
   | { type: "get_checkpoint"; sessionId: string; extractorVersion: string }
   | {
       type: "set_checkpoint";

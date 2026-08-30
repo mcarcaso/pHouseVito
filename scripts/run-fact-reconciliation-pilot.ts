@@ -15,6 +15,7 @@ const ROOT = resolve(process.cwd());
 const DB_PATH = join(ROOT, "user", "embeddings.db");
 const FULL_RUN = process.argv.includes("--all");
 const MATERIALIZE = process.argv.includes("--materialize");
+const INSPECT_ONLY = process.argv.includes("--inspect");
 const OUT_DIR = join(
   ROOT,
   "user",
@@ -611,6 +612,27 @@ async function main(): Promise<void> {
   }
   persistedCursor = state.cursor;
   save(state);
+  if (INSPECT_ONLY) {
+    writeFileSync(join(OUT_DIR, "accepted-snapshot.json"), JSON.stringify(state.accepted, null, 2));
+    writeFileSync(
+      join(OUT_DIR, "inspection-summary.json"),
+      JSON.stringify(
+        {
+          processed: state.cursor,
+          accepted: state.accepted.length,
+          decisions: state.decisions.length,
+          capturedAt: new Date().toISOString(),
+        },
+        null,
+        2,
+      ),
+    );
+    db.close();
+    console.log(
+      `Captured ${state.accepted.length} accepted facts after ${state.cursor} decisions.`,
+    );
+    return;
+  }
 
   const runtime = await ModelRuntime.create({
     authPath: join(homedir(), ".pi", "agent", "auth.json"),

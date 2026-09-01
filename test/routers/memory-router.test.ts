@@ -16,7 +16,11 @@ const userDir = mkdtempSync(join(tmpdir(), "vito-memory-router-"));
 writeFileSync(join(userDir, "profile.md"), "# Test Profile\n");
 const db = createDatabase(":memory:");
 const x = dashboardRouterContext(
-  {},
+  {
+    vitoService: () => ({
+      getConfig: () => ({ settings: { memory: { factIngestionMode: "persistent-pi" } } }),
+    }),
+  },
   RootContext({ db, userDir, skillsDir: join(userDir, "skills") }),
 );
 const sessionStore = xSessionStore(x);
@@ -180,11 +184,18 @@ describe("memory router", () => {
         totalFacts: z.number(),
         embeddedFacts: z.number(),
         percent: z.number(),
+        curator: z.object({
+          enabled: z.boolean(),
+          vitoSessionId: z.string(),
+          sessionRecordId: z.string().nullable(),
+        }),
       })
       .parse(await response.json());
     assert.equal(status.active, false);
     assert.equal(status.totalChunks, 1);
     assert.equal(status.totalFacts, 1);
+    assert.equal(status.curator.enabled, true);
+    assert.equal(status.curator.vitoSessionId, "system:fact-curator");
   });
 
   it("searches evidence-backed atomic facts", async () => {

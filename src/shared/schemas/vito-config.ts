@@ -37,6 +37,7 @@ export const settingsSchema = z
       .object({
         chunkContextualizerModel: modelSchema.optional(),
         factExtractorModel: modelSchema.optional(),
+        factIngestionMode: z.enum(["one-shot", "persistent-pi"]).optional(),
       })
       .passthrough()
       .optional(),
@@ -70,6 +71,7 @@ export const settingsPatchSchema = z
       .object({
         chunkContextualizerModel: modelSchema.optional(),
         factExtractorModel: modelSchema.optional(),
+        factIngestionMode: z.enum(["one-shot", "persistent-pi"]).optional(),
       })
       .passthrough()
       .nullable()

@@ -148,6 +148,11 @@ function activeFingerprint(x: Context, candidate: ExtractedFactCandidate): strin
   return `${factSetId}:${fingerprint(candidate)}`;
 }
 
+function isMikeAuthor(author: string | null): boolean {
+  if (author === null) return true;
+  return /^(?:mcarcaso|mike(?:\s+carcasole)?)$/i.test(author.trim());
+}
+
 function authorityFor(messages: FactExtractionMessage[]): FactAuthority {
   // Explicit user evidence remains authoritative even when the extractor also
   // cites the assistant's final acknowledgement. Assistant-only claims remain
@@ -178,6 +183,9 @@ function validateCandidate(
   if (candidate.slotKey && candidate.canonicalValue === null) {
     return "replaceable facts require a canonicalValue";
   }
+  if (candidate.slotKey && !/^[a-z0-9]+(?:[._-][a-z0-9]+)*$/.test(candidate.slotKey)) {
+    return "slotKey must be stable lowercase namespaced text";
+  }
   if (
     containsCredentialValue(candidate.canonicalText) ||
     containsCredentialValue(JSON.stringify(candidate.canonicalValue))
@@ -203,6 +211,28 @@ function validateCandidate(
       quote: source.quote,
       sourceTimestamp: message.timestamp,
     });
+  }
+  if (
+    /\bMike(?:'s|’s)?\b/i.test(candidate.canonicalText) &&
+    sourceMessages.some((message) => message.type === "user") &&
+    !sourceMessages.some((message) => message.type === "user" && isMikeAuthor(message.author))
+  ) {
+    return "a different participant's user message cannot be attributed to Mike";
+  }
+  if (candidate.admission) {
+    const sourceIds = new Set(sources.map((source) => source.messageId));
+    if (
+      candidate.admission.evidenceMap.some(
+        (mapping) =>
+          mapping.messageIds.length === 0 || mapping.messageIds.some((id) => !sourceIds.has(id)),
+      )
+    ) {
+      return "admission evidence-map IDs must all be submitted exact sources";
+    }
+    if (candidate.admission.valueClass === "durable_current" && candidate.status === "historical")
+      return "durable_current admission cannot use historical status";
+    if (candidate.admission.valueClass === "meaningful_historical" && candidate.status === "active")
+      return "meaningful_historical admission cannot use active status";
   }
   return { sources, authority: authorityFor(sourceMessages) };
 }

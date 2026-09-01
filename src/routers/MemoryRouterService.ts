@@ -17,13 +17,19 @@ import {
   xFactService,
   xFactStore,
   xMemoryService,
+  xPiSessionStore,
   xProjectDir,
   xSessionStore,
   xUserDir,
+  xVitoService,
 } from "../lib/x.js";
 import { emptyRouteSchema, unknownRouteSchema, registerRoute } from "./register-route.js";
 import { jsonResponseSchema } from "../shared/schemas/json.js";
 import { FACT_EXTRACTOR_VERSION } from "../services/facts/PiFactExtractor.js";
+import {
+  FACT_CURATOR_VITO_SESSION_ID,
+  PERSISTENT_FACT_EXTRACTOR_VERSION,
+} from "../services/facts/PersistentPiFactExtractor.js";
 
 function activeBackfill(x: Context): {
   active: boolean;
@@ -43,6 +49,25 @@ function activeBackfill(x: Context): {
   }
   rmSync(marker, { force: true });
   return { active: false, pid: null, startedAt: null };
+}
+
+function curatorStatus(x: Context) {
+  const enabled =
+    xVitoService(x).getConfig(x).settings.memory?.factIngestionMode === "persistent-pi";
+  const session = xPiSessionStore(x).list(x, {
+    vitoSessionIds: [FACT_CURATOR_VITO_SESSION_ID],
+    order: "recent",
+    limit: 1,
+  })[0];
+  return {
+    enabled,
+    extractorVersion: PERSISTENT_FACT_EXTRACTOR_VERSION,
+    vitoSessionId: FACT_CURATOR_VITO_SESSION_ID,
+    sessionRecordId: session?.id ?? null,
+    updatedAt: session?.updatedAt ?? null,
+    lastModel: session?.lastModel ?? null,
+    messageCount: session?.messageCount ?? null,
+  };
 }
 
 function backfillStatus(x: Context) {
@@ -70,6 +95,7 @@ function backfillStatus(x: Context) {
   const completedChunks = runs.completed ?? 0;
   return {
     ...process,
+    curator: curatorStatus(x),
     totalChunks,
     completedChunks,
     pendingChunks: Math.max(0, totalChunks - completedChunks),

@@ -13,6 +13,7 @@ import { DefaultMemoryService } from "../services/memory/DefaultMemoryService.js
 import { OpenAiEmbeddingService } from "../services/memory/OpenAiEmbeddingService.js";
 import { DefaultFactService } from "../services/facts/DefaultFactService.js";
 import { PiFactExtractor } from "../services/facts/PiFactExtractor.js";
+import { PersistentPiFactExtractor } from "../services/facts/PersistentPiFactExtractor.js";
 import { PiOrchestratorService } from "../services/orchestrator/PiOrchestratorService.js";
 import { DefaultProviderService } from "../services/providers/DefaultProviderService.js";
 import { FileSecretService } from "../services/secrets/FileSecretService.js";
@@ -38,7 +39,7 @@ import { SqliteVoiceTaskStore } from "../stores/voice/SqliteVoiceTaskStore.js";
 import { SqliteQuickCommandStore } from "../stores/quick-commands/SqliteQuickCommandStore.js";
 import { SqlitePushNotificationStore } from "../stores/push-notifications/SqlitePushNotificationStore.js";
 import { SqliteAppPreferenceStore } from "../stores/app-preferences/SqliteAppPreferenceStore.js";
-import { xAskApiService } from "../lib/x.js";
+import { xAskApiService, xVitoService } from "../lib/x.js";
 import { ObjectContext } from "./ObjectContext.js";
 import type { Context } from "./Context.js";
 
@@ -91,7 +92,10 @@ export function RootContext(args: RootContextArgs): Context {
     embeddingStore: () => new SqliteEmbeddingStore(),
     embeddingService: () => new OpenAiEmbeddingService(),
     factStore: () => new SqliteFactStore(),
-    factExtractor: () => new PiFactExtractor(),
+    factExtractor: (x) =>
+      xVitoService(x).getConfig(x).settings.memory?.factIngestionMode === "persistent-pi"
+        ? new PersistentPiFactExtractor()
+        : new PiFactExtractor(),
     factService: () => new DefaultFactService(),
     memoryService: () => new DefaultMemoryService(),
     orchestratorService: () => new PiOrchestratorService(),

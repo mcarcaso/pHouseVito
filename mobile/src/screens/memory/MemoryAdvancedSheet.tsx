@@ -6,6 +6,7 @@ import {
   Modal,
   Pressable,
   SafeAreaView,
+  ScrollView,
   StyleSheet,
   Text,
   View,
@@ -14,6 +15,15 @@ import { useThemeStyles, useVitoTheme, type VitoTheme } from "../../hooks/useVit
 import { api } from "../../services/api/client";
 
 export type BackfillStatus = {
+  curator?: {
+    enabled: boolean;
+    extractorVersion: string;
+    vitoSessionId: string;
+    sessionRecordId: string | null;
+    updatedAt: number | null;
+    lastModel: string | null;
+    messageCount: number | null;
+  };
   active: boolean;
   pid: number | null;
   startedAt: number | null;
@@ -31,10 +41,12 @@ export function MemoryAdvancedSheet({
   visible,
   onClose,
   onUnauthorized,
+  onOpenPiSession,
 }: {
   visible: boolean;
   onClose: () => void;
   onUnauthorized: () => void;
+  onOpenPiSession: (id: string) => void;
 }) {
   const styles = useThemeStyles(createStyles);
   const theme = useVitoTheme();
@@ -112,6 +124,8 @@ export function MemoryAdvancedSheet({
     ]);
   };
 
+  const curator = status?.curator;
+
   return (
     <Modal
       visible={visible}
@@ -121,17 +135,51 @@ export function MemoryAdvancedSheet({
     >
       <SafeAreaView style={styles.screen}>
         <View style={styles.header}>
-          <Text style={styles.title}>Memory Backfill</Text>
+          <Text style={styles.title}>Memory</Text>
           <Pressable accessibilityLabel="Close" onPress={onClose} style={styles.closeButton}>
             <Ionicons name="close" size={23} color={theme.colors.textSecondary} />
           </Pressable>
         </View>
 
-        <View style={styles.content}>
+        <ScrollView contentContainerStyle={styles.content}>
           <Text style={styles.explanation}>
             New conversations are ingested automatically. Historical backfill is optional and can be
             paused or resumed without losing completed work.
           </Text>
+
+          {curator && (
+            <View style={styles.curatorSection}>
+              <Text style={styles.sectionLabel}>FACT CURATOR</Text>
+              <View style={styles.statusRow}>
+                <View style={[styles.dot, curator.enabled && styles.dotActive]} />
+                <View style={styles.curatorSummary}>
+                  <Text style={styles.statusText}>
+                    {curator.enabled ? "Persistent Pi enabled" : "One-shot extractor"}
+                  </Text>
+                  <Text style={styles.curatorMeta} numberOfLines={1}>
+                    {curator.lastModel ?? "Session starts with the next eligible chunk"}
+                  </Text>
+                </View>
+              </View>
+              <Pressable
+                accessibilityLabel="View fact curator Pi session"
+                disabled={!curator.sessionRecordId}
+                onPress={() => {
+                  if (curator.sessionRecordId) onOpenPiSession(curator.sessionRecordId);
+                }}
+                style={({ pressed }) => [
+                  styles.sessionButton,
+                  !curator.sessionRecordId && styles.sessionButtonDisabled,
+                  pressed && styles.pressed,
+                ]}
+              >
+                <Ionicons name="chatbubbles-outline" size={17} color={theme.colors.accent} />
+                <Text style={styles.sessionButtonText}>
+                  {curator.sessionRecordId ? "View Pi session" : "Waiting for first run"}
+                </Text>
+              </Pressable>
+            </View>
+          )}
 
           {!status && !error && <ActivityIndicator color={theme.colors.accent} />}
           {error && <Text style={styles.error}>{error}</Text>}
@@ -202,7 +250,7 @@ export function MemoryAdvancedSheet({
               </Pressable>
             </>
           )}
-        </View>
+        </ScrollView>
       </SafeAreaView>
     </Modal>
   );
@@ -246,6 +294,34 @@ function createStyles(theme: VitoTheme) {
       lineHeight: 21,
       marginBottom: theme.space.xxl,
     },
+    curatorSection: {
+      paddingBottom: theme.space.xxl,
+      marginBottom: theme.space.xxl,
+      borderBottomWidth: StyleSheet.hairlineWidth,
+      borderBottomColor: theme.colors.separator,
+      gap: theme.space.md,
+    },
+    sectionLabel: {
+      color: theme.colors.textMuted,
+      fontSize: 11,
+      fontWeight: "700",
+      letterSpacing: 0.8,
+    },
+    curatorSummary: { flex: 1, minWidth: 0, gap: theme.space.xs },
+    curatorMeta: { color: theme.colors.textMuted, fontSize: 11 },
+    sessionButton: {
+      minHeight: 42,
+      flexDirection: "row",
+      alignItems: "center",
+      justifyContent: "center",
+      gap: theme.space.sm,
+      borderWidth: StyleSheet.hairlineWidth,
+      borderColor: theme.colors.separator,
+      borderRadius: theme.radius.sm,
+      backgroundColor: theme.colors.surface,
+    },
+    sessionButtonDisabled: { opacity: 0.45 },
+    sessionButtonText: { color: theme.colors.accent, fontSize: 13, fontWeight: "600" },
     error: { color: theme.colors.danger, marginBottom: theme.space.lg },
     statusRow: { flexDirection: "row", alignItems: "center", gap: theme.space.sm },
     dot: {

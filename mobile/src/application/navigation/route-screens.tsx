@@ -119,6 +119,10 @@ export function RootMemoryScreen({ navigation }: { navigation: RootNavigation })
         visible={advanced}
         onClose={() => setAdvanced(false)}
         onUnauthorized={onUnauthorized}
+        onOpenPiSession={(id) => {
+          setAdvanced(false);
+          navigation.navigate("PiSessionDetail", { id });
+        }}
       />
     </>
   );

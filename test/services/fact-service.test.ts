@@ -121,7 +121,7 @@ function setup() {
     messageStore: () => messageStore,
   });
   let chunkIndex = 0;
-  const addUserMessage = (text: string, timestamp: number) => {
+  const addUserMessage = (text: string, timestamp: number, author = "Mike") => {
     const message = messageStore.create(x, {
       session_id: "test:session",
       channel: "test",
@@ -130,7 +130,7 @@ function setup() {
       type: "user",
       content: JSON.stringify(text),
       archived: 0,
-      author: "Mike",
+      author,
     });
     embeddingDb
       .prepare(
@@ -481,6 +481,28 @@ describe("atomic fact ingestion", () => {
       assert.equal(result.inserted.length, 0);
       assert.equal(result.rejected.length, 1);
       assert.match(result.rejected[0].reason, /exact substring/);
+      assert.equal(fixture.store.count(fixture.x, {}), 0);
+    } finally {
+      fixture.db.close();
+      fixture.embeddingDb.close();
+    }
+  });
+
+  it("does not attribute another participant's statement to Mike", async () => {
+    const fixture = setup();
+    try {
+      const message = fixture.addUserMessage("I prefer blue.", 1_000, "securi0");
+      fixture.extractor.outputs.push([
+        candidate({
+          text: "Mike prefers blue.",
+          value: "blue",
+          messageId: message.id,
+          quote: "I prefer blue.",
+        }),
+      ]);
+      const result = await fixture.service.ingestNew(fixture.x, "test:session");
+      assert.equal(result.inserted.length, 0);
+      assert.match(result.rejected[0].reason, /different participant/);
       assert.equal(fixture.store.count(fixture.x, {}), 0);
     } finally {
       fixture.db.close();

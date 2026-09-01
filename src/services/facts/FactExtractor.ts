@@ -21,6 +21,14 @@ export interface ExtractedFactSource {
   quote: string;
 }
 
+export interface FactAdmissionAssessment {
+  futureQuestion: string;
+  valueClass: "durable_current" | "meaningful_historical";
+  whyWorthKeeping: string;
+  whyNotNoise: string;
+  evidenceMap: Array<{ claim: string; messageIds: number[] }>;
+}
+
 export interface ExtractedFactCandidate {
   canonicalText: string;
   kind: FactKind;
@@ -31,6 +39,7 @@ export interface ExtractedFactCandidate {
   validTo: string | null;
   entities: string[];
   sources: ExtractedFactSource[];
+  admission?: FactAdmissionAssessment;
 }
 
 export interface FactExtractionInput {

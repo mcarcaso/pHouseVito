@@ -10,7 +10,10 @@ import { createBottomTabNavigator } from "@react-navigation/bottom-tabs";
 import { SafeAreaView as ContextSafeAreaView } from "react-native-safe-area-context";
 import type { NativeStackNavigationProp } from "@react-navigation/native-stack";
 import { Ionicons } from "@expo/vector-icons";
-import { HeaderButton } from "@react-navigation/elements";
+import {
+  HeaderToolbarButton as HeaderButton,
+  HeaderToolbarButtonGroup,
+} from "../components/navigation/HeaderToolbarButton";
 import { StatusBar } from "expo-status-bar";
 import * as Notifications from "expo-notifications";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -371,45 +374,27 @@ function AppContent() {
                   const title = operationAreas.find((item) => item.id === area)?.label ?? "";
                   const headerActions =
                     area === "secrets" ? (
-                      <Pressable
+                      <HeaderButton
                         accessibilityLabel="Add secret"
                         onPress={() => navigation.navigate("SecretNew")}
-                        style={{
-                          width: 44,
-                          height: 44,
-                          alignItems: "center",
-                          justifyContent: "center",
-                        }}
                       >
                         <Ionicons name="add" size={25} color={theme.colors.accent} />
-                      </Pressable>
+                      </HeaderButton>
                     ) : area === "jobs" ? (
-                      <View style={{ flexDirection: "row", alignItems: "center" }}>
-                        <Pressable
+                      <HeaderToolbarButtonGroup>
+                        <HeaderButton
                           accessibilityLabel="Refresh jobs"
                           onPress={() => navigation.setParams({ refreshKey: Date.now() })}
-                          style={{
-                            width: 40,
-                            height: 44,
-                            alignItems: "center",
-                            justifyContent: "center",
-                          }}
                         >
                           <Ionicons name="refresh" size={20} color={theme.colors.accent} />
-                        </Pressable>
-                        <Pressable
+                        </HeaderButton>
+                        <HeaderButton
                           accessibilityLabel="New job"
                           onPress={() => navigation.navigate("JobDetail", {})}
-                          style={{
-                            width: 40,
-                            height: 44,
-                            alignItems: "center",
-                            justifyContent: "center",
-                          }}
                         >
                           <Ionicons name="add" size={25} color={theme.colors.accent} />
-                        </Pressable>
-                      </View>
+                        </HeaderButton>
+                      </HeaderToolbarButtonGroup>
                     ) : area === "pi" ? (
                       <HeaderButton
                         accessibilityLabel="Refresh Pi sessions"
@@ -497,7 +482,7 @@ function AppContent() {
                   headerTitleStyle: { color: theme.colors.text },
                   headerShadowVisible: false,
                   headerRight: () => (
-                    <Pressable
+                    <HeaderButton
                       accessibilityLabel="Delete trace"
                       onPress={() =>
                         Alert.alert("Delete trace?", route.params.id, [
@@ -512,15 +497,9 @@ function AppContent() {
                           },
                         ])
                       }
-                      style={{
-                        width: 44,
-                        height: 44,
-                        alignItems: "center",
-                        justifyContent: "center",
-                      }}
                     >
                       <Ionicons name="trash-outline" size={20} color={theme.colors.danger} />
-                    </Pressable>
+                    </HeaderButton>
                   ),
                 })}
               />
@@ -546,12 +525,11 @@ function AppContent() {
                   headerTintColor: theme.colors.accent,
                   headerShadowVisible: false,
                   headerRight: () => (
-                    <Pressable
+                    <HeaderButton
                       accessibilityLabel={
                         route.params.raw ? "Show formatted session" : "Show raw session"
                       }
                       onPress={() => navigation.setParams({ raw: !route.params.raw })}
-                      style={{ paddingHorizontal: theme.space.sm, paddingVertical: theme.space.sm }}
                     >
                       <Text
                         style={{
@@ -564,7 +542,7 @@ function AppContent() {
                       >
                         RAW
                       </Text>
-                    </Pressable>
+                    </HeaderButton>
                   ),
                   header:
                     Platform.OS === "web"
@@ -573,12 +551,11 @@ function AppContent() {
                             onBack={() => navigation.goBack()}
                             title="Pi session"
                             right={
-                              <Pressable
+                              <HeaderButton
+                                accessibilityLabel={
+                                  route.params.raw ? "Show formatted session" : "Show raw session"
+                                }
                                 onPress={() => navigation.setParams({ raw: !route.params.raw })}
-                                style={{
-                                  paddingHorizontal: theme.space.sm,
-                                  paddingVertical: theme.space.sm,
-                                }}
                               >
                                 <Text
                                   style={{
@@ -591,7 +568,7 @@ function AppContent() {
                                 >
                                   RAW
                                 </Text>
-                              </Pressable>
+                              </HeaderButton>
                             }
                           />
                         )
@@ -693,24 +670,12 @@ function AppContent() {
                   headerTitleStyle: { color: theme.colors.text },
                   headerShadowVisible: false,
                   headerRight: () => (
-                    <Pressable
+                    <HeaderButton
                       accessibilityLabel="Browse skill files"
-                      hitSlop={8}
                       onPress={() => navigation.navigate("SkillFiles", { name: route.params.name })}
-                      style={{
-                        width: 44,
-                        height: 44,
-                        alignItems: "center",
-                        justifyContent: "center",
-                      }}
                     >
-                      <Ionicons
-                        name="folder-open-outline"
-                        size={22}
-                        color={theme.colors.accent}
-                        style={{ transform: [{ translateY: -3 }] }}
-                      />
-                    </Pressable>
+                      <Ionicons name="folder-open-outline" size={22} color={theme.colors.accent} />
+                    </HeaderButton>
                   ),
                 })}
               />

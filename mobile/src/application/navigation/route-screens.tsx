@@ -70,6 +70,7 @@ import {
 } from "../../services/api/client";
 import { AppProviders } from "../../providers/AppProviders";
 import { operationMeta } from "./config";
+import { HeaderToolbarButton } from "../../components/navigation/HeaderToolbarButton";
 import { WebStackHeader } from "../../components/navigation/WebStackHeader";
 import { GlobalVoiceOverlay } from "../../components/voice/GlobalVoiceOverlay";
 import { useAgentName } from "../../contexts/agentIdentity";
@@ -90,13 +91,12 @@ export function RootMemoryScreen({ navigation }: { navigation: RootNavigation })
 
   useLayoutEffect(() => {
     const advancedButton = (
-      <Pressable
+      <HeaderToolbarButton
         accessibilityLabel="Advanced memory settings"
         onPress={() => setAdvanced(true)}
-        hitSlop={10}
       >
         <Ionicons name="ellipsis-horizontal-circle-outline" size={24} color={theme.colors.accent} />
-      </Pressable>
+      </HeaderToolbarButton>
     );
     navigation.setOptions({
       headerRight: memoryPage === "facts" ? () => advancedButton : undefined,

@@ -6,7 +6,7 @@ import * as FileSystem from "expo-file-system/legacy";
 import { FontAwesome6, Ionicons } from "@expo/vector-icons";
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { useFocusEffect, useNavigation } from "@react-navigation/native";
-import { HeaderButton } from "@react-navigation/elements";
+import { HeaderToolbarButton as HeaderButton } from "../../components/navigation/HeaderToolbarButton";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import {
   ActivityIndicator,

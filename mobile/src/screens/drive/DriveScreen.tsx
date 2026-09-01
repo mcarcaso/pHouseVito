@@ -1,5 +1,8 @@
 import { Ionicons } from "@expo/vector-icons";
-import { HeaderButton } from "@react-navigation/elements";
+import {
+  HeaderToolbarButton as HeaderButton,
+  HeaderToolbarButtonGroup,
+} from "../../components/navigation/HeaderToolbarButton";
 import { useNavigation } from "@react-navigation/native";
 import * as DocumentPicker from "expo-document-picker";
 import * as FileSystem from "expo-file-system/legacy";
@@ -103,7 +106,7 @@ export function DriveScreen({
     navigation.setOptions({
       title: path.split("/").filter(Boolean).at(-1) ?? "Drive",
       headerRight: ({ tintColor }: { tintColor?: string }) => (
-        <View style={styles.headerActions}>
+        <HeaderToolbarButtonGroup>
           <HeaderButton
             accessibilityLabel="New folder"
             onPress={() => setFolderModal(true)}
@@ -122,10 +125,10 @@ export function DriveScreen({
           >
             <Ionicons name="add" size={24} color={tintColor ?? theme.colors.accent} />
           </HeaderButton>
-        </View>
+        </HeaderToolbarButtonGroup>
       ),
     });
-  }, [navigation, path, styles.headerActions, theme.colors.accent, upload]);
+  }, [navigation, path, theme.colors.accent, upload]);
 
   const createFolder = async () => {
     const name = folderName.trim();
@@ -383,7 +386,6 @@ const formatBytes = (size: number) =>
 const createStyles = (theme: VitoTheme) =>
   StyleSheet.create({
     root: { flex: 1, backgroundColor: theme.colors.canvas },
-    headerActions: { flexDirection: "row", alignItems: "center" },
     locationBar: {
       minHeight: 46,
       flexDirection: "row",

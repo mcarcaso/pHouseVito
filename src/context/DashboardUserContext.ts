@@ -41,6 +41,7 @@ const dashboardDependencyKeys = [
   "memoryService",
   "factService",
   "factStore",
+  "factExtractor",
   "secretService",
   "serverLifecycleService",
   "piSessionStore",

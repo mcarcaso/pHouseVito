@@ -39,6 +39,7 @@ const dashboardDependencyKeys = [
   "fileService",
   "cronService",
   "memoryService",
+  "memoryIngestionService",
   "factService",
   "factStore",
   "factExtractor",

@@ -10,6 +10,8 @@ import { CronerCronService } from "../services/cron/CronerCronService.js";
 import { DriveInboundAttachmentService } from "../services/files/DriveInboundAttachmentService.js";
 import { FileSystemFileService } from "../services/files/FileSystemFileService.js";
 import { DefaultMemoryService } from "../services/memory/DefaultMemoryService.js";
+import { DefaultMemoryIngestionService } from "../services/memory/DefaultMemoryIngestionService.js";
+import { CoalescingMemoryIngestionService } from "../services/memory/CoalescingMemoryIngestionService.js";
 import { OpenAiEmbeddingService } from "../services/memory/OpenAiEmbeddingService.js";
 import { DefaultFactService } from "../services/facts/DefaultFactService.js";
 import { PiFactExtractor } from "../services/facts/PiFactExtractor.js";
@@ -30,6 +32,7 @@ import { createEmbeddingDatabase } from "../stores/embeddings/embedding-database
 import { SqliteEmbeddingStore } from "../stores/embeddings/SqliteEmbeddingStore.js";
 import { SqliteFactStore } from "../stores/facts/SqliteFactStore.js";
 import { SqliteMessageStore } from "../stores/messages/SqliteMessageStore.js";
+import { EmbeddingMessageStore } from "../stores/messages/EmbeddingMessageStore.js";
 import { FilePiSessionStore } from "../stores/pi-sessions/FilePiSessionStore.js";
 import { SqliteSessionStore } from "../stores/sessions/SqliteSessionStore.js";
 import { FileSkillStore } from "../stores/skills/FileSkillStore.js";
@@ -91,6 +94,8 @@ export function RootContext(args: RootContextArgs): Context {
     embeddingDb: () => createEmbeddingDatabase(join(args.userDir, "embeddings.db")),
     embeddingStore: () => new SqliteEmbeddingStore(),
     embeddingService: () => new OpenAiEmbeddingService(),
+    memoryIngestionService: () =>
+      new CoalescingMemoryIngestionService(new DefaultMemoryIngestionService()),
     factStore: () => new SqliteFactStore(),
     factExtractor: (x) =>
       xVitoService(x).getConfig(x).settings.memory?.factIngestionMode === "persistent-pi"
@@ -105,7 +110,7 @@ export function RootContext(args: RootContextArgs): Context {
     piSessionStore: () => new FilePiSessionStore(),
     sessionStore: () => new SqliteSessionStore(),
     skillStore: () => new FileSkillStore(),
-    messageStore: () => new SqliteMessageStore(),
+    messageStore: () => new EmbeddingMessageStore(new SqliteMessageStore()),
     voiceTaskStore: () => new SqliteVoiceTaskStore(),
     quickCommandStore: () => new SqliteQuickCommandStore(),
     pushNotificationStore: () => new SqlitePushNotificationStore(),

@@ -19,7 +19,6 @@ import {
   xChannelRegistryService,
   xCronService,
   xInboundAttachmentService,
-  xMemoryService,
   xMessageStore,
   xServerLifecycleService,
   xSessionService,
@@ -588,41 +587,6 @@ export class PiOrchestratorService implements OrchestratorService {
       } finally {
         this.activeRequests.delete(event.sessionKey);
       }
-
-      // Background: build transcript embeddings and evidence-backed atomic
-      // facts from the same newly persisted message cadence.
-      const contextualizerModel = effectiveSettings.memory?.chunkContextualizerModel;
-      const factExtractorModel = effectiveSettings.memory?.factExtractorModel;
-      xMemoryService(this.x)
-        .maybeProcessNewMemory(this.x, vitoSession.id, {
-          contextualizerModel,
-          factExtractorModel,
-        })
-        .then(({ embedding, facts }) => {
-          tracedRuntime.writePostRunLine({
-            type: "embedding_result",
-            skipped: embedding.skipped,
-            chunks_created: embedding.chunks_created,
-            chunks: embedding.chunks,
-            unembedded_messages: embedding.unembedded_messages,
-            unembedded_chars: embedding.unembedded_chars,
-            duration_ms: embedding.duration_ms,
-          });
-          tracedRuntime.writePostRunLine({
-            type: "fact_ingestion_result",
-            skipped: facts.skipped,
-            inserted: facts.inserted,
-            supported: facts.supported,
-            superseded: facts.superseded,
-            rejected_count: facts.rejected.length,
-            batches_processed: facts.batchesProcessed,
-            messages_considered: facts.messagesConsidered,
-            duration_ms: facts.durationMs,
-          });
-        })
-        .catch((err) => {
-          console.error(`[Memory] Background ingestion failed:`, err);
-        });
     } catch (err) {
       // Safety net: stop typing on any error before/during run setup.
       if (baseHandler) {
@@ -821,32 +785,6 @@ export class PiOrchestratorService implements OrchestratorService {
       // For slash commands this is what calls editReply on the deferred
       // interaction; without it the user sees "Vito is thinking..." forever.
       await handler.stopTyping?.();
-
-      // Background force-embed. Errors logged, not surfaced to the user.
-      const newSettings = getEffectiveSettings(this.config, event.channel, event.sessionKey);
-      const contextualizerModel = newSettings.memory?.chunkContextualizerModel;
-      const factExtractorModel = newSettings.memory?.factExtractorModel;
-      xMemoryService(this.x)
-        .maybeProcessNewMemory(this.x, vitoSession.id, {
-          force: true,
-          contextualizerModel,
-          factExtractorModel,
-        })
-        .then(({ embedding, facts }) => {
-          if (embedding.skipped) {
-            console.log(`[/new] background embed skipped: ${embedding.skipped}`);
-          } else {
-            console.log(
-              `[/new] background embed complete — ${embedding.chunks_created} chunk(s) for ${vitoSession.id}`,
-            );
-          }
-          console.log(
-            `[/new] background facts complete — ${facts.inserted.length} inserted, ${facts.supported.length} supported`,
-          );
-        })
-        .catch((err) => {
-          console.error(`[/new] background memory ingestion failed for ${vitoSession.id}:`, err);
-        });
     } catch (err) {
       console.error("[/new] reset failed:", err);
       await handler.relay("❌ Reset failed — see logs.");

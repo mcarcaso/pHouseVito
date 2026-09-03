@@ -10,12 +10,11 @@ Raw messages remain authoritative. Atomic facts are derived, replaceable, and re
 
 ## Ingestion
 
-`MemoryService.maybeProcessNewMemory()` runs after a completed agent turn. It captures the current transcript checkpoint and starts two independent branches:
+`EmbeddingMessageStore` decorates the raw SQLite message store. After a finalized assistant message, its private candidate selector reads the embedding checkpoint, groups pending conversational messages into the existing 2–4K-character windows, and does nothing until a complete candidate exists. Voice-session finalization and `/new` archiving force the otherwise undersized remainder through the same path.
 
-- Transcript chunk contextualization and embedding
-- Atomic-fact extraction and reconciliation
+Candidates are submitted without awaiting through the focused `MemoryIngestionService.ingestCandidates()` contract. `CoalescingMemoryIngestionService` deduplicates and serializes background work; errors are caught at the persistence boundary and incomplete candidates remain eligible for a later retry. `DefaultMemoryIngestionService` contextualizes and embeds each supplied candidate before invoking atomic-fact extraction and reconciliation.
 
-The successfully stored contextualized embedding chunk is the fact-extraction work unit. Luna receives the same `context + text` payload used for embedding plus typed raw-message mappings. Thoughts, `tool_start`, and raw `tool_end` payloads are excluded by the transcript chunker. The generated context may guide interpretation but can never serve as evidence. Per-chunk, per-extractor-version run records provide independent retries and idempotency.
+The successfully stored contextualized embedding chunk is the fact-extraction work unit. Luna receives the same `context + text` payload used for embedding plus typed raw-message mappings. Thoughts, `tool_start`, and raw `tool_end` payloads are excluded by the candidate selector. The generated context may guide interpretation but can never serve as evidence. Per-chunk, per-extractor-version run records provide independent retries and idempotency.
 
 Live ingestion and historical backfill use the same sequential unit of work: take the earliest pending chunk, extract its candidates, and process each candidate completely before moving on. Candidate processing is deterministic validation → deterministic admission filters → exact/semantic retrieval of related canonical facts → one Luna reconciliation decision → one transactional persistence operation → canonical embedding. Historical catch-up remains an explicit resumable operation. Extraction and reconciliation default to `openai-codex/gpt-5.6-luna` through Pi authentication and share `settings.memory.factExtractorModel`. Retrieved conversation content is explicitly treated as untrusted quoted data.
 

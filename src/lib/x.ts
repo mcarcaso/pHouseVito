@@ -17,6 +17,7 @@ import type { FactStore } from "../stores/facts/FactStore.js";
 import type { CronService } from "../services/cron/CronService.js";
 import type { EmbeddingService } from "../services/memory/EmbeddingService.js";
 import type { MemoryService } from "../services/memory/MemoryService.js";
+import type { MemoryIngestionService } from "../services/memory/MemoryIngestionService.js";
 import type { FactExtractor } from "../services/facts/FactExtractor.js";
 import type { FactService } from "../services/facts/FactService.js";
 import type { OrchestratorService } from "../services/orchestrator/OrchestratorService.js";
@@ -48,6 +49,8 @@ export const xEmbeddingStore = (x: Context): EmbeddingStore =>
   x.get("embeddingStore") as EmbeddingStore;
 export const xEmbeddingService = (x: Context): EmbeddingService =>
   x.get("embeddingService") as EmbeddingService;
+export const xMemoryIngestionService = (x: Context): MemoryIngestionService =>
+  x.get("memoryIngestionService") as MemoryIngestionService;
 export const xFactStore = (x: Context): FactStore => x.get("factStore") as FactStore;
 export const xFactExtractor = (x: Context): FactExtractor =>
   x.get("factExtractor") as FactExtractor;

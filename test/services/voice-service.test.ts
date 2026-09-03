@@ -4,10 +4,14 @@ import { ObjectContext } from "../../src/context/ObjectContext.js";
 import { createDatabase } from "../../src/lib/sqlite/database.js";
 import type { AskApiOptions } from "../../src/shared/schemas/ask-api.js";
 import type { AskApiService } from "../../src/services/ask/AskApiService.js";
+import { CoalescingMemoryIngestionService } from "../../src/services/memory/CoalescingMemoryIngestionService.js";
 import {
   DefaultVoiceService,
   voiceHandoffText,
 } from "../../src/services/voice/DefaultVoiceService.js";
+import { createEmbeddingDatabase } from "../../src/stores/embeddings/embedding-database.js";
+import { SqliteEmbeddingStore } from "../../src/stores/embeddings/SqliteEmbeddingStore.js";
+import { EmbeddingMessageStore } from "../../src/stores/messages/EmbeddingMessageStore.js";
 import type { MessageRow } from "../../src/stores/messages/MessageStore.js";
 import { SqliteMessageStore } from "../../src/stores/messages/SqliteMessageStore.js";
 import { SqliteSessionStore } from "../../src/stores/sessions/SqliteSessionStore.js";
@@ -91,12 +95,15 @@ describe("DefaultVoiceService", () => {
 
   it("continues from chat messages and hands the completed transcript back exactly once", async () => {
     const db = createDatabase(":memory:");
+    const embeddingDb = createEmbeddingDatabase(":memory:");
     const sessionStore = new SqliteSessionStore();
-    const messageStore = new SqliteMessageStore();
+    const messageStore = new EmbeddingMessageStore(new SqliteMessageStore());
     const appended: Array<{ sessionId: string; content: string; key: string }> = [];
     const ingested: string[] = [];
     const x = new ObjectContext({
       db: () => db,
+      embeddingDb: () => embeddingDb,
+      embeddingStore: () => new SqliteEmbeddingStore(),
       sessionStore: () => sessionStore,
       messageStore: () => messageStore,
       orchestratorService: () =>
@@ -110,13 +117,48 @@ describe("DefaultVoiceService", () => {
             appended.push({ sessionId, content, key: details.key });
           },
         }) as unknown,
-      memoryService: () =>
-        ({
-          maybeProcessNewMemory: async (_x: ObjectContext, sessionId: string) => {
-            ingested.push(sessionId);
-            return { embedding: {}, facts: {} };
+      memoryIngestionService: () =>
+        new CoalescingMemoryIngestionService({
+          ingestCandidates: async (ingestionX, candidates) => {
+            ingested.push(candidates[0]?.sessionId ?? "missing");
+            const embeddingStore = ingestionX.get("embeddingStore") as SqliteEmbeddingStore;
+            for (const candidate of candidates) {
+              embeddingStore.createChunk(ingestionX, {
+                sessionId: candidate.sessionId,
+                day: candidate.day,
+                chunkIndex: candidate.chunkIndex,
+                text: candidate.text,
+                context: "test",
+                embeddedText: candidate.text,
+                messageIdStart: candidate.messages[0].id,
+                messageIdEnd: candidate.messages[candidate.messages.length - 1].id,
+                messageCount: candidate.messages.length,
+                vector: new Float32Array([1]),
+              });
+            }
+            return {
+              embedding: {
+                chunks_created: candidates.length,
+                chunks: [],
+                unembedded_messages: candidates.flatMap((candidate) => candidate.messages).length,
+                unembedded_chars: candidates.reduce(
+                  (sum, candidate) => sum + candidate.text.length,
+                  0,
+                ),
+                duration_ms: 0,
+              },
+              facts: {
+                inserted: [],
+                supported: [],
+                superseded: [],
+                rejected: [],
+                batchesProcessed: 0,
+                messagesConsidered: 0,
+                durationMs: 0,
+              },
+            };
           },
-        }) as unknown,
+        }),
     });
     sessionStore.create(x, {
       id: "dashboard:chat",
@@ -187,7 +229,7 @@ describe("DefaultVoiceService", () => {
     };
     await service.recordEvent(x, endEvent);
     await service.recordEvent(x, endEvent);
-    await new Promise<void>((resolve) => setImmediate(resolve));
+    await new Promise((resolve) => setTimeout(resolve, 75));
 
     assert.equal(appended.length, 1);
     assert.equal(appended[0]?.sessionId, "dashboard:chat");
@@ -199,6 +241,7 @@ describe("DefaultVoiceService", () => {
       .filter((message) => message.author === "Vito Voice");
     assert.equal(handoffs.length, 1);
     assert.deepEqual(ingested, ["voice:test"]);
+    embeddingDb.close();
     db.close();
   });
 

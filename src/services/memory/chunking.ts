@@ -22,8 +22,8 @@ import { xEmbeddingService, xEmbeddingStore, xMessageStore, xPiAuthPath } from "
 
 // ── Config ─────────────────────────────────────────────────
 
-const MIN_CHUNK_CHARS = 2000; // Start chunking when buffer hits this
-const MAX_CHUNK_CHARS = 4000; // Hard cap per chunk
+export const MIN_CHUNK_CHARS = 2000; // Start chunking when buffer hits this
+export const MAX_CHUNK_CHARS = 4000; // Hard cap per chunk
 const ASSISTANT_LABEL = "assistant";
 /** Default model used to write the per-chunk context sentence. */
 const DEFAULT_CONTEXTUAL_MODEL = { provider: "openrouter", name: "openai/gpt-5.4-nano" };
@@ -76,7 +76,7 @@ function extractText(contentRaw: string): string {
   }
 }
 
-interface RawMessage {
+export interface RawMessage {
   id: number;
   session_id: string;
   timestamp: number;
@@ -85,7 +85,7 @@ interface RawMessage {
   author: string | null;
 }
 
-function formatMessageLine(msg: RawMessage): string {
+export function formatMessageLine(msg: RawMessage): string {
   const time = formatTime(msg.timestamp);
   const role = msg.type === "assistant" ? ASSISTANT_LABEL : "user";
   const authorPrefix = msg.type === "user" && msg.author ? `${msg.author}: ` : "";
@@ -95,11 +95,16 @@ function formatMessageLine(msg: RawMessage): string {
 
 // ── Chunking Logic ─────────────────────────────────────────
 
-interface ChunkCandidate {
+export interface ChunkCandidate {
   text: string;
   messages: RawMessage[];
   day: string;
   chunkIndex: number;
+}
+
+export interface IngestionCandidate extends ChunkCandidate {
+  sessionId: string;
+  initialAfterMessageId: number;
 }
 
 /**
@@ -109,7 +114,7 @@ interface ChunkCandidate {
  *   - After all messages, emit the remaining buffer if it's >= MIN_CHUNK_CHARS (2K)
  *   - Leftover messages under MIN are left dangling for next time
  */
-function produceCompleteChunks(
+export function produceCompleteChunks(
   messages: RawMessage[],
   existingChunkCount: Map<string, number>,
   forceEmitRemainder = false,
@@ -356,57 +361,95 @@ async function doEmbedding(
     };
   }
 
-  console.log(`[Embeddings] Processing ${chunks.length} new chunk(s) for session ${sessionId}`);
+  return embedIngestionCandidates(
+    x,
+    chunks.map((chunk) => ({
+      ...chunk,
+      sessionId,
+      initialAfterMessageId: afterId,
+    })),
+    options,
+    start,
+  );
+}
+
+export async function embedIngestionCandidates(
+  x: Context,
+  candidates: IngestionCandidate[],
+  options: EmbedOptions = {},
+  start = Date.now(),
+): Promise<EmbeddingResult> {
+  if (candidates.length === 0) {
+    return {
+      skipped: "no_candidates",
+      chunks_created: 0,
+      chunks: [],
+      unembedded_messages: 0,
+      unembedded_chars: 0,
+      duration_ms: Date.now() - start,
+    };
+  }
+
   const contextualizerRuntime = await ModelRuntime.create({
     authPath: xPiAuthPath(x),
     refreshOnCreate: false,
   });
   const createdChunks: EmbeddingResult["chunks"] = [];
-  for (const chunk of chunks) {
+  const messageIds = new Set<number>();
+  let totalChars = 0;
+
+  for (const candidate of candidates) {
+    console.log(
+      `[Embeddings] Processing candidate ${candidate.day}#${candidate.chunkIndex} for session ${candidate.sessionId}`,
+    );
+    candidate.messages.forEach((message) => messageIds.add(message.id));
+    totalChars += candidate.text.length;
     try {
-      const previousText = embeddingStore.getPreviousChunkText(x, sessionId);
+      const embeddingStore = xEmbeddingStore(x);
+      const previousText = embeddingStore.getPreviousChunkText(x, candidate.sessionId);
       const context = await generateContext(
         contextualizerRuntime,
-        chunk.text,
+        candidate.text,
         previousText,
         options.contextualizerModel ?? DEFAULT_CONTEXTUAL_MODEL,
       );
-      const embeddedText = `${context}\n\n${chunk.text}`;
+      const embeddedText = `${context}\n\n${candidate.text}`;
       const vector = await xEmbeddingService(x).create(x, embeddedText);
       embeddingStore.createChunk(x, {
-        sessionId,
-        day: chunk.day,
-        chunkIndex: chunk.chunkIndex,
-        text: chunk.text,
+        sessionId: candidate.sessionId,
+        day: candidate.day,
+        chunkIndex: candidate.chunkIndex,
+        text: candidate.text,
         context,
         embeddedText,
-        messageIdStart: chunk.messages[0].id,
-        messageIdEnd: chunk.messages[chunk.messages.length - 1].id,
-        messageCount: chunk.messages.length,
+        messageIdStart: candidate.messages[0].id,
+        messageIdEnd: candidate.messages[candidate.messages.length - 1].id,
+        messageCount: candidate.messages.length,
         vector,
       });
       createdChunks.push({
-        day: chunk.day,
-        chunk_index: chunk.chunkIndex,
-        msg_count: chunk.messages.length,
-        char_count: chunk.text.length,
+        day: candidate.day,
+        chunk_index: candidate.chunkIndex,
+        msg_count: candidate.messages.length,
+        char_count: candidate.text.length,
         context,
       });
       console.log(
-        `[Embeddings] ✅ Chunk #${chunk.chunkIndex} for ${chunk.day} — ${chunk.messages.length} msgs, ${chunk.text.length} chars`,
+        `[Embeddings] ✅ Chunk #${candidate.chunkIndex} for ${candidate.day} — ${candidate.messages.length} msgs, ${candidate.text.length} chars`,
       );
     } catch (error) {
       console.error(
-        `[Embeddings] ❌ Failed to embed chunk for ${chunk.day}#${chunk.chunkIndex}:`,
+        `[Embeddings] ❌ Failed to embed chunk for ${candidate.day}#${candidate.chunkIndex}:`,
         error,
       );
     }
   }
 
   return {
+    ...(createdChunks.length === 0 ? { skipped: "all_candidates_failed" } : {}),
     chunks_created: createdChunks.length,
     chunks: createdChunks,
-    unembedded_messages: unembeddedMessages.length,
+    unembedded_messages: messageIds.size,
     unembedded_chars: totalChars,
     duration_ms: Date.now() - start,
   };

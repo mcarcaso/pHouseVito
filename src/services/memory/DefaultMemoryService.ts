@@ -2,7 +2,6 @@ import { ModelRuntime } from "@earendil-works/pi-coding-agent";
 import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import type { Context } from "../../context/Context.js";
-import { embedNewChunks, type EmbedOptions, type EmbeddingResult } from "./chunking.js";
 import { searchMemory } from "./hybrid-search.js";
 import { extractRelevantExcerpt, getSearchTerms } from "./search-excerpt.js";
 import { xEmbeddingStore, xFactService, xPiAuthPath, xUserDir, xVitoService } from "../../lib/x.js";
@@ -10,8 +9,6 @@ import type { EmbeddingStats } from "../../stores/embeddings/EmbeddingStore.js";
 import type {
   MemoryAnswerCitation,
   MemoryAnswerResult,
-  MemoryIngestionOptions,
-  MemoryIngestionResult,
   MemoryRecallOptions,
   MemoryRecallResult,
   MemoryService,
@@ -28,8 +25,6 @@ export function shouldUseCurrentFacts(query: string, asOf?: string): boolean {
 }
 
 export class DefaultMemoryService implements MemoryService {
-  private embeddingInProgress = false;
-  private ingestionInProgress = false;
   private answerRuntime?: Promise<ModelRuntime>;
 
   getProfile(x: Context): string | null {
@@ -197,79 +192,6 @@ ${JSON.stringify(evidence)}
       .filter((section) => section.score > 0)
       .sort((a, b) => b.score - a.score)
       .slice(0, limit);
-  }
-
-  async maybeProcessNewMemory(
-    x: Context,
-    sessionId: string,
-    options: MemoryIngestionOptions = {},
-  ): Promise<MemoryIngestionResult> {
-    if (this.ingestionInProgress) {
-      const now = Date.now();
-      return {
-        embedding: {
-          skipped: "lock_held",
-          chunks_created: 0,
-          chunks: [],
-          unembedded_messages: 0,
-          unembedded_chars: 0,
-          duration_ms: 0,
-        },
-        facts: {
-          skipped: "lock_held",
-          inserted: [],
-          supported: [],
-          superseded: [],
-          rejected: [],
-          batchesProcessed: 0,
-          messagesConsidered: 0,
-          durationMs: Date.now() - now,
-        },
-      };
-    }
-
-    this.ingestionInProgress = true;
-    try {
-      // Capture this before the embedding branch advances its checkpoint. On
-      // first deployment, facts start at the same unembedded boundary rather
-      // than silently backfilling the entire historical database.
-      const initialAfterMessageId = xEmbeddingStore(x).getLastEmbeddedMessageId(x, sessionId);
-      // A successfully stored embedding chunk is the fact-extraction work
-      // unit. Run sequentially so the fact branch sees chunks created above.
-      const embedding = await this.maybeEmbedNewChunks(x, sessionId, options);
-      const facts = await xFactService(x).ingestNew(x, sessionId, {
-        initialAfterMessageId,
-        extractorModel: options.factExtractorModel,
-      });
-      return { embedding, facts };
-    } finally {
-      this.ingestionInProgress = false;
-    }
-  }
-
-  async maybeEmbedNewChunks(
-    x: Context,
-    sessionId: string,
-    options: EmbedOptions = {},
-  ): Promise<EmbeddingResult> {
-    const start = Date.now();
-    if (this.embeddingInProgress) {
-      return {
-        skipped: "lock_held",
-        chunks_created: 0,
-        chunks: [],
-        unembedded_messages: 0,
-        unembedded_chars: 0,
-        duration_ms: Date.now() - start,
-      };
-    }
-
-    this.embeddingInProgress = true;
-    try {
-      return await embedNewChunks(x, sessionId, options);
-    } finally {
-      this.embeddingInProgress = false;
-    }
   }
 
   getStats(x: Context): EmbeddingStats {

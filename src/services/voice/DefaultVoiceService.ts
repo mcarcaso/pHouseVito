@@ -311,6 +311,7 @@ export class DefaultVoiceService implements VoiceService {
       order: "oldest",
     });
     if (messages.length === 0) return;
+    xMessageStore(x).cmd(x, { type: "finalize-session", sessionIds: [voiceSessionId] });
     const handoff = voiceHandoffText(messages);
     const alreadyVisible = xMessageStore(x)
       .list(x, {
@@ -355,9 +356,6 @@ export class DefaultVoiceService implements VoiceService {
       id: parentSessionId,
       changes: { last_active_at: timestamp },
     });
-    void xMemoryService(x)
-      .maybeProcessNewMemory(x, voiceSessionId, { force: true })
-      .catch((error) => console.error("[Voice] Failed to ingest completed conversation:", error));
   }
 
   listSessions(x: Context, limit = 25) {

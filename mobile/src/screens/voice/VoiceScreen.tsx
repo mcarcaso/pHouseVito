@@ -65,6 +65,12 @@ interface VisibleTask {
   status: "queued" | "running" | "completed" | "failed" | "cancelled" | "timed_out";
   result: string | null;
 }
+interface PendingTaskAnnouncement {
+  id: string;
+  status: "completed" | "failed";
+}
+
+const TASK_ANNOUNCEMENT_IDLE_MS = 2_500;
 
 export function VoiceScreen({
   onUnauthorized,
@@ -100,6 +106,11 @@ export function VoiceScreen({
   const lineIdRef = useRef(0);
   const sessionIdRef = useRef(`voice:${Date.now()}`);
   const handledToolCallsRef = useRef(new Set<string>());
+  const pendingTaskAnnouncementsRef = useRef<PendingTaskAnnouncement[]>([]);
+  const announcedTaskIdsRef = useRef(new Set<string>());
+  const announcementTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const speechActivityRef = useRef({ user: false, assistant: false, lastChangedAt: Date.now() });
+  const attemptTaskAnnouncementRef = useRef<() => void>(() => undefined);
 
   useFocusEffect(
     useCallback(() => {
@@ -219,6 +230,10 @@ export function VoiceScreen({
     }
     connectionRef.current?.close();
     connectionRef.current = null;
+    if (announcementTimerRef.current) clearTimeout(announcementTimerRef.current);
+    announcementTimerRef.current = null;
+    pendingTaskAnnouncementsRef.current = [];
+    speechActivityRef.current = { user: false, assistant: false, lastChangedAt: Date.now() };
     if (Platform.OS !== "web") stopVoiceAudio();
     setMuted(false);
     setState("idle");
@@ -227,6 +242,66 @@ export function VoiceScreen({
 
   const sendToolResult = useCallback((callId: string, result: unknown, instructions?: string) => {
     connectionRef.current?.submitToolResult(callId, result, instructions);
+  }, []);
+
+  const attemptTaskAnnouncement = useCallback(() => {
+    if (
+      announcementTimerRef.current ||
+      !connectionRef.current ||
+      pendingTaskAnnouncementsRef.current.length === 0
+    )
+      return;
+
+    const elapsed = Date.now() - speechActivityRef.current.lastChangedAt;
+    const delay = Math.max(100, TASK_ANNOUNCEMENT_IDLE_MS - elapsed);
+    announcementTimerRef.current = setTimeout(() => {
+      announcementTimerRef.current = null;
+      const connection = connectionRef.current;
+      const activity = speechActivityRef.current;
+      if (!connection || pendingTaskAnnouncementsRef.current.length === 0) return;
+      if (activity.user || activity.assistant) {
+        attemptTaskAnnouncementRef.current();
+        return;
+      }
+
+      const announcement = pendingTaskAnnouncementsRef.current.shift();
+      if (!announcement || announcedTaskIdsRef.current.has(announcement.id)) {
+        attemptTaskAnnouncementRef.current();
+        return;
+      }
+      announcedTaskIdsRef.current.add(announcement.id);
+      speechActivityRef.current = {
+        ...speechActivityRef.current,
+        assistant: true,
+        lastChangedAt: Date.now(),
+      };
+      connection.requestResponse(
+        announcement.status === "completed"
+          ? `A background ${agentName} task (${announcement.id}) just finished. At this natural opening, briefly say "By the way" and give the user its useful result from your context. Do not call a tool, repeat the original request, or give a long preamble.`
+          : `A background ${agentName} task (${announcement.id}) just failed. At this natural opening, briefly tell the user it could not be completed. Do not call a tool or invent a result.`,
+      );
+    }, delay);
+  }, [agentName]);
+
+  useEffect(() => {
+    attemptTaskAnnouncementRef.current = attemptTaskAnnouncement;
+  }, [attemptTaskAnnouncement]);
+
+  const queueTaskAnnouncement = useCallback((announcement: PendingTaskAnnouncement) => {
+    if (
+      announcedTaskIdsRef.current.has(announcement.id) ||
+      pendingTaskAnnouncementsRef.current.some((pending) => pending.id === announcement.id)
+    )
+      return;
+    pendingTaskAnnouncementsRef.current.push(announcement);
+    attemptTaskAnnouncementRef.current();
+  }, []);
+
+  const markTaskHandled = useCallback((id: string) => {
+    announcedTaskIdsRef.current.add(id);
+    pendingTaskAnnouncementsRef.current = pendingTaskAnnouncementsRef.current.filter(
+      (pending) => pending.id !== id,
+    );
   }, []);
 
   const waitForTask = useCallback(
@@ -241,19 +316,24 @@ export function VoiceScreen({
           ),
         );
         if (task.status === "queued" || task.status === "running") continue;
-        connectionRef.current?.addHistory([
-          {
-            role: "system",
-            text: `Background ${agentName} task ${id} is now ${task.status}. Result: ${task.result ?? task.error ?? "No result"}. Do not speak about this until the user asks about the task or its result.`,
-          },
-        ]);
+        if (connectionRef.current) {
+          connectionRef.current.addHistory([
+            {
+              role: "system",
+              text: `Background ${agentName} task ${id} is now ${task.status}. Result: ${task.result ?? task.error ?? "No result"}. Keep this available as trusted task context; the app will prompt you when it is appropriate to announce it.`,
+            },
+          ]);
+          if (task.status === "completed" || task.status === "failed") {
+            queueTaskAnnouncement({ id, status: task.status });
+          }
+        }
         return;
       }
       setTasks((current) =>
         current.map((item) => (item.id === id ? { ...item, status: "timed_out" } : item)),
       );
     },
-    [agentName],
+    [agentName, queueTaskAnnouncement],
   );
 
   const executeTool = useCallback(
@@ -289,7 +369,9 @@ export function VoiceScreen({
           };
           responseInstructions = `Briefly confirm the ${agentName} task is underway and conversation can continue. Do not claim you lack access, ask the user to reconstruct the answer, repeat the request, or imply the task failed.`;
         } else if (name === "get_vito_task") {
-          result = await getVoiceTask(String(args.id ?? ""));
+          const taskId = String(args.id ?? "");
+          markTaskHandled(taskId);
+          result = await getVoiceTask(taskId);
         } else throw new Error(`Unknown tool: ${name}`);
         void persistVoiceEvent(
           sessionIdRef.current,
@@ -308,15 +390,25 @@ export function VoiceScreen({
         sendToolResult(callId, { error: message });
       }
     },
-    [addLine, agentName, sendToolResult, waitForTask],
+    [addLine, agentName, markTaskHandled, sendToolResult, waitForTask],
   );
 
   const handleEvent = useCallback(
     (event: LiveVoiceEvent) => {
       if (event.type === "listening") setState("listening");
       if (event.type === "speaking") setState("speaking");
-      if (event.type === "transcript")
+      if (event.type === "speech_activity") {
+        speechActivityRef.current = {
+          ...speechActivityRef.current,
+          [event.role === "user" ? "user" : "assistant"]: event.active,
+          lastChangedAt: Date.now(),
+        };
+        if (!event.active) attemptTaskAnnouncementRef.current();
+      }
+      if (event.type === "transcript") {
+        speechActivityRef.current.lastChangedAt = Date.now();
         addLine(event.role === "user" ? "user" : "agent", event.text);
+      }
       if (event.type === "usage") {
         void persistVoiceEvent(sessionIdRef.current, "usage", JSON.stringify(event.usage)).catch(
           () => undefined,
@@ -346,6 +438,11 @@ export function VoiceScreen({
     try {
       sessionIdRef.current = resume?.session.id ?? `voice:${Date.now()}`;
       handledToolCallsRef.current.clear();
+      pendingTaskAnnouncementsRef.current = [];
+      announcedTaskIdsRef.current.clear();
+      if (announcementTimerRef.current) clearTimeout(announcementTimerRef.current);
+      announcementTimerRef.current = null;
+      speechActivityRef.current = { user: false, assistant: false, lastChangedAt: Date.now() };
       if (Platform.OS !== "web") {
         await startVoiceAudio("speaker");
         setAudioRoute("speaker");

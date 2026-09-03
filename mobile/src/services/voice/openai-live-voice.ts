@@ -63,9 +63,19 @@ export const openAiLiveVoiceProvider: LiveVoiceProvider = {
       const event = parseEvent(raw);
       if (!event) return;
 
-      if (event.type === "input_audio_buffer.speech_started") emit({ type: "listening" });
-      if (event.type === "response.output_audio.delta") emit({ type: "speaking" });
+      if (event.type === "input_audio_buffer.speech_started") {
+        emit({ type: "listening" });
+        emit({ type: "speech_activity", role: "user", active: true });
+      }
+      if (event.type === "input_audio_buffer.speech_stopped") {
+        emit({ type: "speech_activity", role: "user", active: false });
+      }
+      if (event.type === "response.output_audio.delta") {
+        emit({ type: "speaking" });
+        emit({ type: "speech_activity", role: "assistant", active: true });
+      }
       if (event.type === "response.done") {
+        emit({ type: "speech_activity", role: "assistant", active: false });
         emit({ type: "listening" });
         if (event.response?.usage) emit({ type: "usage", usage: event.response.usage });
       }
@@ -126,6 +136,9 @@ export const openAiLiveVoiceProvider: LiveVoiceProvider = {
       setMuted: (muted) => connection.setMuted(muted),
       addHistory: (turns) => {
         for (const turn of turns) connection.sendEvent(historyEvent(turn));
+      },
+      requestResponse: (instructions) => {
+        connection.sendEvent({ type: "response.create", response: { instructions } });
       },
       submitToolResult: (callId, result, instructions) => {
         connection.sendEvent({

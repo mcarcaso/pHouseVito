@@ -8,6 +8,7 @@ export interface LiveVoiceTurn {
 export type LiveVoiceEvent =
   | { type: "listening" }
   | { type: "speaking" }
+  | { type: "speech_activity"; role: "user" | "assistant"; active: boolean }
   | { type: "transcript"; role: "user" | "assistant"; text: string }
   | { type: "usage"; usage: unknown }
   | { type: "tool_call"; name: string; callId: string; arguments?: string }
@@ -16,6 +17,7 @@ export type LiveVoiceEvent =
 export interface LiveVoiceSession {
   setMuted(muted: boolean): void;
   addHistory(turns: LiveVoiceTurn[]): void;
+  requestResponse(instructions: string): void;
   submitToolResult(callId: string, result: unknown, instructions?: string): void;
   close(): void;
 }

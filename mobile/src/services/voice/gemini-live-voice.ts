@@ -140,10 +140,12 @@ export const geminiLiveVoiceProvider: LiveVoiceProvider = {
       if (content?.interrupted) {
         audio.interrupt();
         assistantTranscript = "";
+        options.onEvent({ type: "speech_activity", role: "assistant", active: false });
         options.onEvent({ type: "listening" });
       }
       if (content?.inputTranscription?.text) {
         userTranscript += content.inputTranscription.text;
+        options.onEvent({ type: "speech_activity", role: "user", active: true });
         options.onEvent({ type: "listening" });
       }
       if (content?.outputTranscription?.text) {
@@ -152,6 +154,7 @@ export const geminiLiveVoiceProvider: LiveVoiceProvider = {
       for (const part of content?.modelTurn?.parts ?? []) {
         const audioData = part.inlineData;
         if (audioData?.data && audioData.mimeType?.startsWith("audio/pcm")) {
+          options.onEvent({ type: "speech_activity", role: "assistant", active: true });
           options.onEvent({ type: "speaking" });
           void audio.play(audioData.data);
         }
@@ -169,6 +172,8 @@ export const geminiLiveVoiceProvider: LiveVoiceProvider = {
         }
         userTranscript = "";
         assistantTranscript = "";
+        options.onEvent({ type: "speech_activity", role: "user", active: false });
+        options.onEvent({ type: "speech_activity", role: "assistant", active: false });
         options.onEvent({ type: "listening" });
       }
       for (const call of message.toolCall?.functionCalls ?? []) {
@@ -202,6 +207,14 @@ export const geminiLiveVoiceProvider: LiveVoiceProvider = {
     return {
       setMuted: (muted) => audio.setMuted(muted),
       addHistory: (turns) => send(turnPayload(turns)),
+      requestResponse: (instructions) => {
+        send({
+          clientContent: {
+            turns: [{ role: "user", parts: [{ text: `[System context] ${instructions}` }] }],
+            turnComplete: true,
+          },
+        });
+      },
       submitToolResult: (callId, result, instructions) => {
         send({
           toolResponse: {

@@ -55,7 +55,6 @@ import {
   SkillFilesScreen,
   SkillFileScreen,
 } from "../../screens/skills/SkillMobileScreens";
-import { VoiceScreen } from "../../screens/voice/VoiceScreen";
 import {
   VoiceHistoryDetailScreen,
   VoiceHistoryScreen,
@@ -72,7 +71,6 @@ import { AppProviders } from "../../providers/AppProviders";
 import { operationMeta } from "./config";
 import { HeaderToolbarButton } from "../../components/navigation/HeaderToolbarButton";
 import { WebStackHeader } from "../../components/navigation/WebStackHeader";
-import { GlobalVoiceOverlay } from "../../components/voice/GlobalVoiceOverlay";
 import { useAgentName } from "../../contexts/agentIdentity";
 import { DESKTOP_BREAKPOINT, useThemeStyles, useVitoTheme } from "../../hooks/useVitoTheme";
 
@@ -488,6 +486,12 @@ export function MoreMenu({ onLogout }: { onLogout: () => void }) {
             icon: "mic-outline" as const,
             title: "Voice Mode",
             description: "Live conversation provider, model, and voice",
+          },
+          {
+            route: "VoiceHistory" as const,
+            icon: "time-outline" as const,
+            title: "Voice History",
+            description: "Past voice conversation transcripts",
           },
           {
             route: "AppThemeSettings" as const,

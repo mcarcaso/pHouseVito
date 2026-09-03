@@ -8,7 +8,7 @@ import { operationAreas, type OperationArea } from "../../screens/operations/ope
 type IconName = React.ComponentProps<typeof Ionicons>["name"];
 
 export type DesktopDestination =
-  | { type: "main"; route: "Home" | "Chat" | "Voice" }
+  | { type: "main"; route: "Home" | "Chat" }
   | { type: "identity" }
   | { type: "memory" }
   | { type: "operation"; area: OperationArea }
@@ -21,7 +21,6 @@ const primaryItems: Array<{
 }> = [
   { label: "Home", icon: "home-outline", destination: { type: "main", route: "Home" } },
   { label: "Chat", icon: "chatbubble-outline", destination: { type: "main", route: "Chat" } },
-  { label: "Voice", icon: "mic-outline", destination: { type: "main", route: "Voice" } },
 ];
 
 const appSettings: Array<{
@@ -66,10 +65,10 @@ export function DesktopNavigationSidebar({
   const styles = useThemeStyles(createStyles);
   const agentName = useAgentName();
   const activeKey =
-    activeRoute === "ChatConversation"
+    activeRoute === "ChatConversation" || activeRoute === "VoiceConversation"
       ? "Chat"
       : activeRoute === "VoiceHistory" || activeRoute === "VoiceHistoryDetail"
-        ? "Voice"
+        ? "VoiceModeSettings"
         : activeRoute === "Operation" && activeOperationArea
           ? `operation:${activeOperationArea}`
           : activeRoute === "MemoryHome" || activeRoute === "MemoryResults"

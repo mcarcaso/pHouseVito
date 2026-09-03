@@ -55,7 +55,6 @@ export const operationMeta: Record<
 export const labels: Record<MainRouteName, { label: string; icon: IconName }> = {
   Home: { label: "Home", icon: "home-outline" },
   Chat: { label: "Chat", icon: "chatbubble-outline" },
-  Voice: { label: "Voice", icon: "mic-outline" },
   Identity: { label: "Identity", icon: "finger-print-outline" },
   More: { label: "More", icon: "ellipsis-horizontal" },
   ...Object.fromEntries(
@@ -66,9 +65,8 @@ export const labels: Record<MainRouteName, { label: string; icon: IconName }> = 
   ),
 } as Record<MainRouteName, { label: string; icon: IconName }>;
 
-function baseTabForDeepLink(routeName: string): "Chat" | "Voice" | "More" {
-  if (routeName === "ChatConversation") return "Chat";
-  if (routeName === "VoiceHistory" || routeName === "VoiceHistoryDetail") return "Voice";
+function baseTabForDeepLink(routeName: string): "Chat" | "More" {
+  if (routeName === "ChatConversation" || routeName === "VoiceConversation") return "Chat";
   return "More";
 }
 
@@ -135,12 +133,12 @@ export const linking: LinkingOptions<RootStackParamList> = {
         screens: {
           Home: "home",
           Chat: "chat",
-          Voice: "voice",
           Identity: "identity/:id?",
           More: "more",
         },
       },
       ChatConversation: "chat/:sessionId",
+      VoiceConversation: "chat/:sessionId/voice",
       MemoryHome: "operation/memory",
       IdentityHome: "identity",
       IdentityDocument: "identity/:document",

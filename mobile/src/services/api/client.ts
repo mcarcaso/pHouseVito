@@ -476,14 +476,30 @@ export async function sendMessage(sessionId: string, content: string): Promise<v
   });
 }
 
+export interface VoiceConversationTurn {
+  role: "user" | "assistant";
+  text: string;
+}
+
+export async function getVoiceConversationContext(
+  chatSessionId: string,
+): Promise<VoiceConversationTurn[]> {
+  const result = await api<{ turns: VoiceConversationTurn[] }>("/api/voice/conversation-context", {
+    method: "POST",
+    body: JSON.stringify({ chatSessionId }),
+  });
+  return result.turns;
+}
+
 export async function persistVoiceEvent(
   sessionId: string,
+  parentSessionId: string,
   kind: "user" | "assistant" | "usage" | "session_end",
   content: string,
 ): Promise<void> {
   await api("/api/voice/event", {
     method: "POST",
-    body: JSON.stringify({ sessionId, kind, content }),
+    body: JSON.stringify({ sessionId, parentSessionId, kind, content }),
   });
 }
 

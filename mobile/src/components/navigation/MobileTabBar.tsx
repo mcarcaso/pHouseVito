@@ -5,7 +5,7 @@ import { labels } from "../../application/navigation/config";
 import type { MainRouteName } from "../../application/navigation/route-types";
 import { useThemeStyles, type VitoTheme } from "../../hooks/useVitoTheme";
 
-export const visibleWorkspaceRoutes: MainRouteName[] = ["Home", "Chat", "Voice", "More"];
+export const visibleWorkspaceRoutes: MainRouteName[] = ["Home", "Chat", "More"];
 
 export function WorkspaceTabBar({
   active,

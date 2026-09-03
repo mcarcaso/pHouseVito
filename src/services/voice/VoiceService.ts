@@ -10,6 +10,11 @@ export type RealtimeVoice =
 export type RealtimeModel = "gpt-realtime-mini" | "gpt-realtime";
 export type LiveVoiceProviderId = "openai" | "gemini";
 
+export interface VoiceConversationTurn {
+  role: "user" | "assistant";
+  text: string;
+}
+
 export interface VoiceSessionDetail {
   session: SessionRow;
   messages: MessageRow[];
@@ -27,10 +32,16 @@ export interface VoiceService {
   };
   createRealtimeSecret(x: Context, voice: RealtimeVoice, model: RealtimeModel): Promise<unknown>;
   createGeminiRealtimeSecret(x: Context, voice: string): Promise<unknown>;
+  getConversationContext(x: Context, chatSessionId: string): VoiceConversationTurn[];
   recordEvent(
     x: Context,
-    event: { sessionId: string; kind: VoiceEventKind; content: string },
-  ): void;
+    event: {
+      sessionId: string;
+      parentSessionId?: string;
+      kind: VoiceEventKind;
+      content: string;
+    },
+  ): Promise<void>;
   listSessions(x: Context, limit?: number): SessionRow[];
   getSession(x: Context, sessionId: string): VoiceSessionDetail | null;
   getContext(x: Context): { profile: string | null; recentVoiceSessions: SessionRow[] };

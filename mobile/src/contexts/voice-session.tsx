@@ -14,6 +14,7 @@ import {
   getRealtimeToken,
   getVoiceAvailability,
   getVoiceContext,
+  getVoiceConversationContext,
   getVoiceTask,
   loadGeminiLiveVoice,
   loadLiveVoiceProvider,
@@ -27,7 +28,6 @@ import {
   type RealtimeModel,
   type RealtimeVoice,
   type VoiceAvailability,
-  type VoiceSessionDetail,
 } from "../services/api/client";
 import {
   setVoiceAudioRoute,
@@ -85,8 +85,9 @@ interface VoiceSessionContextValue {
   tasks: VisibleVoiceTask[];
   status: VoiceOverlayStatus;
   controls: VoiceOverlayControls | null;
+  chatSessionId: string | null;
   refreshConfiguration(): Promise<void>;
-  start(resume?: VoiceSessionDetail | null): Promise<void>;
+  start(options: { chatSessionId: string }): Promise<void>;
   stop(): void;
 }
 
@@ -113,11 +114,14 @@ export function VoiceSessionProvider({
   const [error, setError] = useState<string | null>(null);
   const [transcript, setTranscript] = useState<VoiceTranscriptLine[]>([]);
   const [tasks, setTasks] = useState<VisibleVoiceTask[]>([]);
+  const [chatSessionId, setChatSessionId] = useState<string | null>(null);
 
   const connectionRef = useRef<LiveVoiceSession | null>(null);
   const sessionGenerationRef = useRef(0);
   const lineIdRef = useRef(0);
   const sessionIdRef = useRef(`voice:${Date.now()}`);
+  const parentSessionIdRef = useRef<string | null>(null);
+  const persistenceChainRef = useRef<Promise<void>>(Promise.resolve());
   const sessionStartedAtRef = useRef<number | null>(null);
   const handledToolCallsRef = useRef(new Set<string>());
   const pendingTaskAnnouncementsRef = useRef<PendingTaskAnnouncement[]>([]);
@@ -152,16 +156,30 @@ export function VoiceSessionProvider({
     void refreshConfiguration();
   }, [refreshConfiguration]);
 
-  const addLine = useCallback((role: "user" | "agent", text: string) => {
-    const clean = text.trim();
-    if (!clean) return;
-    setTranscript((current) => [...current, { id: ++lineIdRef.current, role, text: clean }]);
-    void persistVoiceEvent(
-      sessionIdRef.current,
-      role === "user" ? "user" : "assistant",
-      clean,
-    ).catch(() => undefined);
-  }, []);
+  const persistCurrentEvent = useCallback(
+    (kind: "user" | "assistant" | "usage" | "session_end", content: string) => {
+      const sessionId = sessionIdRef.current;
+      const parentSessionId = parentSessionIdRef.current;
+      if (!parentSessionId) return Promise.resolve();
+      persistenceChainRef.current = persistenceChainRef.current
+        .catch(() => undefined)
+        .then(() => persistVoiceEvent(sessionId, parentSessionId, kind, content));
+      return persistenceChainRef.current;
+    },
+    [],
+  );
+
+  const addLine = useCallback(
+    (role: "user" | "agent", text: string) => {
+      const clean = text.trim();
+      if (!clean) return;
+      setTranscript((current) => [...current, { id: ++lineIdRef.current, role, text: clean }]);
+      void persistCurrentEvent(role === "user" ? "user" : "assistant", clean).catch(
+        () => undefined,
+      );
+    },
+    [persistCurrentEvent],
+  );
 
   const clearAnnouncementState = useCallback(() => {
     if (announcementTimerRef.current) clearTimeout(announcementTimerRef.current);
@@ -173,8 +191,7 @@ export function VoiceSessionProvider({
   const closeConnection = useCallback(
     (persistEnd: boolean) => {
       if (persistEnd && sessionStartedAtRef.current !== null) {
-        void persistVoiceEvent(
-          sessionIdRef.current,
+        void persistCurrentEvent(
           "session_end",
           JSON.stringify({ durationMs: Math.max(0, Date.now() - sessionStartedAtRef.current) }),
         ).catch(() => undefined);
@@ -186,7 +203,7 @@ export function VoiceSessionProvider({
       clearAnnouncementState();
       if (Platform.OS !== "web") stopVoiceAudio();
     },
-    [clearAnnouncementState],
+    [clearAnnouncementState, persistCurrentEvent],
   );
 
   const stop = useCallback(() => {
@@ -343,8 +360,7 @@ export function VoiceSessionProvider({
           if (task && hasDeliverableVoiceTaskResult(task.status)) markTaskHandled(taskId);
           result = task;
         } else throw new Error(`Unknown tool: ${name}`);
-        void persistVoiceEvent(
-          sessionIdRef.current,
+        void persistCurrentEvent(
           "usage",
           JSON.stringify({ tool_success: { name, arguments: args } }),
         ).catch(() => undefined);
@@ -352,15 +368,13 @@ export function VoiceSessionProvider({
       } catch (cause) {
         const message = cause instanceof Error ? cause.message : "Voice tool failed";
         addLine("agent", `Tool ${name} failed: ${message}`);
-        void persistVoiceEvent(
-          sessionIdRef.current,
-          "usage",
-          JSON.stringify({ tool_error: { name, message } }),
-        ).catch(() => undefined);
+        void persistCurrentEvent("usage", JSON.stringify({ tool_error: { name, message } })).catch(
+          () => undefined,
+        );
         sendToolResult(callId, { error: message });
       }
     },
-    [addLine, agentName, markTaskHandled, sendToolResult, waitForTask],
+    [addLine, agentName, markTaskHandled, persistCurrentEvent, sendToolResult, waitForTask],
   );
 
   const handleEvent = useCallback(
@@ -380,9 +394,7 @@ export function VoiceSessionProvider({
         addLine(event.role === "user" ? "user" : "agent", event.text);
       }
       if (event.type === "usage") {
-        void persistVoiceEvent(sessionIdRef.current, "usage", JSON.stringify(event.usage)).catch(
-          () => undefined,
-        );
+        void persistCurrentEvent("usage", JSON.stringify(event.usage)).catch(() => undefined);
       }
       if (event.type === "tool_call") void executeTool(event.name, event.callId, event.arguments);
       if (event.type === "error") {
@@ -390,24 +402,28 @@ export function VoiceSessionProvider({
         setState("error");
       }
     },
-    [addLine, executeTool],
+    [addLine, executeTool, persistCurrentEvent],
   );
 
   const start = useCallback(
-    async (resume?: VoiceSessionDetail | null) => {
+    async ({ chatSessionId: nextChatSessionId }: { chatSessionId: string }) => {
       if (connectionRef.current || state === "connecting") return;
       setState("connecting");
       setError(null);
       setTranscript([]);
       setTasks([]);
+      setChatSessionId(nextChatSessionId);
+      parentSessionIdRef.current = nextChatSessionId;
+      persistenceChainRef.current = Promise.resolve();
       try {
-        sessionIdRef.current = resume?.session.id ?? `voice:${Date.now()}`;
+        sessionIdRef.current = `voice:${Date.now()}`;
         sessionStartedAtRef.current = Date.now();
         sessionGenerationRef.current += 1;
         handledToolCallsRef.current.clear();
         pendingTaskAnnouncementsRef.current = [];
         announcedTaskIdsRef.current.clear();
         clearAnnouncementState();
+        const conversationTurns = await getVoiceConversationContext(nextChatSessionId);
         if (Platform.OS !== "web") {
           await startVoiceAudio("speaker");
           setAudioRouteState("speaker");
@@ -430,54 +446,15 @@ export function VoiceSessionProvider({
         let opened = false;
         let hydrated = false;
         const hydrate = () => {
-          if (!resume || !connectionRef.current || hydrated) return;
+          if (!connectionRef.current || hydrated) return;
           hydrated = true;
-          setTranscript(
-            resume.messages
-              .filter((message) => message.type === "user" || message.type === "assistant")
-              .map((message) => ({
-                id: ++lineIdRef.current,
-                role: message.type === "user" ? ("user" as const) : ("agent" as const),
-                text: message.content,
-              })),
-          );
-          setTasks(
-            (resume.tasks ?? []).map((task) => ({
-              id: task.id,
-              question: task.question,
-              status: task.status,
-              result: task.result,
-            })),
-          );
           connectionRef.current.addHistory([
-            ...resume.messages
-              .filter((message) => message.type === "user" || message.type === "assistant")
-              .slice(-30)
-              .map((message) => ({
-                role: message.type === "user" ? ("user" as const) : ("assistant" as const),
-                text: message.content,
-              })),
-            ...((resume.tasks ?? []).length > 0
-              ? [
-                  {
-                    role: "system" as const,
-                    text: `This is a resumed ${agentName} voice conversation. Prior background tasks: ${JSON.stringify(
-                      (resume.tasks ?? []).map((task) => ({
-                        id: task.id,
-                        question: task.question,
-                        status: task.status,
-                        result: task.result,
-                        error: task.error,
-                      })),
-                    )}. Use completed results when the user asks about them; do not announce old results unsolicited.`,
-                  },
-                ]
-              : []),
+            {
+              role: "system",
+              text: "This is a continuation of the following conversation. Continue naturally from it. The conversation contains only prior user and assistant messages.",
+            },
+            ...conversationTurns,
           ]);
-          for (const task of resume.tasks ?? []) {
-            if (task.status === "queued" || task.status === "running") void waitForTask(task.id);
-            else announcedTaskIdsRef.current.add(task.id);
-          }
         };
         const connection = await liveProvider.connect({
           credential: bootstrap.value,
@@ -489,7 +466,7 @@ export function VoiceSessionProvider({
             queueMicrotask(hydrate);
           },
           onError: (message) => {
-            closeConnection(false);
+            closeConnection(sessionStartedAtRef.current !== null);
             setError(message);
             setState("error");
           },
@@ -506,7 +483,6 @@ export function VoiceSessionProvider({
       }
     },
     [
-      agentName,
       availability,
       clearAnnouncementState,
       closeConnection,
@@ -517,7 +493,6 @@ export function VoiceSessionProvider({
       selectedModel,
       selectedVoice,
       state,
-      waitForTask,
     ],
   );
 
@@ -578,6 +553,7 @@ export function VoiceSessionProvider({
       tasks,
       status,
       controls,
+      chatSessionId,
       refreshConfiguration,
       start,
       stop,
@@ -585,6 +561,7 @@ export function VoiceSessionProvider({
     [
       active,
       available,
+      chatSessionId,
       controls,
       error,
       refreshConfiguration,

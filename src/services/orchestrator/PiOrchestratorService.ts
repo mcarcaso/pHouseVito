@@ -149,6 +149,46 @@ export class PiOrchestratorService implements OrchestratorService {
     }
   }
 
+  async appendSessionContext(
+    x: Context,
+    sessionId: string,
+    content: string,
+    details: { key: string; source: string },
+  ): Promise<void> {
+    this.initialize(x);
+    this.reloadConfigIfChanged();
+    const session = xSessionService(this.x).resolve(this.x, sessionId);
+    const channelName = session.channel || sessionId.split(":")[0] || "dashboard";
+    const effectiveSettings = getEffectiveSettings(this.config, channelName, sessionId);
+    const innerRuntime = await this.runtimeRegistry.getOrCreate(
+      this.x,
+      sessionId,
+      effectiveSettings,
+    );
+    const shouldSeedHistory = !this.firstTurnDone.has(sessionId) && innerRuntime.isFresh();
+    const channel = xChannelRegistryService(this.x).get(this.x, channelName)?.channel;
+    const vitoService = xVitoService(this.x);
+    const systemPrompt = buildSystemPrompt({
+      soul: vitoService.getSoul(this.x),
+      systemInstructions: vitoService.getSystemPrompt(this.x),
+      channelPrompt: channel?.getCustomPrompt?.(this.x) || "",
+      customInstructions: effectiveSettings.customInstructions || "",
+      botName: this.config.bot?.name,
+      session: {
+        id: session.id,
+        channel: channelName,
+        target: session.channel_target || sessionId.split(":").slice(1).join(":"),
+        alias: session.alias ?? null,
+      },
+    });
+    const historyBlock = shouldSeedHistory ? this.buildHistoryBlock(sessionId, 10) : null;
+    await innerRuntime.appendContext(
+      systemPrompt,
+      historyBlock ? `${historyBlock}\n\n${content}` : content,
+      details,
+    );
+  }
+
   private async relayDirectAnswerToSession(
     session: string,
     answer: string,

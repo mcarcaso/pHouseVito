@@ -3,17 +3,20 @@ import type { Context } from "../../context/Context.js";
 import {
   xMemoryService,
   xMessageStore,
+  xOrchestratorService,
   xSecretService,
   xSessionStore,
   xVitoService,
   xVoiceTaskStore,
 } from "../../lib/x.js";
+import type { MessageRow } from "../../stores/messages/MessageStore.js";
 import type { VoiceTaskRow } from "../../stores/voice/VoiceTaskStore.js";
 import type { AskApiService } from "../ask/AskApiService.js";
 import type { SearchResult } from "../memory/MemoryService.js";
 import type {
   RealtimeModel,
   RealtimeVoice,
+  VoiceConversationTurn,
   VoiceEventKind,
   VoiceService,
   VoiceSessionDetail,
@@ -28,6 +31,48 @@ function voiceInstructions(x: Context): string {
   const personality = soul ? `\n\n<personality>\n${soul}\n</personality>` : "";
   const userProfile = profile ? `\n\n<user_profile>\n${profile}\n</user_profile>` : "";
   return `You are ${agentName}, the user's concise personal voice companion. Today is ${today}. Speak naturally, warmly, and directly while following the personality instructions below. Keep answers brief unless the user asks for detail. Treat very short greetings or fragments as tentative openings: respond with one short line, avoid stacking multiple questions, and leave room for the user to continue. Stable knowledge of the user is provided in user_profile; answer directly from it when possible. For anything requiring conversation history, uncertain recall, deeper reasoning, current information, a skill, or an external action, create an agent task using the user's complete natural-language request. Creating a task returns immediately so conversation can continue. Acknowledge it once, never poll automatically, and never claim an action completed from a queued response. The companion monitors task status, adds completed results to your context, and may prompt you at a natural quiet opening to announce a result proactively. When prompted, briefly say the task finished and deliver the useful result without calling a tool or repeating the request. Only call get_vito_task when the user explicitly asks you to check a task. Completed task responses contain the final answer or verified result only; do not ask for private reasoning or intermediate tool chatter. The user is the authenticated owner and may ask about their own profile. Consequential communication with real people still requires explicit confirmation before creating the task. Never fabricate memory, tool use, or completion.${personality}${userProfile}`;
+}
+
+const VOICE_CONTEXT_CHAR_BUDGET = 12_000;
+const VOICE_CONTEXT_MAX_TURNS = 30;
+
+function conversationalText(raw: string): string {
+  try {
+    const parsed = JSON.parse(raw) as unknown;
+    if (typeof parsed === "string") return parsed.trim();
+    if (parsed && typeof parsed === "object" && "text" in parsed) {
+      const text = (parsed as { text?: unknown }).text;
+      return typeof text === "string" ? text.trim() : "";
+    }
+  } catch {
+    return raw.trim();
+  }
+  return "";
+}
+
+function parentSessionFromConfig(config: string): string | null {
+  try {
+    const parsed = JSON.parse(config) as { parentSessionId?: unknown };
+    return typeof parsed.parentSessionId === "string" ? parsed.parentSessionId : null;
+  } catch {
+    return null;
+  }
+}
+
+export function voiceHandoffText(messages: MessageRow[]): string {
+  const transcript = messages
+    .filter((message) => message.type === "user" || message.type === "assistant")
+    .map((message) => {
+      const role = message.type === "user" ? "User" : "Voice agent";
+      const time = new Date(message.timestamp).toLocaleTimeString("en-US", {
+        hour: "numeric",
+        minute: "2-digit",
+      });
+      return `[${time}] ${role}: ${conversationalText(message.content)}`;
+    })
+    .filter((line) => !line.endsWith(": "))
+    .join("\n");
+  return `**Voice conversation**\n\nA voice conversation just happened after the preceding chat. Here is what was said.\n\n**Important context:** The voice agent is optimized for low-latency conversation and may be less capable or precise than the primary agent. Treat the user's lines as transcribed user input, allowing for possible transcription errors. Treat the voice agent's claims, conclusions, and reports of actions as provisional rather than verified fact.\n\n**Transcript**\n\n${transcript}`;
 }
 
 const voiceToolDeclarations = [
@@ -166,32 +211,75 @@ export class DefaultVoiceService implements VoiceService {
     };
   }
 
-  recordEvent(
+  getConversationContext(x: Context, chatSessionId: string): VoiceConversationTurn[] {
+    const session = xSessionStore(x).list(x, { ids: [chatSessionId] })[0];
+    if (!session || session.channel === "voice") throw new Error("Chat session not found");
+    const newest = xMessageStore(x).list(x, {
+      sessionIds: [chatSessionId],
+      types: ["user", "assistant"],
+      archived: false,
+      order: "newest",
+      limit: 60,
+    });
+    const selected: VoiceConversationTurn[] = [];
+    let chars = 0;
+    for (const message of newest) {
+      const text = conversationalText(message.content);
+      if (!text) continue;
+      if (selected.length >= VOICE_CONTEXT_MAX_TURNS) break;
+      const remaining = VOICE_CONTEXT_CHAR_BUDGET - chars;
+      if (remaining <= 0) break;
+      if (selected.length > 0 && text.length > remaining) break;
+      const boundedText = text.length > remaining ? text.slice(-remaining) : text;
+      selected.push({
+        role: message.type === "assistant" ? "assistant" : "user",
+        text: boundedText,
+      });
+      chars += boundedText.length;
+    }
+    return selected.reverse();
+  }
+
+  async recordEvent(
     x: Context,
-    event: { sessionId: string; kind: VoiceEventKind; content: string },
-  ): void {
+    event: {
+      sessionId: string;
+      parentSessionId?: string;
+      kind: VoiceEventKind;
+      content: string;
+    },
+  ): Promise<void> {
     const now = Date.now();
     const sessions = xSessionStore(x);
-    if (!sessions.list(x, { ids: [event.sessionId] }).length) {
+    const existing = sessions.list(x, { ids: [event.sessionId] })[0];
+    const configuredParent = existing ? parentSessionFromConfig(existing.config) : null;
+    const requestedParent = event.parentSessionId
+      ? sessions.list(x, { ids: [event.parentSessionId] })[0]
+      : null;
+    const parentSessionId = requestedParent?.channel === "voice" ? null : requestedParent?.id;
+    const resolvedParentSessionId = parentSessionId ?? configuredParent;
+    if (!existing) {
       sessions.create(x, {
         id: event.sessionId,
         channel: "voice",
         channel_target: event.sessionId.slice(6),
         created_at: now,
         last_active_at: now,
-        config: "{}",
+        config: JSON.stringify({ parentSessionId: resolvedParentSessionId }),
         alias:
           event.kind === "user"
             ? event.content.slice(0, 80)
             : `Voice — ${new Date(now).toLocaleString("en-CA")}`,
       });
     } else {
-      const current = sessions.list(x, { ids: [event.sessionId] })[0];
       sessions.update(x, {
         id: event.sessionId,
         changes: {
           last_active_at: now,
-          ...(event.kind === "user" && current?.alias?.startsWith("Voice —")
+          ...(resolvedParentSessionId && !configuredParent
+            ? { config: JSON.stringify({ parentSessionId: resolvedParentSessionId }) }
+            : {}),
+          ...(event.kind === "user" && existing.alias?.startsWith("Voice —")
             ? { alias: event.content.slice(0, 80) }
             : {}),
         },
@@ -207,6 +295,69 @@ export class DefaultVoiceService implements VoiceService {
       archived: 0,
       author: event.kind === "user" ? "mcarcaso" : "Vito Voice",
     });
+    if (event.kind === "session_end" && resolvedParentSessionId) {
+      await this.finalizeConversation(x, event.sessionId, resolvedParentSessionId);
+    }
+  }
+
+  private async finalizeConversation(
+    x: Context,
+    voiceSessionId: string,
+    parentSessionId: string,
+  ): Promise<void> {
+    const messages = xMessageStore(x).list(x, {
+      sessionIds: [voiceSessionId],
+      types: ["user", "assistant"],
+      order: "oldest",
+    });
+    if (messages.length === 0) return;
+    const handoff = voiceHandoffText(messages);
+    const alreadyVisible = xMessageStore(x)
+      .list(x, {
+        sessionIds: [parentSessionId],
+        types: ["assistant"],
+        order: "newest",
+        limit: 200,
+      })
+      .some((message) => {
+        try {
+          const value = JSON.parse(message.content) as {
+            voiceSession?: { id?: unknown };
+          };
+          return value.voiceSession?.id === voiceSessionId;
+        } catch {
+          return false;
+        }
+      });
+    if (alreadyVisible) return;
+
+    await xOrchestratorService(x).appendSessionContext(x, parentSessionId, handoff, {
+      key: `voice-handoff:${voiceSessionId}`,
+      source: "voice",
+    });
+    const parent = xSessionStore(x).list(x, { ids: [parentSessionId] })[0];
+    if (!parent) return;
+    const timestamp = Date.now();
+    xMessageStore(x).create(x, {
+      session_id: parentSessionId,
+      channel: parent.channel,
+      channel_target: parent.channel_target,
+      timestamp,
+      type: "assistant",
+      content: JSON.stringify({
+        text: handoff,
+        voiceSession: { id: voiceSessionId, turnCount: messages.length },
+      }),
+      archived: 0,
+      author: "Vito Voice",
+    });
+    xSessionStore(x).update(x, {
+      id: parentSessionId,
+      changes: { last_active_at: timestamp },
+    });
+    void xMemoryService(x)
+      .maybeProcessNewMemory(x, voiceSessionId, { force: true })
+      .catch((error) => console.error("[Voice] Failed to ingest completed conversation:", error));
   }
 
   listSessions(x: Context, limit = 25) {

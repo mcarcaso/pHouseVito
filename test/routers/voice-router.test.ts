@@ -30,7 +30,11 @@ const voiceService: VoiceService = {
       tools: [],
     };
   },
-  recordEvent: () => undefined,
+  getConversationContext: () => [
+    { role: "user", text: "Earlier user message" },
+    { role: "assistant", text: "Earlier assistant message" },
+  ],
+  recordEvent: async () => undefined,
   listSessions: () => [],
   getSession: () => null,
   getContext: () => ({ profile: "Mike", recentVoiceSessions: [] }),
@@ -101,6 +105,21 @@ describe("voice router", () => {
       provider: "openai",
       reason: null,
       providers: { openai: true, gemini: true },
+    });
+  });
+
+  it("returns only conversational turns for voice continuation", async () => {
+    const response = await fetch(`${baseUrl}/api/voice/conversation-context`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ chatSessionId: "dashboard:default" }),
+    });
+    assert.equal(response.status, 200);
+    assert.deepEqual(await response.json(), {
+      turns: [
+        { role: "user", text: "Earlier user message" },
+        { role: "assistant", text: "Earlier assistant message" },
+      ],
     });
   });
 

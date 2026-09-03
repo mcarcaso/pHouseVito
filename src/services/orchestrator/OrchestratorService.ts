@@ -28,6 +28,12 @@ export interface OrchestratorService {
   reloadConfig(x: Context, config: VitoConfig): void;
   handleInbound(x: Context, event: InboundEvent, channel: ChannelService | null): Promise<void>;
   ask(x: Context, options: AskOptions): Promise<string>;
+  appendSessionContext(
+    x: Context,
+    sessionId: string,
+    content: string,
+    details: { key: string; source: string },
+  ): Promise<void>;
   listRuns(x: Context): OrchestratorRun[];
   start(x: Context): Promise<void>;
   stop(x: Context): Promise<void>;

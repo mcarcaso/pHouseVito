@@ -6,7 +6,11 @@ import * as FileSystem from "expo-file-system/legacy";
 import { FontAwesome6, Ionicons } from "@expo/vector-icons";
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { useFocusEffect, useNavigation } from "@react-navigation/native";
-import { HeaderToolbarButton as HeaderButton } from "../../components/navigation/HeaderToolbarButton";
+import type { NativeStackNavigationProp } from "@react-navigation/native-stack";
+import {
+  HeaderToolbarButton as HeaderButton,
+  HeaderToolbarButtonGroup,
+} from "../../components/navigation/HeaderToolbarButton";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import {
   ActivityIndicator,
@@ -32,7 +36,9 @@ import {
   type VitoMessage as Message,
   type VitoSession as Session,
 } from "@vito/client";
+import type { RootStackParamList } from "../../application/navigation/route-types";
 import { useAgentName } from "../../contexts/agentIdentity";
+import { useVoiceSession } from "../../contexts/voice-session";
 import { useCurrentRuns, type CurrentRun } from "../../hooks/useCurrentRuns";
 import {
   DESKTOP_BREAKPOINT,
@@ -165,6 +171,7 @@ export function ChatScreen({
 }) {
   const styles = useThemeStyles(createStyles);
   const theme = useVitoTheme();
+  const { active: voiceActive, chatSessionId: activeVoiceChatSessionId } = useVoiceSession();
   const desktop = false;
   const [localSessionId, setLocalSessionId] = useState<string | null>(
     desktop ? DEFAULT_SESSION : null,
@@ -207,7 +214,7 @@ export function ChatScreen({
   }, [controlled, desktop, sessionId]);
 
   const sessionsQuery = useSessions({ refetchInterval: 5_000 });
-  const sessions = sessionsQuery.data ?? [];
+  const sessions = (sessionsQuery.data ?? []).filter((session) => session.channel !== "voice");
   const { runs } = useCurrentRuns();
   const runStatusBySession = useMemo(() => {
     const statuses = new Map<string, CurrentRun["status"]>();
@@ -418,7 +425,7 @@ export function ChatScreen({
     }
   };
 
-  const navigation = useNavigation();
+  const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
   useLayoutEffect(() => {
     if (!selectedSessionId) return;
     navigation.setOptions({
@@ -431,16 +438,48 @@ export function ChatScreen({
         },
       ),
       headerRight: ({ tintColor }: { tintColor?: string }) => (
-        <HeaderButton
-          accessibilityLabel={menuOpen ? "Close conversation options" : "Conversation options"}
-          onPress={() => setMenuOpen((open) => !open)}
-          tintColor={tintColor}
-        >
-          <Ionicons name="ellipsis-horizontal" size={23} color={tintColor ?? theme.colors.accent} />
-        </HeaderButton>
+        <HeaderToolbarButtonGroup>
+          <HeaderButton
+            accessibilityLabel={voiceActive ? "Open voice conversation" : "Continue by voice"}
+            onPress={() =>
+              navigation.navigate("VoiceConversation", {
+                sessionId:
+                  voiceActive && activeVoiceChatSessionId
+                    ? activeVoiceChatSessionId
+                    : selectedSessionId,
+              })
+            }
+            tintColor={tintColor}
+          >
+            <Ionicons
+              name={voiceActive ? "call" : "call-outline"}
+              size={21}
+              color={tintColor ?? theme.colors.accent}
+            />
+          </HeaderButton>
+          <HeaderButton
+            accessibilityLabel={menuOpen ? "Close conversation options" : "Conversation options"}
+            onPress={() => setMenuOpen((open) => !open)}
+            tintColor={tintColor}
+          >
+            <Ionicons
+              name="ellipsis-horizontal"
+              size={23}
+              color={tintColor ?? theme.colors.accent}
+            />
+          </HeaderButton>
+        </HeaderToolbarButtonGroup>
       ),
     });
-  }, [menuOpen, navigation, selectedSession, selectedSessionId, theme.colors.accent]);
+  }, [
+    activeVoiceChatSessionId,
+    menuOpen,
+    navigation,
+    selectedSession,
+    selectedSessionId,
+    theme.colors.accent,
+    voiceActive,
+  ]);
 
   const conversation = sessionId ? (
     <Conversation

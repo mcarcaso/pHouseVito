@@ -63,7 +63,7 @@ import {
   type DesktopDestination,
 } from "../components/navigation/DesktopNavigationSidebar";
 import { GlobalVoiceOverlay } from "../components/voice/GlobalVoiceOverlay";
-import { AgentIdentityProvider, useAgentName } from "../contexts/agentIdentity";
+import { AgentIdentityProvider } from "../contexts/agentIdentity";
 import { VoiceSessionProvider, useVoiceSession } from "../contexts/voice-session";
 import { DESKTOP_BREAKPOINT, useThemeStyles, useVitoTheme } from "../hooks/useVitoTheme";
 import { registerPushNotifications } from "../services/push-notifications/registration";
@@ -296,6 +296,29 @@ function AppContent() {
                       navigationRef.navigate("ChatConversation", { sessionId: session.id })
                     }
                   />
+                )}
+              </RootStack.Screen>
+              <RootStack.Screen
+                name="VoiceConversation"
+                options={{
+                  headerShown: true,
+                  title: "Voice conversation",
+                  headerStyle: { backgroundColor: theme.colors.canvas },
+                  headerTintColor: theme.colors.text,
+                  headerShadowVisible: false,
+                }}
+              >
+                {({ route }) => (
+                  <View style={styles.operationRoute}>
+                    <View style={styles.voiceScreen}>
+                      <VoiceScreen
+                        chatSessionId={route.params.sessionId}
+                        onConfigureOpenAi={() =>
+                          navigationRef.navigate("Operation", { area: "secrets" })
+                        }
+                      />
+                    </View>
+                  </View>
                 )}
               </RootStack.Screen>
               <RootStack.Screen
@@ -732,14 +755,22 @@ function AuthenticatedVoiceProviders({
 }
 
 function AppVoiceOverlay({ currentRoute }: { currentRoute: string }) {
-  const { status, controls } = useVoiceSession();
-  if (status.state === "idle" || status.state === "error" || !controls || currentRoute === "Voice")
+  const { status, controls, chatSessionId } = useVoiceSession();
+  if (
+    status.state === "idle" ||
+    status.state === "error" ||
+    !controls ||
+    currentRoute === "VoiceConversation"
+  )
     return null;
   return (
     <GlobalVoiceOverlay
       status={status}
       controls={controls}
-      onPress={() => navigationRef.isReady() && navigationRef.navigate("Main", { screen: "Voice" })}
+      onPress={() => {
+        if (!navigationRef.isReady() || !chatSessionId) return;
+        navigationRef.navigate("VoiceConversation", { sessionId: chatSessionId });
+      }}
     />
   );
 }
@@ -758,7 +789,6 @@ function MainTabs({
   const styles = useThemeStyles(createStyles);
   const theme = useVitoTheme();
   const rootNavigation = useNavigation<RootNavigation>();
-  const agentName = useAgentName();
   return (
     <Tabs.Navigator
       initialRouteName="Home"
@@ -775,20 +805,6 @@ function MainTabs({
             });
           } else if (active === "Chat") {
             rootNavigation.setOptions({ title: "Chats" });
-          } else if (active === "Voice") {
-            rootNavigation.setOptions({
-              title: `Talk to ${agentName}`,
-              headerLeft: undefined,
-              headerRight: ({ tintColor }) => (
-                <HeaderButton
-                  accessibilityLabel="Voice conversation history"
-                  onPress={() => rootNavigation.navigate("VoiceHistory")}
-                  tintColor={tintColor}
-                >
-                  <Ionicons name="time-outline" size={22} color={tintColor} />
-                </HeaderButton>
-              ),
-            });
           } else {
             rootNavigation.setOptions({
               title: "More",
@@ -824,26 +840,6 @@ function MainTabs({
               rootNavigation.navigate("ChatConversation", { sessionId: session.id })
             }
           />
-        )}
-      </Tabs.Screen>
-      <Tabs.Screen
-        name="Voice"
-        options={{
-          title: `Talk to ${agentName}`,
-          headerStyle: { backgroundColor: theme.colors.canvas },
-          headerTintColor: theme.colors.text,
-          headerTitleStyle: { fontSize: 16, fontWeight: "700" },
-          headerShadowVisible: false,
-        }}
-      >
-        {() => (
-          <View style={styles.operationRoute}>
-            <View style={styles.voiceScreen}>
-              <VoiceScreen
-                onConfigureOpenAi={() => rootNavigation.navigate("Operation", { area: "secrets" })}
-              />
-            </View>
-          </View>
         )}
       </Tabs.Screen>
       <Tabs.Screen

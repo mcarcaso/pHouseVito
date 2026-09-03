@@ -7,7 +7,6 @@ export type ResourceRouteParams = { id?: string };
 export type MainTabParamList = {
   Home: undefined;
   Chat: undefined;
-  Voice: undefined;
   Identity: ResourceRouteParams | undefined;
   More: undefined;
   Memory: undefined;
@@ -29,6 +28,7 @@ export type MainRouteName = keyof MainTabParamList;
 export type RootStackParamList = {
   Main: NavigatorScreenParams<MainTabParamList> | undefined;
   ChatConversation: { sessionId: string };
+  VoiceConversation: { sessionId: string };
   MemoryHome: undefined;
   IdentityHome: undefined;
   IdentityDocument: { document: IdentityDocument };

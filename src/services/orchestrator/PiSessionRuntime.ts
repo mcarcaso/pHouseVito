@@ -167,6 +167,7 @@ async function waitForPiSessionSettled(
 export class PiSessionRuntime implements PiRuntime {
   private config: PiSessionRuntimeConfig;
   private piSession: AgentSession | null = null;
+  private initializingSession: Promise<AgentSession> | null = null;
   private storedSystemPrompt: string | null = null;
   private aborted = false;
 
@@ -310,6 +311,91 @@ export class PiSessionRuntime implements PiRuntime {
     }
   }
 
+  private async createSession(systemPrompt: string): Promise<AgentSession> {
+    const additionalSkillPaths = (this.config.skills ?? []).map((skill) => skill.path);
+    const resourceLoader = new DefaultResourceLoader({
+      cwd: process.cwd(),
+      agentDir: process.cwd(),
+      noExtensions: true,
+      noPromptTemplates: true,
+      noThemes: true,
+      additionalSkillPaths,
+      systemPrompt,
+    });
+    await resourceLoader.reload();
+
+    const modelConfig = this.config.model || DEFAULT_CONFIG.model!;
+    const model = resolvePiModel(modelConfig, this.config.openRouterProvider);
+    let sessionManager;
+    if (this.config.sessionDir) {
+      const markerPath = join(this.config.sessionDir, FRESH_MARKER_FILE);
+      if (existsSync(markerPath)) {
+        try {
+          unlinkSync(markerPath);
+        } catch {
+          /* ignore */
+        }
+        sessionManager = PiSessionManager.create(process.cwd(), this.config.sessionDir);
+      } else {
+        sessionManager = PiSessionManager.continueRecent(process.cwd(), this.config.sessionDir);
+      }
+    } else {
+      sessionManager = PiSessionManager.inMemory();
+    }
+
+    const { session } = await createAgentSession({
+      sessionManager,
+      model,
+      resourceLoader,
+      thinkingLevel: this.config.thinkingLevel || "off",
+    });
+    try {
+      session.setAutoCompactionEnabled(true);
+    } catch (err) {
+      console.warn("[PiSessionRuntime] Failed to enable auto-compaction:", err);
+    }
+    this.piSession = session;
+    this.storedSystemPrompt = systemPrompt;
+    return session;
+  }
+
+  private async ensureSession(systemPrompt: string): Promise<AgentSession> {
+    if (this.piSession) return this.piSession;
+    if (!this.initializingSession) {
+      this.initializingSession = this.createSession(systemPrompt).finally(() => {
+        this.initializingSession = null;
+      });
+    }
+    return await this.initializingSession;
+  }
+
+  async appendContext(
+    systemPrompt: string,
+    content: string,
+    details: { key: string; source: string },
+  ): Promise<void> {
+    const piSession = await this.ensureSession(systemPrompt);
+    const alreadyPresent = piSession.messages.some(
+      (message) =>
+        message.role === "custom" &&
+        message.customType === "vito-context" &&
+        (message.details as { key?: unknown } | undefined)?.key === details.key,
+    );
+    if (alreadyPresent) return;
+    await piSession.sendCustomMessage(
+      {
+        customType: "vito-context",
+        content,
+        display: false,
+        details,
+      },
+      {
+        triggerTurn: false,
+        ...(piSession.isStreaming ? { deliverAs: "nextTurn" as const } : {}),
+      },
+    );
+  }
+
   async run(
     systemPrompt: string,
     userMessage: string,
@@ -317,76 +403,7 @@ export class PiSessionRuntime implements PiRuntime {
     signal?: AbortSignal,
   ): Promise<void> {
     this.aborted = false;
-
-    // Lazily create the AgentSession on first call. The system prompt is captured here;
-    // later calls reuse the same session and ignore the systemPrompt argument so the
-    // cached prefix stays stable.
-    if (!this.piSession) {
-      const additionalSkillPaths = (this.config.skills ?? []).map((skill) => skill.path);
-
-      const resourceLoader = new DefaultResourceLoader({
-        cwd: process.cwd(),
-        agentDir: process.cwd(),
-        noExtensions: true,
-        noPromptTemplates: true,
-        noThemes: true,
-        additionalSkillPaths,
-        systemPrompt,
-      });
-      await resourceLoader.reload();
-
-      const modelConfig = this.config.model || DEFAULT_CONFIG.model!;
-      const model = resolvePiModel(modelConfig, this.config.openRouterProvider);
-
-      // Persist to disk when sessionDir is configured. Pi writes one JSONL file
-      // per session under sessionDir.
-      //
-      // Resumption rules:
-      //   - If a `.fresh` marker file is present in the dir, the user
-      //     requested a clean slate via /new — use create() and delete the
-      //     marker. Old JSONL files stay on disk as historical sessions.
-      //   - Otherwise use continueRecent() so server restarts pick up where
-      //     the conversation left off.
-      //   - With no sessionDir, fall back to in-memory.
-      let sessionManager;
-      if (this.config.sessionDir) {
-        const markerPath = join(this.config.sessionDir, FRESH_MARKER_FILE);
-        if (existsSync(markerPath)) {
-          try {
-            unlinkSync(markerPath);
-          } catch {
-            /* ignore */
-          }
-          sessionManager = PiSessionManager.create(process.cwd(), this.config.sessionDir);
-        } else {
-          sessionManager = PiSessionManager.continueRecent(process.cwd(), this.config.sessionDir);
-        }
-      } else {
-        sessionManager = PiSessionManager.inMemory();
-      }
-
-      const { session: piSession } = await createAgentSession({
-        sessionManager,
-        model,
-        resourceLoader,
-        thinkingLevel: this.config.thinkingLevel || "off",
-      });
-
-      // Auto-compaction lets pi summarize older turns when the session nears
-      // its context limit, instead of overflowing or forcing a manual reset.
-      // The compaction itself does invalidate the cache for one turn, but
-      // subsequent turns re-cache from the compacted prefix.
-      try {
-        piSession.setAutoCompactionEnabled(true);
-      } catch (err) {
-        console.warn("[PiSessionRuntime] Failed to enable auto-compaction:", err);
-      }
-
-      this.piSession = piSession;
-      this.storedSystemPrompt = systemPrompt;
-    }
-
-    const piSession = this.piSession;
+    const piSession = await this.ensureSession(systemPrompt);
 
     // Wire abort. Each run() may bring its own AbortSignal; we relay to pi.abort().
     const abortHandler = async () => {

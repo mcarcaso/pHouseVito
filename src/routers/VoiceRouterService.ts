@@ -7,8 +7,16 @@ import type { RouterService } from "./RouterService.js";
 import { emptyRouteSchema, registerRoute, unknownRouteSchema } from "./register-route.js";
 
 const sessionIdSchema = z.string().startsWith("voice:").max(120);
+const chatSessionIdSchema = z
+  .string()
+  .min(1)
+  .max(200)
+  .refine((value) => !value.startsWith("voice:"), {
+    message: "A voice conversation must continue a non-voice chat session",
+  });
 const voiceEventSchema = z.object({
   sessionId: sessionIdSchema,
+  parentSessionId: chatSessionIdSchema.optional(),
   kind: z.enum(["user", "assistant", "usage", "session_end"]),
   content: z.string().min(1).max(100_000),
 });
@@ -152,12 +160,30 @@ export class VoiceRouterService implements RouterService {
     route({
       router,
       method: "POST",
+      path: "/conversation-context",
+      auth: "dashboard",
+      schemas: {
+        params: emptyRouteSchema,
+        query: emptyRouteSchema,
+        body: z.object({ chatSessionId: chatSessionIdSchema }),
+      },
+      responseSchema: z.object({
+        turns: z.array(z.object({ role: z.enum(["user", "assistant"]), text: z.string() })),
+      }),
+      handler: (routeX, { data: { body } }) => ({
+        turns: xVoiceService(routeX).getConversationContext(routeX, body.chatSessionId),
+      }),
+    });
+
+    route({
+      router,
+      method: "POST",
       path: "/event",
       auth: "dashboard",
       schemas: { params: emptyRouteSchema, query: emptyRouteSchema, body: voiceEventSchema },
       responseSchema: z.object({ ok: z.literal(true) }),
-      handler: (routeX, { data: { body } }) => {
-        xVoiceService(routeX).recordEvent(routeX, body);
+      handler: async (routeX, { data: { body } }) => {
+        await xVoiceService(routeX).recordEvent(routeX, body);
         return { ok: true as const };
       },
     });

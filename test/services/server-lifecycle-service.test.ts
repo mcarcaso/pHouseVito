@@ -83,7 +83,7 @@ describe("DefaultServerLifecycleService", () => {
     scheduled();
     await waitForBackgroundWork();
 
-    assert.deepEqual(commands, [{ file: "./scripts/restart-vito.sh", args: [], timeout: 300_000 }]);
+    assert.deepEqual(commands, [{ file: "./scripts/restart-vito.sh", args: [], timeout: 900_000 }]);
   });
 
   it("leaves the current process running when the rebuild workflow fails", async () => {

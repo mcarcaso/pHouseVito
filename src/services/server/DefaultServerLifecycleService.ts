@@ -113,7 +113,7 @@ export class DefaultServerLifecycleService implements ServerLifecycleService {
       await this.runCommand({
         file: "./scripts/restart-vito.sh",
         args: [],
-        timeout: 300_000,
+        timeout: 900_000,
       });
     } catch (error: unknown) {
       console.error(

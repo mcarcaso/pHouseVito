@@ -55,7 +55,7 @@ import {
   SkillFilesScreen,
   SkillFileScreen,
 } from "../../screens/skills/SkillMobileScreens";
-import { VoiceScreen, type VoiceOverlayStatus } from "../../screens/voice/VoiceScreen";
+import { VoiceScreen } from "../../screens/voice/VoiceScreen";
 import {
   VoiceHistoryDetailScreen,
   VoiceHistoryScreen,

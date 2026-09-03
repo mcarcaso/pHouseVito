@@ -57,6 +57,8 @@ describe("DefaultVoiceService", () => {
     assert.equal(asks.length, 2);
     assert.equal(asks[0]?.session, `voice-investigator:${first.id}`);
     assert.equal(asks[1]?.session, `voice-investigator:${second.id}`);
+    assert.equal(asks[0]?.question, "First task");
+    assert.equal(asks[1]?.question, "Second task");
     assert.notEqual(asks[0]?.session, asks[1]?.session);
     assert.equal(store.get(x, first.id)?.status, "running");
     assert.equal(store.get(x, second.id)?.status, "running");

@@ -16,7 +16,7 @@ import {
 } from "../components/navigation/HeaderToolbarButton";
 import { StatusBar } from "expo-status-bar";
 import * as Notifications from "expo-notifications";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import {
   ActivityIndicator,
   Alert,
@@ -50,11 +50,7 @@ import {
   SkillFilesScreen,
   SkillFileScreen,
 } from "../screens/skills/SkillMobileScreens";
-import {
-  VoiceScreen,
-  type VoiceOverlayControls,
-  type VoiceOverlayStatus,
-} from "../screens/voice/VoiceScreen";
+import { VoiceScreen } from "../screens/voice/VoiceScreen";
 import { VoiceHistoryDetailScreen, VoiceHistoryScreen } from "../screens/voice/VoiceHistoryScreen";
 import { SpeechSettingsScreen } from "../screens/app-settings/AppSettingsScreen";
 import { VoiceModeSettingsScreen } from "../screens/app-settings/VoiceModeSettingsScreen";
@@ -68,6 +64,7 @@ import {
 } from "../components/navigation/DesktopNavigationSidebar";
 import { GlobalVoiceOverlay } from "../components/voice/GlobalVoiceOverlay";
 import { AgentIdentityProvider, useAgentName } from "../contexts/agentIdentity";
+import { VoiceSessionProvider, useVoiceSession } from "../contexts/voice-session";
 import { DESKTOP_BREAKPOINT, useThemeStyles, useVitoTheme } from "../hooks/useVitoTheme";
 import { registerPushNotifications } from "../services/push-notifications/registration";
 import { AuthGenerationGuard } from "../services/auth/auth-generation-guard";
@@ -100,15 +97,6 @@ const desktopPaneRoutes = new Set<keyof RootStackParamList>([
   "VoiceHistoryDetail",
 ]);
 
-const idleVoiceStatus: VoiceOverlayStatus = {
-  state: "idle",
-  muted: false,
-  audioRoute: "speaker",
-  runningTasks: 0,
-  completedTasks: 0,
-  failedTasks: 0,
-};
-
 import { areaForRoute, labels, linking, operationMeta, routeForArea } from "./navigation/config";
 
 export default function App() {
@@ -137,8 +125,6 @@ function AppContent() {
     authGuard.advance();
     setAuthState("authenticated");
   }, [authGuard]);
-  const [voiceStatus, setVoiceStatus] = useState<VoiceOverlayStatus>(idleVoiceStatus);
-  const [voiceControls, setVoiceControls] = useState<VoiceOverlayControls | null>(null);
   const [quickCommandRecording, setQuickCommandRecording] =
     useState<QuickCommandRecordingStatus | null>(null);
   const [pendingNotificationSession, setPendingNotificationSession] = useState<string | null>(null);
@@ -157,9 +143,6 @@ function AppContent() {
   useEffect(() => {
     if (authState === "authenticated") void registerPushNotifications().catch(() => undefined);
   }, [authState]);
-  const updateVoiceStatus = useCallback((status: VoiceOverlayStatus) => {
-    setVoiceStatus(status);
-  }, []);
   const syncNavigationLocation = useCallback(() => {
     const route = navigationRef.getCurrentRoute();
     setCurrentRoute(route?.name ?? "Home");
@@ -232,7 +215,7 @@ function AppContent() {
       </SafeAreaView>
     );
   return (
-    <AgentIdentityProvider>
+    <AuthenticatedVoiceProviders onUnauthorized={unauthorized}>
       <View style={[styles.safeArea, desktop && styles.desktopShell]}>
         <StatusBar style={theme.dark ? "light" : "dark"} />
         {desktop && (
@@ -290,8 +273,6 @@ function AppContent() {
                   <MainTabs
                     onUnauthorized={unauthorized}
                     onLogout={() => void logout().finally(() => setAuthState("login"))}
-                    onVoiceStatusChange={updateVoiceStatus}
-                    onVoiceControlsChange={setVoiceControls}
                     onQuickCommandRecordingChange={setQuickCommandRecording}
                     desktop={desktop}
                   />
@@ -729,36 +710,48 @@ function AppContent() {
               }
             />
           )}
-          {voiceStatus.state !== "idle" &&
-            voiceStatus.state !== "error" &&
-            voiceControls &&
-            currentRoute !== "Voice" && (
-              <GlobalVoiceOverlay
-                status={voiceStatus}
-                controls={voiceControls}
-                onPress={() =>
-                  navigationRef.isReady() && navigationRef.navigate("Main", { screen: "Voice" })
-                }
-              />
-            )}
+          <AppVoiceOverlay currentRoute={currentRoute} />
         </View>
       </View>
+    </AuthenticatedVoiceProviders>
+  );
+}
+
+function AuthenticatedVoiceProviders({
+  children,
+  onUnauthorized,
+}: {
+  children: ReactNode;
+  onUnauthorized: () => void;
+}) {
+  return (
+    <AgentIdentityProvider>
+      <VoiceSessionProvider onUnauthorized={onUnauthorized}>{children}</VoiceSessionProvider>
     </AgentIdentityProvider>
+  );
+}
+
+function AppVoiceOverlay({ currentRoute }: { currentRoute: string }) {
+  const { status, controls } = useVoiceSession();
+  if (status.state === "idle" || status.state === "error" || !controls || currentRoute === "Voice")
+    return null;
+  return (
+    <GlobalVoiceOverlay
+      status={status}
+      controls={controls}
+      onPress={() => navigationRef.isReady() && navigationRef.navigate("Main", { screen: "Voice" })}
+    />
   );
 }
 
 function MainTabs({
   onUnauthorized,
   onLogout,
-  onVoiceStatusChange,
-  onVoiceControlsChange,
   onQuickCommandRecordingChange,
   desktop,
 }: {
   onUnauthorized: () => void;
   onLogout: () => void;
-  onVoiceStatusChange: (status: VoiceOverlayStatus) => void;
-  onVoiceControlsChange: (controls: VoiceOverlayControls | null) => void;
   onQuickCommandRecordingChange: (status: QuickCommandRecordingStatus | null) => void;
   desktop: boolean;
 }) {
@@ -847,9 +840,6 @@ function MainTabs({
           <View style={styles.operationRoute}>
             <View style={styles.voiceScreen}>
               <VoiceScreen
-                onUnauthorized={onUnauthorized}
-                onStatusChange={onVoiceStatusChange}
-                onControlsChange={onVoiceControlsChange}
                 onConfigureOpenAi={() => rootNavigation.navigate("Operation", { area: "secrets" })}
               />
             </View>

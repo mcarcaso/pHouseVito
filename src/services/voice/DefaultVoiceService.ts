@@ -307,7 +307,7 @@ export class DefaultVoiceService implements VoiceService {
     store.update(x, id, { status: "running", updated_at: Date.now() });
     try {
       const result = await this.askApiService.ask(x, {
-        question: `Voice delegation from the authenticated user. Investigate before answering and execute explicitly requested tool work when appropriate. Search semantic memory and exact message history as needed, follow related entities rather than requiring the same words to appear together, distinguish what was recommended from what the user confirmed doing, and never claim an external action succeeded without verifying its tool result.\n\n${question}`,
+        question,
         // A dedicated Vito session gives every delegated task its own orchestrator
         // queue and Pi runtime, so independent voice work can execute in parallel.
         session: `voice-investigator:${id}`,

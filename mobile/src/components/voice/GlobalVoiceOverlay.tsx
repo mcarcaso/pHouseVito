@@ -2,7 +2,7 @@ import { Ionicons } from "@expo/vector-icons";
 import { Platform, Pressable, StyleSheet, Text, View } from "react-native";
 import { useAgentName } from "../../contexts/agentIdentity";
 import { useThemeStyles, useVitoTheme, type VitoTheme } from "../../hooks/useVitoTheme";
-import type { VoiceOverlayControls, VoiceOverlayStatus } from "../../screens/voice/VoiceScreen";
+import type { VoiceOverlayControls, VoiceOverlayStatus } from "../../contexts/voice-session";
 
 export function VoiceControlBar({
   status,

@@ -44,7 +44,9 @@ npm ci
 cd dashboard && npm ci && npm run build && cd ..
 cd mobile && npm ci && npm run export:web && cd ..
 echo ">>> Building backend …"
-npm run build
+# Small EC2 instances get a conservative default V8 heap limit (~468 MB),
+# which is not enough for TypeScript. Swap provisioned by spinup covers the peak.
+NODE_OPTIONS="${NODE_OPTIONS:---max-old-space-size=1024}" npm run build
 echo ">>> Restarting Vito …"
 pm2 restart vito-server --update-env
 echo ">>> Saving PM2 process list …"

@@ -196,6 +196,18 @@ function AppContent() {
     // password-manager login can race the old SecureStore deletion.
     void saveToken(null).then(() => setAuthState("login"));
   }, [acceptUnauthorized]);
+  const renderChatConversation = useCallback(
+    ({ route }: { route: { params: RootStackParamList["ChatConversation"] } }) => (
+      <ChatScreen
+        onUnauthorized={unauthorized}
+        selectedSessionId={route.params.sessionId}
+        onSelectSession={(session) =>
+          navigationRef.navigate("ChatConversation", { sessionId: session.id })
+        }
+      />
+    ),
+    [unauthorized],
+  );
   if (authState === "loading")
     return (
       <SafeAreaView style={styles.loading}>
@@ -288,15 +300,7 @@ function AppContent() {
                   headerShadowVisible: false,
                 }}
               >
-                {({ route }) => (
-                  <ChatScreen
-                    onUnauthorized={unauthorized}
-                    selectedSessionId={route.params.sessionId}
-                    onSelectSession={(session) =>
-                      navigationRef.navigate("ChatConversation", { sessionId: session.id })
-                    }
-                  />
-                )}
+                {renderChatConversation}
               </RootStack.Screen>
               <RootStack.Screen
                 name="VoiceConversation"

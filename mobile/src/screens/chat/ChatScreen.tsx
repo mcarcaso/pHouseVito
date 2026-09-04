@@ -4,7 +4,7 @@ import * as Clipboard from "expo-clipboard";
 import * as DocumentPicker from "expo-document-picker";
 import * as FileSystem from "expo-file-system/legacy";
 import { FontAwesome6, Ionicons } from "@expo/vector-icons";
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { useFocusEffect, useNavigation } from "@react-navigation/native";
 import type { NativeStackNavigationProp } from "@react-navigation/native-stack";
 import {
@@ -156,6 +156,14 @@ async function fileToDataUrl(file: File): Promise<string> {
     reader.onerror = () => reject(new Error("Could not read attachment"));
     reader.readAsDataURL(file);
   });
+}
+
+function useStableEvent<T extends (...args: never[]) => unknown>(handler: T): T {
+  const handlerRef = useRef(handler);
+  useLayoutEffect(() => {
+    handlerRef.current = handler;
+  }, [handler]);
+  return useCallback(((...args: never[]) => handlerRef.current(...args)) as T, []);
 }
 
 export function ChatScreen({
@@ -366,6 +374,16 @@ export function ChatScreen({
     () => sessions.find((session) => session.id === sessionId),
     [sessionId, sessions],
   );
+  const selectedSessionTitle = selectedSessionId
+    ? sessionName(
+        selectedSession ?? {
+          id: selectedSessionId,
+          channel: "dashboard",
+          alias: "New chat",
+          last_active_at: 0,
+        },
+      )
+    : null;
 
   useEffect(() => {
     const cause = sessionsQuery.error ?? messagesQuery.error;
@@ -425,18 +443,17 @@ export function ChatScreen({
     }
   };
 
+  const handleAttach = useStableEvent(showAttachmentMenu);
+  const handleSend = useStableEvent(() => void send());
+  const handleRemoveAttachment = useCallback((index: number) => {
+    setAttachments((current) => current.filter((_, itemIndex) => itemIndex !== index));
+  }, []);
+
   const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
   useLayoutEffect(() => {
-    if (!selectedSessionId) return;
+    if (!selectedSessionTitle || !sessionId) return;
     navigation.setOptions({
-      title: sessionName(
-        selectedSession ?? {
-          id: selectedSessionId,
-          channel: "dashboard",
-          alias: "New chat",
-          last_active_at: 0,
-        },
-      ),
+      title: selectedSessionTitle,
       headerRight: ({ tintColor }: { tintColor?: string }) => (
         <HeaderToolbarButtonGroup>
           <HeaderButton
@@ -444,9 +461,7 @@ export function ChatScreen({
             onPress={() =>
               navigation.navigate("VoiceConversation", {
                 sessionId:
-                  voiceActive && activeVoiceChatSessionId
-                    ? activeVoiceChatSessionId
-                    : selectedSessionId,
+                  voiceActive && activeVoiceChatSessionId ? activeVoiceChatSessionId : sessionId,
               })
             }
             tintColor={tintColor}
@@ -475,8 +490,8 @@ export function ChatScreen({
     activeVoiceChatSessionId,
     menuOpen,
     navigation,
-    selectedSession,
-    selectedSessionId,
+    selectedSessionTitle,
+    sessionId,
     theme.colors.accent,
     voiceActive,
   ]);
@@ -518,11 +533,9 @@ export function ChatScreen({
       onMenu={() => setMenuOpen((open) => !open)}
       onFilters={setFilters}
       onInput={setInput}
-      onAttach={showAttachmentMenu}
-      onRemoveAttachment={(index) =>
-        setAttachments((current) => current.filter((_, itemIndex) => itemIndex !== index))
-      }
-      onSend={() => void send()}
+      onAttach={handleAttach}
+      onRemoveAttachment={handleRemoveAttachment}
+      onSend={handleSend}
       onLoadOlder={async () => {
         try {
           await loadOlder();
@@ -793,19 +806,16 @@ function Conversation({
   const theme = useVitoTheme();
   const agentName = useAgentName();
   const insets = useSafeAreaInsets();
-  const [webInputHeight, setWebInputHeight] = useState(22);
   const [keyboardInset, setKeyboardInset] = useState(0);
   const lastKeyboardHeightRef = useRef(0);
   const inputFocusedRef = useRef(false);
-  const composerInputRef = useRef<TextInput>(null);
   const nearBottomRef = useRef(true);
   const scrollOffsetRef = useRef(0);
   const contentHeightRef = useRef(0);
   const prependingRef = useRef(false);
-
-  useEffect(() => {
-    if (Platform.OS === "web" && input.length === 0) setWebInputHeight(22);
-  }, [input]);
+  const handleComposerFocusChange = useCallback((focused: boolean) => {
+    inputFocusedRef.current = focused;
+  }, []);
 
   useEffect(() => {
     if (Platform.OS !== "ios") return;
@@ -848,46 +858,6 @@ function Conversation({
       for (const timer of resumeTimers) clearTimeout(timer);
     };
   }, []);
-
-  const keepWebComposerFocused = () => {
-    if (Platform.OS !== "web") return;
-    globalThis.requestAnimationFrame(() => composerInputRef.current?.focus());
-  };
-  const sendFromComposer = () => {
-    onSend();
-    keepWebComposerFocused();
-  };
-
-  useEffect(() => {
-    if (Platform.OS !== "web") return;
-    const handleUnfocusedEnter = (event: globalThis.KeyboardEvent) => {
-      if (
-        event.key !== "Enter" ||
-        event.shiftKey ||
-        event.metaKey ||
-        event.ctrlKey ||
-        event.altKey ||
-        event.isComposing ||
-        event.repeat ||
-        menuOpen ||
-        sending ||
-        (!input.trim() && attachments.length === 0)
-      )
-        return;
-      const activeElement = globalThis.document?.activeElement;
-      if (
-        activeElement &&
-        activeElement !== globalThis.document.body &&
-        activeElement !== globalThis.document.documentElement
-      )
-        return;
-      event.preventDefault();
-      composerInputRef.current?.focus();
-      onSend();
-    };
-    globalThis.addEventListener("keydown", handleUnfocusedEnter);
-    return () => globalThis.removeEventListener("keydown", handleUnfocusedEnter);
-  }, [attachments.length, input, menuOpen, onSend, sending]);
 
   const slashQuery = input.startsWith("/") && !input.includes(" ") ? input.toLowerCase() : null;
   const slashCommands = slashQuery
@@ -943,7 +913,7 @@ function Conversation({
         ref={scrollRef}
         style={styles.messages}
         contentContainerStyle={styles.messageContent}
-        keyboardDismissMode="on-drag"
+        keyboardDismissMode={Platform.OS === "web" ? "none" : "on-drag"}
         scrollEventThrottle={16}
         onScroll={(event) => {
           const { contentOffset, contentSize, layoutMeasurement } = event.nativeEvent;
@@ -1053,75 +1023,152 @@ function Conversation({
           ))}
         </ScrollView>
       )}
-      <View
-        style={[
-          styles.composer,
-          Platform.OS === "web" && styles.composerWeb,
-          {
-            marginBottom:
-              keyboardInset > 0 ? theme.space.sm : Math.max(theme.space.sm, insets.bottom),
-          },
-        ]}
-      >
-        <Pressable
-          accessibilityLabel="Attach files or photos"
-          onPress={onAttach}
-          style={styles.attachButton}
-        >
-          <Ionicons name="add" size={24} color={theme.colors.textSecondary} />
-        </Pressable>
-        <TextInput
-          ref={composerInputRef}
-          value={input}
-          onChangeText={onInput}
-          onFocus={() => {
-            inputFocusedRef.current = true;
-          }}
-          onBlur={() => {
-            inputFocusedRef.current = false;
-          }}
-          placeholder={`Message ${agentName}`}
-          placeholderTextColor={theme.colors.textMuted}
-          multiline
-          maxLength={12000}
-          onKeyPress={(event) => {
-            if (Platform.OS !== "web" || event.nativeEvent.key !== "Enter") return;
-            const keyboardEvent = event.nativeEvent as typeof event.nativeEvent & {
-              shiftKey?: boolean;
-              isComposing?: boolean;
-            };
-            if (keyboardEvent.shiftKey || keyboardEvent.isComposing) return;
-            event.preventDefault();
-            if ((input.trim() || attachments.length) && !sending) sendFromComposer();
-          }}
-          onContentSizeChange={(event) => {
-            if (Platform.OS === "web")
-              setWebInputHeight(Math.min(96, Math.max(22, event.nativeEvent.contentSize.height)));
-          }}
-          style={[
-            styles.input,
-            Platform.OS === "web" && styles.inputWeb,
-            Platform.OS === "web" && { height: webInputHeight },
-          ]}
-        />
-        <Pressable
-          disabled={(!input.trim() && !attachments.length) || sending}
-          onPress={sendFromComposer}
-          style={[
-            styles.send,
-            ((!input.trim() && !attachments.length) || sending) && styles.sendDisabled,
-          ]}
-        >
-          {sending ? (
-            <ActivityIndicator color={theme.colors.accentText} />
-          ) : (
-            <Ionicons name="arrow-up" size={22} color={theme.colors.accentText} />
-          )}
-        </Pressable>
-      </View>
+      <ChatComposer
+        input={input}
+        attachmentCount={attachments.length}
+        sending={sending}
+        menuOpen={menuOpen}
+        keyboardInset={keyboardInset}
+        bottomInset={insets.bottom}
+        onInput={onInput}
+        onAttach={onAttach}
+        onSend={onSend}
+        onFocusChange={handleComposerFocusChange}
+      />
     </View>
   );
 }
+
+const ChatComposer = memo(function ChatComposer({
+  input,
+  attachmentCount,
+  sending,
+  menuOpen,
+  keyboardInset,
+  bottomInset,
+  onInput,
+  onAttach,
+  onSend,
+  onFocusChange,
+}: {
+  input: string;
+  attachmentCount: number;
+  sending: boolean;
+  menuOpen: boolean;
+  keyboardInset: number;
+  bottomInset: number;
+  onInput: (value: string) => void;
+  onAttach: () => void;
+  onSend: () => void;
+  onFocusChange: (focused: boolean) => void;
+}) {
+  const styles = useThemeStyles(createStyles);
+  const theme = useVitoTheme();
+  const agentName = useAgentName();
+  const [webInputHeight, setWebInputHeight] = useState(22);
+  const inputRef = useRef<TextInput>(null);
+  const canSend = (!!input.trim() || attachmentCount > 0) && !sending;
+
+  useEffect(() => {
+    if (Platform.OS === "web" && input.length === 0) setWebInputHeight(22);
+  }, [input]);
+
+  const sendFromComposer = useCallback(() => {
+    onSend();
+    if (Platform.OS === "web") globalThis.requestAnimationFrame(() => inputRef.current?.focus());
+  }, [onSend]);
+
+  useEffect(() => {
+    if (Platform.OS !== "web") return;
+    const handleUnfocusedEnter = (event: globalThis.KeyboardEvent) => {
+      if (
+        event.key !== "Enter" ||
+        event.shiftKey ||
+        event.metaKey ||
+        event.ctrlKey ||
+        event.altKey ||
+        event.isComposing ||
+        event.repeat ||
+        menuOpen ||
+        !canSend
+      )
+        return;
+      const activeElement = globalThis.document?.activeElement;
+      if (
+        activeElement &&
+        activeElement !== globalThis.document.body &&
+        activeElement !== globalThis.document.documentElement
+      )
+        return;
+      event.preventDefault();
+      inputRef.current?.focus();
+      sendFromComposer();
+    };
+    globalThis.addEventListener("keydown", handleUnfocusedEnter);
+    return () => globalThis.removeEventListener("keydown", handleUnfocusedEnter);
+  }, [canSend, menuOpen, sendFromComposer]);
+
+  return (
+    <View
+      style={[
+        styles.composer,
+        Platform.OS === "web" && styles.composerWeb,
+        {
+          marginBottom: keyboardInset > 0 ? theme.space.sm : Math.max(theme.space.sm, bottomInset),
+        },
+      ]}
+    >
+      <Pressable
+        accessibilityLabel="Attach files or photos"
+        onPress={onAttach}
+        style={styles.attachButton}
+      >
+        <Ionicons name="add" size={24} color={theme.colors.textSecondary} />
+      </Pressable>
+      <TextInput
+        ref={inputRef}
+        value={input}
+        onChangeText={onInput}
+        onFocus={() => onFocusChange(true)}
+        onBlur={() => onFocusChange(false)}
+        placeholder={`Message ${agentName}`}
+        placeholderTextColor={theme.colors.textMuted}
+        multiline
+        maxLength={12000}
+        onKeyPress={(event) => {
+          if (Platform.OS !== "web" || event.nativeEvent.key !== "Enter") return;
+          const keyboardEvent = event.nativeEvent as typeof event.nativeEvent & {
+            shiftKey?: boolean;
+            isComposing?: boolean;
+          };
+          if (keyboardEvent.shiftKey || keyboardEvent.isComposing) return;
+          event.preventDefault();
+          if (canSend) sendFromComposer();
+        }}
+        onContentSizeChange={(event) => {
+          if (Platform.OS === "web")
+            setWebInputHeight(Math.min(96, Math.max(22, event.nativeEvent.contentSize.height)));
+        }}
+        style={[
+          styles.input,
+          Platform.OS === "web" && styles.inputWeb,
+          Platform.OS === "web" && { height: webInputHeight },
+        ]}
+      />
+      <Pressable
+        disabled={!canSend}
+        onPress={sendFromComposer}
+        style={[styles.send, !canSend && styles.sendDisabled]}
+      >
+        {sending ? (
+          <ActivityIndicator color={theme.colors.accentText} />
+        ) : (
+          <Ionicons name="arrow-up" size={22} color={theme.colors.accentText} />
+        )}
+      </Pressable>
+    </View>
+  );
+});
 
 function MenuToggle({
   label,

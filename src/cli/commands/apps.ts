@@ -13,7 +13,7 @@ export function runAppsCommand(args: string[], projectRoot: string): number {
     );
     return 0;
   }
-  const scriptPath = resolve(projectRoot, "skills", "builtin", "apps", "index.js");
+  const scriptPath = resolve(projectRoot, "system", "skills", "apps", "index.js");
   const result = spawnSync(process.execPath, [scriptPath, ...args], {
     cwd: projectRoot,
     env: process.env,

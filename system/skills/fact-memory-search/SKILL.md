@@ -28,6 +28,8 @@ Examples:
 
 - Use `--current` for current/latest/final-state questions.
 - Use `--as-of` for historical state at a particular date.
+- Always inspect the fact's observed time, validity range, and evidence timestamps. `active` does not guarantee that an old state remains true today.
+- Treat stale or undated state and measurement facts—especially locations, travel, lodging, inventory, schedules, health, and availability—as potentially historical and verify current claims against newer evidence.
 - Treat `user_explicit` and `tool_verified` evidence as stronger than `assistant_reported`.
 - Report disputed facts and conflicting evidence rather than choosing silently.
 - Verify consequential or surprising claims against the included raw-message quotes.

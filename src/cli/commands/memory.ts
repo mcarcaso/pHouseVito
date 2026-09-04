@@ -224,11 +224,18 @@ async function runRecall(args: string[], x: Context): Promise<number> {
   console.log("═══ ATOMIC FACTS ═══");
   if (result.facts.length === 0) console.log("No facts found.\n");
   for (const item of result.facts) {
+    const fact = item.fact;
+    const validity =
+      fact.validFrom || fact.validTo
+        ? ` | valid ${fact.validFrom ?? "unknown"} → ${fact.validTo ?? "present"}`
+        : "";
     console.log(
-      `[Fact ${item.fact.id} | ${item.fact.status} | ${item.fact.authority}] ${item.fact.canonicalText}`,
+      `[Fact ${fact.id} | ${fact.status} | ${fact.authority} | observed ${new Date(fact.observedAt).toISOString()}${validity}] ${fact.canonicalText}`,
     );
-    for (const source of item.fact.sources) {
-      console.log(`  message ${source.messageId}: ${JSON.stringify(source.quote)}`);
+    for (const source of fact.sources) {
+      console.log(
+        `  message ${source.messageId} | ${source.sessionId} | ${new Date(source.sourceTimestamp).toISOString()}: ${JSON.stringify(source.quote)}`,
+      );
     }
   }
   console.log("\n═══ RAW TRANSCRIPT EVIDENCE ═══");

@@ -2,7 +2,11 @@ import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import { ObjectContext } from "../../src/context/ObjectContext.js";
 import { createDatabase } from "../../src/lib/sqlite/database.js";
-import { DefaultFactService } from "../../src/services/facts/DefaultFactService.js";
+import {
+  currentFactRecencyWeight,
+  DefaultFactService,
+  isFactValidOnDate,
+} from "../../src/services/facts/DefaultFactService.js";
 import type {
   ExtractedFactCandidate,
   FactExtractionInput,
@@ -609,5 +613,34 @@ describe("atomic fact ingestion", () => {
       fixture.db.close();
       fixture.embeddingDb.close();
     }
+  });
+});
+
+describe("current fact temporal safeguards", () => {
+  it("honors explicit validity windows for current retrieval", () => {
+    assert.equal(
+      isFactValidOnDate({ validFrom: "2026-05-08", validTo: "2026-05-08" }, "2026-09-04"),
+      false,
+    );
+    assert.equal(isFactValidOnDate({ validFrom: "2026-05-08", validTo: null }, "2026-09-04"), true);
+  });
+
+  it("penalizes stale state and measurements without penalizing durable facts", () => {
+    const now = Date.parse("2026-09-04T12:00:00Z");
+    assert.equal(currentFactRecencyWeight({ kind: "state", observedAt: now }, now), 1);
+    assert.equal(
+      currentFactRecencyWeight(
+        { kind: "state", observedAt: Date.parse("2026-05-08T12:00:00Z") },
+        now,
+      ),
+      0.55,
+    );
+    assert.equal(
+      currentFactRecencyWeight(
+        { kind: "preference", observedAt: Date.parse("2020-01-01T00:00:00Z") },
+        now,
+      ),
+      1,
+    );
   });
 });

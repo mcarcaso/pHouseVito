@@ -33,6 +33,36 @@ import type {
   FactService,
 } from "./FactService.js";
 
+const DAY_MS = 24 * 60 * 60 * 1000;
+
+function localIsoDate(timestamp: number): string {
+  const date = new Date(timestamp);
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const day = String(date.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
+}
+
+export function isFactValidOnDate(
+  fact: Pick<AtomicFact, "validFrom" | "validTo">,
+  date: string,
+): boolean {
+  return (!fact.validFrom || fact.validFrom <= date) && (!fact.validTo || fact.validTo >= date);
+}
+
+export function currentFactRecencyWeight(
+  fact: Pick<AtomicFact, "kind" | "observedAt">,
+  now = Date.now(),
+): number {
+  if (fact.kind !== "state" && fact.kind !== "measurement") return 1;
+  const ageDays = Math.max(0, (now - fact.observedAt) / DAY_MS);
+  if (ageDays <= 14) return 1;
+  if (ageDays <= 60) return 0.8;
+  if (ageDays <= 180) return 0.55;
+  if (ageDays <= 365) return 0.4;
+  return 0.25;
+}
+
 function emptyResult(start: number, skipped?: string): FactIngestResult {
   return {
     ...(skipped ? { skipped } : {}),
@@ -688,17 +718,17 @@ export class DefaultFactService implements FactService {
         .list(x, { statuses, order: "recent", limit: limit * 3 })
         .map((fact, index) => ({ fact, score: 1 / (index + 1) }));
     }
+    const effectiveAsOf = options.asOf ?? (options.currentOnly ? localIsoDate(Date.now()) : null);
     return scored
       .filter(({ fact }) => statuses.includes(fact.status))
       .filter(({ fact }) => !options.kinds || options.kinds.includes(fact.kind))
       .filter(({ fact }) => !options.authorities || options.authorities.includes(fact.authority))
-      .filter(({ fact }) => {
-        if (!options.asOf) return true;
-        return (
-          (!fact.validFrom || fact.validFrom <= options.asOf) &&
-          (!fact.validTo || fact.validTo >= options.asOf)
-        );
-      })
+      .filter(({ fact }) => !effectiveAsOf || isFactValidOnDate(fact, effectiveAsOf))
+      .map(({ fact, score }) => ({
+        fact,
+        score: score * (options.currentOnly ? currentFactRecencyWeight(fact) : 1),
+      }))
+      .sort((a, b) => b.score - a.score)
       .slice(0, limit)
       .map(({ fact, score }) => ({
         fact,

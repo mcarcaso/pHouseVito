@@ -33,6 +33,8 @@ The command returns three independent evidence lanes:
 - Use `--current` for current/latest/final-state questions.
 - Use `--as-of` when the user asks what was true at a historical date.
 - Use `--deep` when quick retrieval lacks evidence.
+- Dates are essential. Every recalled fact includes its observed time, validity range when known, and timestamped evidence; inspect them before answering.
+- `active` means the fact has not been superseded in its slot, not that an old claim is guaranteed true today. Treat stale or undated state and measurement facts—especially locations, travel, lodging, inventory, schedules, health, and availability—as potentially historical and verify current claims against newer evidence.
 - Prefer profile for durable policy and identity, but verify surprising claims.
 - Prefer `user_explicit` and `tool_verified` facts over `assistant_reported` facts.
 - Raw messages are authoritative; atomic facts and profile entries are derived or curated indexes.

@@ -2,9 +2,9 @@ import { Ionicons } from "@expo/vector-icons";
 import { Linking, Pressable, StyleSheet, Text, View } from "react-native";
 import { useThemeStyles, useVitoTheme, type VitoTheme } from "../../hooks/useVitoTheme";
 
-export type VoicePreviewProvider = "openai" | "gemini";
+export type VoicePreviewProvider = "openai" | "gemini" | "openrouter";
 
-const links: Record<VoicePreviewProvider, { label: string; url: string }> = {
+const links: Record<Exclude<VoicePreviewProvider, "openrouter">, { label: string; url: string }> = {
   openai: { label: "Preview OpenAI voices", url: "https://www.openai.fm/" },
   gemini: {
     label: "Preview Gemini voices",
@@ -12,13 +12,31 @@ const links: Record<VoicePreviewProvider, { label: string; url: string }> = {
   },
 };
 
-export function VoicePreviewLinks({ providers }: { providers: VoicePreviewProvider[] }) {
+export function VoicePreviewLinks({
+  providers,
+  openRouterModel,
+}: {
+  providers: VoicePreviewProvider[];
+  openRouterModel?: string;
+}) {
   const styles = useThemeStyles(createStyles);
   const theme = useVitoTheme();
   return (
     <View style={styles.links}>
       {providers.map((provider) => {
-        const link = links[provider];
+        const link =
+          provider === "openrouter"
+            ? openRouterModel
+              ? {
+                  label: "Preview this model’s voices on OpenRouter",
+                  url: `https://openrouter.ai/${openRouterModel
+                    .split("/")
+                    .map(encodeURIComponent)
+                    .join("/")}`,
+                }
+              : null
+            : links[provider];
+        if (!link) return null;
         return (
           <Pressable
             accessibilityRole="link"

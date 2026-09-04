@@ -15,6 +15,7 @@ import {
 import { useSpeech, type SpeechProvider } from "../../contexts/speech";
 import { api, getConfiguredSecretKeys } from "../../services/api/client";
 import { useThemeStyles, useVitoTheme, type VitoTheme } from "../../hooks/useVitoTheme";
+import { VoicePreviewLinks } from "./VoicePreviewLinks";
 
 interface Voice {
   id: string;
@@ -219,6 +220,16 @@ export function SpeechSettingsScreen() {
           )}
           <Ionicons name="chevron-down" size={17} color={theme.colors.textMuted} />
         </Pressable>
+        <VoicePreviewLinks
+          providers={
+            speech.settings.provider === "openai" || speech.settings.provider === "gemini"
+              ? [speech.settings.provider]
+              : speech.settings.provider === "openrouter" && selectedModel
+                ? ["openrouter"]
+                : []
+          }
+          openRouterModel={selectedModel?.id}
+        />
         <Text style={styles.fieldLabel}>PLAYBACK SPEED</Text>
         <View style={styles.speedRow}>
           {[0.8, 1, 1.2, 1.5].map((rate) => (

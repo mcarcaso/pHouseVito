@@ -16,7 +16,9 @@ export type HeaderToolbarButtonProps = PropsWithChildren<
 export function HeaderToolbarButton({ children, ...props }: HeaderToolbarButtonProps) {
   return (
     <HeaderButton {...props} style={styles.button}>
-      {children}
+      <View pointerEvents="none" style={styles.content}>
+        {children}
+      </View>
     </HeaderButton>
   );
 }
@@ -31,6 +33,11 @@ const styles = StyleSheet.create({
     height: 44,
     alignItems: "center",
     justifyContent: "center",
+  },
+  content: {
+    alignItems: "center",
+    justifyContent: "center",
+    transform: [{ translateY: -3 }],
   },
   group: {
     flexDirection: "row",

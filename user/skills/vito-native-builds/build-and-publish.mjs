@@ -10,15 +10,15 @@ const appJsonPath = join(mobileDir, "app.json");
 const configPath = join(root, "user", "vito.config.json");
 const buildsRoot = join(root, "user", "drive", "builds");
 const canonicalDir = join(buildsRoot, "vito");
-const targetArg = process.argv[2] ?? "all";
-const profiles = targetArg === "all" ? ["development", "preview"] : [targetArg];
+const targetArg = process.argv[2];
 
 if (!existsSync(appJsonPath) || !existsSync(configPath)) {
   throw new Error("Run this command from the Vito repository root");
 }
-if (profiles.some((profile) => !["development", "preview"].includes(profile))) {
-  throw new Error("Usage: build-and-publish.mjs development|preview|all");
+if (!targetArg || !["development", "preview", "all"].includes(targetArg)) {
+  throw new Error("Build target required. Ask the user to choose: development, preview, or all.");
 }
+const profiles = targetArg === "all" ? ["development", "preview"] : [targetArg];
 
 function run(command, args, options = {}) {
   console.log(`\n$ ${command} ${args.join(" ")}`);
@@ -97,13 +97,36 @@ function extractIpaMetadata(ipaPath) {
     if (!profileText.includes("<key>ProvisionedDevices</key>")) {
       throw new Error("Provisioning profile is not an ad hoc/development device profile");
     }
+    const plistBuddyValue = (key) => commandOutput("/usr/libexec/PlistBuddy", ["-c", `Print :${key}`, decodedProfilePath]);
+    const provisionedDevices = plistBuddyValue("ProvisionedDevices")
+      .split("\n")
+      .map((line) => line.trim())
+      .filter((line) => /^[0-9A-F-]{20,}$/i.test(line));
     return {
       bundleIdentifier: plistValue("CFBundleIdentifier"),
       version: plistValue("CFBundleShortVersionString"),
       buildNumber: plistValue("CFBundleVersion"),
+      teamId: plistBuddyValue("TeamIdentifier:0"),
+      provisionedDevices,
     };
   } finally {
     rmSync(temporaryDir, { recursive: true, force: true });
+  }
+}
+
+function verifyRegisteredDevices(metadata) {
+  const output = execFileSync("npx", ["eas-cli", "device:list", "--apple-team-id", metadata.teamId], {
+    cwd: mobileDir,
+    encoding: "utf8",
+  });
+  const registeredDevices = [...output.matchAll(/^UDID\s+([0-9A-F-]+)$/gim)].map((match) => match[1]);
+  if (registeredDevices.length === 0) throw new Error(`No registered iOS devices found for Apple team ${metadata.teamId}`);
+  const provisioned = new Set(metadata.provisionedDevices.map((udid) => udid.toUpperCase()));
+  const missing = registeredDevices.filter((udid) => !provisioned.has(udid.toUpperCase()));
+  if (missing.length > 0) {
+    throw new Error(
+      `Provisioning profile is missing ${missing.length} registered device(s): ${missing.join(", ")}. Regenerate the profile before publishing.`,
+    );
   }
 }
 
@@ -183,7 +206,14 @@ function publish(profile, ipaPath, metadata) {
   writeAtomic(join(targetDir, "index.html"), installerHtml({ profile, version: metadata.version, buildNumber: metadata.buildNumber }));
 
   const builds = loadBuildMetadata();
-  builds[profile] = { ...metadata, profile, publishedAt: new Date().toISOString(), ipa: ipaName };
+  builds[profile] = {
+    profile,
+    version: metadata.version,
+    buildNumber: metadata.buildNumber,
+    bundleIdentifier: metadata.bundleIdentifier,
+    publishedAt: new Date().toISOString(),
+    ipa: ipaName,
+  };
   writeAtomic(join(canonicalDir, "builds.json"), `${JSON.stringify(builds, null, 2)}\n`);
   writeAtomic(join(canonicalDir, "index.html"), selectorHtml(builds));
 
@@ -230,6 +260,7 @@ for (const profile of profiles) {
   if (metadata.bundleIdentifier !== app.expo.ios.bundleIdentifier) throw new Error(`Bundle identifier mismatch: ${metadata.bundleIdentifier}`);
   if (metadata.buildNumber !== buildNumber) throw new Error(`Build number mismatch: expected ${buildNumber}, got ${metadata.buildNumber}`);
   if (metadata.version !== version) throw new Error(`Version mismatch: expected ${version}, got ${metadata.version}`);
+  verifyRegisteredDevices(metadata);
   publish(profile, outputPath, metadata);
   await verifyPublished(profile, buildNumber);
   results.push({ profile, ...metadata, outputPath });

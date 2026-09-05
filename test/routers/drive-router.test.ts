@@ -99,6 +99,31 @@ describe("drive router", () => {
     assert.equal(await fileResponse.text(), "<h1>Hello</h1>");
   });
 
+  it("serves byte ranges for public and authenticated-style files", async () => {
+    const publicRange = await fetch(`${baseUrl}/d/site/index.html`, {
+      headers: { range: "bytes=4-8" },
+    });
+    assert.equal(publicRange.status, 206);
+    assert.equal(publicRange.headers.get("accept-ranges"), "bytes");
+    assert.equal(publicRange.headers.get("content-range"), "bytes 4-8/14");
+    assert.equal(publicRange.headers.get("content-length"), "5");
+    assert.match(publicRange.headers.get("access-control-expose-headers") ?? "", /Content-Range/);
+    assert.equal(await publicRange.text(), "Hello");
+
+    const suffixRange = await fetch(`${baseUrl}/api/drive/file/site/index.html`, {
+      headers: { range: "bytes=-5" },
+    });
+    assert.equal(suffixRange.status, 206);
+    assert.equal(suffixRange.headers.get("content-range"), "bytes 9-13/14");
+    assert.equal(await suffixRange.text(), "</h1>");
+
+    const invalidRange = await fetch(`${baseUrl}/d/site/index.html`, {
+      headers: { range: "bytes=99-100" },
+    });
+    assert.equal(invalidRange.status, 416);
+    assert.equal(invalidRange.headers.get("content-range"), "bytes */14");
+  });
+
   it("updates file visibility and deletes entries", async () => {
     const metadata = await fetch(`${baseUrl}/api/drive/file-meta?path=site%2Findex.html`, {
       method: "PUT",

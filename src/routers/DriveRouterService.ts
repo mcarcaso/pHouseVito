@@ -45,13 +45,65 @@ function decodeDataUrl(value: string): Buffer | undefined {
   return Buffer.from(match[1], "base64");
 }
 
-function sendDriveFile(x: Context, path: string, indexFallback: boolean, res: Response): boolean {
-  const parsed = driveReadResultSchema.safeParse(
+function parseByteRange(
+  value: string | undefined,
+  size: number,
+): { start: number; end: number } | null | undefined {
+  if (!value) return undefined;
+  const match = /^bytes=(\d*)-(\d*)$/.exec(value.trim());
+  if (!match || (!match[1] && !match[2]) || size === 0) return null;
+  const requestedStart = match[1] ? Number(match[1]) : undefined;
+  const requestedEnd = match[2] ? Number(match[2]) : undefined;
+  if (requestedStart === undefined) {
+    const suffixLength = requestedEnd ?? 0;
+    if (!Number.isSafeInteger(suffixLength) || suffixLength <= 0) return null;
+    return { start: Math.max(0, size - suffixLength), end: size - 1 };
+  }
+  if (!Number.isSafeInteger(requestedStart) || requestedStart >= size) return null;
+  const end = requestedEnd === undefined ? size - 1 : Math.min(requestedEnd, size - 1);
+  if (!Number.isSafeInteger(end) || end < requestedStart) return null;
+  return { start: requestedStart, end };
+}
+
+function pipeDriveFile(
+  x: Context,
+  path: string,
+  indexFallback: boolean,
+  req: Request,
+  res: Response,
+  requirePublic: boolean,
+): boolean {
+  let parsed = driveReadResultSchema.safeParse(
     xDriveStore(x).cmd(x, { type: "read", path, indexFallback }),
   );
-  if (!parsed.success) return false;
+  if (!parsed.success || (requirePublic && !parsed.data.isPublic)) {
+    parsed.success && parsed.data.stream.destroy();
+    return false;
+  }
   if (parsed.data.isPublic) sendCorsHeaders(res);
   res.type(parsed.data.name);
+  res.setHeader("Accept-Ranges", "bytes");
+
+  const range = parseByteRange(req.headers.range, parsed.data.size);
+  if (range === null) {
+    parsed.data.stream.destroy();
+    res.setHeader("Content-Range", `bytes */${parsed.data.size}`);
+    res.status(416).end();
+    return true;
+  }
+  if (range) {
+    parsed.data.stream.destroy();
+    parsed = driveReadResultSchema.safeParse(
+      xDriveStore(x).cmd(x, { type: "read", path, indexFallback, range }),
+    );
+    if (!parsed.success) return false;
+    res.status(206);
+    res.setHeader("Content-Range", `bytes ${range.start}-${range.end}/${parsed.data.size}`);
+    res.setHeader("Content-Length", String(range.end - range.start + 1));
+  } else {
+    res.setHeader("Content-Length", String(parsed.data.size));
+  }
+
   parsed.data.stream.on("error", () => {
     if (!res.headersSent) res.status(500).end();
     else res.destroy();
@@ -60,10 +112,21 @@ function sendDriveFile(x: Context, path: string, indexFallback: boolean, res: Re
   return true;
 }
 
+function sendDriveFile(
+  x: Context,
+  path: string,
+  indexFallback: boolean,
+  req: Request,
+  res: Response,
+): boolean {
+  return pipeDriveFile(x, path, indexFallback, req, res, false);
+}
+
 function sendCorsHeaders(res: Response): void {
   res.setHeader("Access-Control-Allow-Origin", "*");
   res.setHeader("Access-Control-Allow-Methods", "GET, OPTIONS");
-  res.setHeader("Access-Control-Allow-Headers", "Content-Type");
+  res.setHeader("Access-Control-Allow-Headers", "Content-Type, Range");
+  res.setHeader("Access-Control-Expose-Headers", "Accept-Ranges, Content-Length, Content-Range");
 }
 
 export function isPublicDriveFile(x: Context, path: string): boolean {
@@ -88,26 +151,10 @@ function createPublicDriveRouter(x: Context): Router {
       query: emptyRouteSchema,
       body: unknownRouteSchema,
     },
-    handler: (routeX, { params }, _req, res) => {
-      const result = driveReadResultSchema.safeParse(
-        xDriveStore(routeX).cmd(routeX, {
-          type: "read",
-          path: params.filepath,
-          indexFallback: true,
-        }),
-      );
-      if (!result.success || !result.data.isPublic) {
-        result.success && result.data.stream.destroy();
+    handler: (routeX, { params }, req, res) => {
+      if (!pipeDriveFile(routeX, params.filepath, true, req, res, true)) {
         res.status(404).send("Not found");
-        return;
       }
-      sendCorsHeaders(res);
-      res.type(result.data.name);
-      result.data.stream.on("error", () => {
-        if (!res.headersSent) res.status(500).end();
-        else res.destroy();
-      });
-      result.data.stream.pipe(res);
     },
   });
   return router;
@@ -318,8 +365,8 @@ function createDriveRouter(x: Context): Router {
       query: emptyRouteSchema,
       body: unknownRouteSchema,
     },
-    handler: (routeX, { params }, _req, res) => {
-      if (!sendDriveFile(routeX, params.filepath, false, res)) {
+    handler: (routeX, { params }, req, res) => {
+      if (!sendDriveFile(routeX, params.filepath, false, req, res)) {
         res.setHeader("Cache-Control", "no-store");
         res.status(404).json({ error: "File not found" });
       }

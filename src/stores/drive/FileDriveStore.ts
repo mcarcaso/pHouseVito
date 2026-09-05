@@ -431,7 +431,7 @@ export class FileDriveStore implements DriveStore {
       name: entry.name,
       size: entry.size,
       isPublic: entry.isPublic,
-      stream: createReadStream(target),
+      stream: createReadStream(target, parsed.data.range),
     };
   }
 }

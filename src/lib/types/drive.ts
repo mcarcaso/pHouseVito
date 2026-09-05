@@ -19,6 +19,13 @@ export const driveReadCommandSchema = z
     type: z.literal("read"),
     path: drivePathSchema,
     indexFallback: z.boolean().optional(),
+    range: z
+      .object({
+        start: z.number().int().nonnegative(),
+        end: z.number().int().nonnegative(),
+      })
+      .refine(({ start, end }) => end >= start)
+      .optional(),
   })
   .strict();
 

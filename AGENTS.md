@@ -10,10 +10,10 @@ Vito — personal AI agent that runs as a long-lived service across Dashboard, D
 
 ```bash
 npm run dev              # tsx watch src/index.ts
-npm run dev:dashboard    # Vite dev server (separate terminal)
+npm run dev:mobile:web   # Expo web dev server (separate terminal)
 npm run build            # tsc → dist/
-npm run build:dashboard  # Vite build → dashboard/dist/
-npm run check            # backend/dashboard types + tests + example config validation
+npm run build:mobile:web # Expo export → mobile/dist/
+npm run check            # backend/mobile types + tests + example config validation
 npm run format           # Format the repository with Prettier
 npm run format:check     # Verify repository formatting
 npm test                 # Node test runner via tsx
@@ -22,10 +22,10 @@ npm test                 # Node test runner via tsx
 ./vito apps list         # Stable agent/operator app-management CLI
 ./vito memory search "query"  # Search embedded conversation history
 npm run validate:config  # Compatibility alias for config validation
-npm start                # build dashboard + pm2 start user/ecosystem.config.cjs
+npm start                # build companion web client + pm2 start user/ecosystem.config.cjs
 npm run logs             # pm2 logs vito-server
 npm run status / stop             # PM2 wrappers (service name: vito-server)
-npm run restart                   # sync deps, build backend/dashboard, restart PM2
+npm run restart                   # sync deps, build backend/companion web, restart PM2
 npm run restart:process           # fast PM2-only restart without rebuilding
 ```
 
@@ -84,7 +84,7 @@ Shared output-handler interfaces and cross-channel decorators live under `src/li
 ### Slash commands (priority, bypass queue)
 
 - `/stop` — abort active request, clear queue, release session lock.
-- `/restart` — confirm, then run the complete dependency sync, backend/dashboard build, and PM2 restart workflow.
+- `/restart` — confirm, then run the complete dependency sync, backend/companion web build, and PM2 restart workflow.
 - `/new` — write `.fresh` marker; next turn starts a brand-new pi session (history archived in `messages.archived`, embedded first).
 - `/compact` — summarize older turns of the live pi session in place.
 - `/model <name>` — hot-swap the model on the live pi session.
@@ -140,6 +140,6 @@ User-specific apps, prototypes, sites, experiments, and Expo/native projects bel
 ## Operational notes
 
 - PM2 service is `vito-server`; npm scripts call bare `pm2`, not `npx pm2`.
-- The dashboard has its own `node_modules` — run `npm install` inside `dashboard/` to get `vite`/`typescript` etc.
+- The companion app has its own `node_modules` — run `npm install` inside `mobile/` to get Expo/React Native dependencies.
 - Heartbeat log every 30 minutes (server alive + active cron count).
 - After a server restart, in-memory Pi runtime state is gone but pi-session JSONL on disk remains, so the next message resumes the same conversation. Vito's own message DB is append-only.

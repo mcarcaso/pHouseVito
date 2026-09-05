@@ -35,14 +35,10 @@ sync_dependencies() {
 }
 
 sync_dependencies "backend" "." npm ci --include=dev
-sync_dependencies "dashboard" "dashboard" npm --prefix dashboard ci --include=dev
 sync_dependencies "mobile" "mobile" npm --prefix mobile ci --include=dev
 
 echo "[Vito] Building backend..."
 npm run build
-
-echo "[Vito] Building legacy dashboard..."
-npm run build:dashboard
 
 echo "[Vito] Building companion web client..."
 npm run build:mobile:web

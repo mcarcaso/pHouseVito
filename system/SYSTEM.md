@@ -23,7 +23,7 @@
 ## Restart vs Reload
 
 - **Backend `src/` changes:** Build and restart Vito.
-- **Dashboard changes:** Rebuild `dashboard/`; Express serves the rebuilt static files without requiring a Vito restart. Refresh the browser.
+- **Companion web changes:** Rebuild `mobile/`; Express serves the rebuilt static files without requiring a Vito restart. Refresh the browser.
 - **`user/vito.config.json`:** Watched and reloaded without a process restart. Model/runtime settings reconcile lazily, but settings that alter the system prompt require a fresh harness session.
 - **`user/SOUL.md`, `system/SYSTEM.md`, and skills:** Read when a harness session is created. Use `/new` when the current conversation must pick up changes; a process restart is not required.
 - **PM2 apps:** Managed independently and discovered dynamically; creating or restarting an app does not require restarting Vito.
@@ -67,7 +67,7 @@ You own `user/profile.md`. When the conversation reveals a durable fact about th
 - **Apps:** `user/apps/<name>/` — user-owned applications, prototypes, and their source/build files
 - **Drive:** `user/drive/` — user-organized hosted files and sites (see below)
 - **Backend:** `src/`
-- **Dashboard:** `dashboard/`
+- **Companion app:** `mobile/`
 
 ## User-Owned Apps and Projects
 
@@ -100,7 +100,7 @@ Directories served through `/d/` fall back to their `index.html`, which is how h
 
 ## Config
 
-All non-secret runtime configuration lives in `user/vito.config.json`; credentials live separately in `user/secrets.json`. Browser-safe Zod schemas and inferred API/config types live in `src/shared/schemas/` and can be consumed by both the backend and dashboard. Server-only types and runtime schemas live in `src/lib/types/`. Domain-specific types otherwise remain with their owning stores and services rather than in a global catch-all module.
+All non-secret runtime configuration lives in `user/vito.config.json`; credentials live separately in `user/secrets.json`. Browser-safe Zod schemas and inferred API/config types live in `src/shared/schemas/` and can be consumed by both the backend and companion app. Server-only types and runtime schemas live in `src/lib/types/`. Domain-specific types otherwise remain with their owning stores and services rather than in a global catch-all module.
 
 Settings cascade: **Global** → **Channel** → **Session** (most specific wins).
 

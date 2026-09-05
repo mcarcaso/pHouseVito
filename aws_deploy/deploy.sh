@@ -41,8 +41,8 @@ git pull
 echo ">>> Installing dependencies …"
 npm ci
 ./scripts/install-runtime-deps.sh
-cd dashboard && npm ci && npm run build && cd ..
-cd mobile && npm ci && npm run export:web && cd ..
+npm --prefix mobile ci
+npm run build:mobile:web
 echo ">>> Building backend …"
 # Small EC2 instances get a conservative default V8 heap limit (~468 MB),
 # which is not enough for TypeScript. Swap provisioned by spinup covers the peak.

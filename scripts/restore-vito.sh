@@ -294,8 +294,8 @@ if ! $SKIP_BUILD; then
   log "Installing backend dependencies"
   (cd "$PROJECT_ROOT" && npm ci)
 
-  log "Installing dashboard dependencies"
-  (cd "$PROJECT_ROOT" && npm --prefix dashboard ci)
+  log "Installing companion dependencies"
+  (cd "$PROJECT_ROOT" && npm --prefix mobile ci)
 
   if [[ -f "$PROJECT_ROOT/src/cli/validate-config.ts" && -f "$PROJECT_ROOT/user/vito.config.json" ]]; then
     log "Validating restored configuration"
@@ -305,8 +305,8 @@ if ! $SKIP_BUILD; then
   log "Building backend"
   (cd "$PROJECT_ROOT" && npm run build)
 
-  log "Building dashboard"
-  (cd "$PROJECT_ROOT" && npm run build:dashboard)
+  log "Building companion web client"
+  (cd "$PROJECT_ROOT" && npm run build:mobile:web)
 fi
 
 if $WAS_RUNNING; then

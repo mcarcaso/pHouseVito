@@ -100,14 +100,7 @@ export class DashboardChannelService implements ChannelService {
     // Must precede body parsing so request bodies can stream to app processes.
     app.use(createAppProxyMiddleware(x));
 
-    const legacyDashboardDist = path.join(__dirname, "../../../../dashboard/dist");
     const companionWebDist = path.join(__dirname, "../../../../mobile/dist");
-
-    // Keep the legacy dashboard available during the companion's burn-in period.
-    app.use("/legacy", express.static(legacyDashboardDist));
-    app.get(/^\/legacy(?:\/.*)?$/, (_req, res) => {
-      res.sendFile(path.join(legacyDashboardDist, "index.html"));
-    });
 
     // The Vito companion is the default web client. API and Drive requests
     // fall through when there is no matching static asset.

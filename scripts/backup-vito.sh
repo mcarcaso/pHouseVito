@@ -202,9 +202,9 @@ PROJECT_NAME="$(basename "$PROJECT_ROOT")"
 tar -czf "$BACKUP_ROOT/repository/working-tree.tar.gz" \
   --exclude="./$PROJECT_NAME/.git" \
   --exclude="./$PROJECT_NAME/node_modules" \
-  --exclude="./$PROJECT_NAME/dashboard/node_modules" \
+  --exclude="./$PROJECT_NAME/mobile/node_modules" \
   --exclude="./$PROJECT_NAME/dist" \
-  --exclude="./$PROJECT_NAME/dashboard/dist" \
+  --exclude="./$PROJECT_NAME/mobile/dist" \
   --exclude="./$PROJECT_NAME/user" \
   --exclude="./$PROJECT_NAME/data" \
   --exclude="./$PROJECT_NAME/logs" \

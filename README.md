@@ -127,9 +127,10 @@ pHouseVito/
 │   ├── lib/sqlite/            # SQLite connection and schema bootstrap
 │   ├── lib/types/             # Server-only types and runtime schemas
 │   ├── lib/output/            # Shared output-handler interfaces and decorators
-│   └── shared/schemas/        # Browser-safe Zod schemas shared with dashboard
+│   └── shared/schemas/        # Browser-safe Zod schemas shared with the companion
 ├── system/                    # Project-owned policy and bundled skills
-├── dashboard/                 # React-based web UI
+├── mobile/                    # Expo companion app and web dashboard
+├── packages/vito-client/      # Shared companion API client
 ├── data/                      # Runtime data (attachments, etc.) — gitignored
 ├── user.example/              # Template — copy to user/ to get started
 └── user/                      # Your data, config, and customizations (gitignored)
@@ -209,8 +210,8 @@ Skills are automatically discovered on startup.
 # Watch mode for backend
 npm run dev
 
-# Separate terminal for dashboard hot reload
-npm run dev:dashboard
+# Separate terminal for companion web hot reload
+npm run dev:mobile:web
 ```
 
 ### Build
@@ -219,8 +220,8 @@ npm run dev:dashboard
 # Build TypeScript
 npm run build
 
-# Build dashboard
-npm run build:dashboard
+# Build companion web dashboard
+npm run build:mobile:web
 ```
 
 ## Architecture
@@ -337,7 +338,7 @@ Channels are adapters that convert between platform-specific formats and Vito's 
 ### Build & Deploy
 
 - **Always rebuild after source changes** — `npm run build` if changes aren’t working
-- **Dashboard needs devDeps** — use `NODE_ENV=development npm install` in dashboard dir
+- **Companion needs devDeps** — use `NODE_ENV=development npm install` in the mobile directory
 - **Cloudflare caches 404s** — use cache-busting params or wait for expiry
 - **Icon caching** — avoid common names like `favicon.png`, use unique filenames
 - **Disable caching by default** — use `serve.json` with no-cache headers

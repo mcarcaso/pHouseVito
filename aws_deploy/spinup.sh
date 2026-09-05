@@ -294,7 +294,8 @@ cd /opt/vito
 echo ">>> Building Vito …"
 npm ci
 ./scripts/install-runtime-deps.sh
-cd dashboard && npm ci && npm run build && cd ..
+npm --prefix mobile ci
+npm run build:mobile:web
 npm run build
 
 echo ">>> Setting up user directory …"

@@ -435,7 +435,7 @@ export function StructuredConfigEditor({
   } catch {
     return (
       <Text style={styles.error}>
-        Configuration is temporarily invalid. Correct it in the legacy dashboard.
+        Configuration is temporarily invalid. Correct user/vito.config.json and validate it.
       </Text>
     );
   }

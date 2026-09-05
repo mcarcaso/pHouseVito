@@ -111,6 +111,7 @@ export function SettingsScreen({
   const resetSetting = (path: string[]) => {
     if (!config) return;
     const nextSettings = removePath(overrides, path);
+    if (scope === "global") void savePatch({ settings: nextSettings });
     if (scope === "channel")
       void savePatch({
         channels: {
@@ -341,6 +342,33 @@ export function SettingsScreen({
             onReset={() => resetSetting(["pi-coding-agent", "model"])}
             styles={styles}
           />
+          {effective["pi-coding-agent"]?.model?.provider === "openrouter" && (
+            <ChoiceField
+              label="OpenRouter route"
+              options={[
+                { value: "", label: "Auto" },
+                { value: "deepinfra", label: "DeepInfra" },
+                { value: "groq", label: "Groq" },
+                { value: "fireworks", label: "Fireworks" },
+                { value: "together", label: "Together" },
+                { value: "novita", label: "Novita" },
+                { value: "siliconflow", label: "SiliconFlow" },
+                { value: "hyperbolic", label: "Hyperbolic" },
+                { value: "lambda", label: "Lambda" },
+              ]}
+              value={effective["pi-coding-agent"]?.openRouterProvider ?? ""}
+              overridden={
+                scope !== "global" && overrides["pi-coding-agent"]?.openRouterProvider !== undefined
+              }
+              onChange={(value) =>
+                value
+                  ? updateSetting(["pi-coding-agent", "openRouterProvider"], value)
+                  : resetSetting(["pi-coding-agent", "openRouterProvider"])
+              }
+              onReset={() => resetSetting(["pi-coding-agent", "openRouterProvider"])}
+              styles={styles}
+            />
+          )}
           <SegmentField
             label="Thinking level"
             options={[...thinkingLevels]}

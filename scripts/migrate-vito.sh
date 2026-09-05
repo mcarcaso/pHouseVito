@@ -88,9 +88,6 @@ printf '==> Creating pre-migration backup\n'
 printf '==> Installing backend dependencies\n'
 npm ci --include=dev
 
-printf '==> Installing dashboard dependencies\n'
-npm --prefix dashboard ci --include=dev
-
 printf '==> Installing mobile dependencies\n'
 npm --prefix mobile ci --include=dev
 
@@ -102,9 +99,6 @@ npm run check
 
 printf '==> Building backend\n'
 npm run build
-
-printf '==> Building legacy dashboard\n'
-npm run build:dashboard
 
 printf '==> Building Vito companion web client\n'
 npm run build:mobile:web

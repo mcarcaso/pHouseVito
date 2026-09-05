@@ -3,11 +3,9 @@ user/
 
 # Dependencies
 node_modules/
-dashboard/node_modules/
 
 # Build outputs
 dist/
-dashboard/dist/
 
 # Runtime data
 data/

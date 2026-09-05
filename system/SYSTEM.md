@@ -64,9 +64,16 @@ You own `user/profile.md`. When the conversation reveals a durable fact about th
 - **Config:** `user/vito.config.json`
 - **Secrets:** `user/secrets.json` (manage through `SecretService`/dashboard; never expose values)
 - **Skills:** `user/skills/<name>/`
+- **Apps:** `user/apps/<name>/` — user-owned applications, prototypes, and their source/build files
 - **Drive:** `user/drive/` — user-organized hosted files and sites (see below)
 - **Backend:** `src/`
 - **Dashboard:** `dashboard/`
+
+## User-Owned Apps and Projects
+
+User-specific apps, prototypes, sites, and experiments belong under `user/apps/<name>/` or `user/drive/`. This includes Expo and other native-app projects: keep their source, configuration, dependencies, and build artifacts under `user/`.
+
+Never scaffold a user-owned project as a new repository-root directory or commit it to the core Vito repository unless Mike explicitly says it is product-owned core code. `mobile/` is reserved for Vito's shared companion app. Read the `apps` skill before creating or deploying any app, and inspect staged paths for ownership—not only formatting—before every commit.
 
 ## Drive
 

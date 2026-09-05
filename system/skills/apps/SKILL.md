@@ -76,6 +76,17 @@ Use this skill when you need to:
 - The server MUST listen on the port passed via `--port` flag
 - Keep app names short, lowercase, URL-friendly (letters, numbers, hyphens)
 
+### Expo and Native Apps
+
+User-owned Expo/native projects also live under `user/apps/<name>/`, even when they share a web build or may later ship through TestFlight. Keep the complete project there: source, `app.json`/`app.config.*`, `eas.json`, assets, lockfile, dependencies, native build artifacts, and exported web output.
+
+- Never create a user Expo project as a new repository-root directory.
+- Never place it in `mobile/`; that directory is reserved for Vito's shared companion app.
+- Keep the web server and ready-to-serve export in the same `user/apps/<name>/` tree. A server may serve `dist/`, but deployment must not discard the source project.
+- Run Expo typechecks/exports from the app's directory and validate both native configuration and the deployed web build.
+- Do not start native builds, publish OTA updates, submit to TestFlight/App Store Connect, or change signing unless the user explicitly approves that release action.
+- Only put an Expo/native project in the core repository when the user explicitly classifies it as product-owned core code.
+
 ## CLI Usage
 
 Use Vito's project CLI. It delegates to the existing app deployment workflow while keeping the agent-facing command stable for future gateway changes.

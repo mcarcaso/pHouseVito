@@ -116,6 +116,10 @@ traces    (legacy table retained for existing data; live tracing uses file-backe
 
 Separate `user/embeddings.db` holds chunk vectors + FTS5 index used by `semantic-history-search`. Schema migrations live in `src/lib/sqlite/database.ts` and run on startup.
 
+### Repository ownership boundary
+
+User-specific apps, prototypes, sites, experiments, and Expo/native projects belong under `user/apps/<name>/` or `user/drive/`, including their source and build artifacts. Do not scaffold them as new repository-root directories or commit them as core Vito code unless Mike explicitly classifies the project as product-owned. The root `mobile/` directory is reserved for Vito's shared companion app. Read the `apps` skill before creating or deploying an app, and review staged paths for ownership before committing.
+
 ### Configuration files
 
 - `user/vito.config.json` — `bot`, `settings` (including global `pi-coding-agent` configuration), `channels{}`, `sessions{}` (per-key overrides), and `cron.jobs[]`. Legacy `harnesses["pi-coding-agent"]` input is migrated into settings during validation. Configuration is hot-reloaded with a 3s debounce; live Pi sessions get their model re-synced on reload.

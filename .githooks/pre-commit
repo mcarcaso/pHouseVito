@@ -1,4 +1,23 @@
 #!/usr/bin/env sh
 set -eu
 
+if [ "${VITO_ALLOW_NEW_TOP_LEVEL:-0}" != "1" ]; then
+  tracked_roots="$(git ls-tree -d --name-only HEAD)"
+  staged_roots="$(git diff --cached --name-only --diff-filter=A | awk -F/ 'NF > 1 { print $1 }' | sort -u)"
+  unexpected_roots=""
+
+  for root in $staged_roots; do
+    if ! printf '%s\n' "$tracked_roots" | grep -Fxq "$root"; then
+      unexpected_roots="${unexpected_roots}${unexpected_roots:+ }${root}"
+    fi
+  done
+
+  if [ -n "$unexpected_roots" ]; then
+    echo "Refusing commit: new top-level directories detected: $unexpected_roots" >&2
+    echo "User-owned apps and experiments belong under user/apps/ or user/drive/." >&2
+    echo "If Mike explicitly approved new core product roots, retry with VITO_ALLOW_NEW_TOP_LEVEL=1." >&2
+    exit 1
+  fi
+fi
+
 npm run format:check

@@ -813,8 +813,14 @@ function Conversation({
   const scrollOffsetRef = useRef(0);
   const contentHeightRef = useRef(0);
   const prependingRef = useRef(false);
+  const scrollAfterKeyboardLayoutRef = useRef(false);
   const handleComposerFocusChange = useCallback((focused: boolean) => {
     inputFocusedRef.current = focused;
+    if (Platform.OS !== "ios") return;
+    scrollAfterKeyboardLayoutRef.current = focused;
+    if (focused) {
+      nearBottomRef.current = true;
+    }
   }, []);
 
   useEffect(() => {
@@ -837,9 +843,14 @@ function Conversation({
     const frame = Keyboard.addListener("keyboardWillChangeFrame", (event) => {
       const height = Math.max(0, event.endCoordinates.height);
       if (height > 0) lastKeyboardHeightRef.current = height;
+      Keyboard.scheduleLayoutAnimation(event);
       setKeyboardInset(height);
     });
-    const hide = Keyboard.addListener("keyboardWillHide", () => setKeyboardInset(0));
+    const hide = Keyboard.addListener("keyboardWillHide", (event) => {
+      scrollAfterKeyboardLayoutRef.current = false;
+      Keyboard.scheduleLayoutAnimation(event);
+      setKeyboardInset(0);
+    });
     const appState = AppState.addEventListener("change", (state) => {
       if (state !== "active") return;
       syncKeyboardInset();
@@ -857,7 +868,7 @@ function Conversation({
       appState.remove();
       for (const timer of resumeTimers) clearTimeout(timer);
     };
-  }, []);
+  }, [scrollRef]);
 
   const slashQuery = input.startsWith("/") && !input.includes(" ") ? input.toLowerCase() : null;
   const slashCommands = slashQuery
@@ -915,6 +926,18 @@ function Conversation({
         contentContainerStyle={styles.messageContent}
         keyboardDismissMode={Platform.OS === "web" ? "none" : "on-drag"}
         scrollEventThrottle={16}
+        onLayout={() => {
+          if (
+            Platform.OS === "ios" &&
+            keyboardInset > 0 &&
+            scrollAfterKeyboardLayoutRef.current &&
+            inputFocusedRef.current
+          ) {
+            scrollAfterKeyboardLayoutRef.current = false;
+            nearBottomRef.current = true;
+            scrollRef.current?.scrollToEnd({ animated: true });
+          }
+        }}
         onScroll={(event) => {
           const { contentOffset, contentSize, layoutMeasurement } = event.nativeEvent;
           scrollOffsetRef.current = contentOffset.y;

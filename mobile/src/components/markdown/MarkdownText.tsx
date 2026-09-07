@@ -1,3 +1,4 @@
+import { CopyButton } from "../clipboard/CopyButton";
 import Markdown, {
   MarkdownIt,
   type ASTNode,
@@ -68,12 +69,43 @@ const rules: RenderRules = {
   ),
 };
 
+function quoteText(node: ASTNode): string {
+  if (node.type === "softbreak" || node.type === "hardbreak") return "\n";
+  const text = node.children?.length ? node.children.map(quoteText).join("") : (node.content ?? "");
+  return (
+    text +
+    (["paragraph", "heading1", "heading2", "heading3", "list_item"].includes(node.type) ? "\n" : "")
+  );
+}
+
+const copyCode: RenderRules[string] = (node, _children, _parents, styles) => (
+  <View key={node.key} style={styles.codeBlock}>
+    <CopyButton text={node.content.replace(/\n$/, "")} label="Copy code" />
+    <Text selectable style={styles.codeText}>
+      {node.content.replace(/\n$/, "")}
+    </Text>
+  </View>
+);
+const copyRules: RenderRules = {
+  ...rules,
+  code_block: copyCode,
+  fence: copyCode,
+  blockquote: (node, children, _parents, styles) => (
+    <View key={node.key} style={styles.blockquote}>
+      <CopyButton text={quoteText(node).trim()} label="Copy quote" />
+      {children}
+    </View>
+  ),
+};
+
 export function MarkdownText({
   children,
   tone = "default",
   variant = "document",
+  copyBlocks = false,
 }: {
   children: string;
+  copyBlocks?: boolean;
   tone?: "default" | "onAccent";
   variant?: "document" | "chat";
 }) {
@@ -117,7 +149,12 @@ export function MarkdownText({
     [styles, tone, variant],
   );
   return (
-    <Markdown markdownit={markdownIt} mergeStyle={false} rules={rules} style={markdownStyles}>
+    <Markdown
+      markdownit={markdownIt}
+      mergeStyle={false}
+      rules={copyBlocks ? copyRules : rules}
+      style={markdownStyles}
+    >
       {children}
     </Markdown>
   );

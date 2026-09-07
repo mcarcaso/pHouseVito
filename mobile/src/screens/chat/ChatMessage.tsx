@@ -1,3 +1,4 @@
+import { CopyButton } from "../../components/clipboard/CopyButton";
 import type { VitoTheme } from "../../hooks/useVitoTheme";
 import * as Clipboard from "expo-clipboard";
 import * as FileSystem from "expo-file-system/legacy";
@@ -450,37 +451,52 @@ export function MessageRow({ message }: { message: Message }) {
         ]}
       >
         {body.text && (
-          <MarkdownText variant="chat" tone={user ? "onAccent" : "default"}>
+          <MarkdownText variant="chat" tone={user ? "onAccent" : "default"} copyBlocks={!user}>
             {body.text}
           </MarkdownText>
         )}
         <MessageAttachments attachments={body.attachments} />
         {!user && !!body.text && (
-          <Pressable
-            accessibilityLabel={
-              speech.state.id === String(message.id) && speech.state.status === "playing"
-                ? "Pause reading"
-                : "Read message aloud"
-            }
-            onPress={() => void speech.toggle(String(message.id), speechText(body.text))}
-            style={styles.speechButton}
-          >
-            {speech.state.id === String(message.id) && speech.state.status === "loading" ? (
-              <ActivityIndicator size="small" color={theme.colors.textMuted} />
-            ) : (
-              <Ionicons
-                name={
-                  speech.state.id === String(message.id) && speech.state.status === "playing"
-                    ? "pause"
-                    : speech.state.id === String(message.id) && speech.state.status === "paused"
-                      ? "play"
-                      : "volume-medium-outline"
-                }
-                size={16}
-                color={theme.colors.textMuted}
-              />
+          <View style={styles.speechControls}>
+            <CopyButton text={body.text} label="Copy message" />
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel={
+                speech.state.id === String(message.id) && speech.state.status === "playing"
+                  ? "Pause reading"
+                  : speech.state.id === String(message.id) && speech.state.status === "paused"
+                    ? "Resume reading"
+                    : "Read message aloud"
+              }
+              disabled={speech.state.id === String(message.id) && speech.state.status === "loading"}
+              onPress={() => void speech.toggle(String(message.id), speechText(body.text))}
+              style={styles.speechButton}
+            >
+              {speech.state.id === String(message.id) && speech.state.status === "loading" ? (
+                <ActivityIndicator size="small" color={theme.colors.textMuted} />
+              ) : (
+                <Ionicons
+                  name={
+                    speech.state.id === String(message.id) && speech.state.status === "playing"
+                      ? "pause"
+                      : "play"
+                  }
+                  size={16}
+                  color={theme.colors.textMuted}
+                />
+              )}
+            </Pressable>
+            {speech.state.id === String(message.id) && speech.state.status !== "idle" && (
+              <Pressable
+                accessibilityRole="button"
+                accessibilityLabel="Stop reading and reset to beginning"
+                onPress={speech.stop}
+                style={styles.speechButton}
+              >
+                <Ionicons name="stop" size={14} color={theme.colors.textMuted} />
+              </Pressable>
             )}
-          </Pressable>
+          </View>
         )}
       </View>
     </View>
@@ -625,6 +641,11 @@ const createStyles = (theme: VitoTheme) =>
       paddingHorizontal: theme.space.sm,
       backgroundColor: "transparent",
       borderBottomLeftRadius: 0,
+    },
+    speechControls: {
+      flexDirection: "row",
+      alignSelf: "flex-end",
+      gap: theme.space.xs,
     },
     speechButton: {
       alignSelf: "flex-end",

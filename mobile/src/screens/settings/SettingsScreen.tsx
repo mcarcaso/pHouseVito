@@ -217,6 +217,18 @@ export function SettingsScreen({
               onChange={setChannel}
               styles={styles}
             />
+            {channel && (
+              <View style={styles.sessionMeta}>
+                <Text style={styles.sessionChannel}>{channel.toUpperCase()}</Text>
+                <Text
+                  style={countLeaves(overrides) > 0 ? styles.overrideBadge : styles.inheritBadge}
+                >
+                  {countLeaves(overrides) > 0
+                    ? `${countLeaves(overrides)} channel override${countLeaves(overrides) === 1 ? "" : "s"}`
+                    : "Using global settings"}
+                </Text>
+              </View>
+            )}
           </View>
         )}
         {scope === "session" && (
@@ -239,8 +251,8 @@ export function SettingsScreen({
                   }
                 >
                   {countLeaves(config.sessions?.[session] ?? {}) > 0
-                    ? `${countLeaves(config.sessions?.[session] ?? {})} overrides`
-                    : "Inheriting only"}
+                    ? `${countLeaves(config.sessions?.[session] ?? {})} session overrides`
+                    : "Using inherited settings"}
                 </Text>
               </View>
             )}
@@ -262,7 +274,7 @@ export function SettingsScreen({
         {scope !== "global" && countLeaves(overrides) > 0 && (
           <Pressable onPress={resetAllOverrides} style={styles.resetAllButton}>
             <Text style={styles.resetAllText}>
-              Reset all {countLeaves(overrides)} override{countLeaves(overrides) === 1 ? "" : "s"}
+              {scope === "channel" ? "Use global settings" : "Use inherited settings"}
             </Text>
           </Pressable>
         )}
@@ -271,7 +283,11 @@ export function SettingsScreen({
           subtitle={
             scope === "global"
               ? "Base values inherited by channels and sessions."
-              : "Overridden fields are marked and can be reset individually."
+              : countLeaves(overrides) === 0
+                ? scope === "channel"
+                  ? "Using global settings. Change any field to create a channel override."
+                  : "Using global and channel settings. Change any field to create a session override."
+                : "Overridden fields are marked and can be reset individually."
           }
           styles={styles}
         >

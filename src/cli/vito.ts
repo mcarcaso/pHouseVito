@@ -6,6 +6,7 @@ import { runConfigCommand } from "./commands/config.js";
 import { runMemoryCommand } from "./commands/memory.js";
 import { runSecretsCommand } from "./commands/secrets.js";
 import { runJobsCommand } from "./commands/jobs.js";
+import { runImportVitoNextCommand } from "./commands/import-vito-next.js";
 
 const projectRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..", "..");
 
@@ -17,6 +18,7 @@ Commands:
   memory      Search Vito's long-term memory
   secrets     Safely manage secret configuration
   jobs        Manage script-first scheduled jobs
+  import-vito-next  Import a quiesced Vito Next snapshot
   help        Show this help
 
 Run "vito <command> --help" for command-specific help.
@@ -33,6 +35,7 @@ export async function runCli(args: string[]): Promise<number> {
   if (command === "memory") return runMemoryCommand(commandArgs, projectRoot);
   if (command === "secrets") return runSecretsCommand(commandArgs, projectRoot);
   if (command === "jobs") return runJobsCommand(commandArgs, projectRoot);
+  if (command === "import-vito-next") return runImportVitoNextCommand(commandArgs, projectRoot);
 
   console.error(`Unknown command: ${command}`);
   process.stderr.write(help);

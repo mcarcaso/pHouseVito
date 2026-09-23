@@ -109,6 +109,8 @@ export const channelConfigSchema = z
     allowedChatIds: z.array(channelIdentifierSchema).optional(),
     allowedGuildIds: z.array(z.string()).optional(),
     allowedChannelIds: z.array(z.string()).optional(),
+    allowedUserIds: z.array(z.string()).optional(),
+    allowDms: z.boolean().optional(),
     ownerIds: z.array(z.string()).optional(),
     streamMode: z.enum(["stream", "bundled", "final"]).optional(),
   })

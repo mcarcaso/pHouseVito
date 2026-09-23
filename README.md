@@ -84,11 +84,13 @@ Use the project-local CLI for agent and operator workflows:
 ./vito config validate
 ./vito config migrate    # Canonicalize a legacy config directly
 ./scripts/migrate-vito.sh # Back up, install, verify, build, and migrate an existing agent
+./vito import-vito-next --help # Offline one-time core import
 ./vito apps list
 ./vito memory search "previous architecture decisions" --mode hybrid
 ```
 
 The existing `npm run validate:config` command remains available for compatibility.
+See [Vito Next core import](docs/vito-next-import.md) for the transactional cutover importer.
 
 ### User Directory
 

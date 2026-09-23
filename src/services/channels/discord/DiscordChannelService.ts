@@ -226,28 +226,34 @@ export class DiscordChannelService implements ChannelService {
     }, 500);
     this.queuePoll.unref();
 
-    const getAllowlist = (): { guildIds: string[]; channelIds: string[] } => {
+    const getAllowlist = (): {
+      guildIds: string[];
+      channelIds: string[];
+      userIds: string[];
+      allowDms: boolean;
+    } => {
       const config = xVitoService(x).getConfig(x).channels.discord;
       return {
         guildIds: config?.allowedGuildIds ?? [],
         channelIds: config?.allowedChannelIds ?? [],
+        userIds: config?.allowedUserIds ?? [],
+        allowDms: config?.allowDms ?? true,
       };
     };
 
     const isAllowed = (msg: DiscordMessage): boolean => {
-      const { guildIds, channelIds } = getAllowlist();
-      // Always allow DMs
-      if (!msg.guild) return true;
-      // Check guild whitelist
+      const { guildIds, channelIds, userIds, allowDms } = getAllowlist();
+      if (userIds.length > 0 && !userIds.includes(msg.author.id)) return false;
+      if (!msg.guild) return allowDms;
       if (guildIds.length > 0 && !guildIds.includes(msg.guild.id)) return false;
-      // Check channel whitelist
       if (channelIds.length > 0 && !channelIds.includes(msg.channel.id)) return false;
       return true;
     };
 
     const isInteractionAllowed = (interaction: ChatInputCommandInteraction): boolean => {
-      if (!interaction.guild) return true;
-      const { guildIds, channelIds } = getAllowlist();
+      const { guildIds, channelIds, userIds, allowDms } = getAllowlist();
+      if (userIds.length > 0 && !userIds.includes(interaction.user.id)) return false;
+      if (!interaction.guild) return allowDms;
       if (guildIds.length > 0 && !guildIds.includes(interaction.guild.id)) return false;
       if (channelIds.length > 0 && !channelIds.includes(interaction.channelId)) return false;
       return true;

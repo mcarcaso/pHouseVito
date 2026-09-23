@@ -31,6 +31,10 @@ describe("Vito CLI", () => {
     const memory = runVito(["memory", "--help"]);
     assert.equal(memory.status, 0);
     assert.match(memory.stdout, /vito memory search/);
+
+    const importer = runVito(["import-vito-next", "--help"]);
+    assert.equal(importer.status, 0);
+    assert.match(importer.stdout, /offline one-time import/i);
   });
 
   it("validates a config through the stable command", () => {

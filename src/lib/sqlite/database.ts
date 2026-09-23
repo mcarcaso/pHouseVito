@@ -175,6 +175,17 @@ export function createDatabase(dbPath: string): Database.Database {
       created_at INTEGER NOT NULL,
       updated_at INTEGER NOT NULL
     );
+
+    CREATE TABLE IF NOT EXISTS token_usage (
+      session TEXT NOT NULL,
+      entry TEXT NOT NULL,
+      timestamp TEXT NOT NULL,
+      provider TEXT NOT NULL,
+      model TEXT NOT NULL,
+      data TEXT NOT NULL,
+      PRIMARY KEY(session, entry)
+    );
+    CREATE INDEX IF NOT EXISTS idx_token_usage_time ON token_usage(timestamp);
   `);
 
   // Migrations for existing databases

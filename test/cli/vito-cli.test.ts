@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { mkdtempSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { after, describe, it } from "node:test";
@@ -135,6 +135,68 @@ describe("Vito CLI", () => {
     ]);
     assert.equal(remove.status, 0, remove.stderr);
     assert.deepEqual(JSON.parse(remove.stdout), { key: "CLI_TEST_SECRET", removed: true });
+  });
+
+  it("manages and runs script-first jobs without channel delivery", () => {
+    const userDir = join(tempDir, "jobs-user");
+    const script = join(tempDir, "cli-job.ts");
+    const definition = join(tempDir, "cli-job.json");
+    mkdirSync(userDir, { recursive: true });
+    writeFileSync(
+      join(userDir, "vito.config.json"),
+      readFileSync(join(projectRoot, "user.example", "vito.config.json"), "utf-8"),
+    );
+    writeFileSync(
+      script,
+      'export default async function () { console.log("ran"); return "done"; }\n',
+    );
+    writeFileSync(
+      definition,
+      JSON.stringify({
+        name: "cli-job",
+        script,
+        schedule: { cron: "0 9 * * *", timezone: "UTC" },
+        enabled: true,
+      }),
+    );
+
+    const save = runVito(["jobs", "save", definition, "--user-dir", userDir, "--json"]);
+    assert.equal(save.status, 0, save.stderr);
+    assert.equal(JSON.parse(save.stdout).name, "cli-job");
+
+    const pause = runVito(["jobs", "pause", "cli-job", "--user-dir", userDir, "--json"]);
+    assert.equal(pause.status, 0, pause.stderr);
+    assert.equal(JSON.parse(pause.stdout).enabled, false);
+
+    const run = runVito(["jobs", "run", "cli-job", "--user-dir", userDir, "--json"]);
+    assert.equal(run.status, 0, run.stderr);
+    const outcome = JSON.parse(run.stdout) as { state: string; result: { text: string } };
+    assert.equal(outcome.state, "completed");
+    assert.equal(outcome.result.text, "done");
+
+    const history = runVito(["jobs", "history", "cli-job", "--user-dir", userDir, "--json"]);
+    assert.equal(history.status, 0, history.stderr);
+    assert.equal(JSON.parse(history.stdout).length, 1);
+
+    const configPath = join(userDir, "vito.config.json");
+    const config = JSON.parse(readFileSync(configPath, "utf-8")) as {
+      cron: { jobs: unknown[] };
+    };
+    config.cron.jobs.push({
+      name: "legacy-job",
+      schedule: "30 8 * * *",
+      timezone: "UTC",
+      session: "dashboard:legacy",
+      prompt: "Legacy prompt",
+      sendCondition: "Only when useful",
+    });
+    writeFileSync(configPath, JSON.stringify(config, null, 2));
+    const convert = runVito(["jobs", "convert", "legacy-job", "--user-dir", userDir, "--json"]);
+    assert.equal(convert.status, 0, convert.stderr);
+    const converted = JSON.parse(convert.stdout) as Array<{ script: string; delivery: unknown }>;
+    assert.equal(converted.length, 1);
+    assert.match(readFileSync(converted[0].script, "utf-8"), /job\.prompt/);
+    assert.deepEqual(converted[0].delivery, { channel: "dashboard", target: "legacy" });
   });
 
   it("returns a usage error for unknown commands", () => {

@@ -38,7 +38,11 @@ class FakeCronService implements CronService {
   }
 
   getScheduleError(_x: Context, job: CronJobConfig): string | null {
-    return job.schedule === "not a schedule" ? "Invalid cron schedule" : null;
+    return typeof job.schedule === "object" &&
+      "cron" in job.schedule &&
+      job.schedule.cron === "not a schedule"
+      ? "Invalid cron schedule"
+      : null;
   }
 
   scheduleJob(_x: Context, job: CronJobConfig): void {
@@ -72,6 +76,8 @@ writeFileSync(
   readFileSync(join(process.cwd(), "user.example", "vito.config.json"), "utf-8"),
 );
 writeFileSync(join(userDir, "SOUL.md"), "test soul\n");
+const scriptPath = join(userDir, "morning.ts");
+writeFileSync(scriptPath, 'export default async function () { return "Good morning"; }\n');
 
 const db = createDatabase(":memory:");
 const rootX = RootContext({ db, userDir, skillsDir: join(userDir, "skills") });
@@ -99,10 +105,14 @@ const errorResponseSchema = z.object({ error: z.string() }).passthrough();
 const jobResponseSchema = z
   .object({
     name: z.string(),
-    schedule: z.string(),
-    session: z.string(),
-    prompt: z.string(),
-    sendCondition: z.string().optional(),
+    script: z.string(),
+    schedule: z.union([
+      z.object({ at: z.string() }),
+      z.object({ cron: z.string(), timezone: z.string().optional() }),
+    ]),
+    session: z.string().optional(),
+    timeoutMs: z.number(),
+    enabled: z.boolean(),
   })
   .passthrough();
 const jobsResponseSchema = z.array(
@@ -143,22 +153,25 @@ describe("cron router", () => {
       headers: { "content-type": "application/json" },
       body: JSON.stringify({
         name: "invalid",
-        schedule: "not a schedule",
+        script: scriptPath,
+        schedule: { cron: "not a schedule" },
         session: "dashboard:test",
-        prompt: "test",
       }),
     });
     assert.equal(invalidSchedule.status, 400);
-    assert.equal(errorResponseSchema.parse(await invalidSchedule.json()).error, "Invalid request");
+    assert.equal(
+      errorResponseSchema.parse(await invalidSchedule.json()).error,
+      "Invalid cron schedule",
+    );
 
     const invalidSession = await fetch(`${baseUrl}/api/cron/jobs`, {
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({
         name: "missing-session",
-        schedule: "0 9 * * *",
+        script: scriptPath,
+        schedule: { cron: "0 9 * * *" },
         session: "dashboard:missing",
-        prompt: "test",
       }),
     });
     assert.equal(invalidSession.status, 400);
@@ -168,11 +181,11 @@ describe("cron router", () => {
   it("creates, lists, and rejects duplicate jobs", async () => {
     const job = {
       name: "morning",
-      schedule: "0 9 * * *",
-      timezone: "America/Toronto",
+      script: scriptPath,
+      schedule: { cron: "0 9 * * *", timezone: "America/Toronto" },
       session: "dashboard:test",
-      prompt: "Good morning",
-      sendCondition: "",
+      timeoutMs: 60_000,
+      enabled: true,
     };
     const createResponse = await fetch(`${baseUrl}/api/cron/jobs`, {
       method: "POST",
@@ -182,7 +195,7 @@ describe("cron router", () => {
     assert.equal(createResponse.status, 200);
     const created = jobResponseSchema.parse(await createResponse.json());
     assert.equal(created.name, "morning");
-    assert.equal(created.sendCondition, undefined);
+    assert.equal(created.script, scriptPath);
     assert.deepEqual(cronService.scheduled, ["morning"]);
 
     const duplicateResponse = await fetch(`${baseUrl}/api/cron/jobs`, {
@@ -190,7 +203,7 @@ describe("cron router", () => {
       headers: { "content-type": "application/json" },
       body: JSON.stringify(job),
     });
-    assert.equal(duplicateResponse.status, 400);
+    assert.equal(duplicateResponse.status, 409);
 
     const listResponse = await fetch(`${baseUrl}/api/cron/jobs`);
     const jobs = jobsResponseSchema.parse(await listResponse.json());
@@ -199,19 +212,17 @@ describe("cron router", () => {
     assert.equal(jobs[0]?.nextRun, "2030-01-01T09:00:00.000Z");
   });
 
-  it("updates jobs while preserving names and clearing conditions", async () => {
+  it("updates jobs while preserving names and validating script-first patches", async () => {
     const response = await fetch(`${baseUrl}/api/cron/jobs/morning`, {
       method: "PUT",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify({ prompt: "Updated prompt", sendCondition: null }),
+      body: JSON.stringify({ timeoutMs: 90_000, enabled: false }),
     });
     assert.equal(response.status, 200);
     const updated = jobResponseSchema.parse(await response.json());
     assert.equal(updated.name, "morning");
-    assert.equal(updated.prompt, "Updated prompt");
-    assert.equal(updated.sendCondition, undefined);
-    assert.equal(cronService.removed.includes("morning"), true);
-    assert.equal(cronService.scheduled.filter((name) => name === "morning").length, 2);
+    assert.equal(updated.timeoutMs, 90_000);
+    assert.equal(updated.enabled, false);
 
     const renameResponse = await fetch(`${baseUrl}/api/cron/jobs/morning`, {
       method: "PUT",

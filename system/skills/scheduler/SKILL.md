@@ -1,146 +1,91 @@
 ---
 name: scheduler
-description: Schedule and manage cron jobs to trigger AI actions at specific times. Create one-time or recurring jobs with natural language prompts.
+description: Create and manage durable script-first TypeScript jobs with contextual or stateless model calls.
 ---
 
-# Scheduler Skill
+# Scheduler
 
-**Description:** Schedule and manage cron jobs to trigger AI actions at specific times. Create one-time or recurring jobs with natural language prompts.
+Jobs are self-contained TypeScript files outside core code. The scheduler owns only the name, script path, schedule, optional session, timeout, enabled state, and optional delivery destination.
 
-## Timezone
+## Create or update a job
 
-Jobs are scheduled using the **global timezone** from `settings.timezone` in `vito.config.json`. Each job can also override this with a per-job `timezone` field. If nothing is set, defaults to `America/Toronto`.
+1. Write an absolute `.ts` file, normally under `user/jobs/`.
+2. Write a JSON definition.
+3. Save it with `./vito jobs save definition.json`.
 
-**The timezone ACTUALLY WORKS** — jobs will fire at the specified time in the configured timezone, not system time. This is powered by `croner` with native timezone support.
-
-**Priority order:** Per-job timezone > Global `settings.timezone` > `America/Toronto` default
-
-### Setting the timezone
-
-In `vito.config.json`:
-
-```json
-{
-  "settings": {
-    "timezone": "America/New_York"
-  }
+```ts
+export default async function (job) {
+  const response = await job.prompt({
+    session: "discord:CURRENT_SESSION_ID",
+    message: "Prepare the morning summary.",
+  });
+  if (response.text.includes("NO_REPLY")) return;
+  return response.text;
 }
 ```
 
-Or per-job (when scheduling):
-
-```bash
-node system/skills/scheduler/index.js schedule \
-  --name "london-report" \
-  --schedule "0 9 * * 1-5" \
-  --timezone "Europe/London" \
-  --prompt "Good morning London!"
-```
-
-## How to Use
-
-Primary/default method: edit `user/vito.config.json` directly under `cron.jobs`.
-
-The older CLI script at `system/skills/scheduler/index.js` talks to the dashboard cron API on `localhost:3030`, but this deployment keeps that API locked down and it should be expected to return `401 Unauthorized`. Do **not** use the API CLI as the normal path. Treat direct JSON edits as the supported path. The config is hot-reloaded, so no restart is usually needed.
-
-Legacy API CLI, only if explicitly needed in an unlocked/dev environment:
-
-### Schedule a job
-
-```bash
-node system/skills/scheduler/index.js schedule \
-  --name "morning-standup" \
-  --schedule "0 9 * * 1-5" \
-  --prompt "Give me a motivational quote to start the day"
-```
-
-Optional flags:
-
-- `--session "dashboard:default"` — session to route the response to
-- `--oneTime true` — job runs once and is auto-deleted
-- `--timezone "America/New_York"` — override global timezone for this job
-- `--sendCondition "Only send if temperature is below 10°C"` — suppress response if condition not met
-
-### One-time jobs with ISO dates
-
-```bash
-node system/skills/scheduler/index.js schedule \
-  --name "reminder" \
-  --schedule "2026-04-06T09:45:00" \
-  --prompt "Check your email for the presale code!"
-```
-
-ISO dates are interpreted in the job's effective timezone (job > global > default).
-
-## Session Handling — IMPORTANT
-
-**If the user doesn't specify which session to use, ALWAYS use the current session** (the one you're responding in). Never hallucinate or guess a session ID. You have access to the current session in your context — use it.
-
-❌ **Wrong:** Making up a session like `discord:1234567890` or defaulting to `dashboard:default` when unspecified
-✅ **Right:** Using the actual session from your current conversation context (e.g., `discord:1466899925127266325` if that's where you're talking)
-
-### Cancel a job
-
-```bash
-node system/skills/scheduler/index.js cancel --name "morning-standup"
-```
-
-### List all jobs
-
-```bash
-node system/skills/scheduler/index.js list
-```
-
-## Example Output
-
-```
-Scheduled recurring job "morning-standup" (timezone: America/Toronto)
-  → will execute: "Give me a motivational quote to start the day"
-  → next run: 3/25/2026, 9:00:00 AM
-```
-
-## Direct Config Edit — Standard Path
-
-Add/update jobs directly in `user/vito.config.json`:
-
 ```json
 {
-  "cron": {
-    "jobs": [
-      {
-        "name": "example-job",
-        "schedule": "0 7 * * *",
-        "prompt": "Your prompt here",
-        "session": "discord:CURRENT_SESSION_ID",
-        "oneTime": false,
-        "timezone": "America/Toronto"
-      }
-    ]
-  }
+  "name": "morning-summary",
+  "script": "/absolute/path/user/jobs/morning-summary.ts",
+  "schedule": { "cron": "0 9 * * *", "timezone": "America/Toronto" },
+  "session": "discord:CURRENT_SESSION_ID",
+  "timeoutMs": 300000,
+  "enabled": true,
+  "delivery": { "channel": "discord", "target": "CURRENT_SESSION_ID" }
 }
 ```
 
-Rules for direct edits:
+A one-time schedule uses an explicit offset:
 
-- Preserve existing jobs.
-- Replace/remove any existing job with the same `name` before adding a new version.
-- Use the current session if Mike doesn't specify another one.
-- Run `npm run validate:config` after editing and fix every reported issue.
-- Config hot-reloads; only restart if the watcher is broken or logs show reload failure.
+```json
+{ "at": "2026-09-26T09:00:00-04:00" }
+```
 
-## Troubleshooting
+Never guess a session or destination. Use the current conversation when Mike does not specify another one.
 
-**CLI returns 401 Unauthorized?**
-Expected in locked-down production. Do not keep retrying the API CLI; edit `user/vito.config.json` directly under `cron.jobs`.
+## Job context
 
-**Jobs firing at wrong time?**
+- `job.prompt({ session, message })` runs a real contextual Vito turn. It uses that session's History, tools, memory, and selected model, and records the turn in History. Calls targeting one session serialize with dashboard, Discord, and other job turns.
+- `job.generate({ prompt, model?, maxTokens?, reasoning? })` is stateless, tool-free, and does not mutate a session.
+- `job.signal` is aborted on cancellation or timeout.
+- Return a string or `{ text, files }` for configured delivery.
+- Return nothing for deliberate silence.
+- Throw to mark the run failed.
+- `console.log` and `console.error` go to the private job log.
 
-1. Check `settings.timezone` in `vito.config.json`
-2. Run `list` to see which timezone each job is using
-3. The output shows next run time in the job's timezone
+Scripts own deterministic checks and conditional-send logic. Do not create new declarative `prompt`, `sendCondition`, or `precheckCommand` job fields.
 
-**Valid timezone strings:**
+## Commands
 
-- `America/Toronto`, `America/New_York`, `America/Los_Angeles`
-- `Europe/London`, `Europe/Paris`, `Asia/Tokyo`
-- Full list: https://en.wikipedia.org/wiki/List_of_tz_database_time_zones
+```bash
+./vito jobs list
+./vito jobs save /path/to/definition.json
+./vito jobs pause morning-summary
+./vito jobs resume morning-summary
+./vito jobs run morning-summary
+./vito jobs history morning-summary --limit 20
+./vito jobs logs morning-summary
+./vito jobs cancel RUN_ID
+./vito jobs remove morning-summary --yes
+```
+
+`jobs run` is an operator/rescue execution: it prints the durable outcome and intentionally does not send configured channel delivery. Use the dashboard's **Run now** action when configured delivery is desired.
+
+Convert an existing declarative job deterministically:
+
+```bash
+./vito jobs convert legacy-name
+./vito jobs convert --all
+```
+
+Conversion writes user-owned TypeScript under `user/jobs/`, preserves the schedule/session/condition behavior, and refuses to overwrite a different existing script.
+
+## Scheduling behavior
+
+- Ordinary cron schedules use the agent timezone from `settings.timezone` unless the job overrides it.
+- One-time schedules require an ISO timestamp with an explicit offset.
+- Recurring schedules catch up at most once after downtime.
+- The same job cannot overlap itself.
+- A claimed or uncertain run is never blindly replayed after restart.
+- Pause/resume preserves the durable next occurrence.

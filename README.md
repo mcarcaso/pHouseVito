@@ -309,12 +309,14 @@ Channels are adapters that convert between platform-specific formats and Vito's 
 - **Communication**: REST API for data queries, WebSocket for real-time chat
 - **Styling**: Custom CSS with dark theme
 
-### Cron + Scheduler
+### Jobs + Scheduler
 
-- **node-cron** schedules recurring jobs
-- Jobs live in `user/vito.config.json` and hot-reload on config change
-- `NO_REPLY` message marker suppresses replies when `sendCondition` isn’t met
-- Health check endpoint at `/api/cron/health` exposes runner state
+- Durable one-time and cron schedules are driven by **croner**
+- New jobs are self-contained TypeScript files referenced from `user/vito.config.json`
+- Scripts opt into contextual `job.prompt(...)` or stateless, tool-free `job.generate(...)`
+- Run outcomes, prompt-session links, delivery state, cancellation, and restart recovery persist in SQLite
+- Legacy declarative jobs remain readable and can be converted with `./vito jobs convert NAME`
+- See `system/skills/scheduler/SKILL.md` and `./vito jobs --help`
 
 ### Bot Identity + Mentions
 

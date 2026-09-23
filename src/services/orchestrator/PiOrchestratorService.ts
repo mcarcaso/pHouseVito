@@ -12,12 +12,18 @@ import { withTyping } from "./runtime/TypingPiRuntime.js";
 import { NoReplyOutputHandler } from "../../lib/output/NoReplyOutputHandler.js";
 import { DirectChannelService } from "../channels/direct/DirectChannelService.js";
 import type { ChannelService } from "../channels/ChannelService.js";
-import type { AskOptions, OrchestratorRun, OrchestratorService } from "./OrchestratorService.js";
+import type {
+  AskOptions,
+  ContextualPromptOptions,
+  OrchestratorRun,
+  OrchestratorService,
+} from "./OrchestratorService.js";
 
 import { getEffectiveSettings } from "../vito/settings.js";
 import {
   xChannelRegistryService,
   xCronService,
+  xDb,
   xInboundAttachmentService,
   xMessageStore,
   xServerLifecycleService,
@@ -27,6 +33,7 @@ import {
   xVitoService,
 } from "../../lib/x.js";
 
+import { randomUUID } from "node:crypto";
 import { statSync } from "node:fs";
 import { resolve } from "node:path";
 
@@ -44,6 +51,13 @@ import { buildSystemPrompt, buildUserMessage } from "./system-prompt.js";
 
 function normalizeSlashCommand(content?: string): string {
   return (content || "").trim().replace(/^\/([A-Za-z0-9_]+)@[^\s]+(?=\s|$)/, "/$1");
+}
+
+function eventAbortSignal(event: InboundEvent): AbortSignal | undefined {
+  const raw = event.raw;
+  if (!raw || typeof raw !== "object" || !("abortSignal" in raw)) return undefined;
+  const signal = raw.abortSignal;
+  return signal instanceof AbortSignal ? signal : undefined;
 }
 
 export class PiOrchestratorService implements OrchestratorService {
@@ -134,6 +148,7 @@ export class PiOrchestratorService implements OrchestratorService {
         author: options.author,
         channelPrompt: options.channelPrompt,
         timeoutMs: options.timeoutMs,
+        signal: options.signal,
       });
       const answer = response || "I couldn't come up with an answer for that one.";
       if (options.relayToSession && options.session) {
@@ -146,6 +161,20 @@ export class PiOrchestratorService implements OrchestratorService {
       );
       return "I hit a snag trying to think about that. Try asking again.";
     }
+  }
+
+  async prompt(x: Context, options: ContextualPromptOptions): Promise<string> {
+    this.initialize(x);
+    await this.ensureDirectChannelReady();
+    return this.getDirectChannel().ask({
+      question: options.message,
+      session: options.session,
+      author: options.author ?? "scheduled-job",
+      timeoutMs: null,
+      signal: options.signal,
+      channelPrompt:
+        "This is scheduled work in the existing session. Use the session's normal tools, memory, and model. Treat it as a contextual internal trigger, not a new message typed by the user.",
+    });
   }
 
   async appendSessionContext(
@@ -377,8 +406,11 @@ export class PiOrchestratorService implements OrchestratorService {
     while (queue && queue.length > 0) {
       const { event, channel } = queue.shift()!;
       try {
-        await this.processMessage(event, channel);
+        const signal = eventAbortSignal(event);
+        if (signal?.aborted) continue;
+        await this.withSessionLease(sessionKey, signal, () => this.processMessage(event, channel));
       } catch (err) {
+        if (eventAbortSignal(event)?.aborted) continue;
         console.error(`[Orchestrator] Error processing message for ${sessionKey}:`, err);
         if (channel) {
           const handler = channel.createOutputHandler(this.x, event);
@@ -393,11 +425,65 @@ export class PiOrchestratorService implements OrchestratorService {
     }
   }
 
+  private async withSessionLease(
+    session: string,
+    signal: AbortSignal | undefined,
+    action: () => Promise<void>,
+  ): Promise<void> {
+    let db;
+    try {
+      db = xDb(this.x);
+    } catch {
+      await action();
+      return;
+    }
+
+    const owner = randomUUID();
+    const leaseMs = 30_000;
+    const claim = db.prepare(
+      `INSERT INTO session_turn_locks(session, owner, expires_at) VALUES (?, ?, ?)
+       ON CONFLICT(session) DO UPDATE SET owner = excluded.owner, expires_at = excluded.expires_at
+       WHERE session_turn_locks.expires_at <= ?`,
+    );
+    let acquired = false;
+    while (!acquired) {
+      if (signal?.aborted) return;
+      const now = Date.now();
+      acquired = claim.run(session, owner, now + leaseMs, now).changes > 0;
+      if (!acquired) await new Promise((resolveWait) => setTimeout(resolveWait, 50));
+    }
+    if (signal?.aborted) {
+      db.prepare("DELETE FROM session_turn_locks WHERE session = ? AND owner = ?").run(
+        session,
+        owner,
+      );
+      return;
+    }
+
+    const renew = setInterval(() => {
+      db.prepare(
+        "UPDATE session_turn_locks SET expires_at = ? WHERE session = ? AND owner = ?",
+      ).run(Date.now() + leaseMs, session, owner);
+    }, 10_000);
+    renew.unref();
+    try {
+      await action();
+    } finally {
+      clearInterval(renew);
+      db.prepare("DELETE FROM session_turn_locks WHERE session = ? AND owner = ?").run(
+        session,
+        owner,
+      );
+    }
+  }
+
   // ────────────────────────────────────────────────────────────────────────
   // CORE: processMessage
   // ────────────────────────────────────────────────────────────────────────
 
   private async processMessage(event: InboundEvent, channel: ChannelService | null): Promise<void> {
+    const externalSignal = eventAbortSignal(event);
+    if (externalSignal?.aborted) return;
     this.reloadConfigIfChanged();
 
     const commandText = normalizeSlashCommand(event.content);
@@ -564,6 +650,8 @@ export class PiOrchestratorService implements OrchestratorService {
 
       // Abort wiring
       const abortController = new AbortController();
+      const abortFromExternal = () => abortController.abort();
+      externalSignal?.addEventListener("abort", abortFromExternal, { once: true });
       this.activeRequests.set(event.sessionKey, {
         abort: abortController,
         aborted: false,
@@ -585,6 +673,7 @@ export class PiOrchestratorService implements OrchestratorService {
         );
         return;
       } finally {
+        externalSignal?.removeEventListener("abort", abortFromExternal);
         this.activeRequests.delete(event.sessionKey);
       }
     } catch (err) {

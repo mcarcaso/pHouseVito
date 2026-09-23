@@ -814,7 +814,7 @@ export function OperationWorkspace({
             multiline
             value={command}
             onChangeText={setCommand}
-            placeholder='New job JSON, e.g. {"name":"...","schedule":"...","prompt":"...","session":"dashboard:default"}'
+            placeholder='New job JSON, e.g. {"name":"daily-check","script":"/absolute/jobs/daily-check.ts","schedule":{"cron":"0 9 * * *"},"enabled":true}'
             placeholderTextColor={theme.colors.textMuted}
             style={[styles.input, styles.commandEditor]}
           />
@@ -1190,12 +1190,39 @@ export function OperationWorkspace({
                   <View style={styles.inlineActions}>
                     <Pressable
                       onPress={() => {
+                        if (record.legacy === true) {
+                          setError(
+                            "Convert this legacy job to a TypeScript script before editing it",
+                          );
+                          return;
+                        }
+                        const {
+                          name: _name,
+                          legacy: _legacy,
+                          nextRun: _nextRun,
+                          isActive: _isActive,
+                          ...patch
+                        } = record;
                         setEditingJob(name);
-                        setCommand(pretty(row));
+                        setCommand(pretty(patch));
                       }}
                     >
                       <Text style={styles.link}>edit</Text>
                     </Pressable>
+                    {record.legacy !== true && (
+                      <Pressable
+                        onPress={() =>
+                          void mutate(
+                            `/api/cron/jobs/${encodeURIComponent(name)}/${record.enabled === false ? "resume" : "pause"}`,
+                            "POST",
+                          )
+                        }
+                      >
+                        <Text style={styles.link}>
+                          {record.enabled === false ? "resume" : "pause"}
+                        </Text>
+                      </Pressable>
+                    )}
                     <Pressable
                       onPress={() =>
                         void mutate(`/api/cron/jobs/${encodeURIComponent(name)}/trigger`, "POST")

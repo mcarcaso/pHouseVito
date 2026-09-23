@@ -15,14 +15,29 @@ import { useThemeStyles, useVitoTheme, type VitoTheme } from "../../hooks/useVit
 
 type Job = {
   name: string;
-  schedule: string;
-  timezone?: string;
-  session: string;
-  prompt: string;
-  oneTime?: boolean;
-  sendCondition?: string;
-  precheckCommand?: string;
+  script?: string;
+  schedule: string | { at: string } | { cron: string; timezone?: string };
+  session?: string;
+  timeoutMs?: number;
+  enabled?: boolean;
+  legacy?: boolean;
+  prompt?: string;
 };
+
+type JobForm = {
+  name: string;
+  script: string;
+  schedule: string;
+  timezone: string;
+  session: string;
+  timeoutMs: string;
+  enabled: boolean;
+};
+
+function scheduleText(job: Job): string {
+  if (typeof job.schedule === "string") return job.schedule;
+  return "at" in job.schedule ? job.schedule.at : job.schedule.cron;
+}
 export function JobsScreen({
   onOpen,
   onNew,
@@ -43,6 +58,11 @@ export function JobsScreen({
       .finally(() => setLoading(false));
   }, []);
   useEffect(load, [load, refreshKey]);
+  const setEnabled = (job: Job) =>
+    void api(
+      `/api/cron/jobs/${encodeURIComponent(job.name)}/${job.enabled === false ? "resume" : "pause"}`,
+      { method: "POST" },
+    ).then(load);
   const run = (name: string) =>
     Alert.alert("Run job now?", name, [
       { text: "Cancel", style: "cancel" },
@@ -79,27 +99,43 @@ export function JobsScreen({
                       {j.name}
                     </Text>
                     <Text style={s.session} numberOfLines={1}>
-                      {j.session}
+                      {j.session ?? "No session"}
                     </Text>
                   </View>
-                  {j.oneTime && <Text style={s.badge}>ONE-TIME</Text>}
-                  {j.sendCondition && <Text style={s.badge}>CONDITIONAL</Text>}
+                  {j.legacy && <Text style={s.badge}>LEGACY</Text>}
+                  {j.enabled === false && <Text style={s.badge}>PAUSED</Text>}
                 </View>
                 <View style={s.facts}>
                   <View style={s.fact}>
                     <Text style={s.label}>SCHEDULE</Text>
-                    <Text style={s.value}>{human(j.schedule)}</Text>
+                    <Text style={s.value}>{human(scheduleText(j))}</Text>
                   </View>
                   <View style={s.fact}>
                     <Text style={s.label}>CRON</Text>
-                    <Text style={s.cron}>{j.schedule}</Text>
+                    <Text style={s.cron}>{scheduleText(j)}</Text>
                   </View>
                 </View>
                 <Text style={s.prompt} numberOfLines={2}>
-                  {j.prompt}
+                  {j.script ?? j.prompt ?? "Legacy declarative job"}
                 </Text>
                 <View style={s.foot}>
                   <Text style={s.details}>Details</Text>
+                  {!j.legacy && (
+                    <Pressable
+                      onPress={(e) => {
+                        e.stopPropagation();
+                        setEnabled(j);
+                      }}
+                      style={s.run}
+                    >
+                      <Ionicons
+                        name={j.enabled === false ? "play-circle" : "pause"}
+                        size={12}
+                        color={t.colors.textSecondary}
+                      />
+                      <Text style={s.runText}>{j.enabled === false ? "Resume" : "Pause"}</Text>
+                    </Pressable>
+                  )}
                   <Pressable
                     onPress={(e) => {
                       e.stopPropagation();
@@ -122,26 +158,46 @@ export function JobsScreen({
 export function JobEditorScreen({ name, onDone }: { name?: string; onDone: () => void }) {
   const s = useThemeStyles(styles),
     t = useVitoTheme(),
-    [job, setJob] = useState<Job>({
+    [job, setJob] = useState<JobForm>({
       name: "",
+      script: "",
       schedule: "",
-      timezone: "America/Toronto",
-      session: "dashboard:default",
-      prompt: "",
+      timezone: "",
+      session: "",
+      timeoutMs: "300000",
+      enabled: true,
     }),
     [loading, setLoading] = useState(Boolean(name)),
-    [saving, setSaving] = useState(false);
+    [saving, setSaving] = useState(false),
+    [legacy, setLegacy] = useState(false);
   useEffect(() => {
     void api<Job[]>("/api/cron/jobs")
       .then((v) => {
         if (name) {
           const found = v.find((x) => x.name === name);
-          if (found) setJob(found);
+          if (found?.legacy) {
+            setLegacy(true);
+          } else if (found?.script) {
+            const schedule = scheduleText(found);
+            const timezone =
+              typeof found.schedule === "object" && "cron" in found.schedule
+                ? (found.schedule.timezone ?? "")
+                : "";
+            setJob({
+              name: found.name,
+              script: found.script,
+              schedule,
+              timezone,
+              session: found.session ?? "",
+              timeoutMs: String(found.timeoutMs ?? 300000),
+              enabled: found.enabled !== false,
+            });
+          }
         }
       })
       .finally(() => setLoading(false));
   }, [name]);
-  const field = (key: keyof Job, label: string, multi = false) => (
+  const field = (key: keyof JobForm, label: string, multi = false) => (
     <View style={s.field}>
       <Text style={s.label}>{label}</Text>
       <TextInput
@@ -154,9 +210,20 @@ export function JobEditorScreen({ name, onDone }: { name?: string; onDone: () =>
   );
   const save = async () => {
     setSaving(true);
+    const oneTime = /^\d{4}-\d{2}-\d{2}T/.test(job.schedule);
+    const payload = {
+      ...(!name ? { name: job.name } : {}),
+      script: job.script,
+      schedule: oneTime
+        ? { at: job.schedule }
+        : { cron: job.schedule, ...(job.timezone ? { timezone: job.timezone } : {}) },
+      ...(job.session ? { session: job.session } : {}),
+      timeoutMs: Number(job.timeoutMs),
+      enabled: job.enabled,
+    };
     await api(name ? `/api/cron/jobs/${encodeURIComponent(name)}` : "/api/cron/jobs", {
       method: name ? "PUT" : "POST",
-      body: JSON.stringify(job),
+      body: JSON.stringify(payload),
     });
     setSaving(false);
     onDone();
@@ -178,15 +245,27 @@ export function JobEditorScreen({ name, onDone }: { name?: string; onDone: () =>
         <ActivityIndicator color={t.colors.accent} />
       </View>
     );
+  if (legacy)
+    return (
+      <ScrollView contentContainerStyle={s.editor}>
+        <Text style={s.name}>{name}</Text>
+        <Text style={s.prompt}>
+          This legacy declarative job remains runnable but is read-only. Convert it with `vito jobs
+          convert {name}` before editing.
+        </Text>
+        <Pressable onPress={del} style={s.delete}>
+          <Text style={s.deleteText}>Delete job</Text>
+        </Pressable>
+      </ScrollView>
+    );
   return (
     <ScrollView contentContainerStyle={s.editor}>
       {field("name", "Name")}
-      {field("schedule", "Cron schedule")}
-      {field("timezone", "Timezone")}
-      {field("session", "Session")}
-      {field("prompt", "Prompt", true)}
-      {field("sendCondition", "Send condition", true)}
-      {field("precheckCommand", "Precheck command", true)}
+      {field("script", "Absolute TypeScript path")}
+      {field("schedule", "Cron expression or ISO time")}
+      {field("timezone", "Timezone override")}
+      {field("session", "Session (optional)")}
+      {field("timeoutMs", "Timeout (milliseconds)")}
       <Pressable disabled={saving} onPress={save} style={s.save}>
         <Text style={s.saveText}>{saving ? "Saving…" : name ? "Save changes" : "Create job"}</Text>
       </Pressable>

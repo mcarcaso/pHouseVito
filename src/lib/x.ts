@@ -18,6 +18,7 @@ import type { CronService } from "../services/cron/CronService.js";
 import type { EmbeddingService } from "../services/memory/EmbeddingService.js";
 import type { MemoryService } from "../services/memory/MemoryService.js";
 import type { MemoryIngestionService } from "../services/memory/MemoryIngestionService.js";
+import type { JobService } from "../services/jobs/JobService.js";
 import type { FactExtractor } from "../services/facts/FactExtractor.js";
 import type { FactService } from "../services/facts/FactService.js";
 import type { OrchestratorService } from "../services/orchestrator/OrchestratorService.js";
@@ -39,6 +40,7 @@ import type { QuickCommandService } from "../services/quick-commands/QuickComman
 import type { PushNotificationService } from "../services/push-notifications/PushNotificationService.js";
 import type { PushNotificationStore } from "../stores/push-notifications/PushNotificationStore.js";
 import type { AppPreferenceStore } from "../stores/app-preferences/AppPreferenceStore.js";
+import type { JobRunStore } from "../stores/jobs/JobRunStore.js";
 
 // Context accessors are the intentional casting boundary for opaque scopes.
 export const xDashboardUser = (x: Context): DashboardUser =>
@@ -93,6 +95,8 @@ export const xFileService = (x: Context): FileService => x.get("fileService") as
 export const xInboundAttachmentService = (x: Context): InboundAttachmentService =>
   x.get("inboundAttachmentService") as InboundAttachmentService;
 export const xCronService = (x: Context): CronService => x.get("cronService") as CronService;
+export const xJobService = (x: Context): JobService => x.get("jobService") as JobService;
+export const xJobRunStore = (x: Context): JobRunStore => x.get("jobRunStore") as JobRunStore;
 export const xMemoryService = (x: Context): MemoryService =>
   x.get("memoryService") as MemoryService;
 export const xOrchestratorService = (x: Context): OrchestratorService =>

@@ -38,6 +38,8 @@ const dashboardDependencyKeys = [
   "providerService",
   "fileService",
   "cronService",
+  "jobService",
+  "jobRunStore",
   "memoryService",
   "memoryIngestionService",
   "factService",

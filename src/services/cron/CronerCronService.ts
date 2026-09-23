@@ -2,9 +2,15 @@ import { exec } from "node:child_process";
 import { promisify } from "node:util";
 import { Cron } from "croner";
 import type { Context } from "../../context/Context.js";
+import { xDb, xJobService } from "../../lib/x.js";
 import { DEFAULT_TIMEZONE } from "../../shared/defaults.js";
 import type { InboundEvent } from "../../lib/types/inbound-event.js";
-import type { CronJobConfig } from "../../shared/schemas/vito-config.js";
+import {
+  isScriptJob,
+  type CronJobConfig,
+  type LegacyCronJobConfig,
+  type ScriptJobConfig,
+} from "../../shared/schemas/vito-config.js";
 import type { CronHealth, CronService, StartCronArgs } from "./CronService.js";
 
 const execAsync = promisify(exec);
@@ -16,18 +22,40 @@ export class CronerCronService implements CronService {
   private onJob?: (event: InboundEvent, channelName: string | null) => Promise<void>;
   private onJobComplete?: (jobName: string) => Promise<void>;
 
-  /** Set the global timezone (from config) */
   private setTimezone(tz: string): void {
     this.globalTimezone = tz;
     console.log(`[Cron] Global timezone set to: ${tz}`);
   }
 
-  /** Get the effective timezone for a job (job-specific > global > default) */
   private getJobTimezone(job: CronJobConfig): string {
+    if (isScriptJob(job)) {
+      return "cron" in job.schedule
+        ? (job.schedule.timezone ?? this.globalTimezone ?? DEFAULT_TIMEZONE)
+        : "UTC";
+    }
     return job.timezone || this.globalTimezone || DEFAULT_TIMEZONE;
   }
 
   getScheduleError(_x: Context, job: CronJobConfig, globalTimezone?: string): string | null {
+    if (isScriptJob(job)) {
+      if ("at" in job.schedule) {
+        const date = new Date(job.schedule.at);
+        if (Number.isNaN(date.getTime())) return "Invalid one-time schedule";
+        if (date.getTime() <= Date.now()) return "One-time schedule must be in the future";
+        return null;
+      }
+      try {
+        const cron = new Cron(job.schedule.cron, {
+          paused: true,
+          timezone: job.schedule.timezone ?? globalTimezone ?? DEFAULT_TIMEZONE,
+        });
+        cron.stop();
+        return null;
+      } catch (error) {
+        return error instanceof Error ? error.message : "Invalid cron schedule";
+      }
+    }
+
     const timezone = job.timezone || globalTimezone || DEFAULT_TIMEZONE;
     if (this.isISODate(job.schedule)) {
       const date = new Date(job.schedule);
@@ -35,9 +63,8 @@ export class CronerCronService implements CronService {
       if (date.getTime() <= Date.now()) return "One-time schedule must be in the future";
       return null;
     }
-
     try {
-      const cron = new Cron(job.schedule, { paused: true, timezone }, () => {});
+      const cron = new Cron(job.schedule, { paused: true, timezone });
       cron.stop();
       return null;
     } catch (error) {
@@ -45,22 +72,17 @@ export class CronerCronService implements CronService {
     }
   }
 
-  /** Start all jobs from config and connect them to the application event sink. */
   start(x: Context, args: StartCronArgs): void {
     this.stop(x);
     this.onJob = args.onJob;
     this.onJobComplete = args.onJobComplete;
     this.globalTimezone = args.timezone ?? DEFAULT_TIMEZONE;
+    xJobService(x).recover(x);
     console.log(`[Cron] Using timezone: ${this.globalTimezone}`);
-    for (const job of args.jobs) {
-      this.scheduleJob(x, job);
-    }
-    console.log(
-      `[Cron] Scheduler started with ${args.jobs.length} job(s) — croner (with timezone support)`,
-    );
+    for (const job of args.jobs) this.scheduleJob(x, job);
+    console.log(`[Cron] Scheduler started with ${args.jobs.length} job(s) — croner`);
   }
 
-  /** Stop all running jobs. */
   stop(_x: Context): void {
     for (const [name, job] of this.jobs) {
       job.stop();
@@ -72,212 +94,199 @@ export class CronerCronService implements CronService {
     this.onJobComplete = undefined;
   }
 
-  /** Run an optional deterministic precheck before spending AI tokens. */
-  private async shouldRunJob(jobConfig: CronJobConfig): Promise<boolean> {
-    if (!jobConfig.precheckCommand) return true;
-
+  private async shouldRunLegacyJob(job: LegacyCronJobConfig): Promise<boolean> {
+    if (!job.precheckCommand) return true;
     try {
-      const { stdout } = await execAsync(jobConfig.precheckCommand, {
+      const { stdout } = await execAsync(job.precheckCommand, {
         cwd: process.cwd(),
         timeout: 30_000,
         maxBuffer: 1024 * 1024,
       });
       const out = stdout.trim().toLowerCase();
-      if (["false", "0", "no", "skip", "no_reply"].includes(out)) {
-        console.log(`[Cron] Precheck skipped job: ${jobConfig.name}`);
-        return false;
-      }
-      if (["true", "1", "yes", "run"].includes(out) || out === "") {
-        console.log(`[Cron] Precheck passed job: ${jobConfig.name}${out ? ` (${out})` : ""}`);
-        return true;
-      }
-      console.log(
-        `[Cron] Precheck output for ${jobConfig.name}: ${out.slice(0, 200)} — not an explicit pass, skipping`,
-      );
-      return false;
-    } catch (err: unknown) {
-      console.error(
-        `[Cron] Precheck failed for ${jobConfig.name}; skipping job to avoid burning AI tokens:`,
-        err,
-      );
+      if (["false", "0", "no", "skip", "no_reply"].includes(out)) return false;
+      return ["true", "1", "yes", "run", ""].includes(out);
+    } catch (error) {
+      console.error(`[Cron] Legacy precheck failed for ${job.name}; skipping:`, error);
       return false;
     }
   }
 
-  /** Execute a job */
-  private async executeJob(jobConfig: CronJobConfig): Promise<void> {
-    if (!(await this.shouldRunJob(jobConfig))) return;
-    // Extract channel and target from session (e.g., "dashboard:default" -> channel="dashboard", target="default")
-    const sessionParts = jobConfig.session.split(":");
+  private async executeLegacyJob(job: LegacyCronJobConfig): Promise<void> {
+    if (!(await this.shouldRunLegacyJob(job))) return;
+    const sessionParts = job.session.split(":");
     const channelName = sessionParts[0] || "cron";
     const targetName = sessionParts.slice(1).join(":") || "default";
-
-    // If sendCondition is set, modify the prompt to include the instruction
-    let prompt = jobConfig.prompt;
-    if (jobConfig.sendCondition) {
-      prompt = `${jobConfig.prompt}\n\nIMPORTANT: After your analysis, if the following condition is NOT met, respond with exactly 'NO_REPLY' and nothing else. Condition: ${jobConfig.sendCondition}`;
-    }
-
-    // Create an InboundEvent from the cron job
+    const prompt = job.sendCondition
+      ? `${job.prompt}\n\nIMPORTANT: After your analysis, if the following condition is NOT met, respond with exactly 'NO_REPLY' and nothing else. Condition: ${job.sendCondition}`
+      : job.prompt;
     const event: InboundEvent = {
-      sessionKey: jobConfig.session,
+      sessionKey: job.session,
       channel: channelName,
       target: targetName,
       author: "system",
       timestamp: Date.now(),
       content: prompt,
-      raw: {
-        cronJob: jobConfig.name,
-        sendCondition: jobConfig.sendCondition || null,
-      },
+      raw: { cronJob: job.name, sendCondition: job.sendCondition || null },
     };
-
-    try {
-      if (!this.onJob) throw new Error("Cron service has not been started");
-      await this.onJob(event, channelName);
-    } catch (err) {
-      console.error(`[Cron] Job ${jobConfig.name} failed:`, err);
-    }
+    if (!this.onJob) throw new Error("Cron service has not been started");
+    await this.onJob(event, channelName);
   }
 
-  /** Check if a string is an ISO date */
-  private isISODate(str: string): boolean {
-    return /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}/.test(str);
+  private isISODate(value: string): boolean {
+    return /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}/.test(value);
   }
 
-  /** Schedule a single job. */
-  scheduleJob(x: Context, jobConfig: CronJobConfig): void {
-    if (this.jobs.has(jobConfig.name)) {
-      console.warn(`Cron job already exists: ${jobConfig.name}`);
-      return;
-    }
+  private calculateNextScriptRun(job: ScriptJobConfig): string | null {
+    if ("at" in job.schedule) return job.schedule.at;
+    const cron = new Cron(job.schedule.cron, {
+      paused: true,
+      timezone: this.getJobTimezone(job),
+    });
+    const next = cron.nextRun();
+    cron.stop();
+    return next?.toISOString() ?? null;
+  }
 
-    const tz = this.getJobTimezone(jobConfig);
-    let pattern: string | Date = jobConfig.schedule;
+  private readOrInitializeNextRun(x: Context, job: ScriptJobConfig): string | null {
+    const db = xDb(x);
+    const config = JSON.stringify(job.schedule);
+    const row = db
+      .prepare("SELECT config, next_at FROM job_schedule_state WHERE name = ?")
+      .get(job.name) as { config: string; next_at: string | null } | undefined;
+    if (row?.config === config) return row.next_at;
+    const nextAt = this.calculateNextScriptRun(job);
+    db.prepare(
+      `INSERT INTO job_schedule_state(name, config, next_at) VALUES (?, ?, ?)
+       ON CONFLICT(name) DO UPDATE SET config = excluded.config, next_at = excluded.next_at`,
+    ).run(job.name, config, nextAt);
+    return nextAt;
+  }
 
-    // Handle ISO date strings for one-time jobs
-    if (this.isISODate(jobConfig.schedule)) {
-      const targetTime = new Date(jobConfig.schedule);
-      if (targetTime.getTime() <= Date.now()) {
-        console.warn(
-          `[Cron] One-time job ${jobConfig.name} scheduled for the past (${jobConfig.schedule}), skipping`,
-        );
-        return;
+  private advanceScriptSchedule(x: Context, job: ScriptJobConfig): void {
+    const nextAt = "at" in job.schedule ? null : this.calculateNextScriptRun(job);
+    xDb(x)
+      .prepare("UPDATE job_schedule_state SET next_at = ? WHERE name = ?")
+      .run(nextAt, job.name);
+  }
+
+  private scheduleScriptJob(x: Context, job: ScriptJobConfig): void {
+    this.jobConfigs.set(job.name, job);
+    if (!job.enabled) return;
+    const nextAt = this.readOrInitializeNextRun(x, job);
+    if (!nextAt) return;
+    const scheduledAt = nextAt;
+    const target = new Date(Math.max(Date.now() + 10, new Date(nextAt).getTime()));
+    const cron = new Cron(target, { maxRuns: 1 }, async () => {
+      // Advance before executing. If the process dies during uncertain script
+      // side effects, this occurrence is never blindly replayed.
+      this.advanceScriptSchedule(x, job);
+      try {
+        await xJobService(x).execute(x, job, scheduledAt);
+      } catch (error) {
+        console.error(`[Jobs] ${job.name} failed before a run outcome was saved:`, error);
+      } finally {
+        this.jobs.delete(job.name);
+        if (this.jobConfigs.get(job.name) === job && "cron" in job.schedule && job.enabled) {
+          this.scheduleScriptJob(x, job);
+        }
       }
-      pattern = targetTime;
+    });
+    this.jobs.set(job.name, cron);
+  }
+
+  private scheduleLegacyJob(x: Context, job: LegacyCronJobConfig): void {
+    const timezone = this.getJobTimezone(job);
+    let pattern: string | Date = job.schedule;
+    if (this.isISODate(job.schedule)) {
+      const target = new Date(job.schedule);
+      if (target.getTime() <= Date.now()) return;
+      pattern = target;
     }
+    const cron = new Cron(
+      pattern,
+      {
+        timezone,
+        maxRuns: job.oneTime || this.isISODate(job.schedule) ? 1 : undefined,
+      },
+      async () => {
+        try {
+          await this.executeLegacyJob(job);
+        } catch (error) {
+          console.error(`[Cron] Legacy job ${job.name} failed:`, error);
+        }
+        if (job.oneTime || this.isISODate(job.schedule)) {
+          this.jobs.delete(job.name);
+          this.jobConfigs.delete(job.name);
+          await this.onJobComplete?.(job.name);
+        }
+      },
+    );
+    this.jobs.set(job.name, cron);
+    this.jobConfigs.set(job.name, job);
+  }
 
+  scheduleJob(x: Context, job: CronJobConfig): void {
+    if (this.jobs.has(job.name)) return;
     try {
-      const cronJob = new Cron(
-        pattern,
-        {
-          timezone: tz,
-          maxRuns: jobConfig.oneTime || this.isISODate(jobConfig.schedule) ? 1 : undefined,
-        },
-        async () => {
-          console.log(
-            `[Cron] Triggering job: ${jobConfig.name}${jobConfig.oneTime ? " (one-time)" : ""}`,
-          );
-          await this.executeJob(jobConfig);
-
-          // If this is a one-time job, clean up and notify
-          if (jobConfig.oneTime || this.isISODate(jobConfig.schedule)) {
-            console.log(`[Cron] One-time job completed: ${jobConfig.name}, removing...`);
-            this.jobs.delete(jobConfig.name);
-            this.jobConfigs.delete(jobConfig.name);
-
-            // Notify the orchestrator to remove it from config file
-            if (this.onJobComplete) {
-              await this.onJobComplete(jobConfig.name);
-            }
-          }
-        },
-      );
-
-      this.jobs.set(jobConfig.name, cronJob);
-      this.jobConfigs.set(jobConfig.name, jobConfig);
-
-      const nextRun = cronJob.nextRun();
-      const nextRunStr = nextRun ? nextRun.toLocaleString("en-US", { timeZone: tz }) : "N/A";
-      console.log(
-        `Scheduled cron job: ${jobConfig.name} (${jobConfig.schedule}) [${tz}]${jobConfig.oneTime ? " [ONE-TIME]" : ""}${jobConfig.precheckCommand ? " [PRECHECK]" : ""} — next run: ${nextRunStr}`,
-      );
-      if (jobConfig.precheckCommand) {
-        console.log(`[Cron] Precheck for ${jobConfig.name}: ${jobConfig.precheckCommand}`);
-      }
-    } catch (err) {
-      console.error(`Invalid cron schedule for job ${jobConfig.name}: ${jobConfig.schedule}`, err);
+      if (isScriptJob(job)) this.scheduleScriptJob(x, job);
+      else this.scheduleLegacyJob(x, job);
+    } catch (error) {
+      console.error(`Invalid schedule for job ${job.name}:`, error);
     }
   }
 
-  /** Remove a job by name. */
-  removeJob(_x: Context, name: string): boolean {
-    const job = this.jobs.get(name);
-    if (!job) return false;
-
-    job.stop();
+  private unscheduleJob(x: Context, name: string, deleteState: boolean): boolean {
+    const scheduled = this.jobs.get(name);
+    const configured = this.jobConfigs.has(name);
+    scheduled?.stop();
     this.jobs.delete(name);
     this.jobConfigs.delete(name);
-    console.log(`Removed cron job: ${name}`);
-    return true;
+    if (deleteState) xDb(x).prepare("DELETE FROM job_schedule_state WHERE name = ?").run(name);
+    return Boolean(scheduled || configured);
   }
 
-  /** Get all active job names */
-  getActiveJobs(): string[] {
-    return [...this.jobs.keys()];
+  removeJob(x: Context, name: string): boolean {
+    return this.unscheduleJob(x, name, true);
   }
 
-  /** Check health of all scheduled tasks. */
   checkHealth(_x: Context): CronHealth[] {
-    const results: CronHealth[] = [];
-
-    for (const [name, job] of this.jobs) {
-      results.push({
+    return [...this.jobConfigs].map(([name]) => {
+      const scheduled = this.jobs.get(name);
+      return {
         name,
-        isActive: job.isRunning(),
-        nextRun: job.nextRun(),
-      });
-    }
-
-    return results;
+        isActive: scheduled?.isRunning() ?? false,
+        nextRun: scheduled?.nextRun() ?? null,
+      };
+    });
   }
 
-  /** Manually trigger a job by name. */
-  async triggerJob(_x: Context, name: string): Promise<boolean> {
-    const jobConfig = this.jobConfigs.get(name);
-    if (!jobConfig) {
-      console.log(`[Cron] Cannot trigger job '${name}' — not found`);
-      return false;
+  async triggerJob(x: Context, name: string): Promise<boolean> {
+    const job = this.jobConfigs.get(name);
+    if (!job) return false;
+    if (isScriptJob(job)) {
+      void xJobService(x)
+        .execute(x, job, new Date().toISOString())
+        .catch((error) => console.error(`[Jobs] Manual run ${job.name} failed:`, error));
+    } else {
+      await this.executeLegacyJob(job);
     }
-
-    console.log(`[Cron] Manually triggering job: ${name}`);
-    await this.executeJob(jobConfig);
     return true;
   }
 
-  /** Reload jobs, replacing changed schedules and preserving the event sink. */
   reload(x: Context, jobs: CronJobConfig[], timezone?: string): void {
     this.setTimezone(timezone ?? DEFAULT_TIMEZONE);
-    const newJobNames = new Set(jobs.map((j) => j.name));
-    const currentJobNames = new Set(this.jobs.keys());
-
-    // Remove jobs that no longer exist in config
-    for (const name of currentJobNames) {
-      if (!newJobNames.has(name)) {
+    const nextByName = new Map(jobs.map((job) => [job.name, job]));
+    for (const [name, current] of this.jobConfigs) {
+      const next = nextByName.get(name);
+      if (!next) {
         this.removeJob(x, name);
+      } else if (JSON.stringify(current) !== JSON.stringify(next)) {
+        this.unscheduleJob(x, name, false);
+        this.scheduleJob(x, next);
       }
     }
-
-    // Add or update jobs
-    for (const jobConfig of jobs) {
-      const existingJob = this.jobs.has(jobConfig.name);
-      if (existingJob) {
-        // Stop and reschedule if it exists (in case schedule/prompt changed)
-        this.removeJob(x, jobConfig.name);
-      }
-      this.scheduleJob(x, jobConfig);
+    for (const job of jobs) {
+      if (!this.jobConfigs.has(job.name)) this.scheduleJob(x, job);
     }
-
-    console.log(`Cron jobs reloaded: ${jobs.length} active job(s)`);
   }
 }

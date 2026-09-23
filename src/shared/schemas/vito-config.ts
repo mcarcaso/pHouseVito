@@ -113,7 +113,7 @@ export const channelConfigSchema = z
   })
   .passthrough();
 
-export const cronJobConfigSchema = z
+export const legacyCronJobConfigSchema = z
   .object({
     name: z.string().min(1, "Job name is required"),
     schedule: z.string().min(1, "Job schedule is required"),
@@ -126,17 +126,39 @@ export const cronJobConfigSchema = z
   })
   .passthrough();
 
-export const cronJobPatchSchema = z
+export const scriptJobScheduleSchema = z.union([
+  z.object({ at: z.string().datetime({ offset: true }) }).strict(),
+  z
+    .object({
+      cron: z.string().min(1, "Cron schedule is required"),
+      timezone: timezoneSchema.optional(),
+    })
+    .strict(),
+]);
+
+export const jobDeliverySchema = z
   .object({
-    schedule: z.string().min(1, "Job schedule is required").optional(),
-    timezone: timezoneSchema.optional(),
-    session: z.string().min(1, "Job session is required").optional(),
-    prompt: z.string().min(1, "Job prompt is required").optional(),
-    oneTime: z.boolean().optional(),
-    sendCondition: z.string().nullable().optional(),
-    precheckCommand: z.string().optional(),
+    channel: z.string().min(1),
+    target: z.string().min(1),
   })
   .strict();
+
+export const scriptJobConfigSchema = z
+  .object({
+    name: z.string().regex(/^[a-z][a-z0-9-]{0,47}$/),
+    script: z.string().min(1),
+    schedule: scriptJobScheduleSchema,
+    session: z.string().min(1).optional(),
+    timeoutMs: z.number().int().min(1_000).max(3_600_000).default(300_000),
+    enabled: z.boolean().default(true),
+    delivery: jobDeliverySchema.optional(),
+  })
+  .strict();
+
+/** Existing declarative jobs remain readable; all new writes use scriptJobConfigSchema. */
+export const cronJobConfigSchema = z.union([scriptJobConfigSchema, legacyCronJobConfigSchema]);
+
+export const cronJobPatchSchema = scriptJobConfigSchema.omit({ name: true }).partial().strict();
 
 export const vitoConfigPatchSchema = z
   .object({
@@ -220,7 +242,13 @@ export type ModelConfig = z.infer<typeof modelSchema>;
 export type PiRuntimeConfig = z.infer<typeof piRuntimeConfigSchema>;
 export type Settings = z.infer<typeof settingsSchema>;
 export type ChannelConfig = z.infer<typeof channelConfigSchema>;
+export type LegacyCronJobConfig = z.infer<typeof legacyCronJobConfigSchema>;
+export type ScriptJobConfig = z.infer<typeof scriptJobConfigSchema>;
 export type CronJobConfig = z.infer<typeof cronJobConfigSchema>;
+
+export function isScriptJob(job: CronJobConfig): job is ScriptJobConfig {
+  return "script" in job;
+}
 export type VitoConfig = z.infer<typeof vitoConfigSchema>;
 export type VitoConfigPatch = z.infer<typeof vitoConfigPatchSchema>;
 

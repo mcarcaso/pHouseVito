@@ -63,6 +63,7 @@ export class DirectChannelService implements ChannelService {
     author?: string;
     channelPrompt?: string;
     timeoutMs?: number | null; // 0/null disables timeout
+    signal?: AbortSignal;
   }): Promise<string> {
     if (!this.eventHandler) {
       throw new Error("DirectChannel not started — call start() and listen() first");
@@ -107,30 +108,38 @@ Do NOT use markdown formatting unless specifically requested.`;
         requestId,
         // Per-request channel prompt — orchestrator checks event.raw.channelPrompt first
         channelPrompt: options.channelPrompt || defaultChannelPrompt,
+        abortSignal: options.signal,
       },
     };
 
-    // Fire the event through the normal pipeline
+    const abort = () => {
+      const pending = this.pendingRequests.get(requestId);
+      if (!pending) return;
+      this.pendingRequests.delete(requestId);
+      pending.reject(new Error("DirectChannel request cancelled"));
+    };
+    if (options.signal?.aborted) abort();
+    else options.signal?.addEventListener("abort", abort, { once: true });
+
+    // Fire the event through the normal pipeline. An already-cancelled event is
+    // still handed off so the shared session queue can discard it consistently.
     this.eventHandler(event);
 
     // Wait for response. timeoutMs: 0/null disables timeout for long-running pipeline steps.
     const timeout = options.timeoutMs === undefined ? 120000 : options.timeoutMs;
-    if (timeout === null || timeout <= 0) {
-      return responsePromise;
-    }
-
     let timeoutHandle: NodeJS.Timeout | undefined;
-    const timeoutPromise = new Promise<string>((_, reject) => {
-      timeoutHandle = setTimeout(() => {
-        this.pendingRequests.delete(requestId);
-        reject(new Error(`DirectChannel request timed out after ${timeout}ms`));
-      }, timeout);
-    });
-
     try {
+      if (timeout === null || timeout <= 0) return await responsePromise;
+      const timeoutPromise = new Promise<string>((_, reject) => {
+        timeoutHandle = setTimeout(() => {
+          this.pendingRequests.delete(requestId);
+          reject(new Error(`DirectChannel request timed out after ${timeout}ms`));
+        }, timeout);
+      });
       return await Promise.race([responsePromise, timeoutPromise]);
     } finally {
       if (timeoutHandle) clearTimeout(timeoutHandle);
+      options.signal?.removeEventListener("abort", abort);
     }
   }
 

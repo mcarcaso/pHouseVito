@@ -114,9 +114,52 @@ export function createDatabase(dbPath: string): Database.Database {
     );
     CREATE INDEX IF NOT EXISTS idx_secret_drops_status_expires
       ON secret_drops(status, expires_at);
+
+    CREATE TABLE IF NOT EXISTS job_runs (
+      id TEXT PRIMARY KEY,
+      name TEXT NOT NULL,
+      state TEXT NOT NULL CHECK(state IN ('running','completed','skipped','failed','interrupted','cancelled')),
+      scheduled_at TEXT NOT NULL,
+      started_at TEXT NOT NULL,
+      delivery TEXT NOT NULL CHECK(delivery IN ('none','pending','delivering','delivered','failed','unknown')),
+      data TEXT NOT NULL,
+      cancelled INTEGER NOT NULL DEFAULT 0 CHECK(cancelled IN (0,1))
+    );
+    CREATE INDEX IF NOT EXISTS idx_job_runs_name_started ON job_runs(name, started_at DESC);
+    CREATE UNIQUE INDEX IF NOT EXISTS idx_job_runs_active
+      ON job_runs(name) WHERE state = 'running';
+
+    CREATE TABLE IF NOT EXISTS job_run_prompts (
+      run_id TEXT NOT NULL,
+      sequence INTEGER NOT NULL,
+      session TEXT NOT NULL,
+      PRIMARY KEY(run_id, sequence),
+      FOREIGN KEY(run_id) REFERENCES job_runs(id)
+    );
+
+    CREATE TABLE IF NOT EXISTS job_schedule_state (
+      name TEXT PRIMARY KEY,
+      config TEXT NOT NULL,
+      next_at TEXT
+    );
+
+    CREATE TABLE IF NOT EXISTS session_turn_locks (
+      session TEXT PRIMARY KEY,
+      owner TEXT NOT NULL,
+      expires_at INTEGER NOT NULL
+    );
   `);
 
   // Migrations for existing databases
+  const jobRunColumns = db.pragma("table_info(job_runs)") as Array<{ name: string }>;
+  if (!jobRunColumns.some((column) => column.name === "scheduled_at")) {
+    db.exec("ALTER TABLE job_runs ADD COLUMN scheduled_at TEXT");
+    db.exec("UPDATE job_runs SET scheduled_at = started_at WHERE scheduled_at IS NULL");
+  }
+  db.exec(
+    "CREATE UNIQUE INDEX IF NOT EXISTS idx_job_runs_occurrence ON job_runs(name, scheduled_at)",
+  );
+
   const columns = db.pragma("table_info(sessions)") as Array<{ name: string }>;
   if (!columns.some((c) => c.name === "config")) {
     db.exec("ALTER TABLE sessions ADD COLUMN config JSON DEFAULT '{}'");

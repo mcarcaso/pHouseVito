@@ -10,6 +10,14 @@ export interface AskOptions {
   channelPrompt?: string;
   timeoutMs?: number | null;
   relayToSession?: boolean;
+  signal?: AbortSignal;
+}
+
+export interface ContextualPromptOptions {
+  message: string;
+  session: string;
+  author?: string;
+  signal?: AbortSignal;
 }
 
 /** Process-lifetime coordinator for channels, queues, cron, and live Pi sessions. */
@@ -28,6 +36,7 @@ export interface OrchestratorService {
   reloadConfig(x: Context, config: VitoConfig): void;
   handleInbound(x: Context, event: InboundEvent, channel: ChannelService | null): Promise<void>;
   ask(x: Context, options: AskOptions): Promise<string>;
+  prompt(x: Context, options: ContextualPromptOptions): Promise<string>;
   appendSessionContext(
     x: Context,
     sessionId: string,

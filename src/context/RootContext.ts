@@ -7,6 +7,7 @@ import { InMemoryDashboardAuthService } from "../services/auth/InMemoryDashboard
 import { DefaultChannelRegistryService } from "../services/channels/DefaultChannelRegistryService.js";
 import { DefaultDashboardChatService } from "../services/chat/DefaultDashboardChatService.js";
 import { CronerCronService } from "../services/cron/CronerCronService.js";
+import { DefaultJobService } from "../services/jobs/DefaultJobService.js";
 import { DriveInboundAttachmentService } from "../services/files/DriveInboundAttachmentService.js";
 import { FileSystemFileService } from "../services/files/FileSystemFileService.js";
 import { DefaultMemoryService } from "../services/memory/DefaultMemoryService.js";
@@ -43,6 +44,7 @@ import { SqliteVoiceTaskStore } from "../stores/voice/SqliteVoiceTaskStore.js";
 import { SqliteQuickCommandStore } from "../stores/quick-commands/SqliteQuickCommandStore.js";
 import { SqlitePushNotificationStore } from "../stores/push-notifications/SqlitePushNotificationStore.js";
 import { SqliteAppPreferenceStore } from "../stores/app-preferences/SqliteAppPreferenceStore.js";
+import { SqliteJobRunStore } from "../stores/jobs/SqliteJobRunStore.js";
 import { xAskApiService, xDb, xSecretService, xVitoService } from "../lib/x.js";
 import { ObjectContext } from "./ObjectContext.js";
 import type { Context } from "./Context.js";
@@ -88,6 +90,8 @@ export function RootContext(args: RootContextArgs): Context {
     channelRegistryService: () => new DefaultChannelRegistryService(),
     dashboardChatService: () => new DefaultDashboardChatService(),
     cronService: () => new CronerCronService(),
+    jobService: () => new DefaultJobService(),
+    jobRunStore: () => new SqliteJobRunStore(),
     providerService: () => new DefaultProviderService(),
     appStore: () => new FileAppStore(),
     attachmentStore: () => new FileAttachmentStore(),

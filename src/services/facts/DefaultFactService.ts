@@ -11,8 +11,9 @@ import {
 } from "../../lib/x.js";
 import type { MessageRow } from "../../stores/messages/MessageStore.js";
 import type {
-  ApplyFactReconciliationResult,
+  ApplyFactReconciliationArgs,
   AtomicFact,
+  CommitFactChunkResult,
   FactAuthority,
   FactSource,
   FactStatus,
@@ -450,26 +451,27 @@ export class DefaultFactService implements FactService {
           { model: options.extractorModel },
         );
         result.messagesConsidered = messages.length;
-        const chunkResult = await this.reconcileCandidates(
+        const staged = await this.stageReconciliations(
           x,
           chunk.id,
           candidates,
           messages,
           options.extractorModel,
         );
-        result.inserted.push(...chunkResult.inserted);
-        result.supported.push(...chunkResult.supported);
-        result.superseded.push(...chunkResult.superseded);
-        result.rejected.push(...chunkResult.rejected);
-        result.batchesProcessed = 1;
-        xFactStore(x).cmd(x, {
-          type: "complete_chunk",
+        const committed = xFactStore(x).cmd(x, {
+          type: "commit_chunk",
           chunkId: chunk.id,
           extractorVersion: extractor.version,
-          inserted: chunkResult.inserted.length,
-          supported: chunkResult.supported.length,
-          rejected: chunkResult.rejected.length,
-        });
+          reconciliations: staged.reconciliations,
+          rejected: staged.rejected.length,
+        }) as CommitFactChunkResult;
+        for (const reconciliation of committed.reconciliations) {
+          if (reconciliation.created) result.inserted.push(reconciliation.created.id);
+          result.supported.push(...reconciliation.supportedIds);
+          result.superseded.push(...reconciliation.supersededIds);
+        }
+        result.rejected.push(...staged.rejected);
+        result.batchesProcessed = 1;
       } catch (error) {
         const message = error instanceof Error ? error.message : String(error);
         xFactStore(x).cmd(x, {
@@ -492,21 +494,23 @@ export class DefaultFactService implements FactService {
     }
   }
 
-  private async reconcileCandidates(
+  private async stageReconciliations(
     x: Context,
     chunkId: number,
     candidates: ExtractedFactCandidate[],
     messages: FactExtractionMessage[],
     model?: FactIngestOptions["extractorModel"],
-  ): Promise<Pick<FactIngestResult, "inserted" | "supported" | "superseded" | "rejected">> {
+  ): Promise<{
+    reconciliations: ApplyFactReconciliationArgs[];
+    rejected: Array<{ canonicalText: string; reason: string }>;
+  }> {
     const result = {
-      inserted: [] as number[],
-      supported: [] as number[],
-      superseded: [] as number[],
+      reconciliations: [] as ApplyFactReconciliationArgs[],
       rejected: [] as Array<{ canonicalText: string; reason: string }>,
     };
     const extractor = xFactExtractor(x);
     const messageById = new Map(messages.map((message) => [message.id, message]));
+    const stagedFingerprints = new Set<string>();
     for (const candidate of candidates) {
       const validation = validateCandidate(candidate, messageById);
       if (typeof validation === "string") {
@@ -516,8 +520,7 @@ export class DefaultFactService implements FactService {
       const observedAt = Math.max(...validation.sources.map((source) => source.sourceTimestamp));
       const deterministicReason = deterministicFactRejection(candidate, validation.authority);
       if (deterministicReason) {
-        xFactStore(x).cmd(x, {
-          type: "apply_reconciliation",
+        result.reconciliations.push({
           chunkId,
           action: "discard",
           targetIds: [],
@@ -541,8 +544,7 @@ export class DefaultFactService implements FactService {
         related,
       );
       if (decision.action === "discard") {
-        xFactStore(x).cmd(x, {
-          type: "apply_reconciliation",
+        result.reconciliations.push({
           chunkId,
           action: "discard",
           targetIds: [],
@@ -576,13 +578,19 @@ export class DefaultFactService implements FactService {
               (left, right) => authorityRank(right) - authorityRank(left),
             )[0]
           : validation.authority;
-      let candidateFingerprint = activeFingerprint(x, reconciled);
-      if (xFactStore(x).list(x, { fingerprints: [candidateFingerprint], limit: 1 }).length > 0)
+      const baseFingerprint = activeFingerprint(x, reconciled);
+      let candidateFingerprint = baseFingerprint;
+      let collision = 0;
+      while (
+        stagedFingerprints.has(candidateFingerprint) ||
+        xFactStore(x).list(x, { fingerprints: [candidateFingerprint], limit: 1 }).length > 0
+      ) {
         candidateFingerprint = createHash("sha256")
-          .update(`${candidateFingerprint}:${observedAt}:${decision.targetIds.join(",")}`)
+          .update(`${baseFingerprint}:${observedAt}:${decision.targetIds.join(",")}:${collision++}`)
           .digest("hex");
-      const applied = xFactStore(x).cmd(x, {
-        type: "apply_reconciliation",
+      }
+      stagedFingerprints.add(candidateFingerprint);
+      result.reconciliations.push({
         chunkId,
         action: decision.action,
         targetIds: decision.targetIds,
@@ -608,13 +616,7 @@ export class DefaultFactService implements FactService {
           ],
           sources: uniqueSources(mergedSources),
         },
-      }) as ApplyFactReconciliationResult;
-      result.supported.push(...applied.supportedIds);
-      result.superseded.push(...applied.supersededIds);
-      if (applied.created) {
-        result.inserted.push(applied.created.id);
-        await this.embedFact(x, applied.created);
-      }
+      });
     }
     return result;
   }
@@ -638,12 +640,6 @@ export class DefaultFactService implements FactService {
         [...exactSlot, ...exactFingerprint, ...ranked].map((fact) => [fact.id, fact]),
       ).values(),
     ].slice(0, 12);
-  }
-
-  private async embedFact(x: Context, fact: AtomicFact): Promise<void> {
-    const text = [fact.canonicalText, fact.slotKey, ...fact.entities].filter(Boolean).join("\n");
-    const vector = await xEmbeddingService(x).create(x, text);
-    xFactStore(x).putFactEmbeddings(x, [{ factId: fact.id, vector }]);
   }
 
   async embedMissing(x: Context, limit = 200): Promise<number> {

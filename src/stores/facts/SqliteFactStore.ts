@@ -4,6 +4,7 @@ import { StoreRecordNotFoundError, UnsupportedStoreOperationError } from "../Sto
 import type {
   ApplyFactReconciliationResult,
   AtomicFact,
+  CommitFactChunkResult,
   CreateFactArgs,
   FactAuthority,
   FactChunkListArgs,
@@ -233,6 +234,45 @@ export class SqliteFactStore implements FactStore {
 
   cmd(x: Context, command: FactStoreCommand): unknown {
     const db = xEmbeddingDb(x);
+    if (command.type === "commit_chunk") {
+      if (command.reconciliations.some((item) => item.chunkId !== command.chunkId))
+        throw new Error("Every reconciliation must belong to the committed chunk");
+      const commit = db.transaction((): CommitFactChunkResult => {
+        const reconciliations = command.reconciliations.map(
+          (reconciliation) =>
+            this.cmd(x, {
+              type: "apply_reconciliation",
+              ...reconciliation,
+            }) as ApplyFactReconciliationResult,
+        );
+        const inserted = reconciliations.filter((result) => result.created !== null).length;
+        const supported = reconciliations.reduce(
+          (count, result) => count + result.supportedIds.length,
+          0,
+        );
+        const now = Date.now();
+        const completed = db
+          .prepare(
+            `UPDATE fact_chunk_runs SET status = 'completed', facts_inserted = ?,
+             facts_supported = ?, facts_rejected = ?, last_error = NULL,
+             completed_at = ?, updated_at = ?
+             WHERE chunk_id = ? AND extractor_version = ?`,
+          )
+          .run(
+            inserted,
+            supported,
+            command.rejected,
+            now,
+            now,
+            command.chunkId,
+            command.extractorVersion,
+          );
+        if (completed.changes !== 1)
+          throw new StoreRecordNotFoundError("Fact chunk run is missing during commit");
+        return { reconciliations };
+      });
+      return commit();
+    }
     if (command.type === "apply_reconciliation") {
       const activeSetId = activeFactSetId(x);
       const apply = db.transaction((): ApplyFactReconciliationResult => {

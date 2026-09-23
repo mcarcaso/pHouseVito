@@ -106,6 +106,7 @@ function setup() {
   const store = new SqliteFactStore();
   const messageStore = new SqliteMessageStore();
   const service = new DefaultFactService();
+  let failEmbeddingBatch = false;
   db.prepare(
     `INSERT INTO sessions (id, channel, channel_target, created_at, last_active_at)
      VALUES ('test:session', 'test', 'session', 1, 1)`,
@@ -116,8 +117,10 @@ function setup() {
     embeddingDb: () => embeddingDb,
     embeddingService: () => ({
       create: async () => new Float32Array([1, 0]),
-      createMany: async (_context: unknown, texts: string[]) =>
-        texts.map(() => new Float32Array([1, 0])),
+      createMany: async (_context: unknown, texts: string[]) => {
+        if (failEmbeddingBatch) throw new Error("forced embedding failure");
+        return texts.map(() => new Float32Array([1, 0]));
+      },
     }),
     factExtractor: () => extractor,
     factStore: () => store,
@@ -154,7 +157,18 @@ function setup() {
       );
     return message;
   };
-  return { db, embeddingDb, extractor, store, service, x, addUserMessage };
+  return {
+    db,
+    embeddingDb,
+    extractor,
+    store,
+    service,
+    x,
+    addUserMessage,
+    setEmbeddingBatchFailure(value: boolean) {
+      failEmbeddingBatch = value;
+    },
+  };
 }
 
 describe("atomic fact ingestion", () => {
@@ -192,6 +206,95 @@ describe("atomic fact ingestion", () => {
       assert.equal(facts[0]?.status, "superseded");
       assert.equal(facts[1]?.status, "active");
       assert.equal(fixture.extractor.maxActive, 1);
+    } finally {
+      fixture.db.close();
+      fixture.embeddingDb.close();
+    }
+  });
+
+  it("rolls back every fact and decision when one staged reconciliation fails", async () => {
+    const fixture = setup();
+    try {
+      const message = fixture.addUserMessage("I prefer blue and green.", 1_000);
+      fixture.extractor.outputs.push([
+        candidate({
+          text: "Mike prefers blue.",
+          value: "blue",
+          messageId: message.id,
+          quote: "I prefer blue and green.",
+        }),
+        candidate({
+          text: "Mike prefers green.",
+          value: "green",
+          messageId: message.id,
+          quote: "I prefer blue and green.",
+        }),
+      ]);
+      fixture.embeddingDb.exec(`
+        CREATE TRIGGER fail_second_fact_decision
+        BEFORE INSERT ON fact_ingestion_decisions
+        WHEN NEW.candidate_text = 'Mike prefers green.'
+        BEGIN
+          SELECT RAISE(ABORT, 'forced second decision failure');
+        END
+      `);
+
+      const result = await fixture.service.backfill(fixture.x);
+
+      assert.equal(result.inserted.length, 0);
+      assert.equal(fixture.store.count(fixture.x, {}), 0);
+      const decisionCount = fixture.embeddingDb
+        .prepare("SELECT COUNT(*) count FROM fact_ingestion_decisions")
+        .get() as { count: number };
+      assert.equal(decisionCount.count, 0);
+      const run = fixture.embeddingDb
+        .prepare("SELECT status, attempts, last_error FROM fact_chunk_runs")
+        .get() as { status: string; attempts: number; last_error: string };
+      assert.equal(run.status, "failed");
+      assert.equal(run.attempts, 1);
+      assert.match(run.last_error, /forced second decision failure/);
+    } finally {
+      fixture.db.close();
+      fixture.embeddingDb.close();
+    }
+  });
+
+  it("keeps committed facts complete when post-commit embedding fails", async () => {
+    const fixture = setup();
+    try {
+      const message = fixture.addUserMessage("I prefer blue.", 1_000);
+      fixture.extractor.outputs.push([
+        candidate({
+          text: "Mike prefers blue.",
+          value: "blue",
+          messageId: message.id,
+          quote: "I prefer blue.",
+        }),
+      ]);
+      fixture.setEmbeddingBatchFailure(true);
+
+      const first = await fixture.service.backfill(fixture.x);
+
+      assert.equal(first.inserted.length, 1);
+      assert.equal(fixture.store.count(fixture.x, {}), 1);
+      assert.equal(fixture.store.listFactVectors(fixture.x).length, 0);
+      const run = fixture.embeddingDb
+        .prepare("SELECT status, attempts FROM fact_chunk_runs")
+        .get() as { status: string; attempts: number };
+      assert.equal(run.status, "completed");
+      assert.equal(run.attempts, 1);
+
+      const second = await fixture.service.backfill(fixture.x);
+      assert.equal(second.skipped, "no_unprocessed_chunks");
+      assert.equal(fixture.extractor.inputs.length, 1);
+      assert.equal(fixture.store.count(fixture.x, {}), 1);
+
+      fixture.setEmbeddingBatchFailure(false);
+      assert.equal(await fixture.service.embedMissing(fixture.x), 1);
+      assert.deepEqual(
+        fixture.store.listFactVectors(fixture.x).map((item) => item.factId),
+        first.inserted,
+      );
     } finally {
       fixture.db.close();
       fixture.embeddingDb.close();

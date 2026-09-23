@@ -79,6 +79,10 @@ export interface ApplyFactReconciliationResult {
   supersededIds: number[];
 }
 
+export interface CommitFactChunkResult {
+  reconciliations: ApplyFactReconciliationResult[];
+}
+
 export interface FactExtractionChunk {
   id: number;
   sessionId: string;
@@ -122,6 +126,13 @@ export interface UpdateFactArgs {
 
 export type FactStoreCommand =
   | ({ type: "apply_reconciliation" } & ApplyFactReconciliationArgs)
+  | {
+      type: "commit_chunk";
+      chunkId: number;
+      extractorVersion: string;
+      reconciliations: ApplyFactReconciliationArgs[];
+      rejected: number;
+    }
   | {
       type: "add_sources";
       factId: number;

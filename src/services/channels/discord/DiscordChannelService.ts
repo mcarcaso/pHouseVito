@@ -9,11 +9,13 @@ import {
   ChatInputCommandInteraction,
 } from "discord.js";
 import type { Context } from "../../../context/Context.js";
-import { xSecretService, xVitoService } from "../../../lib/x.js";
+import { xDiscordQueueStore, xSecretService, xVitoService } from "../../../lib/x.js";
 import type { OutputHandler } from "../../../lib/output/OutputHandler.js";
 import type { InboundEvent } from "../../../lib/types/inbound-event.js";
 import type { SessionRow } from "../../../stores/sessions/SessionStore.js";
+import type { DurableDiscordEvent } from "../../../stores/discord/DiscordQueueStore.js";
 import type { ChannelManagement, ChannelService } from "../ChannelService.js";
+import { getEffectiveSettings } from "../../vito/settings.js";
 import { DiscordOutputHandler } from "./DiscordOutputHandler.js";
 
 const DISCORD_MENTION_CONTEXT_MESSAGES = 5;
@@ -34,11 +36,18 @@ export class DiscordChannelService implements ChannelService {
     typing: true,
     reactions: true,
     attachments: true,
-    streaming: false,
+    streaming: true,
   };
 
   private client: Client | null = null;
   private token: string | undefined;
+  private context: Context | null = null;
+  private eventHandler: ((event: InboundEvent) => void | Promise<void>) | null = null;
+  private queuePoll: ReturnType<typeof setInterval> | null = null;
+  private readonly draining = new Map<string, Promise<void>>();
+  private readonly liveRaw = new Map<string, DiscordMessage | ChatInputCommandInteraction>();
+  private readonly applicationOwnerIds = new Set<string>();
+  private stopping = false;
 
   readonly management: ChannelManagement = {
     registerCommands: async (x) => await this.registerSlashCommands(x),
@@ -54,6 +63,12 @@ export class DiscordChannelService implements ChannelService {
     }
 
     this.token = token;
+    this.context = x;
+    this.stopping = false;
+    const recovered = xDiscordQueueStore(x).recover(x);
+    if (recovered > 0) {
+      console.warn(`[Discord] Marked ${recovered} interrupted item(s) without replaying them`);
+    }
     this.client = new Client({
       intents: [
         GatewayIntentBits.Guilds,
@@ -66,19 +81,150 @@ export class DiscordChannelService implements ChannelService {
     });
 
     await this.client.login(token);
+    try {
+      const application = await this.client.application?.fetch();
+      const owner = application?.owner as unknown;
+      if (owner && typeof owner === "object" && "id" in owner && typeof owner.id === "string") {
+        this.applicationOwnerIds.add(owner.id);
+      }
+      if (owner && typeof owner === "object" && "members" in owner) {
+        const members = owner.members as { keys?: () => IterableIterator<string> };
+        for (const id of members.keys?.() ?? []) this.applicationOwnerIds.add(id);
+      }
+    } catch (error) {
+      console.warn(`[Discord] Could not resolve application owner: ${errorMessage(error)}`);
+    }
     console.log(`Discord bot started as ${this.client.user?.tag}`);
   }
 
   async stop(_x: Context): Promise<void> {
+    this.stopping = true;
+    if (this.queuePoll) clearInterval(this.queuePoll);
+    this.queuePoll = null;
+    this.eventHandler = null;
     this.client?.destroy();
     this.client = null;
     this.token = undefined;
+    this.context = null;
+    this.liveRaw.clear();
   }
 
-  async listen(x: Context, onEvent: (event: InboundEvent) => void): Promise<() => void> {
+  private isOwner(x: Context, userId: string): boolean {
+    const discord = xVitoService(x).getConfig(x).channels.discord as
+      (Record<string, unknown> & { ownerIds?: unknown }) | undefined;
+    const configured = Array.isArray(discord?.ownerIds)
+      ? discord.ownerIds.filter((id): id is string => typeof id === "string")
+      : [];
+    return configured.includes(userId) || this.applicationOwnerIds.has(userId);
+  }
+
+  private durableEvent(event: InboundEvent, id: string, authorId: string): DurableDiscordEvent {
+    const metadata =
+      event.raw && typeof event.raw === "object" ? (event.raw as Record<string, unknown>) : {};
+    return {
+      id,
+      channel: event.target,
+      transportChannel:
+        typeof metadata.discordChannelId === "string" ? metadata.discordChannelId : event.target,
+      target: event.target,
+      sessionKey: event.sessionKey,
+      author: event.author,
+      authorId,
+      timestamp: event.timestamp,
+      content: event.content,
+      hasMention: event.hasMention !== false,
+      commandAuthorized: metadata.commandAuthorized === true,
+      attachments: (event.attachments ?? []).map((attachment) => ({
+        type: attachment.type,
+        url: attachment.url,
+        path: attachment.path,
+        mimeType: attachment.mimeType,
+        filename: attachment.filename,
+      })),
+    };
+  }
+
+  private queue(
+    x: Context,
+    event: InboundEvent,
+    id: string,
+    authorId: string,
+    raw: DiscordMessage | ChatInputCommandInteraction,
+  ): void {
+    this.liveRaw.set(id, raw);
+    xDiscordQueueStore(x).record(x, this.durableEvent(event, id, authorId));
+    this.startDrain(x, event.target);
+  }
+
+  private startDrain(x: Context, channel: string): void {
+    if (this.stopping || !this.eventHandler || this.draining.has(channel)) return;
+    const work = this.drain(x, channel)
+      .catch((error) => console.error(`[Discord] Queue ${channel} stopped: ${errorMessage(error)}`))
+      .finally(() => this.draining.delete(channel));
+    this.draining.set(channel, work);
+  }
+
+  private async resolveRaw(
+    id: string,
+    channelId: string,
+  ): Promise<DiscordMessage | ChatInputCommandInteraction | undefined> {
+    const live = this.liveRaw.get(id);
+    if (live) return live;
+    const channel = await this.client?.channels.fetch(channelId).catch(() => null);
+    if (channel && "messages" in channel) {
+      return await channel.messages.fetch(id).catch(() => undefined);
+    }
+    return undefined;
+  }
+
+  private async drain(x: Context, channel: string): Promise<void> {
+    const store = xDiscordQueueStore(x);
+    while (!this.stopping && this.eventHandler) {
+      const durable = store.claim(x, channel);
+      if (!durable) return;
+      try {
+        const raw = await this.resolveRaw(durable.id, durable.transportChannel);
+        const event: InboundEvent = {
+          sessionKey: durable.sessionKey,
+          channel: "discord",
+          target: durable.target,
+          author: durable.author,
+          timestamp: durable.timestamp,
+          content: durable.content,
+          attachments: durable.attachments,
+          hasMention: durable.hasMention,
+          raw: {
+            source: "discord",
+            discordMessageId: durable.id,
+            discordAuthorId: durable.authorId,
+            discordChannelId: durable.transportChannel,
+            commandAuthorized: durable.commandAuthorized,
+            discordRaw: raw,
+          },
+        };
+        await this.eventHandler(event);
+        store.complete(x, durable.id);
+      } catch (error) {
+        store.interrupt(x, durable.id, errorMessage(error));
+      } finally {
+        this.liveRaw.delete(durable.id);
+      }
+    }
+  }
+
+  async listen(
+    x: Context,
+    onEvent: (event: InboundEvent) => void | Promise<void>,
+  ): Promise<() => void> {
     const client = this.client;
     const botUser = client?.user;
     if (!client || !botUser) throw new Error("Client not initialized — call start() first");
+    this.eventHandler = onEvent;
+    for (const channel of xDiscordQueueStore(x).pendingChannels(x)) this.startDrain(x, channel);
+    this.queuePoll = setInterval(() => {
+      for (const channel of xDiscordQueueStore(x).pendingChannels(x)) this.startDrain(x, channel);
+    }, 500);
+    this.queuePoll.unref();
 
     const getAllowlist = (): { guildIds: string[]; channelIds: string[] } => {
       const config = xVitoService(x).getConfig(x).channels.discord;
@@ -167,7 +313,14 @@ export class DiscordChannelService implements ChannelService {
         author: msg.author.tag,
         timestamp: Date.now(),
         content,
-        raw: msg,
+        raw: {
+          source: "discord",
+          discordMessageId: msg.id,
+          discordAuthorId: msg.author.id,
+          discordChannelId: msg.channel.id,
+          commandAuthorized: this.isOwner(x, msg.author.id),
+          discordRaw: msg,
+        },
         hasMention, // Channel reports whether bot was mentioned; orchestrator decides what to do
       };
 
@@ -185,8 +338,22 @@ export class DiscordChannelService implements ChannelService {
         }));
       }
 
-      console.log(`[Discord] ✅ Firing onEvent for ${target}`);
-      onEvent(event);
+      const command = content.toLowerCase();
+      if (command === "/restart" && !this.isOwner(x, msg.author.id)) {
+        await msg.reply("Only the bot owner can restart Vito.");
+        return;
+      }
+      if (command === "/stop" || command === "/restart") {
+        const discarded = command === "/stop" ? xDiscordQueueStore(x).discardPending(x, target) : 0;
+        event.raw = { ...(event.raw as Record<string, unknown>), discordDiscarded: discarded };
+        await onEvent(event);
+        return;
+      }
+
+      const effective = getEffectiveSettings(xVitoService(x).getConfig(x), "discord", sessionKey);
+      if (!hasMention && effective.requireMention !== false) return;
+      console.log(`[Discord] ✅ Queued durable event ${msg.id} for ${target}`);
+      this.queue(x, event, msg.id, msg.author.id, msg);
     });
 
     // Handle slash command interactions
@@ -202,99 +369,60 @@ export class DiscordChannelService implements ChannelService {
       }
 
       const target = interaction.guild ? interaction.channelId : interaction.user.id;
-
-      if (interaction.commandName === "new") {
-        // Defer the reply since embedding can take a while
-        await interaction.deferReply();
-
-        const event: InboundEvent = {
-          sessionKey: `discord:${target}`,
-          channel: "discord",
-          target: target,
-          author: interaction.user.tag,
-          timestamp: Date.now(),
-          content: "/new",
-          raw: interaction,
-        };
-
-        console.log(`[Discord] ⚡ Slash command /new from ${interaction.user.tag}`);
-        onEvent(event);
+      const owner = this.isOwner(x, interaction.user.id);
+      if (interaction.commandName === "restart" && !owner) {
+        await interaction.reply({
+          content: "Only the bot owner can restart Vito.",
+          ephemeral: true,
+        });
+        return;
       }
 
-      if (interaction.commandName === "compact") {
-        await interaction.deferReply();
+      const value =
+        interaction.commandName === "model"
+          ? interaction.options.getString("model", false)?.trim()
+          : interaction.commandName === "login"
+            ? interaction.options.getString("provider", false)?.trim()
+            : interaction.commandName === "session"
+              ? interaction.options.getString("id", false)?.trim()
+              : undefined;
+      const content = value
+        ? `/${interaction.commandName} ${value}`
+        : `/${interaction.commandName}`;
+      await interaction.deferReply();
+      const discarded =
+        interaction.commandName === "stop" ? xDiscordQueueStore(x).discardPending(x, target) : 0;
+      const event: InboundEvent = {
+        sessionKey: `discord:${target}`,
+        channel: "discord",
+        target,
+        author: interaction.user.tag,
+        timestamp: Date.now(),
+        content,
+        hasMention: true,
+        raw: {
+          source: "discord",
+          discordMessageId: interaction.id,
+          discordAuthorId: interaction.user.id,
+          discordChannelId: interaction.channelId,
+          commandAuthorized: owner,
+          discordDiscarded: discarded,
+          discordRaw: interaction,
+        },
+      };
 
-        const event: InboundEvent = {
-          sessionKey: `discord:${target}`,
-          channel: "discord",
-          target: target,
-          author: interaction.user.tag,
-          timestamp: Date.now(),
-          content: "/compact",
-          raw: interaction,
-        };
-
-        console.log(`[Discord] ⚡ Slash command /compact from ${interaction.user.tag}`);
-        onEvent(event);
-      }
-
-      if (interaction.commandName === "model") {
-        await interaction.deferReply();
-        const model = interaction.options.getString("model", false)?.trim() || "";
-
-        const event: InboundEvent = {
-          sessionKey: `discord:${target}`,
-          channel: "discord",
-          target: target,
-          author: interaction.user.tag,
-          timestamp: Date.now(),
-          content: model ? `/model ${model}` : "/model",
-          raw: interaction,
-        };
-
-        console.log(`[Discord] ⚡ Slash command /model from ${interaction.user.tag}`);
-        onEvent(event);
-      }
-
-      if (interaction.commandName === "stop") {
-        // Defer so we can respond after orchestrator handles it
-        await interaction.deferReply();
-
-        const event: InboundEvent = {
-          sessionKey: `discord:${target}`,
-          channel: "discord",
-          target: target,
-          author: interaction.user.tag,
-          timestamp: Date.now(),
-          content: "/stop",
-          raw: interaction,
-        };
-
-        console.log(`[Discord] ⚡ Slash command /stop from ${interaction.user.tag}`);
-        onEvent(event);
-      }
-
-      if (interaction.commandName === "restart") {
-        // Defer so we can respond before server dies
-        await interaction.deferReply();
-
-        const event: InboundEvent = {
-          sessionKey: `discord:${target}`,
-          channel: "discord",
-          target: target,
-          author: interaction.user.tag,
-          timestamp: Date.now(),
-          content: "/restart",
-          raw: interaction,
-        };
-
-        console.log(`[Discord] ⚡ Slash command /restart from ${interaction.user.tag}`);
-        onEvent(event);
+      console.log(`[Discord] ⚡ Slash command ${content} from ${interaction.user.tag}`);
+      if (interaction.commandName === "stop" || interaction.commandName === "restart") {
+        await onEvent(event);
+      } else {
+        this.queue(x, event, interaction.id, interaction.user.id, interaction);
       }
     });
 
     return () => {
-      // Cleanup handled by stop()
+      this.eventHandler = null;
+      if (this.queuePoll) clearInterval(this.queuePoll);
+      this.queuePoll = null;
     };
   }
 
@@ -375,9 +503,28 @@ export class DiscordChannelService implements ChannelService {
             .setRequired(false),
         ),
       new SlashCommandBuilder()
+        .setName("session")
+        .setDescription("List or resume a previous session in this conversation")
+        .addStringOption((option) =>
+          option.setName("id").setDescription("Exact session ID to resume").setRequired(false),
+        ),
+      new SlashCommandBuilder()
+        .setName("login")
+        .setDescription("Connect a model provider with private device authorization")
+        .addStringOption((option) =>
+          option
+            .setName("provider")
+            .setDescription("Provider ID (default: openai-codex)")
+            .setRequired(false),
+        ),
+      new SlashCommandBuilder()
         .setName("stop")
         .setDescription("Stop current request and clear any queued messages"),
-      new SlashCommandBuilder().setName("restart").setDescription("Restart the Vito server (PM2)"),
+      new SlashCommandBuilder().setName("status").setDescription("Show session and queue status"),
+      new SlashCommandBuilder().setName("help").setDescription("Show deterministic controls"),
+      new SlashCommandBuilder()
+        .setName("restart")
+        .setDescription("Owner-only Vito service restart"),
     ];
 
     const rest = new REST({ version: "10" }).setToken(token);
@@ -397,15 +544,22 @@ export class DiscordChannelService implements ChannelService {
     }
   }
 
-  createOutputHandler(_x: Context, event: InboundEvent): OutputHandler {
+  createOutputHandler(x: Context, event: InboundEvent): OutputHandler {
     if (!this.client) throw new Error("Discord client not initialized");
-    return new DiscordOutputHandler(this.client, event, this.token);
+    return new DiscordOutputHandler(x, this.client, event, this.token);
   }
 
   async gatherMentionContext(x: Context, event: InboundEvent): Promise<string | undefined> {
-    const raw = event.raw;
+    const metadata =
+      event.raw && typeof event.raw === "object" ? (event.raw as Record<string, unknown>) : {};
+    const raw =
+      metadata.discordRaw instanceof DiscordMessage
+        ? metadata.discordRaw
+        : event.raw instanceof DiscordMessage
+          ? event.raw
+          : undefined;
     const botUser = this.client?.user;
-    if (!(raw instanceof DiscordMessage) || !raw.guild || !botUser) return undefined;
+    if (!raw?.guild || !botUser) return undefined;
     if (!raw.mentions.has(botUser.id) || !("messages" in raw.channel)) return undefined;
 
     const recent: DiscordMessage[] = [];

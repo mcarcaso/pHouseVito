@@ -45,6 +45,7 @@ import { SqliteQuickCommandStore } from "../stores/quick-commands/SqliteQuickCom
 import { SqlitePushNotificationStore } from "../stores/push-notifications/SqlitePushNotificationStore.js";
 import { SqliteAppPreferenceStore } from "../stores/app-preferences/SqliteAppPreferenceStore.js";
 import { SqliteJobRunStore } from "../stores/jobs/SqliteJobRunStore.js";
+import { SqliteDiscordQueueStore } from "../stores/discord/SqliteDiscordQueueStore.js";
 import { xAskApiService, xDb, xSecretService, xVitoService } from "../lib/x.js";
 import { ObjectContext } from "./ObjectContext.js";
 import type { Context } from "./Context.js";
@@ -92,6 +93,7 @@ export function RootContext(args: RootContextArgs): Context {
     cronService: () => new CronerCronService(),
     jobService: () => new DefaultJobService(),
     jobRunStore: () => new SqliteJobRunStore(),
+    discordQueueStore: () => new SqliteDiscordQueueStore(),
     providerService: () => new DefaultProviderService(),
     appStore: () => new FileAppStore(),
     attachmentStore: () => new FileAttachmentStore(),

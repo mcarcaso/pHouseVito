@@ -15,7 +15,7 @@ A personal AI agent framework with persistent memory, extensible skills, and mul
 
 - **CLI** - Terminal-based chat interface
 - **Dashboard** - Web-based UI with real-time updates
-- **Discord** - Bot integration with guild/channel filtering
+- **Discord** - Durable ordered queues, deterministic controls, progress, attachments, and guild/channel filtering ([details](docs/discord.md))
 - **Telegram** - Bot integration with chat ID filtering
 
 ### 🔌 Pi Runtime

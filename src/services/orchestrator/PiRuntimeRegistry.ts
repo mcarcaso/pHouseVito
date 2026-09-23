@@ -15,6 +15,31 @@ export class PiRuntimeRegistry {
     return this.runtimes.delete(sessionId);
   }
 
+  async resume(
+    x: Context,
+    sessionId: string,
+    settings: ResolvedSettings,
+    resumePath: string,
+  ): Promise<PiSessionRuntime> {
+    const existing = this.runtimes.get(sessionId);
+    await existing?.dispose();
+    const piConfig = settings["pi-coding-agent"] || {};
+    const model = piConfig.model || {
+      provider: "anthropic",
+      name: "claude-sonnet-4-20250514",
+    };
+    const runtime = new PiSessionRuntime({
+      sessionDir: resolve(xPiSessionsDir(x), encodeURIComponent(sessionId)),
+      resumePath,
+      model,
+      openRouterProvider: piConfig.openRouterProvider,
+      thinkingLevel: piConfig.thinkingLevel,
+      skills: xSkillStore(x).list(x, {}),
+    });
+    this.runtimes.set(sessionId, runtime);
+    return runtime;
+  }
+
   async disposeAll(): Promise<void> {
     for (const runtime of this.runtimes.values()) {
       try {

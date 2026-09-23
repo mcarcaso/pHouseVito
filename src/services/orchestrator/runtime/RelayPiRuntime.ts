@@ -37,6 +37,10 @@ export class RelayPiRuntime extends ProxyPiRuntime {
     signal?: AbortSignal,
   ): Promise<void> {
     this.completedMessages = [];
+    let delivery = Promise.resolve();
+    const enqueueDelivery = (action: () => Promise<void>) => {
+      delivery = delivery.then(action);
+    };
 
     const relayCallbacks: PiRuntimeCallbacks = {
       onInvocation: callbacks.onInvocation,
@@ -46,35 +50,41 @@ export class RelayPiRuntime extends ProxyPiRuntime {
           this.completedMessages.push(event.content);
 
           if (this.streamMode === "stream" && this.handler) {
-            this.handler.relay(event.content).catch((err: any) => {
-              console.error(`[Relay] relay failed during stream: ${err.message}`);
+            enqueueDelivery(async () => {
+              await this.handler?.relay(event.content);
+              await this.handler?.endMessage?.();
+              await this.handler?.startTyping?.();
             });
-            this.handler.endMessage?.()?.catch((err: any) => {
-              console.error(`[Relay] endMessage failed during stream: ${err.message}`);
-            });
-            this.handler.startTyping?.()?.catch(() => {});
           }
         }
 
         if (event.kind === "tool_start") {
-          this.handler
-            ?.relayEvent?.({
-              kind: "tool_start",
-              toolName: event.tool,
-              toolCallId: event.callId,
-              args: event.args,
-            })
-            ?.catch(() => {});
+          enqueueDelivery(async () => {
+            try {
+              await this.handler?.relayEvent?.({
+                kind: "tool_start",
+                toolName: event.tool,
+                toolCallId: event.callId,
+                args: event.args,
+              });
+            } catch {
+              // Progress is non-authoritative; assistant delivery still proceeds.
+            }
+          });
         } else if (event.kind === "tool_end") {
-          this.handler
-            ?.relayEvent?.({
-              kind: "tool_end",
-              toolName: event.tool,
-              toolCallId: event.callId,
-              result: event.result,
-              isError: !event.success,
-            })
-            ?.catch(() => {});
+          enqueueDelivery(async () => {
+            try {
+              await this.handler?.relayEvent?.({
+                kind: "tool_end",
+                toolName: event.tool,
+                toolCallId: event.callId,
+                result: event.result,
+                isError: !event.success,
+              });
+            } catch {
+              // Progress is non-authoritative; assistant delivery still proceeds.
+            }
+          });
         }
 
         callbacks.onNormalizedEvent(event);
@@ -83,7 +93,9 @@ export class RelayPiRuntime extends ProxyPiRuntime {
 
     try {
       await this.delegate.run(systemPrompt, userMessage, relayCallbacks, signal);
+      await delivery;
     } catch (err) {
+      await delivery.catch(() => {});
       if (signal?.aborted && this.handler) {
         // Flush any in-progress stream before sending interrupt
         if (this.streamMode === "stream") {
@@ -92,8 +104,7 @@ export class RelayPiRuntime extends ProxyPiRuntime {
         await this.handler.relay("*(interrupted)*");
         await this.handler.endMessage?.();
       } else if (this.handler) {
-        const msg = err instanceof Error ? err.message : String(err);
-        await this.handler.relay(`⚠️ ${msg}`);
+        await this.handler.relay("⚠️ I couldn't complete that turn. Please try again.");
         await this.handler.endMessage?.();
       }
       throw err;

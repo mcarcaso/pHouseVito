@@ -1,18 +1,42 @@
+import { createHash } from "node:crypto";
+import { existsSync, statSync } from "node:fs";
+import { isAbsolute, resolve } from "node:path";
 import { Client, Message as DiscordMessage, ChatInputCommandInteraction } from "discord.js";
-import * as fs from "node:fs";
-import * as path from "node:path";
-import type { OutputHandler, OutboundMessage } from "../../../lib/output/OutputHandler.js";
-import type { InboundEvent } from "../../../lib/types/inbound-event.js";
+import type { Context } from "../../../context/Context.js";
+import { xDiscordQueueStore } from "../../../lib/x.js";
+import type {
+  AgentActivityEvent,
+  OutputHandler,
+  OutboundMessage,
+} from "../../../lib/output/OutputHandler.js";
+import { parseInboundEventMetadata, type InboundEvent } from "../../../lib/types/inbound-event.js";
 
-const DISCORD_MAX_LENGTH = 2000;
+const DISCORD_MAX_LENGTH = 2_000;
+const DASHBOARD_URL = (
+  process.env.VITO_DASHBOARD_URL ?? "https://mikes-mac-mini-1.tail1706d3.ts.net"
+).replace(/\/$/, "");
 
 function errorMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
 }
 
+interface SentDiscordMessage {
+  edit?(content: string): Promise<unknown>;
+  delete?(): Promise<unknown>;
+}
+
 interface DiscordOutputChannel {
   id: string;
-  send(content: string): Promise<unknown>;
+  send(
+    content:
+      | string
+      | {
+          content?: string;
+          files?: string[];
+          nonce?: string;
+          enforceNonce?: boolean;
+        },
+  ): Promise<unknown>;
   sendTyping?: () => Promise<unknown>;
 }
 
@@ -32,6 +56,74 @@ function isChatInputInteraction(value: unknown): value is ChatInputCommandIntera
   );
 }
 
+function rawDiscordValue(event: InboundEvent): unknown {
+  const metadata = isUnknownRecord(event.raw) ? event.raw : undefined;
+  return metadata?.discordRaw ?? event.raw;
+}
+
+function deliveryBase(event: InboundEvent): string {
+  const metadata = parseInboundEventMetadata(event.raw);
+  const raw = rawDiscordValue(event);
+  if (typeof metadata.deliveryKey === "string" && metadata.deliveryKey) {
+    return `discord:${metadata.deliveryKey}`;
+  }
+  if (typeof metadata.discordMessageId === "string" && metadata.discordMessageId) {
+    return `discord:reply:${metadata.discordMessageId}`;
+  }
+  if (raw instanceof DiscordMessage || isChatInputInteraction(raw)) {
+    return `discord:reply:${raw.id}`;
+  }
+  return `discord:reply:${createHash("sha256")
+    .update(`${event.sessionKey}\0${event.timestamp}\0${event.author}`)
+    .digest("hex")}`;
+}
+
+function nonce(key: string, piece: number): string {
+  return createHash("sha256").update(`${key}:${piece}`).digest("hex").slice(0, 24);
+}
+
+function sanitizedToolName(value: string | undefined): string {
+  const cleaned = (value ?? "tool").replace(/[^a-zA-Z0-9_.:-]+/g, " ").trim();
+  return (cleaned || "tool").slice(0, 80);
+}
+
+type DeliveryPiece = { type: "text"; content: string } | { type: "media"; path: string };
+
+function parsePieces(text: string): DeliveryPiece[] {
+  const pieces: DeliveryPiece[] = [];
+  const marker = /^MEDIA:(.+)$/gm;
+  let lastIndex = 0;
+  let match: RegExpExecArray | null;
+  while ((match = marker.exec(text)) !== null) {
+    const before = text.slice(lastIndex, match.index).trim();
+    if (before) {
+      for (const chunk of splitMessage(before, DISCORD_MAX_LENGTH)) {
+        pieces.push({ type: "text", content: chunk });
+      }
+    }
+    const supplied = (match[1] ?? "").trim();
+    if (supplied) {
+      pieces.push({
+        type: "media",
+        path: isAbsolute(supplied) ? supplied : resolve(process.cwd(), supplied),
+      });
+    }
+    lastIndex = match.index + match[0].length;
+  }
+  const after = text.slice(lastIndex).trim();
+  if (after) {
+    for (const chunk of splitMessage(after, DISCORD_MAX_LENGTH)) {
+      pieces.push({ type: "text", content: chunk });
+    }
+  }
+  if (pieces.length === 0 && text) {
+    for (const chunk of splitMessage(text, DISCORD_MAX_LENGTH)) {
+      pieces.push({ type: "text", content: chunk });
+    }
+  }
+  return pieces;
+}
+
 export class DiscordOutputHandler implements OutputHandler {
   private buffer = "";
   private typingInterval: ReturnType<typeof setInterval> | null = null;
@@ -41,19 +133,23 @@ export class DiscordOutputHandler implements OutputHandler {
   private channelReady: Promise<void>;
   private interaction: ChatInputCommandInteraction | null = null;
   private interactionReplied = false;
+  private flushSequence = 0;
+  private progressSequence = 0;
+  private progress: SentDiscordMessage | null = null;
 
   constructor(
+    private x: Context,
     private client: Client,
     private event: InboundEvent,
-    private token?: string,
+    _token?: string,
   ) {
-    // Check if this is a slash command interaction
-    const raw = event.raw;
+    const raw = rawDiscordValue(event);
+    const metadata = parseInboundEventMetadata(event.raw);
+    const outputTarget = metadata.discordChannelId ?? event.target;
     if (isChatInputInteraction(raw)) {
       this.interaction = raw;
-      // For interactions, we still need the channel for typing indicators
       this.channelReady = this.client.channels
-        .fetch(event.target)
+        .fetch(outputTarget)
         .then((channel) => {
           if (isDiscordOutputChannel(channel)) this.channel = channel;
         })
@@ -61,22 +157,21 @@ export class DiscordOutputHandler implements OutputHandler {
       return;
     }
 
-    // Get the channel from the raw message, OR fetch by target ID (for cron jobs)
     const rawMessage = raw instanceof DiscordMessage ? raw : undefined;
     if (rawMessage && isDiscordOutputChannel(rawMessage.channel)) {
       this.channel = rawMessage.channel;
       this.channelReady = Promise.resolve();
-    } else if (event.target) {
-      // Cron job or other non-message trigger — fetch channel by ID
+    } else if (outputTarget) {
       this.channelReady = this.client.channels
-        .fetch(event.target)
+        .fetch(outputTarget)
+        .catch(async () => await (await this.client.users.fetch(outputTarget)).createDM())
         .then((channel) => {
-          if (!isDiscordOutputChannel(channel)) return;
-          this.channel = channel;
-          console.log(`[Discord] Fetched channel ${event.target} for cron job`);
+          if (isDiscordOutputChannel(channel)) this.channel = channel;
         })
-        .catch((err) => {
-          console.error(`[Discord] Failed to fetch channel ${event.target}: ${err.message}`);
+        .catch((error) => {
+          console.error(
+            `[Discord] Failed to fetch channel ${outputTarget}: ${errorMessage(error)}`,
+          );
         });
     } else {
       this.channelReady = Promise.resolve();
@@ -87,254 +182,195 @@ export class DiscordOutputHandler implements OutputHandler {
     this.buffer += msg;
   }
 
+  async relayEvent(event: AgentActivityEvent): Promise<void> {
+    if (event.kind !== "tool_start" && event.kind !== "tool_end") return;
+    await this.channelReady;
+    if (!this.channel) return;
+    const tool = sanitizedToolName(event.toolName);
+    const conversation = `${DASHBOARD_URL}/chat/${encodeURIComponent(this.event.sessionKey)}`;
+    const text =
+      event.kind === "tool_start"
+        ? `💬 Running \`${tool}\`… [Open conversation](${conversation})`
+        : `💬 ${event.isError ? "Finished with an error" : "Finished"}: \`${tool}\` · [Open conversation](${conversation})`;
+    try {
+      if (this.progress?.edit) {
+        await this.progress.edit(text);
+      } else {
+        const sent = await this.channel.send({
+          content: text,
+          nonce: nonce(`${deliveryBase(this.event)}:progress`, this.progressSequence++),
+          enforceNonce: true,
+        });
+        if (isUnknownRecord(sent)) this.progress = sent as SentDiscordMessage;
+      }
+    } catch {
+      // Progress is presentation only; final delivery remains authoritative.
+    }
+  }
+
   async startTyping(): Promise<void> {
     await this.channelReady;
     if (!this.channel || this.typingStopped) return;
-    // Clear any existing typing state
-    if (this.typingInterval) {
-      clearInterval(this.typingInterval);
-      this.typingInterval = null;
-    }
-    if (this.typingTimeout) {
-      clearTimeout(this.typingTimeout);
-      this.typingTimeout = null;
-    }
-    // Delay the first sendTyping by 500ms — if stopTyping comes quickly
-    // (e.g., last message_end followed by session end), we avoid the stale indicator
+    if (this.typingInterval) clearInterval(this.typingInterval);
+    if (this.typingTimeout) clearTimeout(this.typingTimeout);
     this.typingTimeout = setTimeout(() => {
       if (this.typingStopped) return;
       this.sendTyping();
       this.typingInterval = setInterval(() => {
-        if (this.typingStopped) return;
-        this.sendTyping();
-      }, 8000);
+        if (!this.typingStopped) this.sendTyping();
+      }, 8_000);
     }, 500);
   }
 
   async stopTyping(): Promise<void> {
     this.typingStopped = true;
-    if (this.typingInterval) {
-      clearInterval(this.typingInterval);
-      this.typingInterval = null;
-    }
-    if (this.typingTimeout) {
-      clearTimeout(this.typingTimeout);
-      this.typingTimeout = null;
-    }
+    if (this.typingInterval) clearInterval(this.typingInterval);
+    if (this.typingTimeout) clearTimeout(this.typingTimeout);
+    this.typingInterval = null;
+    this.typingTimeout = null;
     await this.flushBuffer();
+    await this.clearProgress();
   }
 
   async endMessage(): Promise<void> {
     await this.flushBuffer();
+    await this.clearProgress();
   }
 
   private sendTyping(): void {
-    if (!this.channel) return;
-    this.channel.sendTyping?.().catch(() => {});
+    this.channel?.sendTyping?.().catch(() => {});
   }
 
-  /** Send a message — uses interaction.editReply for the first slash command response, then falls back to channel.send */
-  private async sendMessage(content: string): Promise<void> {
+  private async clearProgress(): Promise<void> {
+    const current = this.progress;
+    this.progress = null;
+    if (current?.delete) await current.delete().catch(() => {});
+  }
+
+  private async sendText(content: string, messageNonce: string): Promise<void> {
     if (this.interaction && !this.interactionReplied) {
       this.interactionReplied = true;
       await this.interaction.editReply(content);
-    } else if (this.channel) {
-      await this.channel.send(content);
+      return;
     }
+    if (!this.channel) throw new Error("Discord output channel is unavailable");
+    await this.channel.send({ content, nonce: messageNonce, enforceNonce: true });
+  }
+
+  private async sendFile(filePath: string, messageNonce: string): Promise<void> {
+    if (!existsSync(filePath)) throw new Error(`Discord attachment does not exist: ${filePath}`);
+    const stats = statSync(filePath);
+    if (!stats.isFile()) throw new Error(`Discord attachment is not a regular file: ${filePath}`);
+    if (stats.size > 20 * 1024 * 1024) {
+      throw new Error(`Discord attachment exceeds the 20 MiB delivery limit: ${filePath}`);
+    }
+    if (this.interaction && !this.interactionReplied) {
+      this.interactionReplied = true;
+      await this.interaction.editReply({ files: [filePath] });
+      return;
+    }
+    if (!this.channel) throw new Error("Discord output channel is unavailable");
+    await this.channel.send({ files: [filePath], nonce: messageNonce, enforceNonce: true });
   }
 
   private async flushBuffer(): Promise<void> {
     await this.channelReady;
     if (!this.buffer) return;
-    // Need either channel or interaction to send
-    if (!this.channel && !this.interaction) return;
+    if (!this.channel && !this.interaction) throw new Error("Discord output target is unavailable");
 
     const text = this.buffer;
     this.buffer = "";
-
-    // Split message at MEDIA: markers and send in order: text, attachment, text, attachment, etc.
-    // Accept both absolute (/Users/...) and relative (user/...) paths
-    const mediaRegex = /MEDIA:([^\s\n`*"<>|]+)/g;
-    const parts: Array<{ type: "text"; content: string } | { type: "media"; path: string }> = [];
-
-    let lastIndex = 0;
-    let match;
-    while ((match = mediaRegex.exec(text)) !== null) {
-      // Add text before this match
-      const before = text.slice(lastIndex, match.index).trim();
-      if (before) {
-        parts.push({ type: "text", content: before });
-      }
-      // Resolve relative paths to absolute using project root
-      let mediaPath = match[1];
-      if (!path.isAbsolute(mediaPath)) {
-        mediaPath = path.resolve(process.cwd(), mediaPath);
-      }
-      // Add the media
-      parts.push({ type: "media", path: mediaPath });
-      lastIndex = match.index + match[0].length;
-    }
-    // Add remaining text after last match
-    const after = text.slice(lastIndex).trim();
-    if (after) {
-      parts.push({ type: "text", content: after });
+    const pieces = parsePieces(text);
+    const key = `${deliveryBase(this.event)}:${this.flushSequence++}`;
+    const fingerprint = createHash("sha256").update(JSON.stringify(pieces)).digest("hex");
+    const store = xDiscordQueueStore(this.x);
+    const delivery = store.createDelivery(this.x, key, fingerprint);
+    if (delivery.status === "completed") return;
+    if (delivery.status === "unknown") {
+      throw new Error("Discord delivery has an uncertain prior side effect; refusing to replay it");
     }
 
-    // If no media found, just send as text
-    if (parts.length === 0) {
-      for (const chunk of splitMessage(text, DISCORD_MAX_LENGTH)) {
-        try {
-          await this.sendMessage(chunk);
-        } catch (error: unknown) {
-          console.error(`[Discord] ❌ flushBuffer text send failed: ${errorMessage(error)}`);
-          throw error;
-        }
+    for (let index = delivery.nextPiece; index < pieces.length; index++) {
+      const piece = pieces[index];
+      store.advanceDelivery(this.x, key, index);
+      try {
+        if (piece.type === "text") await this.sendText(piece.content, nonce(key, index));
+        else await this.sendFile(piece.path, nonce(key, index));
+      } catch (error) {
+        // Enforced deterministic nonces make a retry safe even if the network
+        // failed after Discord accepted the piece.
+        store.failDelivery(this.x, key, true);
+        console.error(`[Discord] Delivery ${key} failed at piece ${index}: ${errorMessage(error)}`);
+        throw error;
       }
-      return;
+      store.advanceDelivery(this.x, key, index + 1);
     }
-
-    // Send parts in order
-    for (const part of parts) {
-      if (part.type === "text") {
-        for (const chunk of splitMessage(part.content, DISCORD_MAX_LENGTH)) {
-          await this.sendMessage(chunk);
-        }
-      } else {
-        const filePath = part.path;
-        if (!fs.existsSync(filePath)) {
-          console.error(`[Discord] File not found: ${filePath}`);
-          continue;
-        }
-
-        try {
-          const form = new FormData();
-          const fileData = fs.readFileSync(filePath);
-          const ext = path.extname(filePath).toLowerCase();
-          const mimeMap: Record<string, string> = {
-            ".png": "image/png",
-            ".jpg": "image/jpeg",
-            ".jpeg": "image/jpeg",
-            ".gif": "image/gif",
-            ".webp": "image/webp",
-            ".mp4": "video/mp4",
-            ".mp3": "audio/mpeg",
-            ".wav": "audio/wav",
-            ".ogg": "audio/ogg",
-          };
-          const mime = mimeMap[ext] || "application/octet-stream";
-          form.append("files[0]", new Blob([fileData], { type: mime }), path.basename(filePath));
-
-          if (!this.token) throw new Error("DISCORD_BOT_TOKEN not available");
-          const channelId = this.channel?.id || this.interaction?.channelId;
-          const res = await fetch(`https://discord.com/api/v10/channels/${channelId}/messages`, {
-            method: "POST",
-            headers: { Authorization: `Bot ${this.token}` },
-            body: form,
-          });
-
-          if (!res.ok) {
-            const body = await res.text();
-            throw new Error(`Discord API ${res.status}: ${body}`);
-          }
-          console.log(`[Discord] ✅ Sent attachment: ${filePath}`);
-        } catch (error: unknown) {
-          console.error(`[Discord] ❌ Failed to send attachment: ${errorMessage(error)}`);
-        }
-      }
-    }
+    store.finishDelivery(this.x, key);
   }
 }
 
-/**
- * Split text into chunks that fit within Discord's message limit.
- * Keeps fenced code blocks valid across chunk boundaries by closing and
- * reopening the fence when a split must happen inside one.
- */
-function splitMessage(text: string, maxLength: number): string[] {
+/** Split safely at natural boundaries while keeping fenced code blocks valid. */
+export function splitMessage(text: string, maxLength = DISCORD_MAX_LENGTH): string[] {
   if (text.length <= maxLength) return [text];
-
   const chunks: string[] = [];
   let remaining = text;
   let openFence: string | null = null;
 
   while (remaining.length > 0) {
     const prefix = openFence ? `${openFence}\n` : "";
-
     if (prefix.length + remaining.length <= maxLength) {
       chunks.push(prefix + remaining);
       break;
     }
-
-    const closeFence = openFence ? "\n```" : "";
-    const available = maxLength - prefix.length - closeFence.length;
+    // Reserve room to close a fence that may begin inside this chunk.
+    const available = maxLength - prefix.length - 4;
     if (available <= 0) {
-      // Should never happen with normal Discord limits, but avoid an infinite loop.
-      chunks.push((prefix + closeFence).slice(0, maxLength));
+      chunks.push(prefix.slice(0, maxLength));
       openFence = null;
       continue;
     }
-
     const splitAt = findSplitPoint(remaining, available);
     const body = remaining.slice(0, splitAt);
-    chunks.push(prefix + body + closeFence);
-
-    openFence = getOpenFenceAfter(prefix + body);
+    const nextOpenFence = getOpenFenceAfter(prefix + body);
+    chunks.push(prefix + body + (nextOpenFence ? "\n```" : ""));
+    openFence = nextOpenFence;
     remaining = remaining.slice(splitAt).replace(/^\n+/, "");
   }
-
   return chunks;
 }
 
 function findSplitPoint(text: string, maxBodyLength: number): number {
   if (text.length <= maxBodyLength) return text.length;
-
-  // Prefer splitting immediately after a complete fenced code block.
   const fenceBoundary = findLastClosedFenceBoundary(text, maxBodyLength);
   if (fenceBoundary > 0) return fenceBoundary;
-
-  const paraIdx = text.lastIndexOf("\n\n", maxBodyLength);
-  if (paraIdx > 0) return paraIdx;
-
-  const lineIdx = text.lastIndexOf("\n", maxBodyLength);
-  if (lineIdx > 0) return lineIdx;
-
-  const spaceIdx = text.lastIndexOf(" ", maxBodyLength);
-  if (spaceIdx > 0) return spaceIdx;
-
-  return maxBodyLength;
+  const para = text.lastIndexOf("\n\n", maxBodyLength);
+  if (para > 0) return para;
+  const line = text.lastIndexOf("\n", maxBodyLength);
+  if (line > 0) return line;
+  const space = text.lastIndexOf(" ", maxBodyLength);
+  return space > 0 ? space : maxBodyLength;
 }
 
 function findLastClosedFenceBoundary(text: string, limit: number): number {
   let inFence = false;
-  let lastClosedBoundary = -1;
-  const fenceRegex = /(^|\n)(```[^\n]*)/g;
+  let lastClosed = -1;
+  const fence = /(^|\n)(```[^\n]*)/g;
   let match: RegExpExecArray | null;
-
-  while ((match = fenceRegex.exec(text)) !== null) {
-    const fenceStart = match.index + match[1].length;
-    if (fenceStart >= limit) break;
-
-    const lineEnd = text.indexOf("\n", fenceStart);
+  while ((match = fence.exec(text)) !== null) {
+    const start = match.index + match[1].length;
+    if (start >= limit) break;
+    const lineEnd = text.indexOf("\n", start);
     const boundary = lineEnd === -1 ? text.length : lineEnd + 1;
     inFence = !inFence;
-
-    if (!inFence && boundary <= limit) {
-      lastClosedBoundary = boundary;
-    }
+    if (!inFence && boundary <= limit) lastClosed = boundary;
   }
-
-  return lastClosedBoundary;
+  return lastClosed;
 }
 
 function getOpenFenceAfter(text: string): string | null {
-  let openFence: string | null = null;
-  const fenceRegex = /(^|\n)(```[^\n]*)/g;
+  let open: string | null = null;
+  const fence = /(^|\n)(```[^\n]*)/g;
   let match: RegExpExecArray | null;
-
-  while ((match = fenceRegex.exec(text)) !== null) {
-    const fenceLine = match[2];
-    openFence = openFence ? null : fenceLine;
-  }
-
-  return openFence;
+  while ((match = fence.exec(text)) !== null) open = open ? null : match[2];
+  return open;
 }

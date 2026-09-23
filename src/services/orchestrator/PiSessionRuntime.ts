@@ -55,6 +55,8 @@ export interface PiSessionRuntimeConfig {
    * Pi Sessions page. When omitted, sessions are kept in memory only.
    */
   sessionDir?: string;
+  /** Exact validated JSONL path selected by a deterministic session control. */
+  resumePath?: string;
 }
 
 const DEFAULT_CONFIG: PiSessionRuntimeConfig = {
@@ -191,7 +193,7 @@ export class PiSessionRuntime implements PiRuntime {
    * existing JSONL.
    */
   isFresh(): boolean {
-    if (this.piSession) return false;
+    if (this.piSession || this.config.resumePath) return false;
     if (!this.config.sessionDir) return true;
     const dir = this.config.sessionDir;
     if (existsSync(join(dir, FRESH_MARKER_FILE))) return true;
@@ -336,6 +338,12 @@ export class PiSessionRuntime implements PiRuntime {
           /* ignore */
         }
         sessionManager = PiSessionManager.create(process.cwd(), this.config.sessionDir);
+      } else if (this.config.resumePath) {
+        sessionManager = PiSessionManager.open(
+          this.config.resumePath,
+          this.config.sessionDir,
+          process.cwd(),
+        );
       } else {
         sessionManager = PiSessionManager.continueRecent(process.cwd(), this.config.sessionDir);
       }

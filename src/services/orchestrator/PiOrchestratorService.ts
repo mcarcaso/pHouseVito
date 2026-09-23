@@ -25,7 +25,11 @@ import {
   xCronService,
   xDb,
   xInboundAttachmentService,
+  xDiscordQueueStore,
   xMessageStore,
+  xPiSessionStore,
+  xPiSessionsDir,
+  xProviderService,
   xServerLifecycleService,
   xSessionService,
   xSkillStore,
@@ -68,7 +72,12 @@ export class PiOrchestratorService implements OrchestratorService {
   /** Per-session message queues and processing locks. */
   private sessionQueues = new Map<
     string,
-    Array<{ event: InboundEvent; channel: ChannelService | null }>
+    Array<{
+      event: InboundEvent;
+      channel: ChannelService | null;
+      resolve: () => void;
+      reject: (error: unknown) => void;
+    }>
   >();
   private sessionProcessing = new Set<string>();
 
@@ -392,11 +401,16 @@ export class PiOrchestratorService implements OrchestratorService {
       this.sessionQueues.set(sessionKey, []);
     }
     const queue = this.sessionQueues.get(sessionKey)!;
-
-    queue.push({ event, channel });
-    if (this.sessionProcessing.has(sessionKey)) return;
-
-    await this.processSessionQueue(sessionKey);
+    const completion = new Promise<void>((resolveCompletion, rejectCompletion) => {
+      queue.push({
+        event,
+        channel,
+        resolve: resolveCompletion,
+        reject: rejectCompletion,
+      });
+    });
+    if (!this.sessionProcessing.has(sessionKey)) void this.processSessionQueue(sessionKey);
+    await completion;
   }
 
   private async processSessionQueue(sessionKey: string): Promise<void> {
@@ -404,18 +418,30 @@ export class PiOrchestratorService implements OrchestratorService {
     const queue = this.sessionQueues.get(sessionKey);
 
     while (queue && queue.length > 0) {
-      const { event, channel } = queue.shift()!;
+      const {
+        event,
+        channel,
+        resolve: resolveCompletion,
+        reject: rejectCompletion,
+      } = queue.shift()!;
       try {
         const signal = eventAbortSignal(event);
-        if (signal?.aborted) continue;
-        await this.withSessionLease(sessionKey, signal, () => this.processMessage(event, channel));
-      } catch (err) {
-        if (eventAbortSignal(event)?.aborted) continue;
-        console.error(`[Orchestrator] Error processing message for ${sessionKey}:`, err);
-        if (channel) {
-          const handler = channel.createOutputHandler(this.x, event);
-          await handler.relay("Sorry, something went wrong processing that message.");
+        if (!signal?.aborted) {
+          await this.withSessionLease(sessionKey, signal, () =>
+            this.processMessage(event, channel),
+          );
         }
+        resolveCompletion();
+      } catch (err) {
+        if (!eventAbortSignal(event)?.aborted) {
+          console.error(`[Orchestrator] Error processing message for ${sessionKey}:`, err);
+          if (channel) {
+            const handler = channel.createOutputHandler(this.x, event);
+            await handler.relay("Sorry, something went wrong processing that message.");
+            await handler.endMessage?.();
+          }
+        }
+        rejectCompletion(err);
       }
     }
 
@@ -504,6 +530,22 @@ export class PiOrchestratorService implements OrchestratorService {
     }
     if (channel && /^\/model(?:\s|$)/i.test(commandText)) {
       await this.handleModelCommand(commandEvent, channel);
+      return;
+    }
+    if (channel && /^\/session(?:\s|$)/i.test(commandText)) {
+      await this.handleSessionCommand(commandEvent, channel);
+      return;
+    }
+    if (channel && /^\/login(?:\s|$)/i.test(commandText)) {
+      await this.handleLoginCommand(commandEvent, channel);
+      return;
+    }
+    if (channel && commandText === "/status") {
+      await this.handleStatusCommand(commandEvent, channel);
+      return;
+    }
+    if (channel && commandText === "/help") {
+      await this.handleHelpCommand(commandEvent, channel);
       return;
     }
 
@@ -671,6 +713,7 @@ export class PiOrchestratorService implements OrchestratorService {
         console.error(
           `[Orchestrator] Error during LLM call: ${err instanceof Error ? err.message : err}`,
         );
+        if (!abortController.signal.aborted) throw err;
         return;
       } finally {
         externalSignal?.removeEventListener("abort", abortFromExternal);
@@ -774,8 +817,10 @@ export class PiOrchestratorService implements OrchestratorService {
     const handler = channel.createOutputHandler(this.x, event);
 
     const queue = this.sessionQueues.get(sessionKey);
-    const queuedCount = queue?.length || 0;
-    if (queue) queue.length = 0;
+    const queued = queue?.splice(0) ?? [];
+    const metadata = parseInboundEventMetadata(event.raw);
+    const queuedCount = queued.length + (metadata.discordDiscarded ?? 0);
+    for (const pending of queued) pending.reject(new Error("Request cleared by /stop"));
 
     const active = this.activeRequests.get(sessionKey);
     let aborted = false;
@@ -786,15 +831,12 @@ export class PiOrchestratorService implements OrchestratorService {
     }
 
     const wasLocked = this.sessionProcessing.has(sessionKey);
-    if (wasLocked) {
-      this.sessionProcessing.delete(sessionKey);
-    }
 
     const parts: string[] = [];
     if (aborted) parts.push("⛔ Stopped current request");
     if (queuedCount > 0)
       parts.push(`🗑️ Cleared ${queuedCount} queued message${queuedCount > 1 ? "s" : ""}`);
-    if (wasLocked && !aborted) parts.push("🔓 Released stuck session lock");
+    if (wasLocked && !aborted) parts.push("⏳ Session worker is finishing its current cleanup");
 
     const message = parts.length === 0 ? "✅ Nothing to stop — all clear, boss." : parts.join("\n");
     await handler.relay(message);
@@ -803,11 +845,119 @@ export class PiOrchestratorService implements OrchestratorService {
 
   private async handleRestartCommand(event: InboundEvent, channel: ChannelService): Promise<void> {
     const handler = channel.createOutputHandler(this.x, event);
+    if (
+      event.channel === "discord" &&
+      parseInboundEventMetadata(event.raw).commandAuthorized !== true
+    ) {
+      await handler.relay("Only the bot owner can restart Vito.");
+      await handler.endMessage?.();
+      return;
+    }
     await handler.relay("🔄 Rebuilding dashboard and restarting...");
     await handler.stopTyping?.();
     xServerLifecycleService(this.x).requestRestart(this.x, {
       userAgent: `slash-command/${event.channel}`,
     });
+  }
+
+  private async handleStatusCommand(event: InboundEvent, channel: ChannelService): Promise<void> {
+    const handler = channel.createOutputHandler(this.x, event);
+    const session = xSessionService(this.x).resolve(this.x, event.sessionKey);
+    const effective = getEffectiveSettings(this.config, event.channel, event.sessionKey);
+    const model =
+      this.runtimeRegistry.get(session.id)?.getModel() ?? this.getModelString(effective);
+    const queue = this.sessionQueues.get(event.sessionKey)?.length ?? 0;
+    let durable = "";
+    if (event.channel === "discord") {
+      const counts = xDiscordQueueStore(this.x).counts(this.x);
+      durable = `\nDiscord queue: ${counts.pending} pending, ${counts.active} active, ${counts.interrupted} interrupted`;
+    }
+    await handler.relay(
+      `Session: \`${session.id}\`\nModel: \`${model}\`\nState: ${this.activeRequests.has(event.sessionKey) ? "busy" : "idle"}\nQueued here: ${queue}${durable}`,
+    );
+    await handler.endMessage?.();
+  }
+
+  private async handleHelpCommand(event: InboundEvent, channel: ChannelService): Promise<void> {
+    const handler = channel.createOutputHandler(this.x, event);
+    await handler.relay(
+      [
+        "`/new` — archive chat and start a fresh Pi session",
+        "`/session [id]` — list or resume this conversation's Pi sessions",
+        "`/compact` — summarize older context",
+        "`/model [provider/model]` — inspect or switch this session's model",
+        "`/login [provider]` — start private provider authorization",
+        "`/stop` — cancel active work and clear queued invocations",
+        "`/status` — session, model, and durable queue state",
+        "`/restart` — owner-only Vito service restart; never reboots the host",
+        "`/help` — this help",
+      ].join("\n"),
+    );
+    await handler.endMessage?.();
+  }
+
+  private async handleLoginCommand(event: InboundEvent, channel: ChannelService): Promise<void> {
+    const handler = channel.createOutputHandler(this.x, event);
+    const provider = (event.content || "").replace(/^\/login\b/i, "").trim() || "openai-codex";
+    try {
+      const result = await xProviderService(this.x).startLogin(this.x, provider);
+      if (result.status === "already_authenticated") {
+        await handler.relay(`\`${provider}\` is already authenticated.`);
+      } else if (result.status === "device_code_started") {
+        await handler.relay(
+          `Open **${result.verificationUri}** and enter code **${result.userCode}**.\nThe code expires in ${Math.ceil((result.expiresInSeconds ?? 900) / 60)} minutes. Use \`/status\` after authorization.`,
+        );
+      } else {
+        await handler.relay(
+          `Open **${result.url}** to authorize \`${provider}\`.${result.instructions ? `\n${result.instructions}` : ""}`,
+        );
+      }
+    } catch (error) {
+      await handler.relay(
+        `Login could not start: ${error instanceof Error ? error.message : String(error)}`,
+      );
+    }
+    await handler.endMessage?.();
+  }
+
+  private async handleSessionCommand(event: InboundEvent, channel: ChannelService): Promise<void> {
+    const handler = channel.createOutputHandler(this.x, event);
+    const vitoSession = xSessionService(this.x).resolve(this.x, event.sessionKey);
+    const selectedId = (event.content || "").replace(/^\/session\b/i, "").trim();
+    const sessions = xPiSessionStore(this.x).list(this.x, {
+      vitoSessionIds: [vitoSession.id],
+      order: "recent",
+      limit: 20,
+    });
+    if (!selectedId) {
+      const lines = sessions.map(
+        (session, index) =>
+          `${index === 0 ? "Current/recent" : "Previous"}: \`${session.id}\` · ${new Date(session.updatedAt).toISOString()}`,
+      );
+      await handler.relay(
+        lines.length
+          ? `${lines.join("\n")}\nUse \`/session <exact ID>\` to resume.`
+          : "No persisted Pi sessions exist for this conversation yet.",
+      );
+      await handler.endMessage?.();
+      return;
+    }
+    const selected = sessions.find((session) => session.id === selectedId);
+    if (!selected) {
+      await handler.relay("That session does not belong to this Discord conversation.");
+      await handler.endMessage?.();
+      return;
+    }
+    const path = resolve(xPiSessionsDir(this.x), selected.id);
+    await this.runtimeRegistry.resume(
+      this.x,
+      vitoSession.id,
+      getEffectiveSettings(this.config, event.channel, event.sessionKey),
+      path,
+    );
+    this.firstTurnDone.add(vitoSession.id);
+    await handler.relay(`Resumed Pi session \`${selected.id}\`.`);
+    await handler.endMessage?.();
   }
 
   /**
@@ -922,8 +1072,23 @@ export class PiOrchestratorService implements OrchestratorService {
         effectiveSettings,
       );
       await innerRuntime.setModel(model);
+      const vitoService = xVitoService(this.x);
+      const config = vitoService.getConfig(this.x);
+      const currentSession = config.sessions?.[vitoSession.id] ?? {};
+      config.sessions = {
+        ...config.sessions,
+        [vitoSession.id]: {
+          ...currentSession,
+          "pi-coding-agent": {
+            ...(currentSession["pi-coding-agent"] ?? {}),
+            model,
+          },
+        },
+      };
+      vitoService.saveConfig(this.x, config);
+      this.config = config;
       await handler.relay(
-        `✅ Switched live model: \`${currentModel}\` → \`${model.provider}/${model.name}\`\n\nNo /new needed. This is a runtime session change; config stays untouched.`,
+        `✅ Session model: \`${currentModel}\` → \`${model.provider}/${model.name}\`.\n\nThis persists for this conversation; channel and global defaults are unchanged.`,
       );
       await handler.stopTyping?.();
     } catch (err) {

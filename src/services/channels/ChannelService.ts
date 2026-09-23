@@ -10,7 +10,7 @@ export interface ChannelCapabilities {
   streaming: boolean;
 }
 
-export type InboundEventHandler = (event: InboundEvent) => void;
+export type InboundEventHandler = (event: InboundEvent) => void | Promise<void>;
 export type ChannelUnsubscribe = () => void;
 
 export interface CommandRegistrationResult {

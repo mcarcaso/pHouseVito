@@ -29,7 +29,7 @@ import { DEFAULT_TIMEZONE } from "../../shared/defaults.js";
 import { CAPABILITIES_MAP } from "./capabilities.js";
 
 const COMMANDS_SECTION =
-  "Available commands: /new (full reset — start a fresh pi session, archives the current chat), /compact (summarize older turns to free context, conversation continues), /model [provider/model] (inspect or switch the live pi model for this session), /stop (abort current request + clear queue)";
+  "Deterministic controls (handled before the model): /new, /session [id], /compact, /model [provider/model], /login [provider], /stop, /status, /help, and owner-only /restart.";
 
 function buildSystemBlock(systemInstructions: string, botName?: string): string {
   const parts: string[] = [];

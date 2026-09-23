@@ -148,6 +148,33 @@ export function createDatabase(dbPath: string): Database.Database {
       owner TEXT NOT NULL,
       expires_at INTEGER NOT NULL
     );
+
+    CREATE TABLE IF NOT EXISTS discord_inbox (
+      id TEXT PRIMARY KEY,
+      channel TEXT NOT NULL,
+      status TEXT NOT NULL CHECK(status IN ('pending','active','completed','interrupted')),
+      data TEXT NOT NULL,
+      error TEXT,
+      created_at INTEGER NOT NULL,
+      completed_at INTEGER
+    );
+    CREATE INDEX IF NOT EXISTS idx_discord_inbox_pending
+      ON discord_inbox(status, channel, length(id), id);
+    CREATE TABLE IF NOT EXISTS discord_cursors (
+      channel TEXT PRIMARY KEY,
+      completed_through TEXT NOT NULL
+    );
+    CREATE UNIQUE INDEX IF NOT EXISTS idx_discord_inbox_active_channel
+      ON discord_inbox(channel) WHERE status = 'active';
+
+    CREATE TABLE IF NOT EXISTS discord_deliveries (
+      id TEXT PRIMARY KEY,
+      fingerprint TEXT NOT NULL,
+      status TEXT NOT NULL CHECK(status IN ('pending','delivering','completed','failed','unknown')),
+      next_piece INTEGER NOT NULL DEFAULT 0,
+      created_at INTEGER NOT NULL,
+      updated_at INTEGER NOT NULL
+    );
   `);
 
   // Migrations for existing databases

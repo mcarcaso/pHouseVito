@@ -40,6 +40,7 @@ const dashboardDependencyKeys = [
   "cronService",
   "jobService",
   "jobRunStore",
+  "discordQueueStore",
   "memoryService",
   "memoryIngestionService",
   "factService",

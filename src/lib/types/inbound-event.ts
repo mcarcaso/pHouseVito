@@ -28,6 +28,12 @@ const inboundEventMetadataSchema = z
     source: z.string().optional(),
     channelPrompt: z.string().optional(),
     requestId: z.string().optional(),
+    deliveryKey: z.string().optional(),
+    discordMessageId: z.string().optional(),
+    discordAuthorId: z.string().optional(),
+    discordChannelId: z.string().optional(),
+    discordDiscarded: z.number().int().nonnegative().optional(),
+    commandAuthorized: z.boolean().optional(),
   })
   .passthrough();
 

@@ -30,7 +30,6 @@ export function resolveSettings(
   if (sessionSettings) settings = mergeSettings(settings, sessionSettings);
 
   return {
-    streamMode: settings.streamMode || defaults.streamMode,
     customInstructions: settings.customInstructions,
     requireMention: settings.requireMention,
     traceMessageUpdates: settings.traceMessageUpdates ?? false,

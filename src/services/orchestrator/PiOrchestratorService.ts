@@ -608,7 +608,7 @@ export class PiOrchestratorService implements OrchestratorService {
     if (requireMention && !hasMention) return;
 
     console.log(
-      `[Orchestrator] ${event.sessionKey}: streamMode=${effectiveSettings.streamMode}, model=${this.getModelString(effectiveSettings)}`,
+      `[Orchestrator] ${event.sessionKey}: model=${this.getModelString(effectiveSettings)}`,
     );
 
     // Start typing immediately so the user sees activity.
@@ -618,18 +618,17 @@ export class PiOrchestratorService implements OrchestratorService {
     }
 
     try {
-      // Output handler + stream mode (same logic as v1)
+      // Interactive channels always use the canonical thought/commentary/final
+      // presentation. Final-only delivery is an internal transport policy.
       const rawMetadata = parseInboundEventMetadata(event.raw);
       const sendCondition = rawMetadata.sendCondition ?? null;
       const isDirectChannel = rawMetadata.source === "direct-channel";
 
       let handler = baseHandler;
-      let streamMode = effectiveSettings.streamMode;
+      let delivery = isDirectChannel ? ("final" as const) : ("chat" as const);
       if (sendCondition && baseHandler) {
         handler = new NoReplyOutputHandler(baseHandler);
-        streamMode = "final";
-      } else if (isDirectChannel) {
-        streamMode = "final";
+        delivery = "final";
       }
 
       // Get or create the long-lived runtime for this Vito session.
@@ -659,7 +658,7 @@ export class PiOrchestratorService implements OrchestratorService {
         userTimestamp: event.timestamp,
         author: event.author,
       });
-      const relayRuntime = withRelay(persistedRuntime, { handler, streamMode });
+      const relayRuntime = withRelay(persistedRuntime, { handler, delivery });
       const runtime = withTyping(relayRuntime, handler);
 
       // Per-turn user message: [datetime, from author, via channel] <content>
@@ -672,7 +671,7 @@ export class PiOrchestratorService implements OrchestratorService {
           ?.map((a) => a.path)
           .filter((p): p is string => Boolean(p)),
       });
-      if (event.channel === "discord" && streamMode !== "final") {
+      if (event.channel === "discord" && delivery === "chat") {
         promptText = [
           "<delivery_instruction>",
           "During multi-step tool work, send concise public commentary before meaningful tool groups and when your direction changes. Commentary is not private reasoning and is separate from the final answer.",

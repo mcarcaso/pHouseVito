@@ -18,7 +18,6 @@ const capitalize = (value: string) => value.charAt(0).toUpperCase() + value.slic
 
 export type Dict = Record<string, any>;
 export type Scope = "global" | "channel" | "session";
-export const streamModes = ["stream", "bundled", "final"] as const;
 export const thinkingLevels = ["off", "minimal", "low", "medium", "high", "xhigh"] as const;
 export const timezones = [
   "America/Toronto",

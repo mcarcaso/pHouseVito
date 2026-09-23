@@ -27,7 +27,6 @@ export const piRuntimeConfigSchema = z
 
 export const settingsSchema = z
   .object({
-    streamMode: z.enum(["stream", "bundled", "final"]).optional(),
     customInstructions: z.string().optional(),
     requireMention: z.boolean().optional(),
     traceMessageUpdates: z.boolean().optional(),
@@ -46,22 +45,24 @@ export const settingsSchema = z
 
 type ParsedSettings = z.infer<typeof settingsSchema>;
 
-function removeLegacyHarnessSelector(settings: ParsedSettings): ParsedSettings {
-  const { harness: _legacyHarness, ...currentSettings } = settings;
+function removeLegacySettings(settings: ParsedSettings): ParsedSettings {
+  const { harness: _legacyHarness, streamMode: _legacyStreamMode, ...currentSettings } = settings;
   return currentSettings;
 }
 
-export const streamModeSchema = z.enum(["stream", "bundled", "final"]);
-
-export const streamModeUpdateSchema = z
-  .object({
-    streamMode: streamModeSchema,
-  })
-  .strict();
+const settingsWriteSchema = settingsSchema.superRefine((settings, ctx) => {
+  if ("streamMode" in settings) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.unrecognized_keys,
+      keys: ["streamMode"],
+      path: [],
+      message: "Unrecognized key: streamMode",
+    });
+  }
+});
 
 export const settingsPatchSchema = z
   .object({
-    streamMode: streamModeSchema.nullable().optional(),
     customInstructions: z.string().nullable().optional(),
     requireMention: z.boolean().nullable().optional(),
     traceMessageUpdates: z.boolean().nullable().optional(),
@@ -112,9 +113,27 @@ export const channelConfigSchema = z
     allowedUserIds: z.array(z.string()).optional(),
     allowDms: z.boolean().optional(),
     ownerIds: z.array(z.string()).optional(),
-    streamMode: z.enum(["stream", "bundled", "final"]).optional(),
   })
   .passthrough();
+
+const channelConfigWriteSchema = channelConfigSchema.superRefine((channel, ctx) => {
+  if ("streamMode" in channel) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.unrecognized_keys,
+      keys: ["streamMode"],
+      path: [],
+      message: "Unrecognized key: streamMode",
+    });
+  }
+  if (channel.settings && "streamMode" in channel.settings) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.unrecognized_keys,
+      keys: ["streamMode"],
+      path: ["settings"],
+      message: "Unrecognized key: streamMode",
+    });
+  }
+});
 
 export const legacyCronJobConfigSchema = z
   .object({
@@ -167,9 +186,9 @@ export const vitoConfigPatchSchema = z
   .object({
     bot: botConfigSchema.partial().optional(),
     apps: appsConfigSchema.partial().optional(),
-    settings: settingsSchema.optional(),
-    channels: z.record(z.string(), channelConfigSchema).optional(),
-    sessions: z.record(z.string(), settingsSchema).nullable().optional(),
+    settings: settingsWriteSchema.optional(),
+    channels: z.record(z.string(), channelConfigWriteSchema).optional(),
+    sessions: z.record(z.string(), settingsWriteSchema).nullable().optional(),
     compaction: z.record(z.string(), z.unknown()).optional(),
   })
   .strict();
@@ -205,20 +224,23 @@ export const vitoConfigSchema = z
   })
   .transform((config) => {
     const { harnesses, ...currentConfig } = config;
-    const settings = removeLegacyHarnessSelector(currentConfig.settings);
+    const settings = removeLegacySettings(currentConfig.settings);
     const channels = Object.fromEntries(
-      Object.entries(currentConfig.channels).map(([name, channel]) => [
-        name,
-        channel.settings
-          ? { ...channel, settings: removeLegacyHarnessSelector(channel.settings) }
-          : channel,
-      ]),
+      Object.entries(currentConfig.channels).map(([name, channel]) => {
+        const { streamMode: _legacyStreamMode, ...currentChannel } = channel;
+        return [
+          name,
+          currentChannel.settings
+            ? { ...currentChannel, settings: removeLegacySettings(currentChannel.settings) }
+            : currentChannel,
+        ];
+      }),
     );
     const sessions = currentConfig.sessions
       ? Object.fromEntries(
           Object.entries(currentConfig.sessions).map(([key, sessionSettings]) => [
             key,
-            removeLegacyHarnessSelector(sessionSettings),
+            removeLegacySettings(sessionSettings),
           ]),
         )
       : undefined;
@@ -255,7 +277,7 @@ export function isScriptJob(job: CronJobConfig): job is ScriptJobConfig {
 export type VitoConfig = z.infer<typeof vitoConfigSchema>;
 export type VitoConfigPatch = z.infer<typeof vitoConfigPatchSchema>;
 
-export type ResolvedSettings = Required<Pick<Settings, "streamMode">> & {
+export type ResolvedSettings = {
   customInstructions?: string;
   requireMention?: boolean;
   traceMessageUpdates?: boolean;

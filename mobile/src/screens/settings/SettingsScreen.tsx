@@ -21,7 +21,6 @@ import {
   SegmentField,
   TextField,
   ToggleField,
-  streamModes,
   thinkingLevels,
   timezones,
   type Dict,
@@ -276,15 +275,6 @@ export function SettingsScreen({
           }
           styles={styles}
         >
-          <SegmentField
-            label="Stream mode"
-            options={[...streamModes]}
-            value={effective.streamMode ?? "stream"}
-            overridden={scope !== "global" && overrides.streamMode !== undefined}
-            onChange={(v) => updateSetting(["streamMode"], v)}
-            onReset={() => resetSetting(["streamMode"])}
-            styles={styles}
-          />
           <ToggleField
             label="Require @mention"
             value={effective.requireMention !== false}

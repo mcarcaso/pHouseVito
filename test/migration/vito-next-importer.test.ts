@@ -379,7 +379,7 @@ describe("Vito Next importer", () => {
     assert.deepEqual(config.channels.discord.allowedUserIds, ["mike"]);
     assert.equal(config.channels.discord.allowDms, false);
     assert.equal(config.sessions["discord:123"].requireMention, true);
-    assert.equal(config.sessions["discord:123"].streamMode, "final");
+    assert.equal("streamMode" in config.sessions["discord:123"], false);
     assert.equal(config.sessions["discord:123"]["pi-coding-agent"].model.name, "gpt-session");
     assert.equal(config.sessions["discord:123"]["pi-coding-agent"].thinkingLevel, "low");
     assert.equal(config.cron.jobs[0].script, join(destination, "jobs", "daily.ts"));

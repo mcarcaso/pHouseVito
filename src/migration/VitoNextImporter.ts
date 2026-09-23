@@ -672,9 +672,6 @@ export function importVitoNext(options: {
           ? { allowedUserIds: discordConfig.allowedUsers.map(String) }
           : {}),
         ...(typeof discordConfig?.dms === "boolean" ? { allowDms: discordConfig.dms } : {}),
-        ...(typeof discordConfig?.responseMode === "string"
-          ? { streamMode: discordConfig.responseMode as "stream" | "bundled" | "final" }
-          : {}),
         settings: {
           ...(config.channels.discord?.settings ?? {}),
           ...(typeof discordConfig?.requireMention === "boolean"
@@ -696,9 +693,6 @@ export function importVitoNext(options: {
         ...(config.sessions[`discord:${channel}`] ?? {}),
         ...(typeof sourceSettings.requireMention === "boolean"
           ? { requireMention: sourceSettings.requireMention }
-          : {}),
-        ...(typeof sourceSettings.responseMode === "string"
-          ? { streamMode: sourceSettings.responseMode as "stream" | "bundled" | "final" }
           : {}),
       };
     }

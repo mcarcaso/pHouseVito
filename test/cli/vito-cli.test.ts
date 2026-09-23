@@ -67,7 +67,6 @@ describe("Vito CLI", () => {
     const migrated: unknown = JSON.parse(readFileSync(path, "utf-8"));
     assert.deepEqual(migrated, {
       settings: {
-        streamMode: "final",
         "pi-coding-agent": {
           model: { provider: "openrouter", name: "legacy-model" },
         },

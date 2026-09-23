@@ -79,7 +79,7 @@ Shared output-handler interfaces and cross-channel decorators live under `src/li
 
 ### Settings cascade
 
-`getEffectiveSettings(config, channelName, sessionKey)` in `src/services/vito/settings.ts` uses the shared resolver to deep-merge Global → Channel → Session. The whole live surface is: `streamMode` (`stream`/`bundled`/`final`), `customInstructions`, `requireMention`, `traceMessageUpdates`, `timezone`, and `pi-coding-agent` (with `model.{provider,name}`, `openRouterProvider`, and `thinkingLevel`). Pi is the only runtime. Defaults: `streamMode=stream`, `timezone=America/Toronto`, default model `anthropic/claude-sonnet-4-20250514`.
+`getEffectiveSettings(config, channelName, sessionKey)` in `src/services/vito/settings.ts` uses the shared resolver to deep-merge Global → Channel → Session. The live settings surface is: `customInstructions`, `requireMention`, `traceMessageUpdates`, `timezone`, and `pi-coding-agent` (with `model.{provider,name}`, `openRouterProvider`, and `thinkingLevel`). Pi is the only runtime. Interactive output is opinionated rather than configurable: temporary thought/progress, permanent public commentary, then a clean final response. Defaults: `timezone=America/Toronto`, default model `anthropic/claude-sonnet-4-20250514`.
 
 ### Slash commands (priority, bypass queue)
 
@@ -91,11 +91,11 @@ Shared output-handler interfaces and cross-channel decorators live under `src/li
 
 ### Cron
 
-`CronerCronService` under `src/services/cron/` owns the timezone-aware process scheduler and is resolved through context. Jobs are defined in `vito.config.json` under `cron.jobs` and re-applied on hot-reload. `oneTime: true` removes the job from the config after firing. `sendCondition` forces `streamMode: "final"` and wraps the channel handler with `NoReplyOutputHandler`; responses containing `NO_REPLY` are not relayed. Dashboard cron APIs live in `src/routers/CronRouterService.ts`, validate schedules before mutation, and persist configured jobs through `VitoService`.
+`CronerCronService` under `src/services/cron/` owns the timezone-aware process scheduler and is resolved through context. Jobs are defined in `vito.config.json` under `cron.jobs` and re-applied on hot-reload. `oneTime: true` removes the job from the config after firing. `sendCondition` uses the relay's internal final-only delivery policy and wraps the channel handler with `NoReplyOutputHandler`; responses containing `NO_REPLY` are not relayed. Dashboard cron APIs live in `src/routers/CronRouterService.ts`, validate schedules before mutation, and persist configured jobs through `VitoService`.
 
 ### Pi runtime decorators (`src/services/orchestrator/runtime/`)
 
-Decorators wrap the long-lived `PiSessionRuntime` through the focused `PiRuntime` execution interface: `ProxyPiRuntime` is the base for `TracingPiRuntime`, `PersistencePiRuntime`, `RelayPiRuntime`, and `TypingPiRuntime`. The decorator chain order matters: tracing (uses the context-scoped `TraceStore` and `TraceEventStore` to write append-only `.jsonl` traces into `logs/`, capped at 50MB) → persistence (writes user/assistant/tool rows into SQLite; never deletes — `/new` only archives) → relay (delivers to the channel's `OutputHandler` per `streamMode`) → typing. Lifecycle operations stay on the undecorated `PiSessionRuntime`, which the orchestrator owns.
+Decorators wrap the long-lived `PiSessionRuntime` through the focused `PiRuntime` execution interface: `ProxyPiRuntime` is the base for `TracingPiRuntime`, `PersistencePiRuntime`, `RelayPiRuntime`, and `TypingPiRuntime`. The decorator chain order matters: tracing (uses the context-scoped `TraceStore` and `TraceEventStore` to write append-only `.jsonl` traces into `logs/`, capped at 50MB) → persistence (writes user/assistant/tool rows into SQLite; never deletes — `/new` only archives) → relay (uses canonical interactive delivery or an internal final-only policy) → typing. Lifecycle operations stay on the undecorated `PiSessionRuntime`, which the orchestrator owns.
 
 ### Skills (`system/skills/` and `user/skills/`)
 

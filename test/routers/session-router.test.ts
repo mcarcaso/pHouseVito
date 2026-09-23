@@ -129,20 +129,19 @@ describe("session router", () => {
     const invalidResponse = await fetch(url, {
       method: "PUT",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify({ streamMode: "invalid" }),
+      body: JSON.stringify({ streamMode: "final" }),
     });
     assert.equal(invalidResponse.status, 400);
 
     const saveResponse = await fetch(url, {
       method: "PUT",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify({ streamMode: "final", customInstructions: "test" }),
+      body: JSON.stringify({ customInstructions: "test" }),
     });
     assert.equal(saveResponse.status, 200);
 
     const savedResponse = await fetch(url);
     const saved = settingsResponseSchema.parse(await savedResponse.json());
-    assert.equal(saved.streamMode, "final");
     assert.equal(saved.customInstructions, "test");
 
     const removeResponse = await fetch(url, {
@@ -153,6 +152,5 @@ describe("session router", () => {
     assert.equal(removeResponse.status, 200);
     const updated = settingsResponseSchema.parse(await removeResponse.json());
     assert.equal("customInstructions" in updated, false);
-    assert.equal(updated.streamMode, "final");
   });
 });

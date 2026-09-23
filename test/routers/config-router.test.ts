@@ -36,12 +36,9 @@ const validationResponseSchema = z.object({
   error: z.string(),
   issues: z.array(z.object({ path: z.string() }).passthrough()),
 });
-const streamModeResponseSchema = z.object({
-  streamMode: z.enum(["stream", "bundled", "final"]),
-});
 const defaultsResponseSchema = z
   .object({
-    streamMode: z.enum(["stream", "bundled", "final"]),
+    traceMessageUpdates: z.boolean(),
   })
   .passthrough();
 
@@ -74,18 +71,18 @@ describe("config router", () => {
     const defaultsResponse = await fetch(`${baseUrl}/api/settings/defaults`);
     assert.equal(defaultsResponse.status, 200);
     const defaults = defaultsResponseSchema.parse(await defaultsResponse.json());
-    assert.equal(defaults.streamMode, "stream");
+    assert.equal(defaults.traceMessageUpdates, false);
   });
 
-  it("rejects invalid config patches with structured errors", async () => {
+  it("rejects the retired stream mode setting", async () => {
     const response = await fetch(`${baseUrl}/api/config`, {
       method: "PUT",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify({ settings: { streamMode: "invalid" } }),
+      body: JSON.stringify({ settings: { streamMode: "final" } }),
     });
     assert.equal(response.status, 400);
     const result = validationResponseSchema.parse(await response.json());
-    assert.equal(result.issues[0]?.path, "body.settings.streamMode");
+    assert.equal(result.issues[0]?.path, "body.settings");
   });
 
   it("validates, merges, and atomically saves config patches", async () => {
@@ -94,40 +91,15 @@ describe("config router", () => {
       headers: { "content-type": "application/json" },
       body: JSON.stringify({
         bot: { name: "Test Vito" },
-        settings: { streamMode: "bundled", timezone: "Europe/London" },
+        settings: { timezone: "Europe/London" },
       }),
     });
     assert.equal(response.status, 200);
     const config = vitoConfigSchema.parse(await response.json());
     assert.equal(config.bot?.name, "Test Vito");
-    assert.equal(config.settings.streamMode, "bundled");
     assert.equal(config.settings.timezone, "Europe/London");
 
     const persisted = xVitoService(x).getConfig(x);
     assert.equal(persisted.bot?.name, "Test Vito");
-  });
-
-  it("validates and persists channel stream mode", async () => {
-    const invalidResponse = await fetch(`${baseUrl}/api/channels/dashboard/stream-mode`, {
-      method: "PUT",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({ streamMode: "invalid" }),
-    });
-    assert.equal(invalidResponse.status, 400);
-
-    const response = await fetch(`${baseUrl}/api/channels/dashboard/stream-mode`, {
-      method: "PUT",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({ streamMode: "final" }),
-    });
-    assert.equal(response.status, 200);
-    assert.deepEqual(streamModeResponseSchema.parse(await response.json()), {
-      streamMode: "final",
-    });
-
-    const getResponse = await fetch(`${baseUrl}/api/channels/dashboard/stream-mode`);
-    assert.equal(getResponse.status, 200);
-    assert.equal(streamModeResponseSchema.parse(await getResponse.json()).streamMode, "final");
-    assert.equal(xVitoService(x).getConfig(x).channels.dashboard?.streamMode, "final");
   });
 });

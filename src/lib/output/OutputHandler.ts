@@ -1,5 +1,4 @@
 export type OutboundMessage = string;
-export type StreamMode = "stream" | "bundled" | "final";
 
 export type AgentActivity =
   | "thinking"

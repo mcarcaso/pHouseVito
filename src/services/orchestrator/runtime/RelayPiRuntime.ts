@@ -1,25 +1,20 @@
 /**
  * RELAY PI RUNTIME
  *
- * Decorator that handles all output to the channel handler:
- * - Streaming relay (each assistant message as it arrives)
- * - Bundled relay (all messages joined after run)
- * - Final relay (last message only after run)
- * - Tool event relay (tool_start/tool_end forwarded to handler)
- * - Error/interrupt relay
+ * Chat delivery is opinionated: temporary reasoning summaries and tool status,
+ * permanent public commentary, then a clean final response. Final-only delivery
+ * remains an internal transport policy for non-chat callers and conditional jobs.
  */
 
-import type {
-  AgentActivityEvent,
-  OutputHandler,
-  StreamMode,
-} from "../../../lib/output/OutputHandler.js";
+import type { AgentActivityEvent, OutputHandler } from "../../../lib/output/OutputHandler.js";
 import { ProxyPiRuntime } from "./ProxyPiRuntime.js";
 import type { PiRuntime, PiRuntimeCallbacks } from "./PiRuntime.js";
 
+export type RelayDelivery = "chat" | "final";
+
 export interface RelayOptions {
   handler: OutputHandler | null;
-  streamMode: StreamMode;
+  delivery?: RelayDelivery;
 }
 
 function record(value: unknown): Record<string, unknown> | undefined {
@@ -46,13 +41,13 @@ function providerSummary(message: Record<string, unknown> | undefined): string |
         }
       }
     } catch {
-      // Encrypted or provider-private thinking signatures are never displayed.
+      // Encrypted provider-private reasoning is not displayable. Only its summary is used.
     }
   }
   return summary;
 }
 
-/** Extract only provider-authored summaries and coarse activity—not private reasoning. */
+/** Extract the provider-authored thought summary and coarse activity. */
 function progressEvent(value: unknown): AgentActivityEvent | undefined {
   const event = record(value);
   if (!event || typeof event.type !== "string") return;
@@ -72,14 +67,13 @@ function progressEvent(value: unknown): AgentActivityEvent | undefined {
 
 export class RelayPiRuntime extends ProxyPiRuntime {
   private readonly handler: OutputHandler | null;
-  private readonly streamMode: StreamMode;
-  private completedMessages: string[] = [];
+  private readonly delivery: RelayDelivery;
   private finalMessages: string[] = [];
 
   constructor(delegate: PiRuntime, opts: RelayOptions) {
     super(delegate);
     this.handler = opts.handler;
-    this.streamMode = opts.streamMode;
+    this.delivery = opts.delivery ?? "chat";
   }
 
   async run(
@@ -88,17 +82,17 @@ export class RelayPiRuntime extends ProxyPiRuntime {
     callbacks: PiRuntimeCallbacks,
     signal?: AbortSignal,
   ): Promise<void> {
-    this.completedMessages = [];
     this.finalMessages = [];
-    let delivery = Promise.resolve();
+    let deliveryQueue = Promise.resolve();
     const enqueueDelivery = (action: () => Promise<void>) => {
-      delivery = delivery.then(action);
+      deliveryQueue = deliveryQueue.then(action);
     };
 
     const relayCallbacks: PiRuntimeCallbacks = {
       onInvocation: callbacks.onInvocation,
       onRawEvent: (event) => {
         callbacks.onRawEvent(event);
+        if (this.delivery !== "chat") return;
         const progress = progressEvent(event);
         if (progress) {
           enqueueDelivery(async () => {
@@ -112,14 +106,12 @@ export class RelayPiRuntime extends ProxyPiRuntime {
       },
       onNormalizedEvent: (event) => {
         if ((event.kind === "commentary" || event.kind === "assistant") && event.content) {
-          const content =
-            event.kind === "commentary"
-              ? `💬${event.content.startsWith("MEDIA:") ? "\n" : " "}${event.content}`
-              : event.content;
-          this.completedMessages.push(content);
           if (event.kind === "assistant") this.finalMessages.push(event.content);
-
-          if (this.streamMode === "stream" && this.handler) {
+          if (this.delivery === "chat" && this.handler) {
+            const content =
+              event.kind === "commentary"
+                ? `💬${event.content.startsWith("MEDIA:") ? "\n" : " "}${event.content}`
+                : event.content;
             enqueueDelivery(async () => {
               await this.handler?.relay(content);
               await this.handler?.endMessage?.();
@@ -128,7 +120,7 @@ export class RelayPiRuntime extends ProxyPiRuntime {
           }
         }
 
-        if (event.kind === "tool_start") {
+        if (this.delivery === "chat" && event.kind === "tool_start") {
           enqueueDelivery(async () => {
             try {
               await this.handler?.relayEvent?.({
@@ -141,7 +133,7 @@ export class RelayPiRuntime extends ProxyPiRuntime {
               // Progress is non-authoritative; assistant delivery still proceeds.
             }
           });
-        } else if (event.kind === "tool_end") {
+        } else if (this.delivery === "chat" && event.kind === "tool_end") {
           enqueueDelivery(async () => {
             try {
               await this.handler?.relayEvent?.({
@@ -163,14 +155,11 @@ export class RelayPiRuntime extends ProxyPiRuntime {
 
     try {
       await this.delegate.run(systemPrompt, userMessage, relayCallbacks, signal);
-      await delivery;
+      await deliveryQueue;
     } catch (err) {
-      await delivery.catch(() => {});
+      await deliveryQueue.catch(() => {});
       if (signal?.aborted && this.handler) {
-        // Flush any in-progress stream before sending interrupt
-        if (this.streamMode === "stream") {
-          await this.handler.endMessage?.();
-        }
+        if (this.delivery === "chat") await this.handler.endMessage?.();
         await this.handler.relay("*(interrupted)*");
         await this.handler.endMessage?.();
       } else if (this.handler) {
@@ -180,17 +169,10 @@ export class RelayPiRuntime extends ProxyPiRuntime {
       throw err;
     }
 
-    // Post-run relay for non-stream modes
-    if (this.handler) {
-      if (this.streamMode === "bundled") {
-        const combined = this.completedMessages.join("\n\n");
-        await this.handler.relay(combined);
-        await this.handler.endMessage?.();
-      } else if (this.streamMode === "final" && this.finalMessages.length > 0) {
-        const last = this.finalMessages[this.finalMessages.length - 1];
-        await this.handler.relay(last);
-        await this.handler.endMessage?.();
-      }
+    if (this.handler && this.delivery === "final" && this.finalMessages.length > 0) {
+      const last = this.finalMessages[this.finalMessages.length - 1];
+      await this.handler.relay(last);
+      await this.handler.endMessage?.();
     }
   }
 }

@@ -30,7 +30,7 @@ function createConfig(
 describe("getEffectiveSettings", () => {
   it("migrates legacy Pi configuration into global settings", () => {
     const config = vitoConfigSchema.parse({
-      settings: { harness: "pi-coding-agent" },
+      settings: { harness: "pi-coding-agent", streamMode: "final" },
       harnesses: {
         "pi-coding-agent": {
           model: { provider: "anthropic", name: "legacy-model" },
@@ -38,43 +38,47 @@ describe("getEffectiveSettings", () => {
         },
       },
       channels: {
-        discord: { enabled: true, settings: { harness: "pi-coding-agent" } },
+        discord: {
+          enabled: true,
+          streamMode: "bundled",
+          settings: { harness: "pi-coding-agent", streamMode: "stream" },
+        },
       },
-      sessions: { default: { harness: "pi-coding-agent" } },
+      sessions: { default: { harness: "pi-coding-agent", streamMode: "final" } },
       cron: { jobs: [] },
     });
 
     assert.equal(config.settings["pi-coding-agent"]?.model?.name, "legacy-model");
     assert.equal("harness" in config.settings, false);
+    assert.equal("streamMode" in config.settings, false);
     assert.equal("harness" in (config.channels.discord.settings ?? {}), false);
+    assert.equal("streamMode" in config.channels.discord, false);
+    assert.equal("streamMode" in (config.channels.discord.settings ?? {}), false);
     assert.equal("harness" in (config.sessions?.default ?? {}), false);
+    assert.equal("streamMode" in (config.sessions?.default ?? {}), false);
     assert.equal("harnesses" in config, false);
   });
 
   it("provides required defaults", () => {
     const settings = getEffectiveSettings(createConfig(), "discord", "discord:session");
 
-    assert.equal(settings.streamMode, "stream");
     assert.equal(settings.traceMessageUpdates, false);
   });
 
   it("resolves scalar settings from global to channel to session", () => {
     const config = createConfig({
       settings: {
-        streamMode: "stream",
         customInstructions: "global",
         requireMention: true,
         traceMessageUpdates: false,
         timezone: "America/Toronto",
       },
       channelSettings: {
-        streamMode: "bundled",
         customInstructions: "channel",
         traceMessageUpdates: true,
         timezone: "Europe/London",
       },
       sessionSettings: {
-        streamMode: "final",
         customInstructions: "session",
         requireMention: false,
         timezone: "Asia/Tokyo",
@@ -84,7 +88,6 @@ describe("getEffectiveSettings", () => {
     const settings = getEffectiveSettings(config, "discord", "discord:session");
 
     assert.deepEqual(settings, {
-      streamMode: "final",
       customInstructions: "session",
       requireMention: false,
       traceMessageUpdates: true,

@@ -5,6 +5,5 @@ export const DEFAULT_TIMEZONE = "America/Toronto";
 
 /** Browser-safe canonical settings defaults shared by runtime and dashboard. */
 export const DEFAULT_SETTINGS: ResolvedSettings = {
-  streamMode: "stream",
   traceMessageUpdates: false,
 };

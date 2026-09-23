@@ -61,7 +61,7 @@ describe("RelayPiRuntime", () => {
       },
     };
 
-    await withRelay(runtime, { handler, streamMode: "stream" }).run("system", "hello", {
+    await withRelay(runtime, { handler, delivery: "chat" }).run("system", "hello", {
       onRawEvent: () => undefined,
       onNormalizedEvent: () => undefined,
     });
@@ -86,7 +86,7 @@ describe("RelayPiRuntime", () => {
       },
     };
 
-    await withRelay(runtime, { handler, streamMode: "final" }).run("system", "hello", {
+    await withRelay(runtime, { handler, delivery: "final" }).run("system", "hello", {
       onRawEvent: () => undefined,
       onNormalizedEvent: () => undefined,
     });

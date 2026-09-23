@@ -28,6 +28,10 @@ import {
   ProviderAuthRouterService,
 } from "../../../routers/ProviderRouterService.js";
 import { SecretRouterService } from "../../../routers/SecretRouterService.js";
+import {
+  PublicSecretDropRouterService,
+  SecretDropRouterService,
+} from "../../../routers/SecretDropRouterService.js";
 import { ServerLifecycleRouterService } from "../../../routers/ServerLifecycleRouterService.js";
 import { SessionRouterService } from "../../../routers/SessionRouterService.js";
 import { SkillRouterService } from "../../../routers/SkillRouterService.js";
@@ -108,6 +112,7 @@ export class DashboardChannelService implements ChannelService {
 
     // Public drive files and hosted sites are resolved through DriveStore.
     app.use("/d", await new PublicDriveRouterService().createRouter(x));
+    app.use("/secret-drop", await new PublicSecretDropRouterService().createRouter(x));
 
     app.use("/api/auth", await new DashboardAuthRouterService().createRouter(x));
     app.use("/attachments", await new AttachmentFileRouterService().createRouter(x));
@@ -130,6 +135,7 @@ export class DashboardChannelService implements ChannelService {
     app.use("/api/telegram", await new ChannelManagementRouterService("telegram").createRouter(x));
 
     app.use("/api/secrets", await new SecretRouterService().createRouter(x));
+    app.use("/api/secret-drops", await new SecretDropRouterService().createRouter(x));
 
     app.use("/api", await new SystemContentRouterService().createRouter(x));
 

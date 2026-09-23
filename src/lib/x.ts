@@ -22,6 +22,7 @@ import type { FactExtractor } from "../services/facts/FactExtractor.js";
 import type { FactService } from "../services/facts/FactService.js";
 import type { OrchestratorService } from "../services/orchestrator/OrchestratorService.js";
 import type { SecretService } from "../services/secrets/SecretService.js";
+import type { SecretDropService } from "../services/secrets/SecretDropService.js";
 import type { ServerLifecycleService } from "../services/server/ServerLifecycleService.js";
 import type { SessionService } from "../services/sessions/SessionService.js";
 import type { VitoService } from "../services/vito/VitoService.js";
@@ -98,6 +99,8 @@ export const xOrchestratorService = (x: Context): OrchestratorService =>
   x.get("orchestratorService") as OrchestratorService;
 export const xSecretService = (x: Context): SecretService =>
   x.get("secretService") as SecretService;
+export const xSecretDropService = (x: Context): SecretDropService =>
+  x.get("secretDropService") as SecretDropService;
 export const xServerLifecycleService = (x: Context): ServerLifecycleService =>
   x.get("serverLifecycleService") as ServerLifecycleService;
 export const xSessionService = (x: Context): SessionService =>

@@ -44,6 +44,7 @@ const dashboardDependencyKeys = [
   "factStore",
   "factExtractor",
   "secretService",
+  "secretDropService",
   "serverLifecycleService",
   "piSessionStore",
   "sessionStore",

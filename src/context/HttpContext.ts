@@ -12,6 +12,7 @@ export function PublicHttpContext(rootX: Context): Context {
   return explicitContext(rootX, [
     "dashboardAuthService",
     "secretService",
+    "secretDropService",
     "secretsPath",
     "piAuthPath",
     "serverLifecycleService",

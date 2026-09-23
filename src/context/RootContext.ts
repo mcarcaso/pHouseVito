@@ -19,6 +19,7 @@ import { PersistentPiFactExtractor } from "../services/facts/PersistentPiFactExt
 import { PiOrchestratorService } from "../services/orchestrator/PiOrchestratorService.js";
 import { DefaultProviderService } from "../services/providers/DefaultProviderService.js";
 import { FileSecretService } from "../services/secrets/FileSecretService.js";
+import { SqliteSecretDropService } from "../services/secrets/SqliteSecretDropService.js";
 import { DefaultSessionService } from "../services/sessions/DefaultSessionService.js";
 import { DefaultServerLifecycleService } from "../services/server/DefaultServerLifecycleService.js";
 import { FileVitoService } from "../services/vito/FileVitoService.js";
@@ -42,7 +43,7 @@ import { SqliteVoiceTaskStore } from "../stores/voice/SqliteVoiceTaskStore.js";
 import { SqliteQuickCommandStore } from "../stores/quick-commands/SqliteQuickCommandStore.js";
 import { SqlitePushNotificationStore } from "../stores/push-notifications/SqlitePushNotificationStore.js";
 import { SqliteAppPreferenceStore } from "../stores/app-preferences/SqliteAppPreferenceStore.js";
-import { xAskApiService, xVitoService } from "../lib/x.js";
+import { xAskApiService, xDb, xSecretService, xVitoService } from "../lib/x.js";
 import { ObjectContext } from "./ObjectContext.js";
 import type { Context } from "./Context.js";
 
@@ -105,6 +106,7 @@ export function RootContext(args: RootContextArgs): Context {
     memoryService: () => new DefaultMemoryService(),
     orchestratorService: () => new PiOrchestratorService(),
     secretService: () => new FileSecretService(),
+    secretDropService: (x) => new SqliteSecretDropService(x, xDb(x), xSecretService(x)),
     serverLifecycleService: () => new DefaultServerLifecycleService(),
     sessionService: () => new DefaultSessionService(),
     piSessionStore: () => new FilePiSessionStore(),

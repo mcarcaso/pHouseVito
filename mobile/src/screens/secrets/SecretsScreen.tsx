@@ -1,5 +1,6 @@
 import { StyleSheet } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
+import * as Clipboard from "expo-clipboard";
 import { useEffect, useState } from "react";
 import {
   ActivityIndicator,
@@ -95,6 +96,8 @@ export function SecretEditorScreen({
   const [value, setValue] = useState("");
   const [revealed, setRevealed] = useState(!secret);
   const [saving, setSaving] = useState(false);
+  const [issuingDrop, setIssuingDrop] = useState(false);
+  const [dropUrl, setDropUrl] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const system = secret?.system === true;
   const save = async () => {
@@ -115,6 +118,38 @@ export function SecretEditorScreen({
     } finally {
       setSaving(false);
     }
+  };
+  const issueDrop = async (replace: boolean) => {
+    const nextKey = key.trim();
+    if (!nextKey) return;
+    setIssuingDrop(true);
+    setDropUrl(null);
+    setError(null);
+    try {
+      const drop = await api<{ url: string }>("/api/secret-drops", {
+        method: "POST",
+        body: JSON.stringify({ key: nextKey, replace }),
+      });
+      setDropUrl(drop.url);
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : "Could not create secret-drop link");
+    } finally {
+      setIssuingDrop(false);
+    }
+  };
+  const createDrop = () => {
+    if (!secret?.configured) {
+      void issueDrop(false);
+      return;
+    }
+    Alert.alert(
+      "Create replacement link",
+      `This link can replace the stored value for ${secret.key}. Continue?`,
+      [
+        { text: "Cancel", style: "cancel" },
+        { text: "Create Link", onPress: () => void issueDrop(true) },
+      ],
+    );
   };
   const clear = () => {
     if (!secret?.configured || !system) return;
@@ -199,6 +234,25 @@ export function SecretEditorScreen({
         )}
       </View>
       {error && <Text style={styles.error}>{error}</Text>}
+      <Pressable
+        disabled={issuingDrop || !key.trim()}
+        onPress={createDrop}
+        style={[styles.dropButton, (issuingDrop || !key.trim()) && styles.disabled]}
+      >
+        <Text style={styles.dropText}>
+          {issuingDrop ? "Creating…" : "Create 15-Minute Secret Link"}
+        </Text>
+      </Pressable>
+      {dropUrl && (
+        <View style={styles.dropResult}>
+          <Text selectable style={styles.dropUrl}>
+            {dropUrl}
+          </Text>
+          <Pressable onPress={() => void Clipboard.setStringAsync(dropUrl)}>
+            <Text style={styles.reveal}>Copy Link</Text>
+          </Pressable>
+        </View>
+      )}
       <Pressable
         disabled={saving || !key.trim() || !value}
         onPress={() => void save()}
@@ -333,8 +387,26 @@ const createStyles = (theme: VitoTheme) =>
     valueHeading: { flexDirection: "row", justifyContent: "space-between" },
     reveal: { color: theme.colors.accent, fontSize: 11, fontWeight: "800" },
     valueInput: { minHeight: 110, textAlignVertical: "top" },
+    dropButton: {
+      minHeight: 44,
+      alignItems: "center",
+      justifyContent: "center",
+      borderRadius: theme.radius.md,
+      borderWidth: 1,
+      borderColor: theme.colors.accent,
+    },
+    dropText: { color: theme.colors.accent, fontWeight: "800" },
+    dropResult: {
+      marginTop: theme.space.md,
+      padding: theme.space.md,
+      gap: theme.space.sm,
+      borderRadius: theme.radius.md,
+      backgroundColor: theme.colors.surface,
+    },
+    dropUrl: { color: theme.colors.text, fontFamily: "monospace", fontSize: 11 },
     saveButton: {
       alignItems: "center",
+      marginTop: theme.space.lg,
       backgroundColor: theme.colors.accent,
       borderRadius: 11,
       padding: theme.space.md,

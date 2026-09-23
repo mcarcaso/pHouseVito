@@ -101,6 +101,19 @@ export function createDatabase(dbPath: string): Database.Database {
       FOREIGN KEY(message_id) REFERENCES messages(id)
     );
     CREATE INDEX IF NOT EXISTS idx_push_notification_outbox_pending ON push_notification_outbox(status, created_at);
+
+    CREATE TABLE IF NOT EXISTS secret_drops (
+      id TEXT PRIMARY KEY,
+      token_digest TEXT UNIQUE,
+      secret_key TEXT NOT NULL,
+      expires_at INTEGER NOT NULL,
+      status TEXT NOT NULL CHECK(status IN ('pending','claimed','saved','failed')),
+      replace_allowed INTEGER NOT NULL DEFAULT 0 CHECK(replace_allowed IN (0,1)),
+      created_at INTEGER NOT NULL,
+      completed_at INTEGER
+    );
+    CREATE INDEX IF NOT EXISTS idx_secret_drops_status_expires
+      ON secret_drops(status, expires_at);
   `);
 
   // Migrations for existing databases

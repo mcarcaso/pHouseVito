@@ -439,6 +439,7 @@ export function MessageRow({ message }: { message: Message }) {
   if (message.type === "tool_start" || message.type === "tool_end")
     return <ToolMessage message={message} />;
   const user = message.type === "user";
+  const commentary = message.type === "commentary";
   const body = unpackMessageContent(message.content);
   return (
     <View style={[styles.messageRow, user && styles.userRow]}>
@@ -452,7 +453,7 @@ export function MessageRow({ message }: { message: Message }) {
       >
         {body.text && (
           <MarkdownText variant="chat" tone={user ? "onAccent" : "default"} copyBlocks={!user}>
-            {body.text}
+            {commentary ? `💬 ${body.text}` : body.text}
           </MarkdownText>
         )}
         <MessageAttachments attachments={body.attachments} />

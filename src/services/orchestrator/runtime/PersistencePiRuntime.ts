@@ -83,8 +83,10 @@ export class PersistencePiRuntime extends ProxyPiRuntime {
       onInvocation: callbacks.onInvocation,
       onRawEvent: callbacks.onRawEvent,
       onNormalizedEvent: (event) => {
-        if ((event.kind === "thought" || event.kind === "commentary") && event.content) {
+        if (event.kind === "thought" && event.content) {
           this.insertMsg("thought", event.content);
+        } else if (event.kind === "commentary" && event.content) {
+          this.insertMsg("commentary", event.content);
         } else if (event.kind === "assistant" && event.content) {
           const msgId = this.insertMsg("thought", event.content);
           this.assistantMessageIds.push(msgId);

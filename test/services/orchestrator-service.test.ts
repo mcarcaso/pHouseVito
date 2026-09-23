@@ -70,6 +70,51 @@ describe("PiOrchestratorService", () => {
     assert.equal(restarts, 1);
   });
 
+  it("injects accepted steering into the active Pi turn and persists it once", async () => {
+    const created: unknown[] = [];
+    const steered: string[] = [];
+    const x = new ObjectContext({
+      userDir: () => "/tmp/vito-orchestrator-steering-test",
+      vitoService: () => ({ getConfig: () => config }),
+      skillStore: () => ({ list: () => [] }),
+      sessionService: () => ({ resolve: () => ({ id: "discord:one" }) }),
+      messageStore: () => ({ create: (_x: unknown, value: unknown) => void created.push(value) }),
+    });
+    const service = new PiOrchestratorService();
+    service.reloadConfig(x, config);
+    const internal = service as unknown as {
+      activeRequests: Map<string, unknown>;
+      runtimeRegistry: { get(id: string): { steer(text: string): Promise<boolean> } | undefined };
+    };
+    internal.activeRequests.set("discord:one", {
+      abort: new AbortController(),
+      aborted: false,
+      event: {},
+      startedAt: Date.now(),
+    });
+    internal.runtimeRegistry = {
+      get: () => ({
+        steer: async (text) => {
+          steered.push(text);
+          return true;
+        },
+      }),
+    };
+
+    const accepted = await service.steer(x, {
+      sessionKey: "discord:one",
+      channel: "discord",
+      target: "one",
+      author: "Mike",
+      timestamp: 123,
+      content: "Change direction",
+    });
+    assert.equal(accepted, true);
+    assert.match(steered[0] ?? "", /Change direction/);
+    assert.equal(created.length, 1);
+    assert.equal((created[0] as { type: string }).type, "user");
+  });
+
   it("serializes one session across orchestrator instances and cancels queued turns", async () => {
     const db = createDatabase(":memory:");
     const context = () =>

@@ -32,8 +32,10 @@ export interface DiscordDeliveryReceipt {
 export interface DiscordQueueStore {
   recover(x: Context): number;
   record(x: Context, event: DurableDiscordEvent): boolean;
+  pending(x: Context, id: string): DurableDiscordEvent | undefined;
   pendingChannels(x: Context): string[];
   claim(x: Context, channel: string): DurableDiscordEvent | undefined;
+  consumePending(x: Context, id: string): boolean;
   discardPending(x: Context, channel: string): number;
   complete(x: Context, id: string): void;
   interrupt(x: Context, id: string, error: string): void;

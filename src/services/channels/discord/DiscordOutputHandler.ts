@@ -8,7 +8,7 @@ import {
   MessageFlags,
 } from "discord.js";
 import type { Context } from "../../../context/Context.js";
-import { xDiscordQueueStore } from "../../../lib/x.js";
+import { xDiscordQueueStore, xVitoService } from "../../../lib/x.js";
 import type {
   AgentActivity,
   AgentActivityEvent,
@@ -18,9 +18,13 @@ import type {
 import { parseInboundEventMetadata, type InboundEvent } from "../../../lib/types/inbound-event.js";
 
 const DISCORD_MAX_LENGTH = 2_000;
-const DASHBOARD_URL = (
-  process.env.VITO_DASHBOARD_URL ?? "https://mikes-mac-mini-1.tail1706d3.ts.net"
-).replace(/\/$/, "");
+
+function dashboardUrl(x: Context): string {
+  const configured = process.env.VITO_DASHBOARD_URL?.trim();
+  if (configured) return configured.replace(/\/$/, "");
+  const domain = xVitoService(x).getConfig(x).apps?.baseDomain?.trim();
+  return domain ? `https://${domain}` : "http://localhost:3030";
+}
 
 function errorMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
@@ -329,7 +333,7 @@ export class DiscordOutputHandler implements OutputHandler {
       const icon = item.status === "running" ? "◌" : item.status === "failed" ? "✕" : "✓";
       return `${icon} ${item.name}${item.status === "running" ? "…" : ""}`;
     });
-    const conversation = `${DASHBOARD_URL}/chat/${encodeURIComponent(this.event.sessionKey)}`;
+    const conversation = `${dashboardUrl(this.x)}/chat/${encodeURIComponent(this.event.sessionKey)}`;
     return [
       `⏳ ${this.summary}`,
       metadata.join(" · "),
@@ -341,11 +345,7 @@ export class DiscordOutputHandler implements OutputHandler {
   private async scheduleProgressUpdate(): Promise<void> {
     if (!this.summary || this.typingStopped) return;
     const now = Date.now();
-    const delay = Math.max(
-      0,
-      1_000 - (now - this.startedAt),
-      2_000 - (now - this.progressUpdatedAt),
-    );
+    const delay = Math.max(0, 2_000 - (now - this.progressUpdatedAt));
     if (delay > 0) {
       if (!this.progressTimer) {
         this.progressTimer = setTimeout(() => {

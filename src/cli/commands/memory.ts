@@ -5,7 +5,7 @@ import { z } from "zod";
 import type { Context } from "../../context/Context.js";
 import { ObjectContext } from "../../context/ObjectContext.js";
 import { createDatabase } from "../../lib/sqlite/database.js";
-import { xDb, xEmbeddingDb, xFactService, xMemoryService, xUserDir } from "../../lib/x.js";
+import { xEmbeddingDb, xFactService, xMemoryService, xUserDir } from "../../lib/x.js";
 import { OpenAiEmbeddingService } from "../../services/memory/OpenAiEmbeddingService.js";
 import { DefaultMemoryService } from "../../services/memory/DefaultMemoryService.js";
 import { DefaultFactService } from "../../services/facts/DefaultFactService.js";
@@ -47,16 +47,21 @@ Recall queries profile, facts, and raw transcripts together. Add --deep for wide
 Fact backfill processes every stored contextualized embedding chunk chronologically and resumes safely.
 `;
 
-function createMemoryCliContext(projectRoot: string): Context {
+function createMemoryCliContext(projectRoot: string): {
+  x: Context;
+  close: () => void;
+} {
   const userDir = resolve(projectRoot, "user");
-  return new ObjectContext({
+  let db: ReturnType<typeof createDatabase> | undefined;
+  let embeddingDb: ReturnType<typeof createEmbeddingDatabase> | undefined;
+  const x = new ObjectContext({
     userDir: () => userDir,
     piAuthPath: () => join(homedir(), ".pi", "agent", "auth.json"),
     secretsPath: () => join(userDir, "secrets.json"),
     secretService: () => new FileSecretService(),
-    db: () => createDatabase(join(userDir, "vito.db")),
+    db: () => (db ??= createDatabase(join(userDir, "vito.db"))),
     messageStore: () => new SqliteMessageStore(),
-    embeddingDb: () => createEmbeddingDatabase(join(userDir, "embeddings.db")),
+    embeddingDb: () => (embeddingDb ??= createEmbeddingDatabase(join(userDir, "embeddings.db"))),
     embeddingStore: () => new SqliteEmbeddingStore(),
     embeddingService: () => new OpenAiEmbeddingService(),
     factStore: () => new SqliteFactStore(),
@@ -64,6 +69,13 @@ function createMemoryCliContext(projectRoot: string): Context {
     factService: () => new DefaultFactService(),
     memoryService: () => new DefaultMemoryService(),
   });
+  return {
+    x,
+    close: () => {
+      embeddingDb?.close();
+      db?.close();
+    },
+  };
 }
 
 function parseSearchOptions(args: string[]): SearchOptions {
@@ -371,7 +383,8 @@ export async function runMemoryCommand(args: string[], projectRoot: string): Pro
     return 0;
   }
 
-  const x = createMemoryCliContext(projectRoot);
+  const context = createMemoryCliContext(projectRoot);
+  const x = context.x;
   try {
     if (command === "facts") return await runFactSearch(commandArgs, x);
     if (command === "recall") return await runRecall(commandArgs, x);
@@ -398,7 +411,6 @@ export async function runMemoryCommand(args: string[], projectRoot: string): Pro
     );
     return 1;
   } finally {
-    xEmbeddingDb(x).close();
-    xDb(x).close();
+    context.close();
   }
 }

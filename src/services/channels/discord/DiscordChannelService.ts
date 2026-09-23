@@ -9,7 +9,12 @@ import {
   ChatInputCommandInteraction,
 } from "discord.js";
 import type { Context } from "../../../context/Context.js";
-import { xDiscordQueueStore, xSecretService, xVitoService } from "../../../lib/x.js";
+import {
+  xDiscordQueueStore,
+  xOrchestratorService,
+  xSecretService,
+  xVitoService,
+} from "../../../lib/x.js";
 import type { OutputHandler } from "../../../lib/output/OutputHandler.js";
 import type { InboundEvent } from "../../../lib/types/inbound-event.js";
 import type { SessionRow } from "../../../stores/sessions/SessionStore.js";
@@ -46,6 +51,7 @@ export class DiscordChannelService implements ChannelService {
   private queuePoll: ReturnType<typeof setInterval> | null = null;
   private readonly draining = new Map<string, Promise<void>>();
   private readonly liveRaw = new Map<string, DiscordMessage | ChatInputCommandInteraction>();
+  private readonly steeringNotices = new Map<string, DiscordMessage>();
   private readonly applicationOwnerIds = new Set<string>();
   private stopping = false;
 
@@ -107,6 +113,7 @@ export class DiscordChannelService implements ChannelService {
     this.token = undefined;
     this.context = null;
     this.liveRaw.clear();
+    this.steeringNotices.clear();
   }
 
   private isOwner(x: Context, userId: string): boolean {
@@ -150,10 +157,12 @@ export class DiscordChannelService implements ChannelService {
     id: string,
     authorId: string,
     raw: DiscordMessage | ChatInputCommandInteraction,
-  ): void {
+  ): boolean {
     this.liveRaw.set(id, raw);
-    xDiscordQueueStore(x).record(x, this.durableEvent(event, id, authorId));
-    this.startDrain(x, event.target);
+    const recorded = xDiscordQueueStore(x).record(x, this.durableEvent(event, id, authorId));
+    if (!recorded) this.liveRaw.delete(id);
+    else this.startDrain(x, event.target);
+    return recorded;
   }
 
   private startDrain(x: Context, channel: string): void {
@@ -162,6 +171,82 @@ export class DiscordChannelService implements ChannelService {
       .catch((error) => console.error(`[Discord] Queue ${channel} stopped: ${errorMessage(error)}`))
       .finally(() => this.draining.delete(channel));
     this.draining.set(channel, work);
+  }
+
+  private async sendSteeringNotice(message: DiscordMessage): Promise<void> {
+    const notice = await message.reply({
+      content: "Message queued. Want to redirect the current turn?",
+      allowedMentions: { parse: [] },
+      components: [
+        {
+          type: 1,
+          components: [
+            {
+              type: 2,
+              style: 2,
+              label: "Steer now",
+              custom_id: `vito-steer:${message.id}`,
+            },
+          ],
+        },
+      ],
+    });
+    this.steeringNotices.set(message.id, notice);
+  }
+
+  private async handleSteeringButton(
+    x: Context,
+    interaction: import("discord.js").ButtonInteraction,
+  ) {
+    const match = /^vito-steer:([0-9]{1,20})$/.exec(interaction.customId);
+    if (!match) return false;
+    await interaction.deferReply({ ephemeral: true });
+    const id = match[1];
+    const store = xDiscordQueueStore(x);
+    const pending = store.pending(x, id);
+    if (!pending) {
+      await interaction.editReply("That queued message is no longer available for steering.");
+      return true;
+    }
+    if (interaction.user.bot || interaction.user.id !== pending.authorId) {
+      await interaction.editReply("Only the sender of that message can steer the active turn.");
+      return true;
+    }
+    if (interaction.channelId !== pending.transportChannel || pending.attachments.length > 0) {
+      await interaction.editReply("That message cannot steer this turn; it remains queued.");
+      return true;
+    }
+    const event: InboundEvent = {
+      sessionKey: pending.sessionKey,
+      channel: "discord",
+      target: pending.target,
+      author: pending.author,
+      timestamp: pending.timestamp,
+      content: pending.content,
+      attachments: pending.attachments,
+      hasMention: pending.hasMention,
+      raw: {
+        source: "discord",
+        discordMessageId: pending.id,
+        discordAuthorId: pending.authorId,
+        discordChannelId: pending.transportChannel,
+        commandAuthorized: pending.commandAuthorized,
+      },
+    };
+    const accepted = await xOrchestratorService(x).steer(x, event);
+    if (!accepted || !store.consumePending(x, id)) {
+      await interaction.editReply("The active turn finished first. Your message remains queued.");
+      return true;
+    }
+    this.liveRaw.delete(id);
+    const notice = this.steeringNotices.get(id) ?? interaction.message;
+    this.steeringNotices.delete(id);
+    await notice
+      .edit({ content: "Steering requested for your queued message.", components: [] })
+      .catch(() => {});
+    await interaction.editReply("Steering requested.");
+    setTimeout(() => void notice.delete().catch(() => {}), 2_000).unref();
+    return true;
   }
 
   private async resolveRaw(
@@ -183,6 +268,9 @@ export class DiscordChannelService implements ChannelService {
       const durable = store.claim(x, channel);
       if (!durable) return;
       try {
+        const notice = this.steeringNotices.get(durable.id);
+        this.steeringNotices.delete(durable.id);
+        await notice?.delete().catch(() => {});
         const raw = await this.resolveRaw(durable.id, durable.transportChannel);
         const event: InboundEvent = {
           sessionKey: durable.sessionKey,
@@ -358,12 +446,25 @@ export class DiscordChannelService implements ChannelService {
 
       const effective = getEffectiveSettings(xVitoService(x).getConfig(x), "discord", sessionKey);
       if (!hasMention && effective.requireMention !== false) return;
+      const store = xDiscordQueueStore(x);
+      const busy = this.draining.has(target) || store.pendingChannels(x).includes(target);
       console.log(`[Discord] ✅ Queued durable event ${msg.id} for ${target}`);
-      this.queue(x, event, msg.id, msg.author.id, msg);
+      const recorded = this.queue(x, event, msg.id, msg.author.id, msg);
+      if (recorded && busy && !event.attachments?.length) {
+        await this.sendSteeringNotice(msg).catch((error) =>
+          console.warn(`[Discord] Could not offer steering: ${errorMessage(error)}`),
+        );
+      }
     });
 
     // Handle slash command interactions
     client.on("interactionCreate", async (interaction) => {
+      if (interaction.isButton()) {
+        await this.handleSteeringButton(x, interaction).catch((error) =>
+          console.error(`[Discord] Steering failed: ${errorMessage(error)}`),
+        );
+        return;
+      }
       if (!interaction.isChatInputCommand()) return;
 
       if (!isInteractionAllowed(interaction)) {
@@ -656,6 +757,7 @@ export class DiscordChannelService implements ChannelService {
       "Do NOT use markdown tables — they don't render in Discord. Use bulleted or numbered lists instead.",
       "Messages are limited to 2000 characters — be concise.",
       "Users mention you with @. You can reference users with <@userId>.",
+      "During tool work, send concise user-visible commentary before meaningful tool groups and when the plan changes. Commentary is public progress, distinct from private reasoning and the final answer; never expose chain-of-thought.",
     ].join("\n");
   }
 }

@@ -312,12 +312,15 @@ async function doEmbedding(
       excludeTypes: ["thought", "tool_start", "tool_end"],
       order: "oldest",
     })
-    .filter((message) => message.type === "user" || message.type === "assistant")
+    .filter(
+      (message) =>
+        message.type === "user" || message.type === "commentary" || message.type === "assistant",
+    )
     .map((message) => ({
       id: message.id,
       session_id: message.session_id,
       timestamp: message.timestamp,
-      type: message.type,
+      type: message.type === "commentary" ? "assistant" : message.type,
       content: message.content,
       author: message.author,
     }));

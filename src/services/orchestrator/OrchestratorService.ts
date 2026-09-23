@@ -35,6 +35,7 @@ export interface OrchestratorService {
   reloadCronJobs(x: Context, jobs: CronJobConfig[], timezone?: string): void;
   reloadConfig(x: Context, config: VitoConfig): void;
   handleInbound(x: Context, event: InboundEvent, channel: ChannelService | null): Promise<void>;
+  steer(x: Context, event: InboundEvent): Promise<boolean>;
   ask(x: Context, options: AskOptions): Promise<string>;
   prompt(x: Context, options: ContextualPromptOptions): Promise<string>;
   appendSessionContext(

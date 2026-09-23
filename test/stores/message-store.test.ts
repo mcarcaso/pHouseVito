@@ -27,7 +27,11 @@ function createHarness() {
 function createMessage(
   store: SqliteMessageStore,
   x: ObjectContext,
-  args: { sessionId: string; timestamp: number; type?: "user" | "thought" },
+  args: {
+    sessionId: string;
+    timestamp: number;
+    type?: "user" | "thought" | "commentary";
+  },
 ) {
   return store.create(x, {
     session_id: args.sessionId,
@@ -47,7 +51,8 @@ describe("SqliteMessageStore", () => {
     try {
       createMessage(store, x, { sessionId: "a", timestamp: 1 });
       createMessage(store, x, { sessionId: "a", timestamp: 2, type: "thought" });
-      createMessage(store, x, { sessionId: "b", timestamp: 3 });
+      createMessage(store, x, { sessionId: "a", timestamp: 3, type: "commentary" });
+      createMessage(store, x, { sessionId: "b", timestamp: 4 });
 
       const filter = {
         sessionIds: ["a"],
@@ -55,7 +60,10 @@ describe("SqliteMessageStore", () => {
         archived: false,
       };
       const messages = store.list(x, { ...filter, order: "oldest" });
-      assert.equal(messages.length, 1);
+      assert.deepEqual(
+        messages.map((message) => message.type),
+        ["user", "commentary"],
+      );
       assert.equal(store.count(x, filter), messages.length);
     } finally {
       db.close();

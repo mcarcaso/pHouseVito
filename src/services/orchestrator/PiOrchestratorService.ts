@@ -373,6 +373,34 @@ export class PiOrchestratorService implements OrchestratorService {
   // INBOUND ROUTING (mirrors v1)
   // ────────────────────────────────────────────────────────────────────────
 
+  async steer(x: Context, event: InboundEvent): Promise<boolean> {
+    this.initialize(x);
+    const active = this.activeRequests.get(event.sessionKey);
+    if (!active || active.aborted || event.attachments?.length) return false;
+    const runtime = this.runtimeRegistry.get(event.sessionKey);
+    if (!runtime) return false;
+    const promptText = buildUserMessage({
+      content: event.content || "",
+      author: event.author,
+      channel: event.channel,
+      timezone: this.config.settings?.timezone,
+    });
+    const accepted = await runtime.steer(promptText);
+    if (!accepted) return false;
+    const session = xSessionService(this.x).resolve(this.x, event.sessionKey);
+    xMessageStore(this.x).create(this.x, {
+      session_id: session.id,
+      channel: event.channel,
+      channel_target: event.target,
+      timestamp: event.timestamp,
+      type: "user",
+      content: JSON.stringify(event.content || ""),
+      archived: 0,
+      author: event.author || null,
+    });
+    return true;
+  }
+
   async handleInbound(
     x: Context,
     event: InboundEvent,
@@ -487,9 +515,15 @@ export class PiOrchestratorService implements OrchestratorService {
     }
 
     const renew = setInterval(() => {
-      db.prepare(
-        "UPDATE session_turn_locks SET expires_at = ? WHERE session = ? AND owner = ?",
-      ).run(Date.now() + leaseMs, session, owner);
+      try {
+        db.prepare(
+          "UPDATE session_turn_locks SET expires_at = ? WHERE session = ? AND owner = ?",
+        ).run(Date.now() + leaseMs, session, owner);
+      } catch (error) {
+        console.warn(
+          `[Orchestrator] Could not renew session lease for ${session}: ${error instanceof Error ? error.message : String(error)}`,
+        );
+      }
     }, 10_000);
     renew.unref();
     try {
@@ -638,6 +672,15 @@ export class PiOrchestratorService implements OrchestratorService {
           ?.map((a) => a.path)
           .filter((p): p is string => Boolean(p)),
       });
+      if (event.channel === "discord" && streamMode !== "final") {
+        promptText = [
+          "<delivery_instruction>",
+          "During multi-step tool work, send concise public commentary before meaningful tool groups and when your direction changes. Commentary is not private reasoning and is separate from the final answer.",
+          "</delivery_instruction>",
+          "",
+          promptText,
+        ].join("\n");
+      }
 
       if (requireMention && hasMention && channel?.gatherMentionContext) {
         try {

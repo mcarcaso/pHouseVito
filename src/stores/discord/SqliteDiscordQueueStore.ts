@@ -87,6 +87,13 @@ export class SqliteDiscordQueueStore implements DiscordQueueStore {
     );
   }
 
+  pending(x: Context, id: string): DurableDiscordEvent | undefined {
+    const row = xDb(x)
+      .prepare("SELECT data FROM discord_inbox WHERE id = ? AND status = 'pending'")
+      .get(id) as EventRow | undefined;
+    return row ? parseEvent(row) : undefined;
+  }
+
   pendingChannels(x: Context): string[] {
     return (
       xDb(x)
@@ -125,6 +132,32 @@ export class SqliteDiscordQueueStore implements DiscordQueueStore {
       return changed ? parseEvent(row) : undefined;
     });
     return transaction();
+  }
+
+  consumePending(x: Context, id: string): boolean {
+    const db = xDb(x);
+    return db.transaction(() => {
+      const row = db
+        .prepare("SELECT channel FROM discord_inbox WHERE id = ? AND status = 'pending'")
+        .get(id) as { channel: string } | undefined;
+      if (!row) return false;
+      const changed = db
+        .prepare(
+          `UPDATE discord_inbox
+           SET status = 'completed', error = NULL, completed_at = ?
+           WHERE id = ? AND status = 'pending'`,
+        )
+        .run(Date.now(), id).changes;
+      if (!changed) return false;
+      db.prepare(
+        `INSERT INTO discord_cursors(channel, completed_through) VALUES (?, ?)
+         ON CONFLICT(channel) DO UPDATE SET completed_through = excluded.completed_through
+         WHERE length(discord_cursors.completed_through) < length(excluded.completed_through)
+            OR (length(discord_cursors.completed_through) = length(excluded.completed_through)
+                AND discord_cursors.completed_through < excluded.completed_through)`,
+      ).run(row.channel, id);
+      return true;
+    })();
   }
 
   discardPending(x: Context, channel: string): number {

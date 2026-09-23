@@ -404,6 +404,13 @@ export class PiSessionRuntime implements PiRuntime {
     );
   }
 
+  async steer(userMessage: string): Promise<boolean> {
+    const session = this.piSession;
+    if (!session?.isStreaming) return false;
+    await session.steer(userMessage);
+    return true;
+  }
+
   async run(
     systemPrompt: string,
     userMessage: string,

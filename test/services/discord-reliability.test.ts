@@ -49,6 +49,20 @@ describe("Discord durability", () => {
     db.close();
   });
 
+  it("atomically consumes a queued message accepted as steering", () => {
+    const db = createDatabase(":memory:");
+    const x = new ObjectContext({ db: () => db });
+    const store = new SqliteDiscordQueueStore();
+    const event = durable("12");
+    assert.equal(store.record(x, event), true);
+    assert.deepEqual(store.pending(x, "12"), event);
+    assert.equal(store.consumePending(x, "12"), true);
+    assert.equal(store.pending(x, "12"), undefined);
+    assert.equal(store.consumePending(x, "12"), false);
+    assert.equal(store.claim(x, "channel-1"), undefined);
+    db.close();
+  });
+
   it("resumes nonce-backed delivery receipts from the exact piece", () => {
     const db = createDatabase(":memory:");
     const x = new ObjectContext({ db: () => db });
@@ -68,7 +82,11 @@ describe("Discord durability", () => {
   it("presents provider summaries and tool work in one quiet progress message", async () => {
     const db = createDatabase(":memory:");
     const store = new SqliteDiscordQueueStore();
-    const x = new ObjectContext({ db: () => db, discordQueueStore: () => store });
+    const x = new ObjectContext({
+      db: () => db,
+      discordQueueStore: () => store,
+      vitoService: () => ({ getConfig: () => ({ apps: { baseDomain: "example.com" } }) }),
+    });
     const sent: Array<Record<string, unknown>> = [];
     let deleted = 0;
     const channel = {
@@ -105,26 +123,29 @@ describe("Discord durability", () => {
         activity: "thinking",
         content: "**Inspecting current output**",
       });
+      assert.equal(sent.length, 1);
+      assert.match(String(sent[0].content), /^⏳ \*\*Inspecting current output\*\*/);
+      assert.equal(sent[0].flags, 4_096);
+      assert.match(String(sent[0].content), /https:\/\/example\.com\/chat\//);
+
       await handler.relayEvent({
         kind: "tool_start",
         activity: "reading",
         toolName: "read",
         toolCallId: "read-1",
       });
-      await new Promise((resolve) => setTimeout(resolve, 1_100));
+      await new Promise((resolve) => setTimeout(resolve, 2_100));
 
-      assert.equal(sent.length, 1);
-      const progress = String(sent[0].content);
-      assert.match(progress, /^⏳ \*\*Inspecting current output\*\*/);
-      assert.match(progress, /Thinking|Reading/);
+      assert.equal(sent.length, 2);
+      const progress = String(sent[1].edited);
+      assert.match(progress, /Reading/);
       assert.match(progress, /1 tool/);
       assert.match(progress, /◌ Read file…/);
-      assert.equal(sent[0].flags, 4_096);
 
       await handler.relay("Done.");
       await handler.endMessage();
       assert.equal(deleted, 1);
-      assert.equal((sent[1] as { content: string }).content, "Done.");
+      assert.equal((sent[2] as { content: string }).content, "Done.");
     } finally {
       db.close();
     }

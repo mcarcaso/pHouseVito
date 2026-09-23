@@ -1,7 +1,7 @@
 import type { Context } from "../../context/Context.js";
 import type { Store } from "../Store.js";
 
-export type MsgType = "user" | "thought" | "assistant" | "tool_start" | "tool_end";
+export type MsgType = "user" | "thought" | "commentary" | "assistant" | "tool_start" | "tool_end";
 
 export interface MessageRow {
   id: number;

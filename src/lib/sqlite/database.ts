@@ -28,7 +28,7 @@ export function createDatabase(dbPath: string): Database.Database {
       channel TEXT,
       channel_target TEXT,
       timestamp INTEGER NOT NULL,
-      type TEXT NOT NULL CHECK(type IN ('user', 'thought', 'assistant', 'tool_start', 'tool_end')),
+      type TEXT NOT NULL CHECK(type IN ('user', 'thought', 'commentary', 'assistant', 'tool_start', 'tool_end')),
       content JSON NOT NULL,
       compacted INTEGER NOT NULL DEFAULT 0,
       archived INTEGER NOT NULL DEFAULT 0,
@@ -217,7 +217,7 @@ export function createDatabase(dbPath: string): Database.Database {
   }
 
   // MIGRATION: Replace 'role' column with unified 'type' column
-  // New type values: 'user', 'thought', 'assistant', 'tool_start', 'tool_end'
+  // New type values: 'user', 'thought', 'commentary', 'assistant', 'tool_start', 'tool_end'
   const hasRoleColumn = messageColumns.some((c) => c.name === "role");
   const hasTypeColumn = messageColumns.some((c) => c.name === "type");
 
@@ -267,7 +267,7 @@ export function createDatabase(dbPath: string): Database.Database {
         channel TEXT,
         channel_target TEXT,
         timestamp INTEGER NOT NULL,
-        type TEXT NOT NULL CHECK(type IN ('user', 'thought', 'assistant', 'tool_start', 'tool_end')),
+        type TEXT NOT NULL CHECK(type IN ('user', 'thought', 'commentary', 'assistant', 'tool_start', 'tool_end')),
         content JSON NOT NULL,
         compacted INTEGER NOT NULL DEFAULT 0,
         archived INTEGER NOT NULL DEFAULT 0,
@@ -322,6 +322,47 @@ export function createDatabase(dbPath: string): Database.Database {
   const msgColsForAuthor = db.pragma("table_info(messages)") as Array<{ name: string }>;
   if (!msgColsForAuthor.some((c) => c.name === "author")) {
     db.exec("ALTER TABLE messages ADD COLUMN author TEXT DEFAULT NULL");
+  }
+
+  // Migration: public assistant commentary is distinct from private thought and final answers.
+  const messagesTable = db
+    .prepare("SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'messages'")
+    .get() as { sql?: string } | undefined;
+  if (!messagesTable?.sql?.includes("'commentary'")) {
+    db.pragma("foreign_keys = OFF");
+    try {
+      db.transaction(() => {
+        db.exec(`
+          DROP TABLE IF EXISTS messages_commentary_new;
+          CREATE TABLE messages_commentary_new (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            session_id TEXT NOT NULL,
+            channel TEXT,
+            channel_target TEXT,
+            timestamp INTEGER NOT NULL,
+            type TEXT NOT NULL CHECK(type IN ('user', 'thought', 'commentary', 'assistant', 'tool_start', 'tool_end')),
+            content JSON NOT NULL,
+            compacted INTEGER NOT NULL DEFAULT 0,
+            archived INTEGER NOT NULL DEFAULT 0,
+            author TEXT DEFAULT NULL,
+            FOREIGN KEY (session_id) REFERENCES sessions(id)
+          );
+          INSERT INTO messages_commentary_new
+            (id, session_id, channel, channel_target, timestamp, type, content, compacted, archived, author)
+          SELECT id, session_id, channel, channel_target, timestamp, type, content, compacted, archived, author
+          FROM messages;
+          DROP TABLE messages;
+          ALTER TABLE messages_commentary_new RENAME TO messages;
+          CREATE INDEX IF NOT EXISTS idx_messages_session ON messages(session_id);
+          CREATE INDEX IF NOT EXISTS idx_messages_compacted ON messages(compacted);
+          CREATE INDEX IF NOT EXISTS idx_messages_timestamp ON messages(timestamp);
+          CREATE INDEX IF NOT EXISTS idx_messages_archived ON messages(archived);
+          CREATE INDEX IF NOT EXISTS idx_messages_type ON messages(type);
+        `);
+      })();
+    } finally {
+      db.pragma("foreign_keys = ON");
+    }
   }
 
   // Supports session-list previews without scanning every unarchived message per session.

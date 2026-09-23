@@ -1,10 +1,16 @@
 import { createHash } from "node:crypto";
 import { existsSync, statSync } from "node:fs";
 import { isAbsolute, resolve } from "node:path";
-import { Client, Message as DiscordMessage, ChatInputCommandInteraction } from "discord.js";
+import {
+  ChatInputCommandInteraction,
+  Client,
+  Message as DiscordMessage,
+  MessageFlags,
+} from "discord.js";
 import type { Context } from "../../../context/Context.js";
 import { xDiscordQueueStore } from "../../../lib/x.js";
 import type {
+  AgentActivity,
   AgentActivityEvent,
   OutputHandler,
   OutboundMessage,
@@ -35,6 +41,7 @@ interface DiscordOutputChannel {
           files?: string[];
           nonce?: string;
           enforceNonce?: boolean;
+          flags?: number;
         },
   ): Promise<unknown>;
   sendTyping?: () => Promise<unknown>;
@@ -87,6 +94,68 @@ function sanitizedToolName(value: string | undefined): string {
   return (cleaned || "tool").slice(0, 80);
 }
 
+const toolLabels: Record<string, string> = {
+  read: "Read file",
+  write: "Write file",
+  edit: "Edit file",
+  bash: "Run command",
+  delegation_run: "Delegate task",
+  delegation_wait: "Wait for delegate",
+  web_search: "Search web",
+  web_fetch: "Fetch web page",
+};
+
+const activityLabels: Record<AgentActivity, string> = {
+  thinking: "Thinking",
+  reading: "Reading",
+  writing: "Writing",
+  executing: "Executing",
+  delegating: "Delegating",
+  tool: "Using tool",
+  responding: "Responding",
+  finishing: "Finishing",
+};
+
+function toolDisplayName(value: string | undefined): string {
+  const name = sanitizedToolName(value);
+  return (
+    toolLabels[name] ??
+    name
+      .replace(/^(functions|multi_tool_use)[._]/, "")
+      .replaceAll("_", " ")
+      .replace(/\b\w/g, (letter) => letter.toUpperCase())
+      .slice(0, 60)
+  );
+}
+
+function toolActivity(value: string | undefined): AgentActivity {
+  switch (sanitizedToolName(value)) {
+    case "read":
+      return "reading";
+    case "write":
+    case "edit":
+      return "writing";
+    case "bash":
+      return "executing";
+    case "delegation_run":
+    case "delegation_wait":
+      return "delegating";
+    default:
+      return "tool";
+  }
+}
+
+function duration(startedAt: number): string {
+  const seconds = Math.max(0, Math.floor((Date.now() - startedAt) / 1_000));
+  return seconds < 60 ? `${seconds}s` : `${Math.floor(seconds / 60)}m ${seconds % 60}s`;
+}
+
+interface ProgressWorkItem {
+  id: string;
+  name: string;
+  status: "running" | "completed" | "failed";
+}
+
 type DeliveryPiece = { type: "text"; content: string } | { type: "media"; path: string };
 
 function parsePieces(text: string): DeliveryPiece[] {
@@ -136,6 +205,13 @@ export class DiscordOutputHandler implements OutputHandler {
   private flushSequence = 0;
   private progressSequence = 0;
   private progress: SentDiscordMessage | null = null;
+  private progressTimer: ReturnType<typeof setTimeout> | null = null;
+  private progressUpdatedAt = 0;
+  private readonly startedAt = Date.now();
+  private activity: AgentActivity = "thinking";
+  private summary: string | undefined;
+  private toolCallCount = 0;
+  private recentWork: ProgressWorkItem[] = [];
 
   constructor(
     private x: Context,
@@ -183,29 +259,28 @@ export class DiscordOutputHandler implements OutputHandler {
   }
 
   async relayEvent(event: AgentActivityEvent): Promise<void> {
-    if (event.kind !== "tool_start" && event.kind !== "tool_end") return;
-    await this.channelReady;
-    if (!this.channel) return;
-    const tool = sanitizedToolName(event.toolName);
-    const conversation = `${DASHBOARD_URL}/chat/${encodeURIComponent(this.event.sessionKey)}`;
-    const text =
-      event.kind === "tool_start"
-        ? `💬 Running \`${tool}\`… [Open conversation](${conversation})`
-        : `💬 ${event.isError ? "Finished with an error" : "Finished"}: \`${tool}\` · [Open conversation](${conversation})`;
-    try {
-      if (this.progress?.edit) {
-        await this.progress.edit(text);
-      } else {
-        const sent = await this.channel.send({
-          content: text,
-          nonce: nonce(`${deliveryBase(this.event)}:progress`, this.progressSequence++),
-          enforceNonce: true,
-        });
-        if (isUnknownRecord(sent)) this.progress = sent as SentDiscordMessage;
-      }
-    } catch {
-      // Progress is presentation only; final delivery remains authoritative.
+    if (event.kind === "thinking") {
+      if (event.activity) this.activity = event.activity;
+      if (event.content?.trim()) this.summary = event.content.trim().slice(0, 300);
+    } else if (event.kind === "tool_start") {
+      this.activity = toolActivity(event.toolName);
+      this.toolCallCount++;
+      this.recentWork.push({
+        id: (event.toolCallId ?? `${this.toolCallCount}`).slice(0, 200),
+        name: toolDisplayName(event.toolName),
+        status: "running",
+      });
+      this.recentWork = this.recentWork.slice(-5);
+    } else if (event.kind === "tool_end") {
+      this.activity = "thinking";
+      const id = event.toolCallId?.slice(0, 200);
+      const item = this.recentWork
+        .slice()
+        .reverse()
+        .find((candidate) => candidate.id === id);
+      if (item) item.status = event.isError ? "failed" : "completed";
     }
+    await this.scheduleProgressUpdate();
   }
 
   async startTyping(): Promise<void> {
@@ -241,7 +316,75 @@ export class DiscordOutputHandler implements OutputHandler {
     this.channel?.sendTyping?.().catch(() => {});
   }
 
+  private progressText(): string | undefined {
+    if (!this.summary) return;
+    const metadata = [
+      duration(this.startedAt),
+      activityLabels[this.activity],
+      this.toolCallCount
+        ? `${this.toolCallCount} tool${this.toolCallCount === 1 ? "" : "s"}`
+        : undefined,
+    ].filter(Boolean);
+    const work = this.recentWork.slice(-4).map((item) => {
+      const icon = item.status === "running" ? "◌" : item.status === "failed" ? "✕" : "✓";
+      return `${icon} ${item.name}${item.status === "running" ? "…" : ""}`;
+    });
+    const conversation = `${DASHBOARD_URL}/chat/${encodeURIComponent(this.event.sessionKey)}`;
+    return [
+      `⏳ ${this.summary}`,
+      metadata.join(" · "),
+      ...work,
+      `[Open conversation](<${conversation}>)`,
+    ].join("\n");
+  }
+
+  private async scheduleProgressUpdate(): Promise<void> {
+    if (!this.summary || this.typingStopped) return;
+    const now = Date.now();
+    const delay = Math.max(
+      0,
+      1_000 - (now - this.startedAt),
+      2_000 - (now - this.progressUpdatedAt),
+    );
+    if (delay > 0) {
+      if (!this.progressTimer) {
+        this.progressTimer = setTimeout(() => {
+          this.progressTimer = null;
+          void this.updateProgress();
+        }, delay);
+      }
+      return;
+    }
+    await this.updateProgress();
+  }
+
+  private async updateProgress(): Promise<void> {
+    const text = this.progressText();
+    if (!text || this.typingStopped) return;
+    await this.channelReady;
+    if (!this.channel) return;
+    try {
+      if (this.progress?.edit) {
+        await this.progress.edit(text);
+      } else {
+        const sent = await this.channel.send({
+          content: text,
+          nonce: nonce(`${deliveryBase(this.event)}:progress`, this.progressSequence++),
+          enforceNonce: true,
+          flags: MessageFlags.SuppressNotifications,
+        });
+        if (isUnknownRecord(sent)) this.progress = sent as SentDiscordMessage;
+      }
+      this.progressUpdatedAt = Date.now();
+    } catch {
+      // Progress is presentation only; final delivery remains authoritative.
+    }
+  }
+
   private async clearProgress(): Promise<void> {
+    if (this.progressTimer) clearTimeout(this.progressTimer);
+    this.progressTimer = null;
+    this.summary = undefined;
     const current = this.progress;
     this.progress = null;
     if (current?.delete) await current.delete().catch(() => {});

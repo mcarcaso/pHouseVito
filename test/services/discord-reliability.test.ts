@@ -65,6 +65,71 @@ describe("Discord durability", () => {
     db.close();
   });
 
+  it("presents provider summaries and tool work in one quiet progress message", async () => {
+    const db = createDatabase(":memory:");
+    const store = new SqliteDiscordQueueStore();
+    const x = new ObjectContext({ db: () => db, discordQueueStore: () => store });
+    const sent: Array<Record<string, unknown>> = [];
+    let deleted = 0;
+    const channel = {
+      id: "channel-1",
+      send: async (value: Record<string, unknown>) => {
+        sent.push(value);
+        return {
+          async edit(content: string) {
+            sent.push({ edited: content });
+          },
+          async delete() {
+            deleted++;
+          },
+        };
+      },
+    };
+    const client = {
+      channels: { fetch: async () => channel },
+      users: { fetch: async () => ({ createDM: async () => channel }) },
+    } as unknown as Client;
+    const event = {
+      sessionKey: "discord:channel-1",
+      channel: "discord",
+      target: "channel-1",
+      author: "Mike",
+      timestamp: 2,
+      content: "",
+      raw: { source: "discord", discordMessageId: "message-progress" },
+    };
+    try {
+      const handler = new DiscordOutputHandler(x, client, event);
+      await handler.relayEvent({
+        kind: "thinking",
+        activity: "thinking",
+        content: "**Inspecting current output**",
+      });
+      await handler.relayEvent({
+        kind: "tool_start",
+        activity: "reading",
+        toolName: "read",
+        toolCallId: "read-1",
+      });
+      await new Promise((resolve) => setTimeout(resolve, 1_100));
+
+      assert.equal(sent.length, 1);
+      const progress = String(sent[0].content);
+      assert.match(progress, /^⏳ \*\*Inspecting current output\*\*/);
+      assert.match(progress, /Thinking|Reading/);
+      assert.match(progress, /1 tool/);
+      assert.match(progress, /◌ Read file…/);
+      assert.equal(sent[0].flags, 4_096);
+
+      await handler.relay("Done.");
+      await handler.endMessage();
+      assert.equal(deleted, 1);
+      assert.equal((sent[1] as { content: string }).content, "Done.");
+    } finally {
+      db.close();
+    }
+  });
+
   it("splits bounded fenced messages and sends each attachment path exactly once", async () => {
     const chunks = splitMessage(`\`\`\`ts\n${"const value = 1;\n".repeat(180)}\`\`\``);
     assert.ok(chunks.length > 1);

@@ -9,14 +9,65 @@
  * - Error/interrupt relay
  */
 
-import type { OutputHandler } from "../../../lib/output/OutputHandler.js";
-import type { StreamMode } from "../../../lib/output/OutputHandler.js";
+import type {
+  AgentActivityEvent,
+  OutputHandler,
+  StreamMode,
+} from "../../../lib/output/OutputHandler.js";
 import { ProxyPiRuntime } from "./ProxyPiRuntime.js";
 import type { PiRuntime, PiRuntimeCallbacks } from "./PiRuntime.js";
 
 export interface RelayOptions {
   handler: OutputHandler | null;
   streamMode: StreamMode;
+}
+
+function record(value: unknown): Record<string, unknown> | undefined {
+  return typeof value === "object" && value !== null
+    ? (value as Record<string, unknown>)
+    : undefined;
+}
+
+function providerSummary(message: Record<string, unknown> | undefined): string | undefined {
+  if (message?.role !== "assistant" || !Array.isArray(message.content)) return;
+  let summary: string | undefined;
+  for (const candidate of message.content) {
+    const block = record(candidate);
+    if (block?.type !== "thinking" || typeof block.thinkingSignature !== "string") continue;
+    try {
+      const signature = record(JSON.parse(block.thinkingSignature));
+      if (signature?.type !== "reasoning" || !Array.isArray(signature.summary)) continue;
+      for (const candidatePart of signature.summary) {
+        const part = record(candidatePart);
+        if (part?.type !== "summary_text" || typeof part.text !== "string") continue;
+        for (const paragraph of part.text.replace(/\r\n?/g, "\n").split(/\n\s*\n/)) {
+          const first = paragraph.trim().split("\n")[0]?.trim();
+          if (first) summary = first.slice(0, 300);
+        }
+      }
+    } catch {
+      // Encrypted or provider-private thinking signatures are never displayed.
+    }
+  }
+  return summary;
+}
+
+/** Extract only provider-authored summaries and coarse activity—not private reasoning. */
+function progressEvent(value: unknown): AgentActivityEvent | undefined {
+  const event = record(value);
+  if (!event || typeof event.type !== "string") return;
+  if (event.type === "agent_start") return { kind: "thinking", activity: "thinking" };
+  const update = record(event.assistantMessageEvent);
+  const message = record(event.message) ?? record(update?.partial);
+  const summary = providerSummary(message);
+  if (event.type === "message_update" && typeof update?.type === "string") {
+    const activity = update.type.startsWith("text_") ? "responding" : "thinking";
+    return { kind: "thinking", activity, ...(summary ? { content: summary } : {}) };
+  }
+  if (event.type !== "message_start" && event.type !== "message_end") return;
+  if (message?.role !== "assistant") return;
+  const activity = message.stopReason === "stop" ? "finishing" : "thinking";
+  return { kind: "thinking", activity, ...(summary ? { content: summary } : {}) };
 }
 
 export class RelayPiRuntime extends ProxyPiRuntime {
@@ -46,7 +97,19 @@ export class RelayPiRuntime extends ProxyPiRuntime {
 
     const relayCallbacks: PiRuntimeCallbacks = {
       onInvocation: callbacks.onInvocation,
-      onRawEvent: callbacks.onRawEvent,
+      onRawEvent: (event) => {
+        callbacks.onRawEvent(event);
+        const progress = progressEvent(event);
+        if (progress) {
+          enqueueDelivery(async () => {
+            try {
+              await this.handler?.relayEvent?.(progress);
+            } catch {
+              // Progress is non-authoritative; assistant delivery still proceeds.
+            }
+          });
+        }
+      },
       onNormalizedEvent: (event) => {
         if ((event.kind === "commentary" || event.kind === "assistant") && event.content) {
           const content =

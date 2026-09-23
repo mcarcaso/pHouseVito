@@ -23,15 +23,38 @@ const fakeRuntime: PiRuntime = {
 describe("RelayPiRuntime", () => {
   it("streams commentary, hides private thought, and preserves the final answer", async () => {
     const delivered: string[] = [];
+    const progress: string[] = [];
     const handler: OutputHandler = {
       async relay(message) {
         delivered.push(message);
+      },
+      async relayEvent(event) {
+        if (event.content) progress.push(event.content);
       },
       async endMessage() {},
     };
     const runtime: PiRuntime = {
       getName: () => "fake",
       async run(_systemPrompt, _userMessage, callbacks) {
+        callbacks.onRawEvent({
+          type: "message_update",
+          assistantMessageEvent: {
+            type: "thinking_end",
+            partial: {
+              role: "assistant",
+              content: [
+                {
+                  type: "thinking",
+                  thinking: "private reasoning",
+                  thinkingSignature: JSON.stringify({
+                    type: "reasoning",
+                    summary: [{ type: "summary_text", text: "**Checking files**" }],
+                  }),
+                },
+              ],
+            },
+          },
+        });
         callbacks.onNormalizedEvent({ kind: "thought", content: "private reasoning" });
         callbacks.onNormalizedEvent({ kind: "commentary", content: "Checking the files." });
         callbacks.onNormalizedEvent({ kind: "assistant", content: "Done." });
@@ -43,6 +66,7 @@ describe("RelayPiRuntime", () => {
       onNormalizedEvent: () => undefined,
     });
 
+    assert.deepEqual(progress, ["**Checking files**"]);
     assert.deepEqual(delivered, ["💬 Checking the files.", "Done."]);
   });
 

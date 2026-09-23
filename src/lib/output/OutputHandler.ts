@@ -1,6 +1,16 @@
 export type OutboundMessage = string;
 export type StreamMode = "stream" | "bundled" | "final";
 
+export type AgentActivity =
+  | "thinking"
+  | "reading"
+  | "writing"
+  | "executing"
+  | "delegating"
+  | "tool"
+  | "responding"
+  | "finishing";
+
 export interface AgentActivityEvent {
   kind: "tool_start" | "tool_end" | "thinking";
   toolName?: string;
@@ -9,6 +19,7 @@ export interface AgentActivityEvent {
   result?: unknown;
   isError?: boolean;
   content?: string;
+  activity?: AgentActivity;
 }
 
 /** Transport adapter used to deliver agent activity to a channel target. */

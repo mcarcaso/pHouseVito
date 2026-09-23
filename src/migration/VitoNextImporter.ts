@@ -506,8 +506,17 @@ export function importVitoNext(options: {
       for (const [name, id] of Object.entries(names)) {
         const match = /^discord-([0-9]{1,20})$/.exec(name);
         if (match && typeof id === "string") {
-          if (scope.sessionTargets.get(id) !== match[1])
-            fail(`session name ${name} points outside its Discord scope`);
+          const scopedTarget = scope.sessionTargets.get(id);
+          if (scopedTarget !== match[1]) {
+            warnings.push(
+              `Ignored stale session name ${name}: ${id} is ${
+                scopedTarget
+                  ? `scoped to discord-${scopedTarget}`
+                  : "not in a current Discord scope"
+              }`,
+            );
+            continue;
+          }
           scope.currentByTarget.set(match[1], id);
         }
       }
@@ -1004,11 +1013,22 @@ export function importVitoNext(options: {
     }
     config.cron.jobs = jobs;
     const jobByName = new Map(jobs.map((job) => [job.name, job]));
-    for (const row of tableRows(source.jobs, "runs")) {
+    const sourceRunRows = tableRows(source.jobs, "runs");
+    const orphanRuns = new Map<string, number>();
+    for (const row of sourceRunRows) {
+      const name = text(row.name, `job run ${row.id}.name`);
+      if (!jobByName.has(name)) orphanRuns.set(name, (orphanRuns.get(name) ?? 0) + 1);
+    }
+    for (const [name, count] of [...orphanRuns].sort(([a], [b]) => a.localeCompare(b)))
+      warnings.push(
+        `Archived ${count} historical run(s) for removed job ${name}; no runnable job was created`,
+      );
+    counts.archivedOrphanJobRuns = [...orphanRuns.values()].reduce((sum, count) => sum + count, 0);
+    for (const row of sourceRunRows) {
       const run = jsonObject(row.data, `job run ${row.id}`);
       const name = text(row.name, `job run ${row.id}.name`);
       const job = jobByName.get(name);
-      if (!job) fail(`job run ${row.id} references missing job ${name}`);
+      if (!job) continue;
       const state = text(row.state, `job run ${row.id}.state`);
       const sourceDelivery = text(row.delivery, `job run ${row.id}.delivery`);
       const mappedState = state === "running" ? "interrupted" : state;
@@ -1062,9 +1082,7 @@ export function importVitoNext(options: {
     for (const table of ["jobs", "runs", "prompts"])
       archiveRows(target, "legacy_import_jobs", table, tableRows(source.jobs, table));
     counts.jobs = jobs.length;
-    counts.jobRuns = Number(
-      (source.jobs.prepare("SELECT COUNT(*) count FROM runs").get() as Row).count,
-    );
+    counts.jobRuns = sourceRunRows.length;
 
     for (const row of tableRows(source.discord, "conversations")) {
       if (row.cursor !== null)

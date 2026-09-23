@@ -232,7 +232,13 @@ function fixture(deliveryOperation = "discord.deliver") {
     JSON.stringify(["session-a", "session-b"]),
   );
   const names = join(source, "names.json");
-  writeFileSync(names, JSON.stringify({ "discord-123": "session-a" }));
+  writeFileSync(
+    names,
+    JSON.stringify({
+      "discord-123": "session-a",
+      "discord-999": "session-c",
+    }),
+  );
   const profile = join(source, "profile.md");
   writeFileSync(profile, "# Mike\nExact profile.\n");
   const config = join(source, "config.json");
@@ -298,6 +304,10 @@ describe("Vito Next importer", () => {
     const report = importVitoNext(options);
     assert.equal(report.state, "imported");
     assert.equal(report.counts.historyMessages, 2);
+    assert.deepEqual(report.warnings, [
+      "Ignored stale session name discord-999: session-c is not in a current Discord scope",
+      "Preserved staged Discord outbox files under legacy/discord-outbox; they will not be delivered automatically",
+    ]);
     assert.equal(report.mappings.sessions["session-a"], "discord:123");
     const currentPiPath = join(destination, "pi-sessions", "discord%3A123", "session-a.jsonl");
     assert.ok(existsSync(currentPiPath));

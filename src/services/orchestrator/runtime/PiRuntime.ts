@@ -11,6 +11,8 @@
  * Business events that match what we store in the messages table.
  */
 export type NormalizedEvent =
+  | { kind: "thought"; content: string }
+  | { kind: "commentary"; content: string }
   | { kind: "assistant"; content: string }
   | { kind: "tool_start"; tool: string; callId: string; args: unknown }
   | { kind: "tool_end"; tool: string; callId: string; result: string; success: boolean }

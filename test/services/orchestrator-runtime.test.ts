@@ -4,6 +4,8 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, it } from "node:test";
 import { ObjectContext } from "../../src/context/ObjectContext.js";
+import type { OutputHandler } from "../../src/lib/output/OutputHandler.js";
+import { withRelay } from "../../src/services/orchestrator/runtime/RelayPiRuntime.js";
 import { withTracing } from "../../src/services/orchestrator/runtime/TracingPiRuntime.js";
 import type { PiRuntime } from "../../src/services/orchestrator/runtime/PiRuntime.js";
 import { FileTraceEventStore } from "../../src/stores/traces/FileTraceEventStore.js";
@@ -17,6 +19,57 @@ const fakeRuntime: PiRuntime = {
     callbacks.onNormalizedEvent({ kind: "assistant", content: "answer" });
   },
 };
+
+describe("RelayPiRuntime", () => {
+  it("streams commentary, hides private thought, and preserves the final answer", async () => {
+    const delivered: string[] = [];
+    const handler: OutputHandler = {
+      async relay(message) {
+        delivered.push(message);
+      },
+      async endMessage() {},
+    };
+    const runtime: PiRuntime = {
+      getName: () => "fake",
+      async run(_systemPrompt, _userMessage, callbacks) {
+        callbacks.onNormalizedEvent({ kind: "thought", content: "private reasoning" });
+        callbacks.onNormalizedEvent({ kind: "commentary", content: "Checking the files." });
+        callbacks.onNormalizedEvent({ kind: "assistant", content: "Done." });
+      },
+    };
+
+    await withRelay(runtime, { handler, streamMode: "stream" }).run("system", "hello", {
+      onRawEvent: () => undefined,
+      onNormalizedEvent: () => undefined,
+    });
+
+    assert.deepEqual(delivered, ["💬 Checking the files.", "Done."]);
+  });
+
+  it("delivers only the final answer in final mode", async () => {
+    const delivered: string[] = [];
+    const handler: OutputHandler = {
+      async relay(message) {
+        delivered.push(message);
+      },
+    };
+    const runtime: PiRuntime = {
+      getName: () => "fake",
+      async run(_systemPrompt, _userMessage, callbacks) {
+        callbacks.onNormalizedEvent({ kind: "thought", content: "private reasoning" });
+        callbacks.onNormalizedEvent({ kind: "commentary", content: "Checking the files." });
+        callbacks.onNormalizedEvent({ kind: "assistant", content: "Done." });
+      },
+    };
+
+    await withRelay(runtime, { handler, streamMode: "final" }).run("system", "hello", {
+      onRawEvent: () => undefined,
+      onNormalizedEvent: () => undefined,
+    });
+
+    assert.deepEqual(delivered, ["Done."]);
+  });
+});
 
 describe("TracingPiRuntime", () => {
   it("persists trace metadata and events only through context stores", async () => {

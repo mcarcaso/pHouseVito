@@ -23,6 +23,7 @@ export class RelayPiRuntime extends ProxyPiRuntime {
   private readonly handler: OutputHandler | null;
   private readonly streamMode: StreamMode;
   private completedMessages: string[] = [];
+  private finalMessages: string[] = [];
 
   constructor(delegate: PiRuntime, opts: RelayOptions) {
     super(delegate);
@@ -37,6 +38,7 @@ export class RelayPiRuntime extends ProxyPiRuntime {
     signal?: AbortSignal,
   ): Promise<void> {
     this.completedMessages = [];
+    this.finalMessages = [];
     let delivery = Promise.resolve();
     const enqueueDelivery = (action: () => Promise<void>) => {
       delivery = delivery.then(action);
@@ -46,12 +48,17 @@ export class RelayPiRuntime extends ProxyPiRuntime {
       onInvocation: callbacks.onInvocation,
       onRawEvent: callbacks.onRawEvent,
       onNormalizedEvent: (event) => {
-        if (event.kind === "assistant" && event.content) {
-          this.completedMessages.push(event.content);
+        if ((event.kind === "commentary" || event.kind === "assistant") && event.content) {
+          const content =
+            event.kind === "commentary"
+              ? `💬${event.content.startsWith("MEDIA:") ? "\n" : " "}${event.content}`
+              : event.content;
+          this.completedMessages.push(content);
+          if (event.kind === "assistant") this.finalMessages.push(event.content);
 
           if (this.streamMode === "stream" && this.handler) {
             enqueueDelivery(async () => {
-              await this.handler?.relay(event.content);
+              await this.handler?.relay(content);
               await this.handler?.endMessage?.();
               await this.handler?.startTyping?.();
             });
@@ -116,8 +123,8 @@ export class RelayPiRuntime extends ProxyPiRuntime {
         const combined = this.completedMessages.join("\n\n");
         await this.handler.relay(combined);
         await this.handler.endMessage?.();
-      } else if (this.streamMode === "final" && this.completedMessages.length > 0) {
-        const last = this.completedMessages[this.completedMessages.length - 1];
+      } else if (this.streamMode === "final" && this.finalMessages.length > 0) {
+        const last = this.finalMessages[this.finalMessages.length - 1];
         await this.handler.relay(last);
         await this.handler.endMessage?.();
       }

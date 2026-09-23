@@ -1,6 +1,8 @@
 import { z } from "zod";
 
 const normalizedEventSchema = z.discriminatedUnion("kind", [
+  z.object({ kind: z.literal("thought"), content: z.string() }).strict(),
+  z.object({ kind: z.literal("commentary"), content: z.string() }).strict(),
   z.object({ kind: z.literal("assistant"), content: z.string() }).strict(),
   z
     .object({

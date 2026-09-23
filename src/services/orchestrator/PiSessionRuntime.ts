@@ -489,14 +489,15 @@ export class PiSessionRuntime implements PiRuntime {
             }
 
             if (currentThinkingText && !hasEmittedThought) {
-              const ev: NormalizedEvent = { kind: "assistant", content: currentThinkingText };
+              const ev: NormalizedEvent = { kind: "thought", content: currentThinkingText };
               callbacks.onNormalizedEvent(ev);
               currentThinkingText = "";
               hasEmittedThought = true;
             }
 
             if (currentMessageText && !hasEmittedAssistantText) {
-              const ev: NormalizedEvent = { kind: "assistant", content: currentMessageText };
+              const kind = messageAny?.stopReason === "toolUse" ? "commentary" : "assistant";
+              const ev: NormalizedEvent = { kind, content: currentMessageText };
               callbacks.onNormalizedEvent(ev);
               currentMessageText = "";
               hasEmittedAssistantText = true;
@@ -547,7 +548,7 @@ export class PiSessionRuntime implements PiRuntime {
       await waitForPiSessionSettled(piSession, () => lastPiEventAt);
 
       if (currentThinkingText && !hasEmittedThought) {
-        callbacks.onNormalizedEvent({ kind: "assistant", content: currentThinkingText });
+        callbacks.onNormalizedEvent({ kind: "thought", content: currentThinkingText });
         hasEmittedThought = true;
       }
       if (currentMessageText && !hasEmittedAssistantText) {

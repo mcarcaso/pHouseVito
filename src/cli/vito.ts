@@ -4,6 +4,7 @@ import { fileURLToPath } from "node:url";
 import { runAppsCommand } from "./commands/apps.js";
 import { runConfigCommand } from "./commands/config.js";
 import { runMemoryCommand } from "./commands/memory.js";
+import { runSecretsCommand } from "./commands/secrets.js";
 
 const projectRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..", "..");
 
@@ -13,6 +14,7 @@ Commands:
   config      Validate Vito configuration
   apps        Create and manage Vito apps
   memory      Search Vito's long-term memory
+  secrets     Safely manage secret configuration
   help        Show this help
 
 Run "vito <command> --help" for command-specific help.
@@ -27,6 +29,7 @@ export async function runCli(args: string[]): Promise<number> {
   if (command === "config") return runConfigCommand(commandArgs, projectRoot);
   if (command === "apps") return runAppsCommand(commandArgs, projectRoot);
   if (command === "memory") return runMemoryCommand(commandArgs, projectRoot);
+  if (command === "secrets") return runSecretsCommand(commandArgs, projectRoot);
 
   console.error(`Unknown command: ${command}`);
   process.stderr.write(help);

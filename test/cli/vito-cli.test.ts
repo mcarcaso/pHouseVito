@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { mkdtempSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { after, describe, it } from "node:test";
@@ -8,10 +8,11 @@ import { spawnSync } from "node:child_process";
 const projectRoot = process.cwd();
 const tempDir = mkdtempSync(join(tmpdir(), "vito-cli-"));
 
-function runVito(args: string[]) {
+function runVito(args: string[], input?: string) {
   return spawnSync(resolve(projectRoot, "vito"), args, {
     cwd: projectRoot,
     encoding: "utf-8",
+    input,
   });
 }
 
@@ -90,6 +91,50 @@ describe("Vito CLI", () => {
     const result = runVito(["memory", "search", "query", "--limit", "0"]);
     assert.equal(result.status, 2);
     assert.match(result.stderr, /greater than or equal to 1/);
+  });
+
+  it("sets and lists secrets without printing values", () => {
+    const path = join(tempDir, "cli-secrets.json");
+    const set = runVito(
+      ["secrets", "set", "CLI_TEST_SECRET", "--stdin", "--json", "--file", path],
+      "raw-secret-value\n",
+    );
+    assert.equal(set.status, 0, set.stderr);
+    assert.deepEqual(JSON.parse(set.stdout), {
+      key: "CLI_TEST_SECRET",
+      configured: true,
+      system: false,
+    });
+    assert.equal(`${set.stdout}${set.stderr}`.includes("raw-secret-value"), false);
+    assert.equal(statSync(path).mode & 0o777, 0o600);
+
+    const list = runVito(["secrets", "list", "--json", "--file", path]);
+    assert.equal(list.status, 0, list.stderr);
+    const entries = JSON.parse(list.stdout) as Array<Record<string, unknown>>;
+    assert.ok(
+      entries.some((entry) => entry.key === "CLI_TEST_SECRET" && entry.configured === true),
+    );
+    assert.equal(list.stdout.includes("raw-secret-value"), false);
+    assert.equal(
+      entries.some((entry) => "value" in entry),
+      false,
+    );
+
+    const unconfirmed = runVito(["secrets", "remove", "CLI_TEST_SECRET", "--file", path]);
+    assert.equal(unconfirmed.status, 1);
+    assert.match(unconfirmed.stderr, /requires --yes/);
+
+    const remove = runVito([
+      "secrets",
+      "remove",
+      "CLI_TEST_SECRET",
+      "--yes",
+      "--json",
+      "--file",
+      path,
+    ]);
+    assert.equal(remove.status, 0, remove.stderr);
+    assert.deepEqual(JSON.parse(remove.stdout), { key: "CLI_TEST_SECRET", removed: true });
   });
 
   it("returns a usage error for unknown commands", () => {

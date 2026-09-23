@@ -79,6 +79,7 @@ export class DashboardChannelService implements ChannelService {
 
   private server?: http.Server;
   private readonly port = parseInt(process.env.PORT || "3030", 10);
+  private readonly host = process.env.HOST || "0.0.0.0";
 
   private async setupExpress(x: Context, app: express.Express): Promise<void> {
     app.disable("x-powered-by");
@@ -174,8 +175,8 @@ export class DashboardChannelService implements ChannelService {
     await this.setupExpress(x, app);
     this.server = createServer(app);
     return new Promise((resolve) => {
-      this.server?.listen(this.port, () => {
-        console.log(`📊 Dashboard running at http://localhost:${this.port}`);
+      this.server?.listen(this.port, this.host, () => {
+        console.log(`📊 Dashboard running at http://${this.host}:${this.port}`);
         resolve();
       });
     });

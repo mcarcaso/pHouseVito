@@ -11,10 +11,6 @@ set -euo pipefail
 NAME="${1:?Usage: spinup.sh <name> <domain>}"
 DOMAIN="${2:?Usage: spinup.sh <name> <domain>}"
 
-# Prompt for OpenRouter API key (used by pi harness)
-read -rp "OpenRouter API key: " OPENROUTER_API_KEY
-[ -z "$OPENROUTER_API_KEY" ] && die "OpenRouter API key is required"
-
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 STATE_DIR="$SCRIPT_DIR/state"
 STATE_FILE="$STATE_DIR/$NAME.json"
@@ -34,12 +30,35 @@ log()  { echo -e "\033[1;34m→\033[0m $*"; }
 ok()   { echo -e "\033[1;32m✓\033[0m $*"; }
 die()  { echo -e "\033[1;31m✗\033[0m $*" >&2; exit 1; }
 
+# Keep credentials out of terminal history and shoulder-surfing logs.
+read -rsp "OpenRouter API key: " OPENROUTER_API_KEY
+echo
+[ -z "$OPENROUTER_API_KEY" ] && die "OpenRouter API key is required"
+OPENROUTER_KEY_FILE=$(mktemp)
+chmod 600 "$OPENROUTER_KEY_FILE"
+printf '%s' "$OPENROUTER_API_KEY" > "$OPENROUTER_KEY_FILE"
+unset OPENROUTER_API_KEY
+trap 'rm -f "$OPENROUTER_KEY_FILE"' EXIT
+
 # ── 1. Pre-flight checks ───────────────────────────────────────────
 
 log "Pre-flight checks …"
 command -v aws >/dev/null || die "AWS CLI not found. Install: https://docs.aws.amazon.com/cli/latest/userguide/install-cliv2.html"
 command -v jq  >/dev/null || die "jq not found. Install: brew install jq"
+command -v curl >/dev/null || die "curl not found"
 aws sts get-caller-identity >/dev/null 2>&1 || die "AWS credentials not configured. Run: aws configure"
+
+# Restrict SSH to the operator's address unless an explicit CIDR is supplied.
+SSH_CIDR="${VITO_SSH_CIDR:-}"
+if [ -z "$SSH_CIDR" ]; then
+  DEPLOY_IP=$(curl -fsS https://checkip.amazonaws.com | tr -d '[:space:]')
+  [ -z "$DEPLOY_IP" ] && die "Could not determine deployer IP; set VITO_SSH_CIDR explicitly"
+  if [[ "$DEPLOY_IP" == *:* ]]; then
+    SSH_CIDR="$DEPLOY_IP/128"
+  else
+    SSH_CIDR="$DEPLOY_IP/32"
+  fi
+fi
 
 if [ -f "$STATE_FILE" ]; then
   die "State file $STATE_FILE already exists. Tear down first or choose a different name."
@@ -85,12 +104,13 @@ SG_ID=$(aws ec2 create-security-group \
   --region "$REGION" \
   --query 'GroupId' --output text)
 
-for PORT in 22 80 443; do
-  aws ec2 authorize-security-group-ingress \
-    --group-id "$SG_ID" --protocol tcp --port "$PORT" --cidr 0.0.0.0/0 \
-    --region "$REGION" >/dev/null
-done
-ok "Security group: $SG_ID"
+aws ec2 authorize-security-group-ingress \
+  --group-id "$SG_ID" --protocol tcp --port 22 --cidr "$SSH_CIDR" \
+  --region "$REGION" >/dev/null
+aws ec2 authorize-security-group-ingress \
+  --group-id "$SG_ID" --protocol tcp --port 443 --cidr 0.0.0.0/0 \
+  --region "$REGION" >/dev/null
+ok "Security group: $SG_ID (SSH restricted to $SSH_CIDR; HTTPS public)"
 
 # ── 4. IAM role ─────────────────────────────────────────────────────
 
@@ -241,14 +261,15 @@ ok "State saved to $STATE_FILE"
 # ── 9. Remote setup ────────────────────────────────────────────────
 
 log "Running remote setup (this takes a few minutes) …"
+scp $SSH_OPTS "$OPENROUTER_KEY_FILE" "ubuntu@$ELASTIC_IP:/home/ubuntu/.vito-openrouter-key" >/dev/null
 
-ssh $SSH_OPTS "ubuntu@$ELASTIC_IP" bash -s "$NAME" "$DOMAIN" "$REPO_URL" "$OPENROUTER_API_KEY" << 'REMOTE_SCRIPT'
+ssh $SSH_OPTS "ubuntu@$ELASTIC_IP" bash -s "$NAME" "$DOMAIN" "$REPO_URL" << 'REMOTE_SCRIPT'
 set -euo pipefail
 NAME="$1"
 DOMAIN="$2"
 REPO_URL="$3"
-OPENROUTER_API_KEY="$4"
 FQDN="${NAME}.${DOMAIN}"
+trap 'rm -f /home/ubuntu/.vito-openrouter-key' EXIT
 
 export DEBIAN_FRONTEND=noninteractive
 
@@ -311,13 +332,17 @@ node -e "
 "
 
 echo ">>> Writing secrets …"
-node -e "
+chmod 600 /home/ubuntu/.vito-openrouter-key
+node << 'NODE_SCRIPT'
   const fs = require('fs');
   const p = 'user/secrets.json';
+  const keyPath = '/home/ubuntu/.vito-openrouter-key';
   const secrets = JSON.parse(fs.readFileSync(p, 'utf-8'));
-  secrets.OPENROUTER_API_KEY = '$OPENROUTER_API_KEY';
-  fs.writeFileSync(p, JSON.stringify(secrets, null, 2) + '\n');
-"
+  secrets.OPENROUTER_API_KEY = fs.readFileSync(keyPath, 'utf-8');
+  fs.writeFileSync(p, JSON.stringify(secrets, null, 2) + '\n', { mode: 0o600 });
+  fs.chmodSync(p, 0o600);
+  fs.unlinkSync(keyPath);
+NODE_SCRIPT
 
 echo ">>> Generating ecosystem.config.cjs …"
 cat > user/ecosystem.config.cjs << ECOEOF
@@ -333,6 +358,7 @@ module.exports = {
       env: {
         NODE_ENV: 'production',
         PORT: '3030',
+        HOST: '127.0.0.1',
         CUSTOMER_NAME: '$NAME',
       },
       error_file: 'user/logs/pm2-error.log',
@@ -361,19 +387,30 @@ for attempt in 1 2 3; do
   sleep 10
 done
 
-echo ">>> Writing Caddyfile …"
+echo ">>> Installing Caddy-readable certificate copies …"
 CERT_DIR="/etc/letsencrypt/live/$FQDN"
+CADDY_CERT_DIR="/etc/caddy/certs/$FQDN"
+sudo install -d -o root -g caddy -m 750 "$CADDY_CERT_DIR"
+sudo install -o root -g caddy -m 640 "$CERT_DIR/fullchain.pem" "$CADDY_CERT_DIR/fullchain.pem"
+sudo install -o root -g caddy -m 640 "$CERT_DIR/privkey.pem" "$CADDY_CERT_DIR/privkey.pem"
+
+sudo tee /usr/local/sbin/vito-install-caddy-cert > /dev/null << CERTEOF
+#!/usr/bin/env bash
+set -euo pipefail
+install -d -o root -g caddy -m 750 "$CADDY_CERT_DIR"
+install -o root -g caddy -m 640 "$CERT_DIR/fullchain.pem" "$CADDY_CERT_DIR/fullchain.pem"
+install -o root -g caddy -m 640 "$CERT_DIR/privkey.pem" "$CADDY_CERT_DIR/privkey.pem"
+systemctl reload caddy
+CERTEOF
+sudo chmod 750 /usr/local/sbin/vito-install-caddy-cert
+
+echo ">>> Writing Caddyfile …"
 sudo tee /etc/caddy/Caddyfile > /dev/null << CADDYEOF
 $FQDN, *.$FQDN {
-  tls $CERT_DIR/fullchain.pem $CERT_DIR/privkey.pem
-  reverse_proxy localhost:3030
+  tls $CADDY_CERT_DIR/fullchain.pem $CADDY_CERT_DIR/privkey.pem
+  reverse_proxy 127.0.0.1:3030
 }
 CADDYEOF
-
-echo ">>> Giving Caddy access to certs …"
-sudo chmod 755 /etc/letsencrypt/live /etc/letsencrypt/archive
-sudo chmod 644 /etc/letsencrypt/archive/$FQDN/fullchain*.pem
-sudo chmod 644 /etc/letsencrypt/archive/$FQDN/privkey*.pem
 
 echo ">>> Starting Caddy …"
 sudo systemctl restart caddy
@@ -387,7 +424,7 @@ pm2 save
 # Non-critical: pm2 startup and certbot cron — don't let these kill the script
 set +e
 sudo env PATH=$PATH:$(dirname $(which pm2)) pm2 startup systemd -u ubuntu --hp /home/ubuntu 2>/dev/null
-echo "0 3 * * * /usr/local/bin/certbot renew --quiet --post-hook 'systemctl restart caddy'" | sudo crontab -
+echo "0 3 * * * /usr/local/bin/certbot renew --quiet --deploy-hook /usr/local/sbin/vito-install-caddy-cert" | sudo crontab -
 set -e
 
 echo ">>> Done!"

@@ -13,7 +13,12 @@ import {
 import { api } from "../../services/api/client";
 import { useThemeStyles, useVitoTheme, type VitoTheme } from "../../hooks/useVitoTheme";
 
-export type Secret = { key: string; value: string; system: boolean; description?: string };
+export type Secret = {
+  key: string;
+  configured: boolean;
+  system: boolean;
+  description?: string;
+};
 
 export function SecretsScreen({
   onOpen,
@@ -54,8 +59,8 @@ export function SecretsScreen({
             {secret.description}
           </Text>
         )}
-        <Text style={secret.value ? styles.masked : styles.notSet}>
-          {secret.value ? "••••••••" : "Not set"}
+        <Text style={secret.configured ? styles.masked : styles.notSet}>
+          {secret.configured ? "••••••••" : "Not set"}
         </Text>
       </View>
       <Ionicons name="chevron-forward" size={18} color={theme.colors.textMuted} />
@@ -87,7 +92,7 @@ export function SecretEditorScreen({
 }) {
   const styles = useThemeStyles(createStyles);
   const [key, setKey] = useState(secret?.key ?? "");
-  const [value, setValue] = useState(secret?.value ?? "");
+  const [value, setValue] = useState("");
   const [revealed, setRevealed] = useState(!secret);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -110,6 +115,27 @@ export function SecretEditorScreen({
     } finally {
       setSaving(false);
     }
+  };
+  const clear = () => {
+    if (!secret?.configured || !system) return;
+    Alert.alert("Clear secret", `Clear the stored value for ${secret.key}?`, [
+      { text: "Cancel", style: "cancel" },
+      {
+        text: "Clear",
+        style: "destructive",
+        onPress: async () => {
+          try {
+            await api(`/api/secrets/${encodeURIComponent(secret.key)}`, {
+              method: "PUT",
+              body: JSON.stringify({ value: "" }),
+            });
+            onSaved();
+          } catch (cause) {
+            setError(cause instanceof Error ? cause.message : "Could not clear secret");
+          }
+        },
+      },
+    ]);
   };
   const remove = () => {
     if (!secret || system) return;
@@ -151,7 +177,7 @@ export function SecretEditorScreen({
       </View>
       <View style={styles.field}>
         <View style={styles.valueHeading}>
-          <Text style={styles.label}>Value</Text>
+          <Text style={styles.label}>{secret?.configured ? "Replacement value" : "Value"}</Text>
           <Pressable onPress={() => setRevealed((current) => !current)}>
             <Text style={styles.reveal}>{revealed ? "Hide" : "Reveal"}</Text>
           </Pressable>
@@ -163,20 +189,30 @@ export function SecretEditorScreen({
           multiline={revealed}
           value={value}
           onChangeText={setValue}
-          placeholder={system ? "Paste secret value" : "Secret value"}
+          placeholder={secret?.configured ? "Enter a new value to replace it" : "Secret value"}
           style={[styles.input, revealed && styles.valueInput]}
         />
+        {secret?.configured && (
+          <Text style={styles.help}>
+            Stored values cannot be revealed. Enter a replacement to update it.
+          </Text>
+        )}
       </View>
       {error && <Text style={styles.error}>{error}</Text>}
       <Pressable
-        disabled={saving || !key.trim()}
+        disabled={saving || !key.trim() || !value}
         onPress={() => void save()}
-        style={[styles.saveButton, (saving || !key.trim()) && styles.disabled]}
+        style={[styles.saveButton, (saving || !key.trim() || !value) && styles.disabled]}
       >
         <Text style={styles.saveText}>
           {saving ? "Saving…" : secret ? "Save Changes" : "Add Secret"}
         </Text>
       </Pressable>
+      {secret?.configured && system && (
+        <Pressable onPress={clear} style={styles.deleteButton}>
+          <Text style={styles.deleteText}>Clear Stored Value</Text>
+        </Pressable>
+      )}
       {secret && !system && (
         <Pressable onPress={remove} style={styles.deleteButton}>
           <Text style={styles.deleteText}>Delete Secret</Text>

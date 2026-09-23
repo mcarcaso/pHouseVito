@@ -22,7 +22,7 @@ app.use("/api/secrets", await new SecretRouterService().createRouter(x));
 
 const secretSchema = z.object({
   key: z.string(),
-  value: z.string(),
+  configured: z.boolean(),
   system: z.boolean(),
   description: z.string().optional(),
 });
@@ -62,6 +62,10 @@ describe("secret router", () => {
       body: JSON.stringify({ value: "test" }),
     });
     assert.equal(response.status, 200);
+    assert.deepEqual(await response.json(), {
+      key: "TEST_ROUTER_SECRET",
+      configured: true,
+    });
     assert.equal(service.get(x, "TEST_ROUTER_SECRET"), "test");
     assert.equal(process.env.TEST_ROUTER_SECRET, "test");
   });
@@ -69,9 +73,11 @@ describe("secret router", () => {
   it("lists system and custom secrets", async () => {
     const response = await fetch(`${baseUrl}/api/secrets`);
     assert.equal(response.status, 200);
-    const entries = z.array(secretSchema).parse(await response.json());
+    const body: unknown = await response.json();
+    assert.equal(JSON.stringify(body).includes('"value"'), false);
+    const entries = z.array(secretSchema).parse(body);
     assert.ok(entries.some((entry) => entry.key === "TELEGRAM_BOT_TOKEN"));
-    assert.ok(entries.some((entry) => entry.key === "TEST_ROUTER_SECRET"));
+    assert.ok(entries.some((entry) => entry.key === "TEST_ROUTER_SECRET" && entry.configured));
   });
 
   it("deletes custom secrets but protects system secrets", async () => {

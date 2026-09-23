@@ -46,7 +46,7 @@ export class SecretRouterService implements RouterService {
           key: params.key,
           value: body.value,
         });
-        return { key: secret.key, value: secret.value };
+        return { key: secret.key, configured: secret.configured };
       },
     });
 

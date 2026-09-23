@@ -1,5 +1,14 @@
-import { chmodSync, existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
+import {
+  chmodSync,
+  existsSync,
+  mkdirSync,
+  readFileSync,
+  renameSync,
+  unlinkSync,
+  writeFileSync,
+} from "node:fs";
 import { dirname } from "node:path";
+import lockfile from "proper-lockfile";
 import { z } from "zod";
 import type { Context } from "../../context/Context.js";
 import { xPiAuthPath, xSecretsPath } from "../../lib/x.js";
@@ -95,32 +104,64 @@ export class FileSecretService implements SecretService {
     const path = xSecretsPath(x);
     mkdirSync(dirname(path), { recursive: true });
     const temporaryPath = `${path}.tmp-${process.pid}-${Date.now()}`;
-    writeFileSync(temporaryPath, `${JSON.stringify(secrets, null, 2)}\n`, {
-      encoding: "utf-8",
-      mode: 0o600,
-    });
-    renameSync(temporaryPath, path);
-    chmodSync(path, 0o600);
+    try {
+      writeFileSync(temporaryPath, `${JSON.stringify(secrets, null, 2)}\n`, {
+        encoding: "utf-8",
+        mode: 0o600,
+      });
+      renameSync(temporaryPath, path);
+      chmodSync(path, 0o600);
+    } finally {
+      if (existsSync(temporaryPath)) unlinkSync(temporaryPath);
+    }
+  }
+
+  private withWriteLock<T>(x: Context, operation: () => T): T {
+    const path = xSecretsPath(x);
+    mkdirSync(dirname(path), { recursive: true });
+    const deadline = Date.now() + 5_000;
+    let release: (() => void) | undefined;
+    while (!release) {
+      try {
+        release = lockfile.lockSync(path, { realpath: false, stale: 10_000 });
+      } catch (error) {
+        const code =
+          typeof error === "object" && error !== null && "code" in error
+            ? String(error.code)
+            : undefined;
+        if (code !== "ELOCKED" || Date.now() >= deadline) throw error;
+        Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 50);
+      }
+    }
+    try {
+      return operation();
+    } finally {
+      release();
+    }
   }
 
   load(x: Context): void {
     const path = xSecretsPath(x);
-    const existed = existsSync(path);
-    const result = this.readSecretsResult(x);
-    if (existed && !result.valid) return;
-    const secrets = result.secrets;
-    let updated = false;
+    const secrets = this.withWriteLock(x, () => {
+      const existed = existsSync(path);
+      const result = this.readSecretsResult(x);
+      if (existed && !result.valid) return undefined;
+      const current = result.secrets;
+      let updated = false;
 
-    for (const key of Object.keys(SYSTEM_KEYS)) {
-      if (!(key in secrets) && process.env[key]) {
-        secrets[key] = process.env[key];
-        updated = true;
+      for (const key of Object.keys(SYSTEM_KEYS)) {
+        if (!(key in current) && process.env[key]) {
+          current[key] = process.env[key];
+          updated = true;
+        }
       }
-    }
-    if (updated || !existed) {
-      this.writeSecrets(x, secrets);
-      console.log(`Secrets file updated with ${Object.keys(secrets).length} key(s)`);
-    }
+      if (updated || !existed) {
+        this.writeSecrets(x, current);
+        console.log(`Secrets file updated with ${Object.keys(current).length} key(s)`);
+      }
+      return current;
+    });
+    if (!secrets) return;
 
     for (const key of this.loadedKeys) {
       if (!(key in secrets)) delete process.env[key];
@@ -145,30 +186,32 @@ export class FileSecretService implements SecretService {
     const secrets = this.readSecrets(x);
     const entries: SecretEntry[] = Object.entries(SYSTEM_KEYS).map(([key, description]) => ({
       key,
-      value: secrets[key] ?? "",
+      configured: Boolean(secrets[key]),
       system: true,
       description,
     }));
     for (const [key, value] of Object.entries(secrets)) {
       if (key in SYSTEM_KEYS) continue;
-      entries.push({ key, value, system: false });
+      entries.push({ key, configured: Boolean(value), system: false });
     }
     return entries;
   }
 
   set(x: Context, args: { key: string; value: string }): SecretEntry {
     const key = secretKeySchema.parse(args.key);
-    const result = this.readSecretsResult(x);
-    if (!result.valid) throw new Error("Cannot update an invalid secrets file");
-    const secrets = result.secrets;
-    secrets[key] = args.value;
-    this.writeSecrets(x, secrets);
+    this.withWriteLock(x, () => {
+      const result = this.readSecretsResult(x);
+      if (!result.valid) throw new Error("Cannot update an invalid secrets file");
+      const secrets = result.secrets;
+      secrets[key] = args.value;
+      this.writeSecrets(x, secrets);
+    });
     if (args.value) process.env[key] = args.value;
     else delete process.env[key];
     this.loadedKeys.add(key);
     return {
       key,
-      value: args.value,
+      configured: Boolean(args.value),
       system: key in SYSTEM_KEYS,
       description: SYSTEM_KEYS[key],
     };
@@ -177,12 +220,15 @@ export class FileSecretService implements SecretService {
   delete(x: Context, args: { key: string }): boolean {
     const key = secretKeySchema.parse(args.key);
     if (key in SYSTEM_KEYS) throw new SystemSecretDeletionError(key);
-    const result = this.readSecretsResult(x);
-    if (!result.valid) throw new Error("Cannot update an invalid secrets file");
-    const secrets = result.secrets;
-    const existed = key in secrets;
-    delete secrets[key];
-    this.writeSecrets(x, secrets);
+    const existed = this.withWriteLock(x, () => {
+      const result = this.readSecretsResult(x);
+      if (!result.valid) throw new Error("Cannot update an invalid secrets file");
+      const secrets = result.secrets;
+      const found = key in secrets;
+      delete secrets[key];
+      this.writeSecrets(x, secrets);
+      return found;
+    });
     delete process.env[key];
     this.loadedKeys.delete(key);
     return existed;

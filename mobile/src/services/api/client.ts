@@ -374,10 +374,8 @@ export async function apiStream(path: string, init?: FetchRequestInit): Promise<
 }
 
 export async function getConfiguredSecretKeys(): Promise<Set<string>> {
-  const secrets = await api<Array<{ key: string; value: string }>>("/api/secrets");
-  return new Set(
-    secrets.filter((secret) => secret.value.trim().length > 0).map((secret) => secret.key),
-  );
+  const secrets = await api<Array<{ key: string; configured: boolean }>>("/api/secrets");
+  return new Set(secrets.filter((secret) => secret.configured).map((secret) => secret.key));
 }
 
 export async function api<T>(path: string, init?: RequestInit): Promise<T> {

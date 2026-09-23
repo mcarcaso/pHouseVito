@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { spawn } from "node:child_process";
+import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, it } from "node:test";
@@ -54,6 +55,60 @@ describe("FileSecretService", () => {
     } finally {
       if (previous === undefined) delete process.env.TEST_VITO_SECRET;
       else process.env.TEST_VITO_SECRET = previous;
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  it("serializes writes with other processes", async () => {
+    const { root, secretsPath, x, service } = createHarness();
+    const signalPath = join(root, "locked");
+    const previous = process.env.LOCKED_WRITE;
+    try {
+      service.set(x, { key: "INITIAL", value: "kept" });
+      const child = spawn(
+        process.execPath,
+        [
+          "--input-type=module",
+          "--eval",
+          `
+            import lockfile from "proper-lockfile";
+            import { writeFileSync } from "node:fs";
+            const release = lockfile.lockSync(process.env.SECRETS_PATH, {
+              realpath: false,
+              stale: 10_000,
+            });
+            writeFileSync(process.env.SIGNAL_PATH, "locked");
+            Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 350);
+            release();
+          `,
+        ],
+        {
+          cwd: process.cwd(),
+          env: { ...process.env, SECRETS_PATH: secretsPath, SIGNAL_PATH: signalPath },
+          stdio: ["ignore", "pipe", "pipe"],
+        },
+      );
+      const output: Buffer[] = [];
+      child.stderr.on("data", (chunk: Buffer) => output.push(chunk));
+      const childExit = new Promise<number | null>((resolve) => child.on("exit", resolve));
+      const signalDeadline = Date.now() + 2_000;
+      while (!existsSync(signalPath) && Date.now() < signalDeadline) {
+        await new Promise((resolve) => setTimeout(resolve, 10));
+      }
+      assert.equal(existsSync(signalPath), true, Buffer.concat(output).toString("utf-8"));
+
+      const startedAt = Date.now();
+      service.set(x, { key: "LOCKED_WRITE", value: "saved" });
+      const waitedMs = Date.now() - startedAt;
+      const exitCode = await childExit;
+
+      assert.equal(exitCode, 0, Buffer.concat(output).toString("utf-8"));
+      assert.ok(waitedMs >= 200, `Expected a locked write to wait, got ${waitedMs}ms`);
+      assert.equal(service.get(x, "INITIAL"), "kept");
+      assert.equal(service.get(x, "LOCKED_WRITE"), "saved");
+    } finally {
+      if (previous === undefined) delete process.env.LOCKED_WRITE;
+      else process.env.LOCKED_WRITE = previous;
       rmSync(root, { recursive: true, force: true });
     }
   });

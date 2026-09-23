@@ -18,7 +18,7 @@ export interface PiAuthEntry {
 
 export interface SecretEntry {
   key: string;
-  value: string;
+  configured: boolean;
   system: boolean;
   description?: string;
 }

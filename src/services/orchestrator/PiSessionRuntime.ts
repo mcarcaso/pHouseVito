@@ -315,9 +315,10 @@ export class PiSessionRuntime implements PiRuntime {
 
   private async createSession(systemPrompt: string): Promise<AgentSession> {
     const additionalSkillPaths = (this.config.skills ?? []).map((skill) => skill.path);
+    const agentDir = process.env.VITO_PI_AGENT_DIR;
     const resourceLoader = new DefaultResourceLoader({
       cwd: process.cwd(),
-      agentDir: process.cwd(),
+      agentDir: agentDir ?? process.cwd(),
       noExtensions: true,
       noPromptTemplates: true,
       noThemes: true,
@@ -352,6 +353,7 @@ export class PiSessionRuntime implements PiRuntime {
     }
 
     const { session } = await createAgentSession({
+      ...(agentDir ? { agentDir } : {}),
       sessionManager,
       model,
       resourceLoader,

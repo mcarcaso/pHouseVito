@@ -27,7 +27,18 @@ async function main() {
   const dbPath = resolve(USER_DIR, "vito.db");
   const db = createDatabase(dbPath);
   const skillsDir = resolve(USER_DIR, "skills");
-  const x = RootContext({ db, userDir: USER_DIR, skillsDir });
+  const x = RootContext({
+    db,
+    userDir: USER_DIR,
+    skillsDir,
+    ...(process.env.VITO_RELEASE_MODE === "1"
+      ? {
+          logsDir: resolve(USER_DIR, "logs"),
+          attachmentsDir: resolve(USER_DIR, "attachments"),
+          piAuthPath: resolve(USER_DIR, "pi-agent", "auth.json"),
+        }
+      : {}),
+  });
   xSecretService(x).load(x);
   const vitoService = xVitoService(x);
   const config = vitoService.getConfig(x);

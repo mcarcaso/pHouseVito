@@ -21,7 +21,10 @@ export class JobScriptRunner {
       call: (call: JobScriptCall) => Promise<unknown>;
     },
   ): Promise<unknown> {
-    const workerPath = fileURLToPath(new URL("./job-script-worker.ts", import.meta.url));
+    const workerFile = import.meta.url.endsWith(".ts")
+      ? "./job-script-worker.ts"
+      : "./job-script-worker.js";
+    const workerPath = fileURLToPath(new URL(workerFile, import.meta.url));
     const logPath = join(xLogsDir(x), "jobs", `${args.jobName}.log`);
     mkdirSync(dirname(logPath), { recursive: true });
     const log = (stream: "stdout" | "stderr", text: string) => {

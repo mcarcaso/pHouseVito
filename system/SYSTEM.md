@@ -22,8 +22,7 @@
 
 ## Restart vs Reload
 
-- **Backend `src/` changes:** Build and restart Vito.
-- **Companion web changes:** Rebuild `mobile/`; Express serves the rebuilt static files without requiring a Vito restart. Refresh the browser.
+- **Core code and companion web:** Follow the deployment-specific instructions in the system prompt. Source checkouts may build code; managed releases are immutable and have no editable core source. Never build web assets in a directory currently served to users.
 - **`user/vito.config.json`:** Watched and reloaded without a process restart. Model/runtime settings reconcile lazily, but settings that alter the system prompt require a fresh harness session.
 - **`user/SOUL.md`, `system/SYSTEM.md`, and skills:** Read when a harness session is created. Use `/new` when the current conversation must pick up changes; a process restart is not required.
 - **PM2 apps:** Managed independently and discovered dynamically; creating or restarting an app does not require restarting Vito.

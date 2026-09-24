@@ -211,6 +211,7 @@ export class PiOrchestratorService implements OrchestratorService {
       channelPrompt: channel?.getCustomPrompt?.(this.x) || "",
       customInstructions: effectiveSettings.customInstructions || "",
       botName: this.config.bot?.name,
+      deploymentMode: process.env.VITO_RELEASE_MODE === "1" ? "managed-release" : "source-checkout",
       session: {
         id: session.id,
         channel: channelName,
@@ -724,6 +725,8 @@ export class PiOrchestratorService implements OrchestratorService {
         channelPrompt: rawMetadata.channelPrompt || channel?.getCustomPrompt?.(this.x) || "",
         customInstructions: effectiveSettings.customInstructions || "",
         botName: this.config.bot?.name,
+        deploymentMode:
+          process.env.VITO_RELEASE_MODE === "1" ? "managed-release" : "source-checkout",
         session: {
           id: vitoSession.id,
           channel: event.channel,

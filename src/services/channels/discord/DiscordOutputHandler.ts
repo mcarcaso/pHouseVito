@@ -1,14 +1,15 @@
 import { createHash } from "node:crypto";
-import { existsSync, statSync } from "node:fs";
-import { isAbsolute, resolve } from "node:path";
+import { existsSync, readFileSync, realpathSync, statSync } from "node:fs";
+import { basename, isAbsolute, relative, resolve, sep } from "node:path";
 import {
+  AttachmentBuilder,
   ChatInputCommandInteraction,
   Client,
   Message as DiscordMessage,
   MessageFlags,
 } from "discord.js";
 import type { Context } from "../../../context/Context.js";
-import { xDiscordQueueStore, xVitoService } from "../../../lib/x.js";
+import { xDiscordQueueStore, xDriveDir, xVitoService } from "../../../lib/x.js";
 import type {
   AgentActivity,
   AgentActivityEvent,
@@ -18,6 +19,24 @@ import type {
 import { parseInboundEventMetadata, type InboundEvent } from "../../../lib/types/inbound-event.js";
 
 const DISCORD_MAX_LENGTH = 2_000;
+const DISCORD_UPLOAD_DEADLINE_MS = 20_000;
+
+async function withDeadline<T>(promise: Promise<T>, milliseconds: number): Promise<T> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  try {
+    return await Promise.race([
+      promise,
+      new Promise<T>((_, reject) => {
+        timer = setTimeout(
+          () => reject(new Error("Discord attachment upload timed out")),
+          milliseconds,
+        );
+      }),
+    ]);
+  } finally {
+    if (timer) clearTimeout(timer);
+  }
+}
 
 function dashboardUrl(x: Context): string {
   const configured = process.env.VITO_DASHBOARD_URL?.trim();
@@ -42,7 +61,7 @@ interface DiscordOutputChannel {
       | string
       | {
           content?: string;
-          files?: string[];
+          files?: AttachmentBuilder[];
           nonce?: string;
           enforceNonce?: boolean;
           flags?: number;
@@ -390,30 +409,56 @@ export class DiscordOutputHandler implements OutputHandler {
     if (current?.delete) await current.delete().catch(() => {});
   }
 
-  private async sendText(content: string, messageNonce: string): Promise<void> {
+  private async sendText(content: string, messageNonce: string, quiet = false): Promise<void> {
     if (this.interaction && !this.interactionReplied) {
       this.interactionReplied = true;
       await this.interaction.editReply(content);
       return;
     }
     if (!this.channel) throw new Error("Discord output channel is unavailable");
-    await this.channel.send({ content, nonce: messageNonce, enforceNonce: true });
+    await this.channel.send({
+      content,
+      nonce: messageNonce,
+      enforceNonce: true,
+      ...(quiet ? { flags: MessageFlags.SuppressNotifications } : {}),
+    });
   }
 
-  private async sendFile(filePath: string, messageNonce: string): Promise<void> {
+  private driveFallback(filePath: string): string | undefined {
+    const driveDir = xDriveDir(this.x);
+    if (typeof driveDir !== "string" || !existsSync(driveDir) || !existsSync(filePath)) return;
+    const path = relative(realpathSync(driveDir), realpathSync(filePath));
+    if (!path || path === ".." || path.startsWith(`..${sep}`) || isAbsolute(path)) return;
+    const encoded = path.split(sep).map(encodeURIComponent).join("/");
+    return `Attachment upload unavailable. Open the file in Vito (sign in if prompted): ${dashboardUrl(this.x)}/api/drive/file/${encoded}`;
+  }
+
+  private async sendFile(filePath: string, messageNonce: string, quiet = false): Promise<void> {
     if (!existsSync(filePath)) throw new Error(`Discord attachment does not exist: ${filePath}`);
     const stats = statSync(filePath);
     if (!stats.isFile()) throw new Error(`Discord attachment is not a regular file: ${filePath}`);
     if (stats.size > 20 * 1024 * 1024) {
       throw new Error(`Discord attachment exceeds the 20 MiB delivery limit: ${filePath}`);
     }
+    const attachment = new AttachmentBuilder(readFileSync(filePath), { name: basename(filePath) });
     if (this.interaction && !this.interactionReplied) {
       this.interactionReplied = true;
-      await this.interaction.editReply({ files: [filePath] });
+      await withDeadline(
+        this.interaction.editReply({ files: [attachment] }),
+        DISCORD_UPLOAD_DEADLINE_MS,
+      );
       return;
     }
     if (!this.channel) throw new Error("Discord output channel is unavailable");
-    await this.channel.send({ files: [filePath], nonce: messageNonce, enforceNonce: true });
+    await withDeadline(
+      this.channel.send({
+        files: [attachment],
+        nonce: messageNonce,
+        enforceNonce: true,
+        ...(quiet ? { flags: MessageFlags.SuppressNotifications } : {}),
+      }),
+      DISCORD_UPLOAD_DEADLINE_MS,
+    );
   }
 
   private async flushBuffer(): Promise<void> {
@@ -424,6 +469,8 @@ export class DiscordOutputHandler implements OutputHandler {
     const text = this.buffer;
     this.buffer = "";
     const pieces = parsePieces(text);
+    // RelayPiRuntime prefixes commentary with 💬; keep every split chunk quiet.
+    const quiet = text.startsWith("💬");
     const key = `${deliveryBase(this.event)}:${this.flushSequence++}`;
     const fingerprint = createHash("sha256").update(JSON.stringify(pieces)).digest("hex");
     const store = xDiscordQueueStore(this.x);
@@ -437,8 +484,24 @@ export class DiscordOutputHandler implements OutputHandler {
       const piece = pieces[index];
       store.advanceDelivery(this.x, key, index);
       try {
-        if (piece.type === "text") await this.sendText(piece.content, nonce(key, index));
-        else await this.sendFile(piece.path, nonce(key, index));
+        if (piece.type === "text") {
+          await this.sendText(piece.content, nonce(key, index), quiet);
+        } else {
+          try {
+            await this.sendFile(piece.path, nonce(key, index), quiet);
+          } catch (uploadError) {
+            const fallback = this.driveFallback(piece.path);
+            if (!fallback) throw uploadError;
+            console.warn(
+              `[Discord] Upload failed; sending Drive link: ${errorMessage(uploadError)}`,
+            );
+            // Distinct nonce: an upload timed out locally but may still complete.
+            await withDeadline(
+              this.sendText(fallback, nonce(`${key}:fallback`, index), quiet),
+              10_000,
+            );
+          }
+        }
       } catch (error) {
         // Enforced deterministic nonces make a retry safe even if the network
         // failed after Discord accepted the piece.

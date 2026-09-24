@@ -8,6 +8,7 @@ import {
   SlashCommandBuilder,
   ChatInputCommandInteraction,
 } from "discord.js";
+import type { ResponseLike } from "@discordjs/rest";
 import type { Context } from "../../../context/Context.js";
 import {
   xDiscordQueueStore,
@@ -83,7 +84,15 @@ export class DiscordChannelService implements ChannelService {
         GatewayIntentBits.DirectMessages,
       ],
       partials: [Partials.Channel], // needed for DMs
-      rest: { timeout: 60_000 }, // 60s timeout for file uploads (default 15s was too short)
+      // Node's bundled-Undici request path has intermittently closed multipart
+      // connections to Discord. Use the supported fetch strategy instead.
+      // discord.js types its init as bundled-Undici RequestInit; its runtime
+      // builds standard JSON/FormData bodies accepted by Node's global fetch.
+      rest: {
+        timeout: 20_000,
+        makeRequest: async (url, init) =>
+          (await fetch(url, init as RequestInit)) as unknown as ResponseLike,
+      },
     });
 
     await this.client.login(token);

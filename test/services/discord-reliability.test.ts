@@ -151,6 +151,93 @@ describe("Discord durability", () => {
     }
   });
 
+  it("sends every commentary chunk quietly without silencing the final answer", async () => {
+    const db = createDatabase(":memory:");
+    const store = new SqliteDiscordQueueStore();
+    const x = new ObjectContext({ db: () => db, discordQueueStore: () => store });
+    const sent: Array<Record<string, unknown>> = [];
+    const channel = {
+      id: "channel-1",
+      send: async (value: Record<string, unknown>) => {
+        sent.push(value);
+        return {};
+      },
+    };
+    const client = { channels: { fetch: async () => channel } } as unknown as Client;
+    const event = {
+      sessionKey: "discord:channel-1",
+      channel: "discord",
+      target: "channel-1",
+      author: "Mike",
+      timestamp: 4,
+      content: "",
+      raw: { source: "discord", discordMessageId: "quiet-commentary" },
+    };
+    try {
+      const handler = new DiscordOutputHandler(x, client, event);
+      await handler.relay(`💬 ${"A long update. ".repeat(180)}`);
+      await handler.endMessage();
+      assert.ok(sent.length > 1);
+      assert.ok(sent.every((message) => message.flags === 4_096));
+      const count = sent.length;
+      await handler.relay("Final answer.");
+      await handler.endMessage();
+      assert.equal(sent.length, count + 1);
+      assert.equal(sent.at(-1)?.flags, undefined);
+    } finally {
+      db.close();
+    }
+  });
+
+  it("falls back to an authenticated Drive link when an attachment upload fails", async () => {
+    const root = mkdtempSync(join(tmpdir(), "vito-discord-drive-"));
+    const file = join(root, "report with spaces.md");
+    writeFileSync(file, "private report");
+    const db = createDatabase(":memory:");
+    const store = new SqliteDiscordQueueStore();
+    const x = new ObjectContext({
+      db: () => db,
+      discordQueueStore: () => store,
+      driveDir: () => root,
+      vitoService: () => ({ getConfig: () => ({ apps: { baseDomain: "example.com" } }) }),
+    });
+    const sent: Array<Record<string, unknown>> = [];
+    const channel = {
+      id: "channel-1",
+      send: async (value: Record<string, unknown>) => {
+        sent.push(value);
+        if (value.files) throw new Error("connection closed");
+        return {};
+      },
+    };
+    const client = { channels: { fetch: async () => channel } } as unknown as Client;
+    const event = {
+      sessionKey: "discord:channel-1",
+      channel: "discord",
+      target: "channel-1",
+      author: "Mike",
+      timestamp: 3,
+      content: "",
+      raw: { source: "discord", discordMessageId: "upload-fallback" },
+    };
+    try {
+      const handler = new DiscordOutputHandler(x, client, event);
+      await handler.relay(`Report\nMEDIA:${file}`);
+      await handler.endMessage();
+      assert.equal(sent.length, 3);
+      assert.equal((sent[1].files as Array<{ name: string }>)[0].name, "report with spaces.md");
+      assert.match(
+        String(sent[2].content),
+        /https:\/\/example\.com\/api\/drive\/file\/report%20with%20spaces\.md/,
+      );
+      assert.notEqual(sent[1].nonce, sent[2].nonce);
+      assert.equal(store.delivery(x, "discord:reply:upload-fallback:0")?.status, "completed");
+    } finally {
+      db.close();
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
   it("splits bounded fenced messages and sends each attachment path exactly once", async () => {
     const chunks = splitMessage(`\`\`\`ts\n${"const value = 1;\n".repeat(180)}\`\`\``);
     assert.ok(chunks.length > 1);
@@ -190,7 +277,10 @@ describe("Discord durability", () => {
       await first.endMessage();
       assert.equal(sent.length, 2);
       assert.deepEqual((sent[0] as { content: string }).content, "Summary");
-      assert.deepEqual((sent[1] as { files: string[] }).files, [file]);
+      const attachment = (sent[1] as { files: Array<{ name: string; attachment: Buffer }> })
+        .files[0];
+      assert.equal(attachment.name, "report with spaces.txt");
+      assert.equal(attachment.attachment.toString(), "report");
       assert.equal(typeof (sent[0] as { nonce: unknown }).nonce, "string");
       assert.equal((sent[0] as { enforceNonce: boolean }).enforceNonce, true);
 

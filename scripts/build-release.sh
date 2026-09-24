@@ -41,6 +41,6 @@ printf '%s\n' "Node: $(node --version)" "Platform: $(node -p 'process.platform +
 ARCHIVE="$OUT/vito-$VERSION-$(node -p 'process.platform + "-" + process.arch').tar.gz"
 [ ! -e "$ARCHIVE" ] || { echo "Release already exists: $ARCHIVE" >&2; exit 1; }
 (cd "$STAGE" && tar -czf "$ARCHIVE" "vito-$VERSION")
-shasum -a 256 "$ARCHIVE" > "$ARCHIVE.sha256"
+(cd "$OUT" && shasum -a 256 "$(basename "$ARCHIVE")") > "$ARCHIVE.sha256"
 echo "Release: $ARCHIVE"
 cat "$ARCHIVE.sha256"

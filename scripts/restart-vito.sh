@@ -40,8 +40,16 @@ sync_dependencies "mobile" "mobile" npm --prefix mobile ci --include=dev
 echo "[Vito] Building backend..."
 npm run build
 
-echo "[Vito] Building companion web client..."
-npm run build:mobile:web
+echo "[Vito] Building companion web client away from the live site..."
+WEB_STAGE="$(mktemp -d "${TMPDIR:-/tmp}/vito-web-export.XXXXXXXX")"
+trap 'rm -rf "$WEB_STAGE"' EXIT
+(cd "$ROOT_DIR/mobile" && ./node_modules/.bin/expo export --platform web --output-dir "$WEB_STAGE")
+test -s "$WEB_STAGE/index.html"
+
+# Publish assets first and switch the entry point last. Keep old hashed assets
+# so in-flight browser sessions never point at missing JavaScript during cutover.
+echo "[Vito] Publishing companion web client..."
+node "$ROOT_DIR/scripts/publish-mobile-web.mjs" "$WEB_STAGE" "$ROOT_DIR/mobile/dist"
 
 echo "[Vito] Restarting PM2 service..."
 pm2 restart vito-server

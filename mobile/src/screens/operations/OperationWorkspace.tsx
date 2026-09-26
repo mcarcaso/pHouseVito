@@ -262,6 +262,7 @@ export function OperationWorkspace({
   const [detailLoading, setDetailLoading] = useState(false);
   const [hasOlderDetailRows, setHasOlderDetailRows] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [restartRequested, setRestartRequested] = useState(false);
   const [query, setQuery] = useState(initialMemoryQuery ?? "");
   const [memoryMode, setMemoryMode] = useState<"hybrid" | "embedding" | "bm25">(initialMemoryMode);
   const [memoryLimit, setMemoryLimit] = useState(String(initialMemoryLimit));
@@ -321,6 +322,7 @@ export function OperationWorkspace({
         method,
         body: body === undefined ? undefined : JSON.stringify(body),
       });
+      if (path === "/api/server/restart") setRestartRequested(true);
       await load();
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : "Action failed");
@@ -328,11 +330,17 @@ export function OperationWorkspace({
     }
   };
 
-  const confirm = (title: string, action: () => void) =>
-    Alert.alert(title, `This action changes ${agentName}. Continue?`, [
+  const confirm = (title: string, action: () => void) => {
+    const message = `This action changes ${agentName}. Continue?`;
+    if (Platform.OS === "web") {
+      if (window.confirm(`${title}\n\n${message}`)) action();
+      return;
+    }
+    Alert.alert(title, message, [
       { text: "Cancel", style: "cancel" },
       { text: "Continue", style: "destructive", onPress: action },
     ]);
+  };
 
   const searchMemory = async () => {
     if (!query.trim()) return;
@@ -884,6 +892,12 @@ export function OperationWorkspace({
       )}
 
       {error && <Text style={styles.error}>{error}</Text>}
+      {area === "server" && restartRequested && (
+        <Text style={styles.serverRestartNotice}>
+          Rebuild requested. The server may briefly disconnect; check the restart log if it does not
+          return.
+        </Text>
+      )}
       {(loading || detailLoading) && (
         <View style={styles.loadingRow}>
           <ActivityIndicator color={theme.colors.accent} />
@@ -1357,6 +1371,7 @@ const createStyles = (theme: VitoTheme) =>
     },
     rawToggleTextActive: { color: theme.colors.accent },
     error: { color: theme.colors.danger, marginVertical: theme.space.md },
+    serverRestartNotice: { color: theme.colors.info, marginVertical: theme.space.md },
     loadingRow: {
       flexDirection: "row",
       alignItems: "center",

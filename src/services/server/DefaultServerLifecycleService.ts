@@ -1,5 +1,7 @@
+import { spawn } from "node:child_process";
+import { closeSync, mkdirSync, openSync } from "node:fs";
 import os from "node:os";
-import { execa } from "execa";
+import { dirname, join } from "node:path";
 import type { Context } from "../../context/Context.js";
 import type {
   ServerHealth,
@@ -125,12 +127,29 @@ export class DefaultServerLifecycleService implements ServerLifecycleService {
 }
 
 async function runLifecycleCommand(command: LifecycleCommand): Promise<void> {
-  await execa(command.file, command.args, {
-    stdio: "pipe",
-    timeout: command.timeout,
-    env: {
-      ...process.env,
-      PATH: `${process.env.PATH ?? ""}${commandPathSuffix}`,
-    },
-  });
+  // The final PM2 restart kills this server. Run the rebuild in its own process
+  // group so the parent disappearing cannot interrupt the build or misreport it.
+  const logPath = join(process.cwd(), "user/logs/restart-vito.log");
+  mkdirSync(dirname(logPath), { recursive: true });
+  const logFd = openSync(logPath, "a", 0o600);
+  try {
+    await new Promise<void>((resolve, reject) => {
+      const child = spawn(command.file, command.args, {
+        detached: true,
+        stdio: ["ignore", logFd, logFd],
+        timeout: command.timeout,
+        env: {
+          ...process.env,
+          PATH: `${process.env.PATH ?? ""}${commandPathSuffix}`,
+        },
+      });
+      child.once("error", reject);
+      child.once("spawn", () => {
+        child.unref();
+        resolve();
+      });
+    });
+  } finally {
+    closeSync(logFd);
+  }
 }

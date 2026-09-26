@@ -52,6 +52,12 @@ export interface OrchestratorService {
     content: string,
     details: { key: string; source: string },
   ): Promise<void>;
+  appendSessionContextAfterTurn(
+    x: Context,
+    sessionId: string,
+    content: string,
+    details: { key: string; source: string },
+  ): Promise<void>;
   listRuns(x: Context): OrchestratorRun[];
   start(x: Context): Promise<void>;
   stop(x: Context): Promise<void>;

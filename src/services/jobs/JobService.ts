@@ -22,6 +22,8 @@ export interface JobRun {
   error: string | null;
   cancelled: boolean;
   delivery: JobDeliveryState;
+  /** Only set for jobs delivered after chat-context mirroring was introduced. */
+  contextDelivery?: "pending" | "appended";
   promptSessions: string[];
 }
 

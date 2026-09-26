@@ -13,6 +13,7 @@ export interface JobRunStore {
   save(x: Context, run: JobRun): void;
   read(x: Context, runId: string): JobRun | undefined;
   list(x: Context, query?: { name?: string; limit?: number }): JobRun[];
+  listPendingContext(x: Context): JobRun[];
   cancel(x: Context, runId: string): boolean;
   addPrompt(x: Context, runId: string, session: string): void;
 }

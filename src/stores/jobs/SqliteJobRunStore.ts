@@ -110,6 +110,18 @@ export class SqliteJobRunStore implements JobRunStore {
     ).map(parseRun);
   }
 
+  listPendingContext(x: Context): JobRun[] {
+    return (
+      xDb(x)
+        .prepare(
+          `SELECT data, cancelled FROM job_runs
+           WHERE delivery = 'delivered' AND json_extract(data, '$.contextDelivery') = 'pending'
+           ORDER BY started_at ASC, rowid ASC`,
+        )
+        .all() as RunRow[]
+    ).map(parseRun);
+  }
+
   cancel(x: Context, runId: string): boolean {
     return (
       xDb(x)

@@ -233,6 +233,20 @@ export class PiOrchestratorService implements OrchestratorService {
     );
   }
 
+  async appendSessionContextAfterTurn(
+    x: Context,
+    sessionId: string,
+    content: string,
+    details: { key: string; source: string },
+  ): Promise<void> {
+    this.initialize(x);
+    // Unlike voice handoffs, external job delivery must be durable before it is
+    // acknowledged. Never append between a streaming tool call and its result.
+    await this.withSessionLease(sessionId, undefined, () =>
+      this.appendSessionContext(x, sessionId, content, details),
+    );
+  }
+
   private async relayDirectAnswerToSession(
     session: string,
     answer: string,

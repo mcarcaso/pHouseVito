@@ -16,6 +16,9 @@ function createHarness(script: string) {
   const db = createDatabase(join(root, "vito.db"));
   const store = new SqliteJobRunStore();
   const prompts: Array<{ session: string; message: string }> = [];
+  const deliveries: string[] = [];
+  const contexts: Array<{ session: string; content: string; key: string }> = [];
+  const failures = { append: false, relay: false };
   const x = new ObjectContext({
     db: () => db,
     logsDir: () => join(root, "logs"),
@@ -26,13 +29,35 @@ function createHarness(script: string) {
         prompts.push(input);
         return `answer-${prompts.length}`;
       },
+      appendSessionContextAfterTurn: async (
+        _x: unknown,
+        session: string,
+        content: string,
+        details: { key: string },
+      ) => {
+        if (failures.append) throw new Error("Pi append failed");
+        contexts.push({ session, content, key: details.key });
+      },
     }),
     vitoService: () => ({
       getConfig: () => ({
         settings: { "pi-coding-agent": { model: { provider: "faux", name: "faux" } } },
       }),
     }),
-    channelRegistryService: () => ({ get: () => undefined }),
+    channelRegistryService: () => ({
+      get: () => ({
+        x: undefined,
+        channel: {
+          createOutputHandler: () => ({
+            relay: async (text: string) => {
+              if (failures.relay) throw new Error("Chat delivery failed");
+              deliveries.push(text);
+            },
+            endMessage: async () => undefined,
+          }),
+        },
+      }),
+    }),
   });
   const service = new DefaultJobService();
   const job: ScriptJobConfig = {
@@ -42,7 +67,7 @@ function createHarness(script: string) {
     timeoutMs: 5_000,
     enabled: true,
   };
-  return { root, db, store, x, service, job, prompts };
+  return { root, db, store, x, service, job, prompts, deliveries, contexts, failures };
 }
 
 function cleanup(root: string, db: ReturnType<typeof createDatabase>): void {
@@ -94,6 +119,59 @@ describe("DefaultJobService", () => {
       );
       assert.deepEqual(run?.promptSessions, ["dashboard:shared", "dashboard:shared"]);
       assert.equal(run?.delivery, "none");
+    } finally {
+      cleanup(harness.root, harness.db);
+    }
+  });
+
+  it("mirrors all delivered chat jobs into their Pi session without starting a turn", async () => {
+    const harness = createHarness(`export default async function () { return "CPU alert"; }`);
+    try {
+      const job = { ...harness.job, delivery: { channel: "discord", target: "room" } };
+      const run = await harness.service.execute(harness.x, job, new Date().toISOString());
+      assert.equal(run?.delivery, "delivered");
+      assert.equal(run?.contextDelivery, "appended");
+      assert.deepEqual(harness.deliveries, ["CPU alert"]);
+      assert.equal(harness.contexts.length, 1);
+      assert.equal(harness.contexts[0].session, "discord:room");
+      assert.match(harness.contexts[0].content, /not a message from the user.*CPU alert/s);
+      assert.equal(harness.contexts[0].key, `job-delivery:${run?.id}`);
+      assert.deepEqual(harness.store.listPendingContext(harness.x), []);
+    } finally {
+      cleanup(harness.root, harness.db);
+    }
+  });
+
+  it("recovers context after a successful delivery without posting again", async () => {
+    const harness = createHarness(`export default async function () { return "CPU alert"; }`);
+    try {
+      harness.failures.append = true;
+      const job = { ...harness.job, delivery: { channel: "telegram", target: "room" } };
+      const run = await harness.service.execute(harness.x, job, new Date().toISOString());
+      assert.equal(run?.delivery, "delivered");
+      assert.equal(run?.contextDelivery, "pending");
+      assert.equal(harness.store.listPendingContext(harness.x).length, 1);
+      harness.failures.append = false;
+      await harness.service.reconcileDeliveredContexts(harness.x);
+      assert.equal(harness.store.read(harness.x, run!.id)?.contextDelivery, "appended");
+      assert.equal(harness.contexts[0].session, "telegram:room");
+      assert.deepEqual(harness.deliveries, ["CPU alert"]);
+      await harness.service.reconcileDeliveredContexts(harness.x);
+      assert.equal(harness.contexts.length, 1);
+    } finally {
+      cleanup(harness.root, harness.db);
+    }
+  });
+
+  it("does not inject results when chat delivery fails", async () => {
+    const harness = createHarness(`export default async function () { return "CPU alert"; }`);
+    try {
+      harness.failures.relay = true;
+      const job = { ...harness.job, delivery: { channel: "discord", target: "room" } };
+      const run = await harness.service.execute(harness.x, job, new Date().toISOString());
+      assert.equal(run?.delivery, "failed");
+      assert.deepEqual(harness.contexts, []);
+      assert.deepEqual(harness.store.listPendingContext(harness.x), []);
     } finally {
       cleanup(harness.root, harness.db);
     }

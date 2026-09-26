@@ -149,7 +149,8 @@ export class CronerCronService implements CronService {
 
   private readOrInitializeNextRun(x: Context, job: ScriptJobConfig): string | null {
     const db = xDb(x);
-    const config = JSON.stringify(job.schedule);
+    // The effective timezone is part of the schedule even when omitted by the job.
+    const config = JSON.stringify({ schedule: job.schedule, timezone: this.getJobTimezone(job) });
     const row = db
       .prepare("SELECT config, next_at FROM job_schedule_state WHERE name = ?")
       .get(job.name) as { config: string; next_at: string | null } | undefined;
@@ -274,13 +275,19 @@ export class CronerCronService implements CronService {
   }
 
   reload(x: Context, jobs: CronJobConfig[], timezone?: string): void {
+    const previousTimezone = this.globalTimezone;
     this.setTimezone(timezone ?? DEFAULT_TIMEZONE);
+    const timezoneChanged = previousTimezone !== this.globalTimezone;
     const nextByName = new Map(jobs.map((job) => [job.name, job]));
-    for (const [name, current] of this.jobConfigs) {
+    for (const [name, current] of [...this.jobConfigs]) {
       const next = nextByName.get(name);
       if (!next) {
         this.removeJob(x, name);
-      } else if (JSON.stringify(current) !== JSON.stringify(next)) {
+      } else if (
+        JSON.stringify(current) !== JSON.stringify(next) ||
+        (timezoneChanged &&
+          (isScriptJob(next) ? "cron" in next.schedule && !next.schedule.timezone : !next.timezone))
+      ) {
         this.unscheduleJob(x, name, false);
         this.scheduleJob(x, next);
       }

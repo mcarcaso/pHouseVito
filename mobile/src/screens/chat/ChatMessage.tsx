@@ -447,7 +447,7 @@ export function MessageRow({ message }: { message: Message }) {
         style={[
           styles.bubble,
           desktop && styles.desktopBubble,
-          desktop && body.attachments.length > 0 && styles.desktopAttachmentBubble,
+          body.attachments.length > 0 && styles.attachmentBubble,
           user ? styles.userBubble : styles.assistantBubble,
         ]}
       >
@@ -634,7 +634,7 @@ const createStyles = (theme: VitoTheme) =>
       paddingVertical: theme.space.sm,
     },
     desktopBubble: { maxWidth: 680 },
-    desktopAttachmentBubble: { width: 480 },
+    attachmentBubble: { width: "82%", maxWidth: 480 },
     userBubble: { backgroundColor: theme.colors.accent, borderBottomRightRadius: 5 },
     assistantBubble: {
       width: "100%",

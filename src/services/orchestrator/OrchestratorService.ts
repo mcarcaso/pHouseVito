@@ -1,3 +1,4 @@
+import type { SteerQueuedResult } from "./QueuedSteering.js";
 import type { Context } from "../../context/Context.js";
 import type { ChannelService } from "../channels/ChannelService.js";
 import type { InboundEvent } from "../../lib/types/inbound-event.js";
@@ -28,6 +29,7 @@ export interface OrchestratorRun {
   preview: string;
   status: "active" | "queued";
   timestamp: number;
+  id?: string;
 }
 
 export interface OrchestratorService {
@@ -36,6 +38,12 @@ export interface OrchestratorService {
   reloadConfig(x: Context, config: VitoConfig): void;
   handleInbound(x: Context, event: InboundEvent, channel: ChannelService | null): Promise<void>;
   steer(x: Context, event: InboundEvent): Promise<boolean>;
+  steerQueued(
+    x: Context,
+    sessionKey: string,
+    id: string,
+    authorId: string,
+  ): Promise<SteerQueuedResult>;
   ask(x: Context, options: AskOptions): Promise<string>;
   prompt(x: Context, options: ContextualPromptOptions): Promise<string>;
   appendSessionContext(

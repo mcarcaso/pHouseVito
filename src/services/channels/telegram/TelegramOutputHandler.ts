@@ -1,12 +1,18 @@
 import { Bot } from "grammy";
 import * as path from "node:path";
-import type { OutputHandler, OutboundMessage } from "../../../lib/output/OutputHandler.js";
+import { ProgressPresenter } from "../../../lib/output/ProgressPresenter.js";
+import type {
+  AgentActivityEvent,
+  OutputHandler,
+  OutboundMessage,
+} from "../../../lib/output/OutputHandler.js";
 import type { InboundEvent } from "../../../lib/types/inbound-event.js";
 
 const TELEGRAM_MAX_LENGTH = 4096;
 
 export class TelegramOutputHandler implements OutputHandler {
   private buffer = "";
+  private readonly progress: ProgressPresenter;
   private typingInterval: ReturnType<typeof setInterval> | null = null;
   private chatId: string;
   private threadId?: number;
@@ -19,12 +25,36 @@ export class TelegramOutputHandler implements OutputHandler {
     // Extract threadId from session key: "telegram:chatId:threadId" or "telegram:chatId"
     const parts = event.sessionKey.split(":");
     this.threadId = parts.length > 2 ? parseInt(parts[2], 10) : undefined;
+    this.progress = new ProgressPresenter({
+      sendProgress: async (text) =>
+        await this.bot.api.sendMessage(this.chatId, text, {
+          ...(this.threadId ? { message_thread_id: this.threadId } : {}),
+          disable_notification: true,
+        }),
+      editProgress: async (handle, text) => {
+        await this.bot.api.editMessageText(
+          this.chatId,
+          (handle as { message_id: number }).message_id,
+          text,
+        );
+      },
+      deleteProgress: async (handle) => {
+        await this.bot.api.deleteMessage(
+          this.chatId,
+          (handle as { message_id: number }).message_id,
+        );
+      },
+    });
   }
 
   async relay(msg: OutboundMessage): Promise<void> {
     console.log(`[Telegram] relay() called with: ${msg.substring(0, 100)}...`);
     this.buffer += msg;
     console.log(`[Telegram] buffer now has ${this.buffer.length} chars`);
+  }
+
+  async relayEvent(event: AgentActivityEvent): Promise<void> {
+    await this.progress.onEvent(event);
   }
 
   async startTyping(): Promise<void> {
@@ -48,10 +78,12 @@ export class TelegramOutputHandler implements OutputHandler {
       this.typingInterval = null;
     }
     await this.flushBuffer();
+    await this.progress.close();
   }
 
   async endMessage(): Promise<void> {
     await this.flushBuffer();
+    await this.progress.clear();
   }
 
   private sendTypingAction(): void {

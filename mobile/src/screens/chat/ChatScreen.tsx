@@ -36,6 +36,7 @@ import {
   type VitoMessage as Message,
   type VitoSession as Session,
 } from "@vito/client";
+import { api } from "../../services/api/client";
 import type { RootStackParamList } from "../../application/navigation/route-types";
 import { useAgentName } from "../../contexts/agentIdentity";
 import { useVoiceSession } from "../../contexts/voice-session";
@@ -521,6 +522,20 @@ export function ChatScreen({
       sending={sendMessage.isPending || uploadAttachment.isPending}
       error={localError}
       runStatus={runStatusBySession.get(sessionId) ?? null}
+      queuedRuns={runs.filter(
+        (run) => run.sessionKey === sessionId && run.status === "queued" && !!run.id,
+      )}
+      onSteer={async (id) => {
+        try {
+          const response = await api<{ result: string }>("/api/runs/steer", {
+            method: "POST",
+            body: JSON.stringify({ sessionKey: sessionId, id }),
+          });
+          if (response.result !== "steered") setLocalError(`Could not steer: ${response.result}.`);
+        } catch (cause) {
+          setLocalError(cause instanceof Error ? cause.message : "Could not steer that message.");
+        }
+      }}
       scrollRef={scrollRef}
       onBack={
         onBack
@@ -770,6 +785,8 @@ function Conversation({
   sending,
   error,
   runStatus,
+  queuedRuns,
+  onSteer,
   scrollRef,
   onBack,
   onMenu,
@@ -792,6 +809,8 @@ function Conversation({
   sending: boolean;
   error: string | null;
   runStatus: CurrentRun["status"] | null;
+  queuedRuns: CurrentRun[];
+  onSteer: (id: string) => Promise<void>;
   scrollRef: React.RefObject<ScrollView | null>;
   onBack?: () => void;
   onMenu: () => void;
@@ -995,6 +1014,24 @@ function Conversation({
           </Text>
         </View>
       )}
+      {queuedRuns.map((run) => (
+        <View key={run.id} style={styles.conversationActivity}>
+          <Text
+            style={[styles.conversationActivityText, styles.queuedPreview]}
+            numberOfLines={1}
+            ellipsizeMode="tail"
+          >
+            Queued: {run.preview}
+          </Text>
+          <Pressable
+            style={styles.steerButton}
+            accessibilityLabel="Steer queued message now"
+            onPress={() => void onSteer(run.id!)}
+          >
+            <Text style={styles.conversationActivityText}>Steer now</Text>
+          </Pressable>
+        </View>
+      ))}
       {error && <Text style={styles.error}>{error}</Text>}
       {!!slashCommands.length && (
         <View style={styles.slashMenu}>
@@ -1385,6 +1422,8 @@ const createStyles = (theme: VitoTheme) =>
       paddingHorizontal: theme.space.lg,
     },
     conversationActivityText: { color: theme.colors.accent, fontSize: 11, fontWeight: "700" },
+    queuedPreview: { flex: 1, minWidth: 0 },
+    steerButton: { flexShrink: 0 },
     error: {
       color: theme.colors.danger,
       fontSize: 11,

@@ -3,6 +3,11 @@
  * commands, and one persisted PiSessionRuntime per Vito session.
  */
 
+import {
+  queuedEventId,
+  queuedSteeringEligibility,
+  type SteerQueuedResult,
+} from "./QueuedSteering.js";
 import { parseInboundEventMetadata } from "../../lib/types/inbound-event.js";
 import type { Context } from "../../context/Context.js";
 import { withPersistence } from "./runtime/PersistencePiRuntime.js";
@@ -75,6 +80,7 @@ export class PiOrchestratorService implements OrchestratorService {
     Array<{
       event: InboundEvent;
       channel: ChannelService | null;
+      steering?: Promise<void>;
       resolve: () => void;
       reject: (error: unknown) => void;
     }>
@@ -326,6 +332,7 @@ export class PiOrchestratorService implements OrchestratorService {
           preview: item.event.content.slice(0, 180),
           status: "queued",
           timestamp: item.event.timestamp,
+          id: queuedEventId(item.event),
         });
       }
     }
@@ -402,6 +409,47 @@ export class PiOrchestratorService implements OrchestratorService {
     return true;
   }
 
+  async steerQueued(
+    x: Context,
+    sessionKey: string,
+    id: string,
+    authorId: string,
+  ): Promise<SteerQueuedResult> {
+    this.initialize(x);
+    const queue = this.sessionQueues.get(sessionKey);
+    const item = queue?.find((candidate) => queuedEventId(candidate.event) === id);
+    if (!item || item.steering) return "expired";
+    const raw = item.event.raw;
+    const sender =
+      raw && typeof raw === "object" && "steeringAuthorId" in raw
+        ? raw.steeringAuthorId
+        : undefined;
+    const eligibility = queuedSteeringEligibility({
+      senderId: sender,
+      requesterId: authorId,
+      content: item.event.content,
+      attachments: item.event.attachments,
+    });
+    if (eligibility) return eligibility;
+    if (!this.activeRequests.has(sessionKey)) return "expired";
+    let release!: () => void;
+    item.steering = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    try {
+      const accepted = await this.steer(this.x, item.event);
+      if (!accepted) return "expired";
+      const index = queue?.indexOf(item) ?? -1;
+      if (index < 0) return "expired";
+      queue?.splice(index, 1);
+      item.resolve();
+      return "steered";
+    } finally {
+      release();
+      item.steering = undefined;
+    }
+  }
+
   async handleInbound(
     x: Context,
     event: InboundEvent,
@@ -447,6 +495,10 @@ export class PiOrchestratorService implements OrchestratorService {
     const queue = this.sessionQueues.get(sessionKey);
 
     while (queue && queue.length > 0) {
+      if (queue[0].steering) {
+        await queue[0].steering;
+        continue;
+      }
       const {
         event,
         channel,

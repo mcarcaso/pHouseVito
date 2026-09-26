@@ -3,6 +3,7 @@ import { useCallback, useEffect, useState } from "react";
 import {
   ActivityIndicator,
   Alert,
+  Platform,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -22,6 +23,7 @@ type Job = {
   enabled?: boolean;
   legacy?: boolean;
   prompt?: string;
+  delivery?: { channel: string; target: string };
 };
 
 type JobForm = {
@@ -50,7 +52,8 @@ export function JobsScreen({
   const s = useThemeStyles(styles),
     t = useVitoTheme(),
     [jobs, setJobs] = useState<Job[]>([]),
-    [loading, setLoading] = useState(true);
+    [loading, setLoading] = useState(true),
+    [runStatus, setRunStatus] = useState("");
   const load = useCallback(() => {
     setLoading(true);
     void api<Job[]>("/api/cron/jobs")
@@ -63,15 +66,33 @@ export function JobsScreen({
       `/api/cron/jobs/${encodeURIComponent(job.name)}/${job.enabled === false ? "resume" : "pause"}`,
       { method: "POST" },
     ).then(load);
-  const run = (name: string) =>
-    Alert.alert("Run job now?", name, [
-      { text: "Cancel", style: "cancel" },
-      {
-        text: "Run",
-        onPress: () =>
-          void api(`/api/cron/jobs/${encodeURIComponent(name)}/trigger`, { method: "POST" }),
-      },
-    ]);
+  const run = (job: Job) => {
+    const destination = job.delivery
+      ? `${job.delivery.channel}:${job.delivery.target}`
+      : "no configured delivery (result stays in job history)";
+    const trigger = async () => {
+      setRunStatus(`Starting ${job.name}…`);
+      try {
+        await api(`/api/cron/jobs/${encodeURIComponent(job.name)}/trigger`, { method: "POST" });
+        setRunStatus(
+          `${job.name} started. Check job history for delivery status; destination: ${destination}.`,
+        );
+      } catch (error) {
+        setRunStatus(
+          `${job.name}: ${error instanceof Error ? error.message : "Could not start job"}`,
+        );
+      }
+    };
+    const confirmation = `Run ${job.name} now? If it produces output, it will be delivered to ${destination}.`;
+    if (Platform.OS === "web") {
+      if (window.confirm(confirmation)) void trigger();
+    } else {
+      Alert.alert("Run job now?", confirmation, [
+        { text: "Cancel", style: "cancel" },
+        { text: "Run", onPress: () => void trigger() },
+      ]);
+    }
+  };
   return (
     <View style={s.root}>
       {onNew && (
@@ -86,6 +107,7 @@ export function JobsScreen({
           </Pressable>
         </View>
       )}
+      {runStatus ? <Text style={s.runStatus}>{runStatus}</Text> : null}
       <ScrollView contentContainerStyle={s.content}>
         {loading ? (
           <ActivityIndicator color={t.colors.accent} />
@@ -139,7 +161,7 @@ export function JobsScreen({
                   <Pressable
                     onPress={(e) => {
                       e.stopPropagation();
-                      run(j.name);
+                      run(j);
                     }}
                     style={s.run}
                   >
@@ -299,6 +321,7 @@ const styles = (t: VitoTheme) =>
   StyleSheet.create({
     center: { flex: 1, alignItems: "center", justifyContent: "center" },
     root: { flex: 1 },
+    runStatus: { color: t.colors.textSecondary, paddingHorizontal: t.space.lg },
     toolbar: {
       height: 48,
       flexDirection: "row",

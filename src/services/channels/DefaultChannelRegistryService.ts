@@ -35,7 +35,7 @@ export class DefaultChannelRegistryService implements ChannelRegistryService {
     const management = this.getManagement(x, channelName);
     const sessions = xSessionStore(x).list(x, {
       channels: [channelName],
-      hasAlias: false,
+      ...(channelName === "discord" ? {} : { hasAlias: false }),
     });
     const updated: string[] = [];
     const failed: string[] = [];
@@ -46,11 +46,13 @@ export class DefaultChannelRegistryService implements ChannelRegistryService {
         failed.push(session.id);
         continue;
       }
-      xSessionStore(x).update(x, {
-        id: session.id,
-        changes: { alias },
-      });
-      updated.push(session.id);
+      if (session.alias !== alias) {
+        xSessionStore(x).update(x, {
+          id: session.id,
+          changes: { alias },
+        });
+        updated.push(session.id);
+      }
     }
 
     return {

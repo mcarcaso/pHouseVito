@@ -34,6 +34,9 @@ describe("DefaultProviderService", () => {
       const models = await service.listModels(x, providers[0]);
       assert.ok(models.length > 0);
       assert.ok(models.every((model) => typeof model.id === "string"));
+      const matches = await service.searchModels(x, `${providers[0]}/`);
+      assert.ok(matches.length > 0 && matches.length <= 25);
+      assert.ok(matches.every((model) => model.startsWith(`${providers[0]}/`)));
       await assert.rejects(service.listModels(x, "not-a-provider"));
     } finally {
       rmSync(root, { recursive: true, force: true });

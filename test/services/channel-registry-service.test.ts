@@ -103,6 +103,7 @@ describe("DefaultChannelRegistryService", () => {
         createManagedChannel("discord", (session) => {
           if (session.channel_target === "guild") return "Server / general";
           if (session.channel_target === "dm") return "Direct Message";
+          if (session.channel_target === "existing") return "Renamed channel";
           return undefined;
         }),
       );
@@ -110,14 +111,14 @@ describe("DefaultChannelRegistryService", () => {
       assert.deepEqual(await service.registerCommands(x, "discord"), { success: true, count: 5 });
       const result = await service.generateAliases(x, "discord");
       assert.deepEqual(result.sessions, {
-        updated: ["discord:dm", "discord:guild"],
+        updated: ["discord:existing", "discord:dm", "discord:guild"],
         failed: ["discord:missing"],
       });
       const sessions = xSessionStore(x).list(x, { channels: ["discord"] });
       const aliases = new Map(sessions.map((session) => [session.id, session.alias]));
       assert.equal(aliases.get("discord:guild"), "Server / general");
       assert.equal(aliases.get("discord:dm"), "Direct Message");
-      assert.equal(aliases.get("discord:existing"), "Existing");
+      assert.equal(aliases.get("discord:existing"), "Renamed channel");
     } finally {
       db.close();
     }

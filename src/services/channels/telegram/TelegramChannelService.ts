@@ -1,6 +1,6 @@
 import { Bot } from "grammy";
 import type { Context } from "../../../context/Context.js";
-import { xSecretService, xVitoService } from "../../../lib/x.js";
+import { xOrchestratorService, xSecretService, xVitoService } from "../../../lib/x.js";
 import type { OutputHandler } from "../../../lib/output/OutputHandler.js";
 import type { InboundEvent } from "../../../lib/types/inbound-event.js";
 import type { SessionRow } from "../../../stores/sessions/SessionStore.js";
@@ -27,6 +27,7 @@ export class TelegramChannelService implements ChannelService {
   };
 
   private bot: Bot | null = null;
+  private readonly steeringNotices = new Map<string, { chatId: number; messageId: number }>();
 
   readonly management: ChannelManagement = {
     registerCommands: async (x) => await this.setMyCommands(x),
@@ -50,6 +51,7 @@ export class TelegramChannelService implements ChannelService {
   async stop(_x: Context): Promise<void> {
     await this.bot?.stop();
     this.bot = null;
+    this.steeringNotices.clear();
   }
 
   /**
@@ -121,6 +123,83 @@ export class TelegramChannelService implements ChannelService {
       return allowedChatIds.length === 0 || allowedChatIds.includes(String(chatId));
     };
 
+    bot.callbackQuery(/^vito-steer:(\d+)$/, async (ctx) => {
+      const origin = ctx.callbackQuery.message;
+      if (!origin || !isAllowed(origin.chat.id)) {
+        await ctx.answerCallbackQuery({ text: "This message is no longer available." });
+        return;
+      }
+      const threadId = "message_thread_id" in origin ? origin.message_thread_id : undefined;
+      const sessionKey = threadId
+        ? `telegram:${origin.chat.id}:${threadId}`
+        : `telegram:${origin.chat.id}`;
+      const id = `${origin.chat.id}:${ctx.match[1]}`;
+      const result = await xOrchestratorService(x).steerQueued(
+        x,
+        sessionKey,
+        id,
+        String(ctx.from.id),
+      );
+      await ctx.answerCallbackQuery({
+        text: result === "steered" ? "Steering requested." : `Cannot steer: ${result}.`,
+      });
+      if (result === "steered" || result === "expired") {
+        const notice = this.steeringNotices.get(id);
+        this.steeringNotices.delete(id);
+        if (notice) await bot.api.deleteMessage(notice.chatId, notice.messageId).catch(() => {});
+        else {
+          await bot.api
+            .editMessageReplyMarkup(origin.chat.id, origin.message_id, {
+              reply_markup: { inline_keyboard: [] },
+            })
+            .catch(() => {});
+        }
+      }
+    });
+
+    const dispatch = (event: InboundEvent, messageId: number, senderId?: number) => {
+      const id = `${event.target}:${messageId}`;
+      const active = xOrchestratorService(x)
+        .listRuns(x)
+        .some((run) => run.sessionKey === event.sessionKey && run.status === "active");
+      event.raw = {
+        ...(event.raw as object),
+        message: (event.raw as { message?: unknown }).message,
+        steeringAuthorId: senderId === undefined ? undefined : String(senderId),
+      };
+      const completion = Promise.resolve(onEvent(event));
+      if (
+        active &&
+        senderId !== undefined &&
+        !event.attachments?.length &&
+        event.content.trim() &&
+        !event.content.startsWith("/")
+      ) {
+        void bot.api
+          .sendMessage(event.target, "Message queued. Redirect the current turn?", {
+            ...(event.sessionKey.split(":")[2]
+              ? { message_thread_id: Number(event.sessionKey.split(":")[2]) }
+              : {}),
+            disable_notification: true,
+            reply_parameters: { message_id: messageId, allow_sending_without_reply: true },
+            reply_markup: {
+              inline_keyboard: [[{ text: "Steer now", callback_data: `vito-steer:${messageId}` }]],
+            },
+          })
+          .then((notice) => {
+            this.steeringNotices.set(id, { chatId: notice.chat.id, messageId: notice.message_id });
+            void completion.then(() => {
+              const current = this.steeringNotices.get(id);
+              this.steeringNotices.delete(id);
+              if (current)
+                void bot.api.deleteMessage(current.chatId, current.messageId).catch(() => {});
+            });
+          })
+          .catch((error) => console.warn(`[Telegram] Could not offer steering: ${error}`));
+      }
+      void completion.catch((error) => console.error(`[Telegram] Inbound failed: ${error}`));
+    };
+
     // Text messages
     bot.on("message:text", (ctx) => {
       console.log(`[Telegram] 📨 Received text message from chat ${ctx.chat.id}`);
@@ -172,7 +251,7 @@ export class TelegramChannelService implements ChannelService {
       console.log(
         `[Telegram] ✅ Firing onEvent for chat ${ctx.chat.id}${hasMention ? "" : " (no @mention)"}${threadId ? ` (thread ${threadId})` : ""}`,
       );
-      onEvent(event);
+      dispatch(event, ctx.message.message_id, ctx.from?.id);
     });
 
     // Helper to detect @mention in captions/text for groups
@@ -225,7 +304,7 @@ export class TelegramChannelService implements ChannelService {
         ],
         raw: ctx,
       };
-      onEvent(event);
+      dispatch(event, ctx.message.message_id, ctx.from?.id);
     });
 
     // Document messages
@@ -259,7 +338,7 @@ export class TelegramChannelService implements ChannelService {
         ],
         raw: ctx,
       };
-      onEvent(event);
+      dispatch(event, ctx.message.message_id, ctx.from?.id);
     });
 
     // Voice messages
@@ -294,7 +373,7 @@ export class TelegramChannelService implements ChannelService {
         ],
         raw: ctx,
       };
-      onEvent(event);
+      dispatch(event, ctx.message.message_id, ctx.from?.id);
     });
 
     // Audio messages
@@ -329,7 +408,7 @@ export class TelegramChannelService implements ChannelService {
         ],
         raw: ctx,
       };
-      onEvent(event);
+      dispatch(event, ctx.message.message_id, ctx.from?.id);
     });
 
     return () => {

@@ -42,7 +42,11 @@ describe("DefaultDashboardChatService", () => {
       timestamp: events[0]?.timestamp,
       content: "Hello",
       attachments: message.attachments,
-      raw: message,
+      raw: {
+        ...message,
+        requestId: (events[0]?.raw as { requestId: string }).requestId,
+        steeringAuthorId: "owner",
+      },
       hasMention: true,
     });
     assert.equal(typeof events[0]?.timestamp, "number");

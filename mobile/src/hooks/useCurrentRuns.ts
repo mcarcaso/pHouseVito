@@ -8,6 +8,7 @@ export interface CurrentRun {
   preview: string;
   status: "active" | "queued";
   timestamp: number;
+  id?: string;
 }
 
 export function useCurrentRuns(refetchInterval = 2_000) {

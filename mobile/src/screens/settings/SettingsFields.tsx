@@ -53,7 +53,7 @@ export function ChannelSetup({
         message:
           action === "register-commands"
             ? `Registered ${data.count ?? 0} command(s)`
-            : `Updated ${data.updated ?? 0} session(s)${data.failed ? `, ${data.failed} failed` : ""}`,
+            : `${channel === "discord" ? "Refreshed" : "Updated"} ${data.updated ?? 0} session(s)${data.failed ? `; ${data.failed} inaccessible or unavailable (existing names kept)` : ""}`,
       });
     } catch (cause) {
       setResult({
@@ -108,10 +108,16 @@ export function ChannelSetup({
             label="Auto-generate aliases"
             description={
               channel === "discord"
-                ? "Sets “Server / Channel” for sessions without an alias."
+                ? "Refreshes all Discord session names from current channel names. Inaccessible channels keep their existing names."
                 : "Sets the chat name for sessions without an alias."
             }
-            button={pending === "auto-alias" ? "Generating…" : "Set Default Aliases"}
+            button={
+              pending === "auto-alias"
+                ? "Refreshing…"
+                : channel === "discord"
+                  ? "Refresh Channel Names"
+                  : "Set Default Aliases"
+            }
             disabled={pending !== null}
             onPress={() => void run("auto-alias")}
             styles={styles}

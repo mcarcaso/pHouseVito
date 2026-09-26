@@ -115,6 +115,51 @@ describe("PiOrchestratorService", () => {
     assert.equal((created[0] as { type: string }).type, "user");
   });
 
+  it("steers only the matching queued sender once and removes the queued invocation", async () => {
+    const records: unknown[] = [];
+    const x = new ObjectContext({
+      userDir: () => "/tmp/vito-orchestrator-queued-steer-test",
+      vitoService: () => ({ getConfig: () => config }),
+      skillStore: () => ({ list: () => [] }),
+      sessionService: () => ({ resolve: () => ({ id: "telegram:123" }) }),
+      messageStore: () => ({ create: (_x: unknown, value: unknown) => void records.push(value) }),
+    });
+    const service = new PiOrchestratorService();
+    service.reloadConfig(x, config);
+    let resolved = 0;
+    const event = {
+      sessionKey: "telegram:123",
+      channel: "telegram",
+      target: "123",
+      author: "Mike",
+      timestamp: 123,
+      content: "Change direction",
+      raw: { message: { message_id: 42 }, steeringAuthorId: "7" },
+    };
+    const internal = service as unknown as {
+      activeRequests: Map<string, unknown>;
+      sessionQueues: Map<string, Array<unknown>>;
+      runtimeRegistry: { get(id: string): { steer(text: string): Promise<boolean> } | undefined };
+    };
+    internal.activeRequests.set(event.sessionKey, { aborted: false });
+    internal.runtimeRegistry = { get: () => ({ steer: async () => true }) };
+    internal.sessionQueues.set(event.sessionKey, [
+      {
+        event,
+        resolve: () => {
+          resolved++;
+        },
+        reject: () => {},
+      },
+    ]);
+    assert.equal(await service.steerQueued(x, event.sessionKey, "123:42", "8"), "forbidden");
+    assert.equal(await service.steerQueued(x, event.sessionKey, "123:99", "7"), "expired");
+    assert.equal(await service.steerQueued(x, event.sessionKey, "123:42", "7"), "steered");
+    assert.equal(await service.steerQueued(x, event.sessionKey, "123:42", "7"), "expired");
+    assert.equal(resolved, 1);
+    assert.equal(records.length, 1);
+  });
+
   it("serializes one session across orchestrator instances and cancels queued turns", async () => {
     const db = createDatabase(":memory:");
     const context = () =>

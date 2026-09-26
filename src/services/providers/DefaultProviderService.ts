@@ -9,6 +9,7 @@ import type {
   ProviderOverview,
   ProviderService,
 } from "./ProviderService.js";
+import { modelAutocompleteChoices } from "./model-autocomplete.js";
 import { ProviderLoginConflictError } from "./ProviderService.js";
 
 interface PendingLogin {
@@ -55,6 +56,17 @@ export class DefaultProviderService implements ProviderService {
     const runtime = await this.getRuntime(x);
     if (!runtime.getProvider(providerId)) throw new Error(`Unknown provider: ${providerId}`);
     return modelListSchema.parse(runtime.getModels(providerId)).map((model) => ({ id: model.id }));
+  }
+
+  async searchModels(x: Context, query: string): Promise<string[]> {
+    const runtime = await this.getRuntime(x);
+    const models: string[] = [];
+    for (const provider of runtime.getProviders()) {
+      for (const model of runtime.getModels(provider.id)) {
+        models.push(`${provider.id}/${model.id}`);
+      }
+    }
+    return modelAutocompleteChoices(models, query);
   }
 
   async startLogin(x: Context, providerId: string): Promise<ProviderLoginStartResult> {

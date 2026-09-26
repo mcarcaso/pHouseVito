@@ -126,7 +126,10 @@ describe("Discord durability", () => {
       assert.equal(sent.length, 1);
       assert.match(String(sent[0].content), /^⏳ \*\*Inspecting current output\*\*/);
       assert.equal(sent[0].flags, 4_096);
-      assert.match(String(sent[0].content), /https:\/\/example\.com\/chat\//);
+      assert.match(
+        String(sent[0].content),
+        /\[Open conversation\]\(<https:\/\/example\.com\/chat\/discord%3Achannel-1>\)/,
+      );
 
       await handler.relayEvent({
         kind: "tool_start",
@@ -146,6 +149,14 @@ describe("Discord durability", () => {
       await handler.endMessage();
       assert.equal(deleted, 1);
       assert.equal((sent[2] as { content: string }).content, "Done.");
+
+      // A commentary boundary clears the card but must not close the turn.
+      await handler.relayEvent({ kind: "thinking", content: "**Checking the next step**" });
+      await new Promise((resolve) => setTimeout(resolve, 2_100));
+      assert.equal(sent.length, 4);
+      assert.match(String(sent[3].content), /^⏳ \*\*Checking the next step\*\*/);
+      await handler.stopTyping();
+      assert.equal(deleted, 2);
     } finally {
       db.close();
     }

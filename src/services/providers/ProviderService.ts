@@ -35,6 +35,7 @@ export class ProviderLoginConflictError extends Error {
 export interface ProviderService {
   getOverview(x: Context): Promise<ProviderOverview>;
   listModels(x: Context, providerId: string): Promise<{ id: string }[]>;
+  searchModels(x: Context, query: string): Promise<string[]>;
   startLogin(x: Context, providerId: string): Promise<ProviderLoginStartResult>;
   getLoginStatus(x: Context, providerId: string): ProviderLoginStatus;
   submitPrompt(x: Context, args: { providerId: string; value: string }): void;

@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import type { Context } from "../../context/Context.js";
 import type { DashboardChatRequest } from "../../shared/schemas/dashboard-chat.js";
 import type { InboundEvent } from "../../lib/types/inbound-event.js";
@@ -28,7 +29,7 @@ export class DefaultDashboardChatService implements DashboardChatService {
       timestamp: Date.now(),
       content: message.content || "",
       attachments: message.attachments,
-      raw: message,
+      raw: { ...message, requestId: randomUUID(), steeringAuthorId: "owner" },
       hasMention: true,
     };
     this.handler(event);

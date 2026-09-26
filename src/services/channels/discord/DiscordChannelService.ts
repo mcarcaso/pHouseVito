@@ -13,6 +13,7 @@ import type { Context } from "../../../context/Context.js";
 import {
   xDiscordQueueStore,
   xOrchestratorService,
+  xProviderService,
   xSecretService,
   xVitoService,
 } from "../../../lib/x.js";
@@ -23,6 +24,8 @@ import type { DurableDiscordEvent } from "../../../stores/discord/DiscordQueueSt
 import type { ChannelManagement, ChannelService } from "../ChannelService.js";
 import { getEffectiveSettings } from "../../vito/settings.js";
 import { DiscordOutputHandler } from "./DiscordOutputHandler.js";
+import { queuedSteeringEligibility } from "../../orchestrator/QueuedSteering.js";
+import { isConversationMessage } from "./message-events.js";
 
 const DISCORD_MENTION_CONTEXT_MESSAGES = 5;
 const DISCORD_HISTORY_PAGE_SIZE = 100;
@@ -217,11 +220,17 @@ export class DiscordChannelService implements ChannelService {
       await interaction.editReply("That queued message is no longer available for steering.");
       return true;
     }
-    if (interaction.user.bot || interaction.user.id !== pending.authorId) {
+    const eligibility = queuedSteeringEligibility({
+      senderId: pending.authorId,
+      requesterId: interaction.user.id,
+      content: pending.content,
+      attachments: pending.attachments,
+    });
+    if (interaction.user.bot || eligibility === "forbidden") {
       await interaction.editReply("Only the sender of that message can steer the active turn.");
       return true;
     }
-    if (interaction.channelId !== pending.transportChannel || pending.attachments.length > 0) {
+    if (interaction.channelId !== pending.transportChannel || eligibility === "ineligible") {
       await interaction.editReply("That message cannot steer this turn; it remains queued.");
       return true;
     }
@@ -347,7 +356,9 @@ export class DiscordChannelService implements ChannelService {
       return true;
     };
 
-    const isInteractionAllowed = (interaction: ChatInputCommandInteraction): boolean => {
+    const isInteractionAllowed = (
+      interaction: ChatInputCommandInteraction | import("discord.js").AutocompleteInteraction,
+    ): boolean => {
       const { guildIds, channelIds, userIds, allowDms } = getAllowlist();
       if (userIds.length > 0 && !userIds.includes(interaction.user.id)) return false;
       if (!interaction.guild) return allowDms;
@@ -357,8 +368,8 @@ export class DiscordChannelService implements ChannelService {
     };
 
     client.on("messageCreate", async (msg) => {
-      // Ignore bot's own messages
-      if (msg.author.bot) return;
+      // Thread titles, renames, pins, and other system events are not user turns.
+      if (!isConversationMessage(msg.type) || msg.author.bot) return;
 
       // Build session key early so we can check per-session settings
       const target = msg.guild ? msg.channel.id : msg.author.id;
@@ -472,6 +483,24 @@ export class DiscordChannelService implements ChannelService {
         await this.handleSteeringButton(x, interaction).catch((error) =>
           console.error(`[Discord] Steering failed: ${errorMessage(error)}`),
         );
+        return;
+      }
+      if (interaction.isAutocomplete()) {
+        if (interaction.commandName !== "model" || !isInteractionAllowed(interaction)) {
+          await interaction.respond([]).catch(() => {});
+          return;
+        }
+        try {
+          const focused = interaction.options.getFocused(true);
+          const choices =
+            focused.name === "model"
+              ? await xProviderService(x).searchModels(x, String(focused.value))
+              : [];
+          await interaction.respond(choices.map((value) => ({ name: value.slice(0, 100), value })));
+        } catch (error) {
+          console.warn(`[Discord] Model autocomplete failed: ${errorMessage(error)}`);
+          await interaction.respond([]).catch(() => {});
+        }
         return;
       }
       if (!interaction.isChatInputCommand()) return;
@@ -615,7 +644,8 @@ export class DiscordChannelService implements ChannelService {
         .addStringOption((option) =>
           option
             .setName("model")
-            .setDescription("provider/model-name, e.g. anthropic/claude-sonnet-4-20250514")
+            .setDescription("Search provider/model-name")
+            .setAutocomplete(true)
             .setRequired(false),
         ),
       new SlashCommandBuilder()
@@ -700,7 +730,7 @@ export class DiscordChannelService implements ChannelService {
           foundLastVitoResponse = true;
           break history;
         }
-        if (message.author.bot || message.system) continue;
+        if (message.author.bot || !isConversationMessage(message.type)) continue;
 
         humanMessageCount++;
         if (recent.length < DISCORD_MENTION_CONTEXT_MESSAGES) recent.push(message);

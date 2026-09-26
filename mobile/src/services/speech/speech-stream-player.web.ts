@@ -10,11 +10,93 @@ function decodePcm16(bytes: Uint8Array): Float32Array {
   return samples;
 }
 
+// AudioBufferSourceNode rate changes also transpose speech. For adjusted speeds,
+// use the browser's pitch-preserving media playback on a complete PCM/WAV clip.
+function createPitchPreservingPlayer({
+  rate,
+  onStarted,
+  onEnded,
+}: SpeechStreamPlayerOptions): SpeechStreamPlayer {
+  const chunks: Uint8Array[] = [];
+  const audio = new Audio();
+  audio.playbackRate = rate;
+  audio.preservesPitch = true;
+  let stopped = false;
+  let url: string | undefined;
+  const release = () => {
+    if (url) URL.revokeObjectURL(url);
+    url = undefined;
+  };
+  audio.onplaying = () => {
+    if (!stopped) onStarted();
+  };
+  audio.onended = () => {
+    release();
+    if (!stopped) onEnded();
+  };
+  return {
+    async enqueue(chunk) {
+      if (!stopped) chunks.push(chunk.slice());
+    },
+    finish() {
+      if (stopped) return;
+      const size = chunks.reduce((sum, chunk) => sum + chunk.length, 0);
+      const pcmSize = size - (size % 2);
+      const wav = new Uint8Array(44 + size);
+      const view = new DataView(wav.buffer);
+      const tag = (offset: number, value: string) => {
+        for (let i = 0; i < value.length; i++) wav[offset + i] = value.charCodeAt(i);
+      };
+      tag(0, "RIFF");
+      view.setUint32(4, 36 + pcmSize, true);
+      tag(8, "WAVE");
+      tag(12, "fmt ");
+      view.setUint32(16, 16, true);
+      view.setUint16(20, 1, true);
+      view.setUint16(22, 1, true);
+      view.setUint32(24, 24_000, true);
+      view.setUint32(28, 48_000, true);
+      view.setUint16(32, 2, true);
+      view.setUint16(34, 16, true);
+      tag(36, "data");
+      view.setUint32(40, pcmSize, true);
+      let offset = 44;
+      for (const chunk of chunks) {
+        wav.set(chunk, offset);
+        offset += chunk.length;
+      }
+      chunks.length = 0;
+      url = URL.createObjectURL(new Blob([wav.slice(0, 44 + pcmSize)], { type: "audio/wav" }));
+      audio.src = url;
+      audio.playbackRate = rate;
+      void audio.play().catch(() => {
+        release();
+        if (!stopped) onEnded();
+      });
+    },
+    async pause() {
+      audio.pause();
+    },
+    async resume() {
+      if (!stopped) await audio.play();
+    },
+    stop() {
+      stopped = true;
+      audio.pause();
+      audio.removeAttribute("src");
+      audio.load();
+      chunks.length = 0;
+      release();
+    },
+  };
+}
+
 export async function createSpeechStreamPlayer({
   rate,
   onStarted,
   onEnded,
 }: SpeechStreamPlayerOptions): Promise<SpeechStreamPlayer> {
+  if (rate !== 1) return createPitchPreservingPlayer({ rate, onStarted, onEnded });
   const context = new AudioContext({ sampleRate: 24_000 });
   await context.resume();
   let nextPlaybackTime = context.currentTime;

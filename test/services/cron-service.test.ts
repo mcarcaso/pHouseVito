@@ -41,6 +41,44 @@ describe("CronerCronService", () => {
     assert.deepEqual(service.checkHealth(x), []);
   });
 
+  it("recalculates inherited script schedules when the global timezone changes", () => {
+    const db = createDatabase(":memory:");
+    const x = new ObjectContext({ db: () => db, jobService: () => ({ recover: () => {} }) });
+    const service = new CronerCronService();
+    const inherited = {
+      name: "inherited",
+      script: "/tmp/inherited.ts",
+      schedule: { cron: "0 7 * * *" },
+      timeoutMs: 60_000,
+      enabled: true,
+    } as const;
+    const explicit = {
+      ...inherited,
+      name: "explicit",
+      schedule: { cron: "0 7 * * *", timezone: "UTC" },
+    } as const;
+    service.start(x, {
+      jobs: [inherited, explicit],
+      timezone: "Europe/Zagreb",
+      onJob: async () => {},
+    });
+    const before = db
+      .prepare("SELECT next_at FROM job_schedule_state WHERE name = ?")
+      .get("inherited") as { next_at: string };
+    service.reload(x, [inherited, explicit], "America/Toronto");
+    const after = db
+      .prepare("SELECT next_at, config FROM job_schedule_state WHERE name = ?")
+      .get("inherited") as { next_at: string; config: string };
+    assert.notEqual(after.next_at, before.next_at);
+    assert.equal(JSON.parse(after.config).timezone, "America/Toronto");
+    const explicitState = db
+      .prepare("SELECT config FROM job_schedule_state WHERE name = ?")
+      .get("explicit") as { config: string };
+    assert.equal(JSON.parse(explicitState.config).timezone, "UTC");
+    service.stop(x);
+    db.close();
+  });
+
   it("catches up one missed script occurrence without replaying it", async () => {
     const db = createDatabase(":memory:");
     const executions: string[] = [];
@@ -53,7 +91,7 @@ describe("CronerCronService", () => {
     } as const;
     db.prepare("INSERT INTO job_schedule_state(name, config, next_at) VALUES (?, ?, ?)").run(
       job.name,
-      JSON.stringify(job.schedule),
+      JSON.stringify({ schedule: job.schedule, timezone: "UTC" }),
       "2026-01-01T09:00:00.000Z",
     );
     const x = new ObjectContext({

@@ -796,7 +796,6 @@ export class DiscordChannelService implements ChannelService {
       "Do NOT use markdown tables — they don't render in Discord. Use bulleted or numbered lists instead.",
       "Messages are limited to 2000 characters — be concise.",
       "Users mention you with @. You can reference users with <@userId>.",
-      "During tool work, send concise user-visible commentary before meaningful tool groups and when the plan changes. Commentary is public progress, distinct from private reasoning and the final answer; never expose chain-of-thought.",
     ].join("\n");
   }
 }

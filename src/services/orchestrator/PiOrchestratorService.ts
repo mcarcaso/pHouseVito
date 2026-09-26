@@ -738,15 +738,6 @@ export class PiOrchestratorService implements OrchestratorService {
           ?.map((a) => a.path)
           .filter((p): p is string => Boolean(p)),
       });
-      if (event.channel === "discord" && delivery === "chat") {
-        promptText = [
-          "<delivery_instruction>",
-          "During multi-step tool work, send concise public commentary before meaningful tool groups and when your direction changes. Commentary is not private reasoning and is separate from the final answer.",
-          "</delivery_instruction>",
-          "",
-          promptText,
-        ].join("\n");
-      }
 
       if (requireMention && hasMention && channel?.gatherMentionContext) {
         try {

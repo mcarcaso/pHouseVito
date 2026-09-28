@@ -29,7 +29,7 @@ npm run restart                   # sync deps, build backend/companion web, rest
 npm run restart:process           # fast PM2-only restart without rebuilding
 ```
 
-Production deploy: `./aws_deploy/deploy.sh mike5` (git pull → npm ci → builds → pm2 restart on the EC2 box).
+Production deploy: `VITO_ARTIFACT_DIR=/secure/artifacts ./aws_deploy/deploy.sh mike5`. The deployer detects Linux architecture and Node compatibility, installs the matching immutable binary release, verifies its embedded Git revision, switches atomically, restarts only Vito, health-checks, and rolls back on failure. Source-checkout deployments retain the explicit `--legacy-source` fallback while they are migrated once to `/opt/vito-managed`.
 
 ## Architecture
 

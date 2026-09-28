@@ -30,6 +30,34 @@ The artifact is a tarball of compiled `dist`, `mobile/dist`, `system`, `user.exa
 
 The local macOS x64 pilot produced a ~307 MB executable. Under `/tmp` it passed prerequisite checks, installed its embedded bundle, verified native SQLite, launched the bundled CLI and job worker, and preserved fake user data through activation/rollback between two versions. A Linux x64 pilot built on a disposable Hetzner Ubuntu 24.04 VM passed installation **from the binary alone** on a separate clean Ubuntu VM with Node 24.13.0, no source checkout, and no compiler: CLI/config validation, native SQLite, dashboard health, bundled skills, job-worker IPC, traversal rejection, fake-data upgrade and rollback all passed. Both VMs and their firewall, key, and primary IPs were deleted. The first Linux release used a re-committed Git archive with a synthetic revision and was discarded. A follow-up used a clean, sparse, shallow checkout of actual commit `6950754` (no `user/` checkout); the release embedded the **exact matching full source SHA** and passed installer-only setup again on a separate clean VM, including CLI, native SQLite, job-worker IPC and health. Its unsigned installer and release archive are preserved privately under `user/drive/private/vito-linux-installer-pilot-20260924/` for further QA, **not distribution**. The follow-up VMs, firewall, key and IPs were deleted. A third disposable VM installed that same binary with fake data and a separate pilot OpenRouter key: one local-only Ask API turn returned `PILOT_OK` in about three seconds, persisted both user and assistant messages, and created a Pi session file. The VM and its firewall, SSH key and IP were deleted; the pilot key was not bundled. No real client or production cutover was attempted. The installer currently **checks** for Bash, tar, Python 3, shasum and matching Node, but does **not install** Node, browser/OS libraries, establish OS users or install PM2/systemd services. A machine lacking a prerequisite gets a clear failure, not an automatic privileged installation.
 
+## AWS managed deployment
+
+After platform-specific installers have been built, the AWS deploy command
+detects the remote OS, CPU architecture and Node version, selects the matching
+installer, verifies its embedded full Git revision, installs beside the current
+release, switches atomically and health-checks both local and public endpoints:
+
+```bash
+VITO_ARTIFACT_DIR=/secure/artifacts ./aws_deploy/deploy.sh mar
+```
+
+Installers use the deterministic name
+`vito-<short-revision>-linux-<arm64|x64>-installer` with an adjacent `.sha256`.
+Use `--version` when the artifact version is not the local short revision. A
+failed health check switches the release pointer back and restarts Vito. Routine
+deployments also create a compact online SQLite/config backup under
+`~/vito-backups/managed-deploys/`. Source-checkout instances must first be
+migrated to the managed layout; `--legacy-source` retains the old deployment as
+an explicit fallback during that transition.
+
 ## Not yet done
 
-The existing `aws_deploy/deploy.sh` still pulls source and builds on the customer VM; it has **not** been switched to this release flow. A macOS pilot built from a dirty working tree (`ALLOW_DIRTY_RELEASE=1`) was tested only under `/tmp`; never distribute that artifact. Authenticated artifact provenance, real signing, pinned/reproducible installer tooling, OS-user permissions, client-specific credential onboarding, browser provisioning, and PM2 cutover/rollback verification remain before client deployment. The adjacent SHA-256 detects corruption, not a malicious replacement of both files. The installer binary is distribution packaging, **not a security sandbox** or a self-contained Vito runtime.
+CI publication for both Linux architectures is still required; `deploy.sh`
+consumes prebuilt artifacts and does not compile them. A macOS pilot built from
+a dirty working tree (`ALLOW_DIRTY_RELEASE=1`) was tested only under `/tmp`;
+never distribute that artifact. Authenticated artifact provenance, real
+signing, pinned/reproducible installer tooling, OS-user permissions,
+client-specific credential onboarding, and browser provisioning remain before
+broad client deployment. The adjacent SHA-256 detects corruption, not a
+malicious replacement of both files. The installer binary is distribution
+packaging, **not** a security sandbox or a self-contained Vito runtime.

@@ -7,6 +7,7 @@ import { after, before, describe, it } from "node:test";
 import express from "express";
 import { z } from "zod";
 import { dashboardRouterContext } from "../support/dashboard-router-context.js";
+import { ObjectContext } from "../../src/context/ObjectContext.js";
 import { SecretRouterService } from "../../src/routers/SecretRouterService.js";
 import { FileSecretService } from "../../src/services/secrets/FileSecretService.js";
 
@@ -19,6 +20,15 @@ const x = dashboardRouterContext({
 });
 const app = express();
 app.use("/api/secrets", await new SecretRouterService().createRouter(x));
+app.use(
+  "/unauth/secrets",
+  await new SecretRouterService().createRouter(
+    new ObjectContext({
+      dashboardAuthService: () => ({ isPasswordSet: () => true, isAuthenticated: () => false }),
+      secretService: () => service,
+    }),
+  ),
+);
 
 const secretSchema = z.object({
   key: z.string(),
@@ -78,6 +88,45 @@ describe("secret router", () => {
     const entries = z.array(secretSchema).parse(body);
     assert.ok(entries.some((entry) => entry.key === "TELEGRAM_BOT_TOKEN"));
     assert.ok(entries.some((entry) => entry.key === "TEST_ROUTER_SECRET" && entry.configured));
+  });
+
+  it("reveals only on an explicit authenticated request without caching", async () => {
+    const denied = await fetch(`${baseUrl}/unauth/secrets/TEST_ROUTER_SECRET/reveal`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: "{}",
+    });
+    assert.equal(denied.status, 401);
+    assert.equal(JSON.stringify(await denied.json()).includes('"value"'), false);
+
+    const missing = await fetch(`${baseUrl}/api/secrets/MISSING_SECRET/reveal`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: "{}",
+    });
+    assert.equal(missing.status, 404);
+    assert.equal(JSON.stringify(await missing.json()).includes("value"), false);
+
+    const invalid = await fetch(`${baseUrl}/api/secrets/invalid-key/reveal`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: "{}",
+    });
+    assert.equal(invalid.status, 400);
+
+    const passive = await fetch(`${baseUrl}/api/secrets/TEST_ROUTER_SECRET/reveal`);
+    assert.equal(passive.status, 404);
+
+    const response = await fetch(`${baseUrl}/api/secrets/TEST_ROUTER_SECRET/reveal`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: "{}",
+    });
+    assert.equal(response.status, 200);
+    assert.deepEqual(await response.json(), { value: "test" });
+    assert.match(response.headers.get("cache-control") ?? "", /no-store/);
+    assert.equal(response.headers.get("pragma"), "no-cache");
+    assert.equal(response.headers.get("x-content-type-options"), "nosniff");
   });
 
   it("deletes custom secrets but protects system secrets", async () => {

@@ -32,6 +32,32 @@ export class SecretRouterService implements RouterService {
 
     registerRoute(x, {
       router,
+      method: "POST",
+      path: "/:key/reveal",
+      auth: "dashboard",
+      schemas: {
+        params: secretParamsSchema,
+        query: emptyRouteSchema,
+        body: emptyRouteSchema,
+      },
+      responseSchema: z.object({ value: z.string() }).strict(),
+      handler: (routeX, { data: { params }, res }) => {
+        res.set({
+          "Cache-Control": "private, no-store, max-age=0",
+          Pragma: "no-cache",
+          "X-Content-Type-Options": "nosniff",
+        });
+        const value = xSecretService(routeX).get(routeX, params.key);
+        if (!value) {
+          res.status(404).json({ error: "Secret not configured" });
+          return;
+        }
+        return { value };
+      },
+    });
+
+    registerRoute(x, {
+      router,
       method: "PUT",
       path: "/:key",
       auth: "dashboard",

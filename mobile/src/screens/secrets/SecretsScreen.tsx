@@ -1,10 +1,12 @@
 import { StyleSheet } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
+import { useFocusEffect } from "@react-navigation/native";
 import * as Clipboard from "expo-clipboard";
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import {
   ActivityIndicator,
   Alert,
+  AppState,
   Pressable,
   ScrollView,
   Text,
@@ -99,7 +101,40 @@ export function SecretEditorScreen({
   const [issuingDrop, setIssuingDrop] = useState(false);
   const [dropUrl, setDropUrl] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [storedValue, setStoredValue] = useState<string | null>(null);
+  const [revealingStored, setRevealingStored] = useState(false);
+  const revealRequest = useRef(0);
   const system = secret?.system === true;
+  const hideStored = useCallback(() => {
+    revealRequest.current++;
+    setStoredValue(null);
+    setRevealingStored(false);
+  }, []);
+  useFocusEffect(useCallback(() => () => hideStored(), [hideStored]));
+  useEffect(() => {
+    const subscription = AppState.addEventListener("change", (state) => {
+      if (state !== "active") hideStored();
+    });
+    return () => subscription.remove();
+  }, [hideStored]);
+  const revealStored = async () => {
+    if (!secret?.configured) return;
+    const request = ++revealRequest.current;
+    setRevealingStored(true);
+    setError(null);
+    try {
+      const result = await api<{ value: string }>(
+        `/api/secrets/${encodeURIComponent(secret.key)}/reveal`,
+        { method: "POST", body: "{}", cache: "no-store" },
+      );
+      if (request === revealRequest.current) setStoredValue(result.value);
+    } catch (cause) {
+      if (request === revealRequest.current)
+        setError(cause instanceof Error ? cause.message : "Could not reveal secret");
+    } finally {
+      if (request === revealRequest.current) setRevealingStored(false);
+    }
+  };
   const save = async () => {
     const nextKey = key.trim();
     if (!nextKey) return;
@@ -210,11 +245,30 @@ export function SecretEditorScreen({
         />
         {system && <Text style={styles.help}>Built-in keys cannot be renamed.</Text>}
       </View>
+      {secret?.configured && (
+        <View style={styles.field}>
+          <View style={styles.valueHeading}>
+            <Text style={styles.label}>Stored value</Text>
+            <Pressable
+              accessibilityRole="button"
+              disabled={revealingStored}
+              onPress={storedValue === null ? () => void revealStored() : hideStored}
+            >
+              <Text style={styles.reveal}>
+                {revealingStored ? "Revealing…" : storedValue === null ? "Reveal" : "Hide"}
+              </Text>
+            </Pressable>
+          </View>
+          <Text selectable={storedValue !== null} style={styles.storedValue}>
+            {storedValue ?? "••••••••"}
+          </Text>
+        </View>
+      )}
       <View style={styles.field}>
         <View style={styles.valueHeading}>
           <Text style={styles.label}>{secret?.configured ? "Replacement value" : "Value"}</Text>
           <Pressable onPress={() => setRevealed((current) => !current)}>
-            <Text style={styles.reveal}>{revealed ? "Hide" : "Reveal"}</Text>
+            <Text style={styles.reveal}>{revealed ? "Hide input" : "Show input"}</Text>
           </Pressable>
         </View>
         <TextInput
@@ -229,7 +283,7 @@ export function SecretEditorScreen({
         />
         {secret?.configured && (
           <Text style={styles.help}>
-            Stored values cannot be revealed. Enter a replacement to update it.
+            Leave this blank unless you want to replace the stored value.
           </Text>
         )}
       </View>
@@ -383,6 +437,12 @@ const createStyles = (theme: VitoTheme) =>
       fontFamily: "monospace",
     },
     inputLocked: { color: theme.colors.textMuted, backgroundColor: theme.colors.canvas },
+    storedValue: {
+      color: theme.colors.text,
+      fontFamily: "monospace",
+      fontSize: 13,
+      paddingVertical: theme.space.sm,
+    },
     help: { color: theme.colors.textMuted, fontSize: 10, marginTop: theme.space.xs },
     valueHeading: { flexDirection: "row", justifyContent: "space-between" },
     reveal: { color: theme.colors.accent, fontSize: 11, fontWeight: "800" },

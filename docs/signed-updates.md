@@ -52,3 +52,12 @@ available. Do not market this as automatic or one-click updating.
   streaming verification before shipping large public artifacts.
 - This branch is isolated from the running source checkout. Deploying it to
   existing binary users requires one trusted manual release first.
+
+## Test release channel
+
+For a non-production test, publish a **prerelease** tagged `updater-test-N`
+on the same repository and set `VITO_UPDATE_TEST_TAG=updater-test-N` when
+calling `vito update check` or `stage`. The CLI restricts this override to
+test-tag names under the pinned GitHub repository and still requires the
+same signature. GitHub prereleases do not replace `latest` for normal clients.
+Do not distribute the test tag to friends.

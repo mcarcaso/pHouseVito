@@ -4,7 +4,15 @@ import { basename, join, resolve } from "node:path";
 import { homedir } from "node:os";
 import { verifyAsset, verifyUpdateManifest } from "../update-manifest.js";
 
-const BASE = "https://github.com/mcarcaso/pHouseVito/releases/latest/download";
+const RELEASES = "https://github.com/mcarcaso/pHouseVito/releases";
+function releaseBase(): string {
+  // Explicit test tags use the same signing key and repository, but do not
+  // change the production latest-release feed. No arbitrary URL override.
+  const tag = process.env.VITO_UPDATE_TEST_TAG;
+  if (!tag) return `${RELEASES}/latest/download`;
+  if (!/^updater-test-[A-Za-z0-9._-]+$/.test(tag)) throw new Error("Invalid test release tag");
+  return `${RELEASES}/download/${tag}`;
+}
 const MAX_MANIFEST_BYTES = 64 * 1024;
 const ALLOWED_DOWNLOAD_HOSTS = new Set([
   "github.com",
@@ -62,11 +70,14 @@ export async function runUpdateCommand(args: string[], projectRoot: string): Pro
   }
   if (!["check", "stage"].includes(action) || rest.length)
     throw new Error("Usage: vito update check | stage");
+  const base = releaseBase();
   const [manifestBytes, signatureBytes] = await Promise.all([
-    download(`${BASE}/update-manifest.json`, MAX_MANIFEST_BYTES),
-    download(`${BASE}/update-manifest.sig`, 1024),
+    download(`${base}/update-manifest.json`, MAX_MANIFEST_BYTES),
+    download(`${base}/update-manifest.sig`, 1024),
   ]);
   const manifest = verifyUpdateManifest(manifestBytes, signatureBytes.toString("utf8").trim());
+  if (process.env.VITO_UPDATE_TEST_TAG && manifest.version !== process.env.VITO_UPDATE_TEST_TAG)
+    throw new Error("Signed manifest version does not match test release tag");
   const platform = `${process.platform}-${process.arch}`;
   const asset = manifest.assets.find((entry) => entry.platform === platform);
   if (!asset) throw new Error(`No signed installer for ${platform}`);

@@ -61,3 +61,30 @@ calling `vito update check` or `stage`. The CLI restricts this override to
 test-tag names under the pinned GitHub repository and still requires the
 same signature. GitHub prereleases do not replace `latest` for normal clients.
 Do not distribute the test tag to friends.
+
+## Disposable Linux x64 drill, September 29, 2026
+
+On a Hetzner Ubuntu 24.04 cpx21 VM with Node 24.13.0, built clean
+`baseline-469ed78` and `updater-test-20260929` installers from real source
+revisions. The new release embedded revision
+`457f2cac491c98e0a5b3f0d3407addb8c11ab0a7` and `Dirty: 0`.
+The release archive contained no mutable `user/` folder or signing key;
+`user.example/secrets.json` had only empty sample values. No production
+credentials were installed on the VM.
+
+Installed/activated the baseline from its standalone SEA installer, created
+one fake data marker, and validated its config. Published a temporary signed
+GitHub prerelease `updater-test-20260929` containing the new Linux x64
+installer. Ran the updater's `check` and `stage` with `VITO_UPDATE_TEST_TAG`:
+the verified 323030208-byte downloaded file matched the source SHA-256
+`8699dc412a5f3eb191b097b7a92f4ffa5e082517c928ac424cc19670fc663bf9`.
+Flipping one byte was rejected by asset verification. Installed and activated
+the staged installer, validated config and `/api/health`, then rolled back and
+verified `/api/health` again; fake data survived both switches. Neither stage
+nor activate restarted a service. The test prerelease and VM were removed
+after the drill.
+
+This proves only Linux x64 on the tested Node ABI. It does not prove production
+service-manager cutover, live chat tokens, other architectures, automatic
+rollback, key recovery, or downgrade protection. Continue to require human
+operator approval for installation and service restart.

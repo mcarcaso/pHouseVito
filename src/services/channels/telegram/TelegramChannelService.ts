@@ -64,6 +64,7 @@ export class TelegramChannelService implements ChannelService {
       { command: "new", description: "Fresh start — new pi session, archive chat" },
       { command: "compact", description: "Summarize older turns to free context" },
       { command: "stop", description: "Abort the current request" },
+      { command: "restart", description: "Restart Vito (owner only; asks for confirmation)" },
       { command: "model", description: "Show or switch the live pi model" },
     ];
 

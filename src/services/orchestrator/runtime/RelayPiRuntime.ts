@@ -51,6 +51,14 @@ function providerSummary(message: Record<string, unknown> | undefined): string |
 function progressEvent(value: unknown): AgentActivityEvent | undefined {
   const event = record(value);
   if (!event || typeof event.type !== "string") return;
+  if (event.type === "compaction_start")
+    return { kind: "thinking", activity: "thinking", content: "Compacting conversation context…" };
+  if (event.type === "compaction_end")
+    return {
+      kind: "thinking",
+      activity: "thinking",
+      content: event.aborted ? "Compaction stopped" : "Context compacted; continuing…",
+    };
   if (event.type === "agent_start") return { kind: "thinking", activity: "thinking" };
   const update = record(event.assistantMessageEvent);
   const message = record(event.message) ?? record(update?.partial);

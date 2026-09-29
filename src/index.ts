@@ -15,6 +15,7 @@ import {
 import { DashboardChannelService } from "./services/channels/dashboard/DashboardChannelService.js";
 import { DiscordChannelService } from "./services/channels/discord/DiscordChannelService.js";
 import { TelegramChannelService } from "./services/channels/telegram/TelegramChannelService.js";
+import { WhatsAppAgentChannelService } from "./services/channels/whatsapp/WhatsAppAgentChannelService.js";
 import { DEFAULT_TIMEZONE } from "./shared/defaults.js";
 
 async function main() {
@@ -73,6 +74,7 @@ async function main() {
   // Register externally managed channel services. Their platform-specific
   // management capabilities are discovered through ChannelRegistryService.
   orchestrator.registerChannel(x, new TelegramChannelService());
+  orchestrator.registerChannel(x, new WhatsAppAgentChannelService());
   orchestrator.registerChannel(x, new DiscordChannelService());
 
   // Start channels

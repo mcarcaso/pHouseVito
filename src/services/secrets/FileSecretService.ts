@@ -64,6 +64,7 @@ const PROVIDER_API_KEYS: Record<string, ProviderApiKeyInfo> = {
 const SYSTEM_KEYS: Record<string, string> = {
   TELEGRAM_BOT_TOKEN:
     "Telegram Bot API token — get from @BotFather (required for Telegram channel)",
+  WHATSAPP_AGENT_API_KEY: "WhatsApp Agent Platform API token — WhatsApp agent chat info",
   DISCORD_BOT_TOKEN:
     "Discord Bot token — get from https://discord.com/developers/applications (required for Discord channel)",
   DASHBOARD_PASSWORD_HASH: "Dashboard password hash (managed automatically — do not edit manually)",

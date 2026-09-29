@@ -92,7 +92,12 @@ export class DefaultPushNotificationService implements PushNotificationService {
   }
 
   enqueueForMessage(x: Context, message: FinalAssistantMessage): void {
-    if (message.channel === "discord" || message.channel === "telegram") return;
+    if (
+      message.channel === "discord" ||
+      message.channel === "telegram" ||
+      message.channel === "whatsapp"
+    )
+      return;
     const body = notificationBody(message.content);
     if (!body || body.includes("NO_REPLY") || body === "*(interrupted)*") return;
     const store = xPushNotificationStore(x);

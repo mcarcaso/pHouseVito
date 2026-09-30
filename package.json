@@ -30,8 +30,8 @@
     "restart:process": "pm2 restart vito-server"
   },
   "dependencies": {
-    "@earendil-works/pi-ai": "^0.87.1",
-    "@earendil-works/pi-coding-agent": "^0.87.1",
+    "@earendil-works/pi-ai": "^0.99.1",
+    "@earendil-works/pi-coding-agent": "^0.99.1",
     "@modelcontextprotocol/sdk": "^1.29.0",
     "@playwright/mcp": "^0.0.75",
     "@viz-js/viz": "^3.25.0",

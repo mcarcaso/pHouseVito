@@ -157,7 +157,9 @@ export class WhatsAppAgentChannelService implements ChannelService {
       ...options,
       headers: {
         Authorization: `Bearer ${this.token}`,
-        ...(options.body ? { "Content-Type": "application/json" } : {}),
+        ...(options.body && !(options.body instanceof FormData)
+          ? { "Content-Type": "application/json" }
+          : {}),
       },
       signal: options.signal ?? AbortSignal.timeout(35_000),
     });

@@ -17,14 +17,43 @@ const assetSchema = z
       .max(1024 * 1024 * 1024),
   })
   .strict();
-export const updateManifestSchema = z
-  .object({
-    schema: z.literal(1),
-    version: z.string().regex(/^[A-Za-z0-9][A-Za-z0-9._-]*$/),
-    revision: z.string().regex(/^[a-f0-9]{40}$/),
-    assets: z.array(assetSchema).min(1).max(4),
-  })
-  .strict();
+const fields = {
+  version: z.string().regex(/^[A-Za-z0-9][A-Za-z0-9._-]*$/),
+  revision: z.string().regex(/^[a-f0-9]{40}$/),
+  assets: z.array(assetSchema).min(1).max(4),
+};
+const backupFile = z.enum([
+  "vito.db",
+  "embeddings.db",
+  "vito.config.json",
+  "secrets.json",
+  "SOUL.md",
+  "profile.md",
+  "profile.json",
+]);
+export const dataImpactSchema = z.discriminatedUnion("kind", [
+  z.object({ kind: z.literal("none") }).strict(),
+  z
+    .object({
+      kind: z.literal("compatible-migration"),
+      files: z.array(backupFile).min(1),
+      notes: z.string().min(1).max(4000),
+      backwardCompatible: z.literal(true),
+    })
+    .strict(),
+  z.object({ kind: z.literal("breaking"), notes: z.string().min(1).max(4000) }).strict(),
+]);
+export const updateManifestSchema = z.discriminatedUnion("schema", [
+  z.object({ schema: z.literal(1), ...fields }).strict(),
+  z
+    .object({
+      schema: z.literal(2),
+      ...fields,
+      sequence: z.number().int().positive(),
+      dataImpact: dataImpactSchema,
+    })
+    .strict(),
+]);
 export type UpdateManifest = z.infer<typeof updateManifestSchema>;
 
 export function verifyUpdateManifest(

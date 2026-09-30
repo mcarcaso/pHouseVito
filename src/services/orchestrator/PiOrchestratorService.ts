@@ -35,6 +35,7 @@ import {
   xPiSessionStore,
   xPiSessionsDir,
   xProviderService,
+  xProjectDir,
   xServerLifecycleService,
   xSessionService,
   xSkillStore,
@@ -42,6 +43,8 @@ import {
   xVitoService,
 } from "../../lib/x.js";
 
+import { execFile } from "node:child_process";
+import { promisify } from "node:util";
 import { randomUUID } from "node:crypto";
 import { statSync } from "node:fs";
 import { resolve } from "node:path";
@@ -650,6 +653,11 @@ export class PiOrchestratorService implements OrchestratorService {
       return;
     }
 
+    if (channel && /^\/update(?:\s|$)/i.test(commandText)) {
+      await this.handleUpdateCommand(commandEvent, channel);
+      return;
+    }
+
     const vitoSession = xSessionService(this.x).resolve(this.x, event.sessionKey);
     await xInboundAttachmentService(this.x).prepare(this.x, event);
 
@@ -945,6 +953,35 @@ export class PiOrchestratorService implements OrchestratorService {
     await handler.stopTyping?.();
   }
 
+  private async handleUpdateCommand(event: InboundEvent, channel: ChannelService): Promise<void> {
+    const handler = channel.createOutputHandler(this.x, event);
+    // Never accept an update instruction from intake-only channels, forwarded messages, or Ask API.
+    const authorized =
+      event.channel === "dashboard" ||
+      (event.channel === "discord" &&
+        parseInboundEventMetadata(event.raw).commandAuthorized === true);
+    try {
+      if (!authorized)
+        throw new Error(
+          "Updates require the authenticated dashboard or bot owner's Discord command.",
+        );
+      const args = (event.content ?? "").trim().split(/\s+/).slice(1);
+      if (!args.length) args.push("status");
+      const root = xProjectDir(this.x);
+      const { stdout } = await promisify(execFile)(
+        process.execPath,
+        [resolve(root, "dist/cli/vito.js"), "update", ...args],
+        { cwd: root, timeout: 240_000, maxBuffer: 1024 * 1024 },
+      );
+      await handler.relay(stdout.trim());
+    } catch (error) {
+      await handler.relay(
+        `Update not applied: ${error instanceof Error ? error.message : String(error)}`,
+      );
+    }
+    await handler.endMessage?.();
+  }
+
   private async handleRestartCommand(event: InboundEvent, channel: ChannelService): Promise<void> {
     const handler = channel.createOutputHandler(this.x, event);
     if (
@@ -955,7 +992,11 @@ export class PiOrchestratorService implements OrchestratorService {
       await handler.endMessage?.();
       return;
     }
-    await handler.relay("🔄 Rebuilding dashboard and restarting...");
+    await handler.relay(
+      process.env.VITO_RELEASE_MODE === "1"
+        ? "🔄 Restarting managed Vito (no rebuild)..."
+        : "🔄 Rebuilding dashboard and restarting...",
+    );
     await handler.stopTyping?.();
     xServerLifecycleService(this.x).requestRestart(this.x, {
       userAgent: `slash-command/${event.channel}`,
@@ -992,6 +1033,7 @@ export class PiOrchestratorService implements OrchestratorService {
         "`/stop` — cancel active work and clear queued invocations",
         "`/status` — session, model, and durable queue state",
         "`/restart` — owner-only Vito service restart; never reboots the host",
+        "`/update` — owner-only signed binary update status/check/stage/apply (apply requires explicit approval)",
         "`/help` — this help",
       ].join("\n"),
     );

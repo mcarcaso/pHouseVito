@@ -57,7 +57,10 @@ export class ServerLifecycleRouterService implements RouterService {
         });
         return {
           ok: true as const,
-          message: "Rebuilding dashboard and restarting server...",
+          message:
+            process.env.VITO_RELEASE_MODE === "1"
+              ? "Restarting managed server without rebuilding..."
+              : "Rebuilding dashboard and restarting server...",
         };
       },
     });

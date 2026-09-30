@@ -2,6 +2,7 @@ import { randomBytes } from "node:crypto";
 import { mkdir, readFile, rename, rm, writeFile } from "node:fs/promises";
 import { basename, join, resolve } from "node:path";
 import { homedir } from "node:os";
+import { requestApply, updateStatus } from "../update-apply.js";
 import { verifyAsset, verifyUpdateManifest } from "../update-manifest.js";
 
 const RELEASES = "https://github.com/mcarcaso/pHouseVito/releases";
@@ -62,9 +63,38 @@ async function download(url: string, maxBytes: number): Promise<Buffer> {
 
 export async function runUpdateCommand(args: string[], projectRoot: string): Promise<number> {
   const [action, ...rest] = args;
+  if (action === "status" && !rest.length) {
+    console.log(JSON.stringify(await updateStatus(projectRoot)));
+    return 0;
+  }
+  if (action === "apply") {
+    const [version, revision, approval, migrationApproval] = rest;
+    if (
+      !version ||
+      !/^[A-Za-z0-9][A-Za-z0-9._-]*$/.test(version) ||
+      !revision ||
+      !/^[a-f0-9]{40}$/.test(revision) ||
+      approval !== "--approve" ||
+      (migrationApproval && migrationApproval !== "--approve-migration") ||
+      rest.length > 4
+    )
+      throw new Error(
+        "Usage: vito update apply VERSION FULL_REVISION --approve [--approve-migration]",
+      );
+    await requestApply(
+      projectRoot,
+      resolve(homedir(), ".vito", "updates", version),
+      revision,
+      migrationApproval === "--approve-migration",
+    );
+    console.log(
+      "Update queued. The supervisor will restart only Vito, check health, and roll back if needed. Use vito update status.",
+    );
+    return 0;
+  }
   if (action === "help" || action === "--help" || !action) {
     console.log(
-      "Usage: vito update check | stage\nStages a signed installer; does not execute, activate, or restart it.",
+      "Usage: vito update check | stage | status | apply VERSION FULL_REVISION --approve [--approve-migration]",
     );
     return 0;
   }
@@ -98,6 +128,8 @@ export async function runUpdateCommand(args: string[], projectRoot: string): Pro
         platform,
         currentRevision: installed ?? "source-or-unknown",
         installerBytes: asset.size,
+        dataImpact: manifest.schema === 2 ? manifest.dataImpact : { kind: "unknown" },
+        sequence: manifest.schema === 2 ? manifest.sequence : null,
       }),
     );
     return 0;
@@ -107,6 +139,8 @@ export async function runUpdateCommand(args: string[], projectRoot: string): Pro
   const bytes = await download(asset.url, asset.size);
   verifyAsset(bytes, asset.sha256, asset.size);
   await mkdir(dir, { recursive: true, mode: 0o700 });
+  await writeFile(join(dir, "update-manifest.json"), manifestBytes, { mode: 0o600 });
+  await writeFile(join(dir, "update-manifest.sig"), signatureBytes, { mode: 0o600 });
   const temporary = join(dir, `.download-${randomBytes(8).toString("hex")}`);
   try {
     await writeFile(temporary, bytes, { flag: "wx", mode: 0o700 });

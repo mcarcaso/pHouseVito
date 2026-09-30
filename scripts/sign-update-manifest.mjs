@@ -3,17 +3,18 @@
 import { createPrivateKey, sign, createHash } from "node:crypto";
 import { readFileSync, writeFileSync, statSync } from "node:fs";
 import { basename, resolve } from "node:path";
-const [version, revision, privateKeyPath, ...paths] = process.argv.slice(2);
+const [version, revision, privateKeyPath, policyPath, ...paths] = process.argv.slice(2);
 if (
   !version ||
   !/^[A-Za-z0-9][A-Za-z0-9._-]*$/.test(version) ||
   !revision ||
   !/^[a-f0-9]{40}$/.test(revision) ||
   !privateKeyPath ||
+  !policyPath ||
   !paths.length
 )
   throw new Error(
-    "Usage: node scripts/sign-update-manifest.mjs VERSION FULL_REVISION PRIVATE_KEY INSTALLER...",
+    "Usage: node scripts/sign-update-manifest.mjs VERSION FULL_REVISION PRIVATE_KEY POLICY_JSON INSTALLER...",
   );
 const assets = paths.map((input) => {
   const path = resolve(input),
@@ -31,7 +32,18 @@ const assets = paths.map((input) => {
     size: statSync(path).size,
   };
 });
-const manifest = Buffer.from(JSON.stringify({ schema: 1, version, revision, assets }) + "\n");
+const policy = JSON.parse(readFileSync(policyPath, "utf8"));
+// Validate before signing using the exact schema shipped with the receiver.
+const { updateManifestSchema } = await import("../dist/cli/update-manifest.js");
+const value = updateManifestSchema.parse({
+  schema: 2,
+  version,
+  revision,
+  assets,
+  sequence: policy.sequence,
+  dataImpact: policy.dataImpact,
+});
+const manifest = Buffer.from(JSON.stringify(value) + "\n");
 const key = createPrivateKey(readFileSync(privateKeyPath));
 const signature = sign(null, manifest, key).toString("base64");
 writeFileSync("update-manifest.json", manifest, { flag: "wx" });

@@ -20,6 +20,7 @@ import { api, VITO_URL } from "../../services/api/client";
 import { MarkdownText } from "../../components/markdown/MarkdownText";
 import { useThemeStyles, useVitoTheme, type VitoTheme } from "../../hooks/useVitoTheme";
 
+import { UpdateControls } from "./UpdateControls";
 import { operationAreas, type OperationArea } from "./operation-catalog";
 
 const paths: Record<OperationArea, string> = {
@@ -98,6 +99,7 @@ function ServerOverview({
   const styles = useThemeStyles(createStyles);
   const theme = useVitoTheme();
   const status = (value ?? {}) as {
+    managedRelease?: boolean;
     uptime?: number;
     pid?: number;
     nodeVersion?: string;
@@ -187,23 +189,25 @@ function ServerOverview({
         </View>
       </View>
 
-      <View style={[styles.serverPanel, styles.serverControlPanel]}>
-        <View style={styles.serverControlHeading}>
-          <View style={styles.serverControlIcon}>
-            <Ionicons name="refresh" size={18} color={theme.colors.warning} />
+      {!status.managedRelease && (
+        <View style={[styles.serverPanel, styles.serverControlPanel]}>
+          <View style={styles.serverControlHeading}>
+            <View style={styles.serverControlIcon}>
+              <Ionicons name="refresh" size={18} color={theme.colors.warning} />
+            </View>
+            <View style={styles.serverHeroCopy}>
+              <Text style={styles.serverSectionTitle}>Server controls</Text>
+              <Text style={styles.serverControlDescription}>
+                Rebuilds the backend and dashboard, then restarts the PM2 process.
+              </Text>
+            </View>
           </View>
-          <View style={styles.serverHeroCopy}>
-            <Text style={styles.serverSectionTitle}>Server controls</Text>
-            <Text style={styles.serverControlDescription}>
-              Rebuilds the backend and dashboard, then restarts the PM2 process.
-            </Text>
-          </View>
+          <Pressable onPress={onRestart} style={styles.serverRestartButton}>
+            <Ionicons name="refresh" size={17} color={theme.colors.danger} />
+            <Text style={styles.serverRestartText}>Rebuild & restart</Text>
+          </Pressable>
         </View>
-        <Pressable onPress={onRestart} style={styles.serverRestartButton}>
-          <Ionicons name="refresh" size={17} color={theme.colors.danger} />
-          <Text style={styles.serverRestartText}>Rebuild & restart</Text>
-        </Pressable>
-      </View>
+      )}
     </View>
   );
 }
@@ -906,6 +910,8 @@ export function OperationWorkspace({
           </Text>
         </View>
       )}
+
+      {!loading && area === "server" && <UpdateControls />}
 
       {!loading && area === "server" && (
         <ServerOverview

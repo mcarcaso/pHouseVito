@@ -3,9 +3,11 @@ import { z } from "zod";
 export const serverHealthResponseSchema = z.object({
   status: z.literal("ok"),
   timestamp: z.string(),
+  revision: z.string().optional(),
 });
 
 export const serverStatusResponseSchema = z.object({
+  managedRelease: z.boolean().optional(),
   uptime: z.number(),
   pid: z.number().int(),
   nodeVersion: z.string(),

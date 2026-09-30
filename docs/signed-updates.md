@@ -1,90 +1,80 @@
-# Signed binary updates (experimental)
+# Signed managed-release updates (feature branch)
 
-This branch adds `vito update check` and `vito update stage`. They do **not** install,
-activate, restart, or roll back a release. The existing offline installer and
-`manage-release.sh` remain the operator-controlled cutover mechanism. No release
-has been published by this work.
+## What this implements
 
-## Trust and signing
+One signed release feed, a check/download/reverify path, a detached PM2 cutover worker, and authenticated dashboard controls. Owner Discord text commands and the dashboard use the same apply function. The worker stops only `vito-server`, atomically replaces `current`, starts through a stable launcher, checks `/api/health` for the **expected Git revision**, and switches back if the new release is unhealthy. Status is persisted outside the release and visible after restart. Source checkouts cannot apply binary updates.
 
-The CLI embeds an Ed25519 public key. The matching private key was generated
-locally under the maintainer's `user/release-signing/` with mode 0600; it is **not**
-in the repository or release bundle. Back it up securely before relying on
-self-service updates. Losing it means clients need a trusted manual update to
-replace their pinned public key. Never store it in a GitHub Action or commit it.
+This is not a security sandbox: the provisioned service user needs installation write permission. Root-owned or privilege-separated deployments need an operator-controlled supervisor before this workflow can be enabled. Do not grant blanket passwordless sudo to an agent.
 
-Build installers on the target OS/architecture and supported Node major, using
-`scripts/build-release.sh` and `scripts/build-installer.mjs` (requires pinned
-`POSTJECT_BIN`). Review the archive and verify there are no credentials or user
-files. Give installers names like `vito-installer-v1-darwin-arm64` and use GitHub
-release tag `v1`. The manifest's `revision` must be the full SHA-1 Git revision
-embedded in every release; do not combine installers built from different commits
-or incompatible Node majors in one manifest. The signing helper currently uses
-the host Node major for all supplied assets, so sign assets for different Node
-majors in separate releases.
+## Signed data-impact policy
 
-From a staging directory containing the installers:
+New manifests use schema 2, a monotonic positive `sequence`, and a mandatory `dataImpact`:
+
+- `{"kind":"none"}`: no intentional transformations of persistent user state, including during startup. No fresh backup is taken; the old release remains available for binary rollback.
+- `{"kind":"compatible-migration","files":["vito.db","vito.config.json"],"notes":"Reviewed migration description","backwardCompatible":true}`: requires explicit migration approval. Stop the service before taking targeted private snapshots. SQLite uses its backup API (WAL-safe) and checks backup integrity. Old code must operate correctly against the migrated data. Binary rollback does **not** restore snapshots or discard new messages.
+- `{"kind":"breaking","notes":"Describe data changes and recovery plan"}`: self-service apply is blocked. An operator must arrange backup, downtime, and recovery. Do not offer a misleading binary-only rollback for an irreversible migration.
+
+Review these declarations against migrations, config normalization, startup writes, and integration side effects. The signature authenticates the publisher's classification; it cannot prove the code obeys it. Unknown/schema-1 manifests can be checked/staged but never self-applied. Publisher sequences must increase; a local successful-update receipt rejects earlier sequences. Initial/bootstrap installs still require operator review of their starting revision/sequence. This is not absolute anti-rollback against an administrator changing local receipts.
+
+## Provisioning existing binary installations (owner only)
+
+First install a trusted release containing this updater **and revision-bearing health responses** through the existing operator deployment path. Securely back up the pinned Ed25519 signing key before distributing self-service releases.
+
+Then, as the installation/service owner:
 
 ```sh
-node /path/to/repo/scripts/sign-update-manifest.mjs v1 FULL_GIT_REVISION \
-  /secure/path/update-ed25519-private.pem vito-installer-v1-darwin-arm64 ...
+bash scripts/provision-update-service.sh /opt/vito-managed 3030
 ```
 
-Publish each installer plus `update-manifest.json` and `update-manifest.sig`
-to the same public release. `vito update check` downloads the manifest and
-verifies its exact bytes against the embedded key. `vito update stage` also
-verifies the selected platform installer by signed size and SHA-256 before
-placing it under `~/.vito/updates/VERSION/`. Both require HTTPS and enforce
-bounded downloads and allowed hosts. No unsigned fallback is available.
+This only creates `run-current.sh` and `update-service.json`; it does not change PM2 or restart anything. Explicitly reconfigure the one PM2 Vito entry to execute `/opt/vito-managed/run-current.sh` using bash, with the correct owner, environment and PM2_HOME, verify health, and save the PM2 configuration. Leave all unrelated apps alone. The worker rejects a PM2 entry pinned to an old release path. Check installation write permission first; the AWS operator installer currently uses sudo, so provisioning must resolve ownership/supervisor policy deliberately rather than silently assuming it is writable.
 
-The CLI currently does **not** enforce monotonic versions or automatically
-apply releases. An owner should review the release and use the existing
-installer/manager commands to activate and health-check it, with rollback
-available. Do not market this as automatic or one-click updating.
+## User/agent flow
 
-## Important limitations
+A model may help explain an update and its signed impact, but owner approval must be explicit. The model must not restart itself or silently initiate cutover.
 
-- GitHub's `latest` release must be the intended update; pinned signatures
-  prevent forged manifests but not replay of an older legitimately signed one.
-- Check/stage has not been tested against a published release or all supported
-  installer architectures.
-- The updater reads installer content into memory (up to 1 GiB); switch to
-  streaming verification before shipping large public artifacts.
-- This branch is isolated from the running source checkout. Deploying it to
-  existing binary users requires one trusted manual release first.
+```sh
+./vito update status
+./vito update check
+./vito update stage
+./vito update apply VERSION FULL_REVISION --approve
+# Only when signed policy declares a compatible migration:
+./vito update apply VERSION FULL_REVISION --approve --approve-migration
+```
 
-## Test release channel
+Apply refers to **already staged** verified bytes. It re-verifies manifest and installer before queuing and again in the worker, and checks the requested revision to reject a changed release. Downloads are fixed to the pinned GitHub repository and bounded in size. No arbitrary installer URL, shell command, service name, remote health target, or unsigned fallback is accepted.
 
-For a non-production test, publish a **prerelease** tagged `updater-test-N`
-on the same repository and set `VITO_UPDATE_TEST_TAG=updater-test-N` when
-calling `vito update check` or `stage`. The CLI restricts this override to
-test-tag names under the pinned GitHub repository and still requires the
-same signature. GitHub prereleases do not replace `latest` for normal clients.
-Do not distribute the test tag to friends.
+Owner Discord text commands use `/update status`, `/update check`, `/update stage`, and `/update apply VERSION FULL_REVISION --approve [--approve-migration]`. The apply command itself is the explicit confirmation. Other chat/intake/API channels cannot apply via this deterministic handler. Natural-language requests should lead to a reviewed plan and that confirmation command, not an autonomous restart.
 
-## Disposable Linux x64 drill, September 29, 2026
+Dashboard: Server → Signed binary updates → Check → Download and verify → Update Vito. The final confirmation shows the data-impact policy/targeted backup list. Routes require dashboard authentication and validated explicit approval. Requests return before the detached supervisor stops the server. UI polls persisted status and tolerates restart disconnects. Breaking updates direct the owner to an operator-led recovery plan.
 
-On a Hetzner Ubuntu 24.04 cpx21 VM with Node 24.13.0, built clean
-`baseline-469ed78` and `updater-test-20260929` installers from real source
-revisions. The new release embedded revision
-`457f2cac491c98e0a5b3f0d3407addb8c11ab0a7` and `Dirty: 0`.
-The release archive contained no mutable `user/` folder or signing key;
-`user.example/secrets.json` had only empty sample values. No production
-credentials were installed on the VM.
+## Operation and recovery
 
-Installed/activated the baseline from its standalone SEA installer, created
-one fake data marker, and validated its config. Published a temporary signed
-GitHub prerelease `updater-test-20260929` containing the new Linux x64
-installer. Ran the updater's `check` and `stage` with `VITO_UPDATE_TEST_TAG`:
-the verified 323030208-byte downloaded file matched the source SHA-256
-`8699dc412a5f3eb191b097b7a92f4ffa5e082517c928ac424cc19670fc663bf9`.
-Flipping one byte was rejected by asset verification. Installed and activated
-the staged installer, validated config and `/api/health`, then rolled back and
-verified `/api/health` again; fake data survived both switches. Neither stage
-nor activate restarted a service. The test prerelease and VM were removed
-after the drill.
+`data/update-status.json` records queued/installing/stopping/backing-up/starting/succeeded/rolled-back/failed-before-activation/recovery-required. `data/update.log` and `data/update-error.txt` stay private to the installation. An exclusive `data/update-lock` prevents concurrent applies. A process crash may leave the lock: an operator must inspect status, logs, current release and actual process before clearing it. A failed rollback retains the lock. Backups are private under `data/update-backups/SEQUENCE-VERSION/`; old releases and backups are **not automatically deleted**. Define retention after real installation sizes and recovery needs are understood.
 
-This proves only Linux x64 on the tested Node ABI. It does not prove production
-service-manager cutover, live chat tokens, other architectures, automatic
-rollback, key recovery, or downgrade protection. Continue to require human
-operator approval for installation and service restart.
+A supervisor crash or host reboot mid-cutover is not yet automatically reconciled. Health checks establish local HTTP readiness/revision, not end-to-end channel delivery or model quality. If new code makes externally visible changes before a failed health check, binary rollback cannot undo them. Only classify a migration compatible after testing both new and old code against the migrated data.
+
+## Publishing
+
+Build clean matching-architecture installers from one full Git revision. Never include user data or credentials. Build the signing helper's schema first (`npm run build`), then supply a reviewed policy JSON such as:
+
+```json
+{ "sequence": 2026093001, "dataImpact": { "kind": "none" } }
+```
+
+```sh
+node scripts/sign-update-manifest.mjs VERSION FULL_REVISION /secure/private-key.pem policy.json INSTALLER...
+```
+
+Publish the installers, `update-manifest.json`, and `update-manifest.sig` together. The helper currently uses the host Node major for all supplied assets; do not combine incompatible Node majors. GitHub `latest` must be the intended production release. The optional `VITO_UPDATE_TEST_TAG=updater-test-N` stays restricted to signed test tags on the same repository and never changes production latest. Staging currently reads installers into memory (up to 1 GiB); streaming remains future work.
+
+## Verification completed / still required
+
+- Prior September 29 disposable Linux x64 drill: real standalone installer, signed download/staging, tamper rejection, manual activation/health/rollback with fake data. Test VM/firewall and public prerelease were removed.
+- This iteration: cutover ordering/failure injection and route auth/approval tests. A repeatable **local fixture** uses an isolated PM2_HOME, generated throwaway signing key, fake installers/services, and fake data. It tests successful activation, failed-new-release rollback, and a WAL-backed targeted SQLite snapshot. It never accesses production services. Run after building with globally available PM2:
+
+```sh
+npm run build
+node test/fixtures/update-supervisor-drill.mjs
+```
+
+This fixture is not a real Linux release or production upgrade proof. Before merge/distribution, repeat with a real bootstrapped binary on disposable Linux, test owner chat/dashboard confirmation and progress end-to-end, and review the UI visually. Test other architectures separately. No new release or production cutover is authorized by these development checks.

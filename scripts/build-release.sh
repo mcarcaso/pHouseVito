@@ -24,10 +24,13 @@ node "$ROOT/scripts/copy-release-source.mjs" "$ROOT" "$SOURCE"
 (cd "$SOURCE" && npm ci --include=dev && npm --prefix mobile ci --include=dev && npm run build && npm run build:mobile:web)
 cp "$SOURCE/package.json" "$SOURCE/package-lock.json" "$RELEASE/"
 cp "$SOURCE/scripts/patch-croner-timeout.mjs" "$RELEASE/scripts/"
+cp "$SOURCE/scripts/provision-update-service.sh" "$RELEASE/scripts/"
 cp "$SOURCE/scripts/release-run.sh" "$RELEASE/run.sh"
 cp "$SOURCE/scripts/release-vito.sh" "$RELEASE/vito"
 chmod +x "$RELEASE/run.sh" "$RELEASE/vito"
 cp -R "$SOURCE/dist" "$SOURCE/system" "$SOURCE/user.example" "$RELEASE/"
+mkdir -p "$RELEASE/docs"
+cp "$SOURCE/docs/signed-updates.md" "$RELEASE/docs/"
 cp -R "$SOURCE/mobile/dist" "$RELEASE/mobile/"
 # package.json's postinstall patches Croner. Staging is outside the source tree.
 (cd "$RELEASE" && npm ci --omit=dev)

@@ -19,7 +19,7 @@ Commands:
   memory      Search Vito's long-term memory
   secrets     Safely manage secret configuration
   jobs        Manage script-first scheduled jobs
-  update      Check and stage signed binary releases
+  update      Check, stage, and apply approved signed binary releases
   import-vito-next  Import a quiesced Vito Next snapshot
   help        Show this help
 

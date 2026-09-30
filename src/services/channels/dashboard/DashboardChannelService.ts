@@ -32,6 +32,7 @@ import {
   PublicSecretDropRouterService,
   SecretDropRouterService,
 } from "../../../routers/SecretDropRouterService.js";
+import { UpdateRouterService } from "../../../routers/UpdateRouterService.js";
 import { ServerLifecycleRouterService } from "../../../routers/ServerLifecycleRouterService.js";
 import { SessionRouterService } from "../../../routers/SessionRouterService.js";
 import { SkillRouterService } from "../../../routers/SkillRouterService.js";
@@ -120,6 +121,7 @@ export class DashboardChannelService implements ChannelService {
 
     // API endpoints
     app.use("/api", await new ServerLifecycleRouterService().createRouter(x));
+    app.use("/api", await new UpdateRouterService().createRouter(x));
 
     app.use("/api", await new ConfigRouterService().createRouter(x));
 

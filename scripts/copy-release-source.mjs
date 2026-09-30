@@ -8,6 +8,7 @@ const roots = [
   "src",
   "mobile",
   "system",
+  "docs/signed-updates.md",
   "user.example",
   "scripts",
   "packages/vito-client",

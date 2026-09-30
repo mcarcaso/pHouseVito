@@ -1,5 +1,5 @@
 import { spawn } from "node:child_process";
-import { closeSync, mkdirSync, openSync } from "node:fs";
+import { closeSync, mkdirSync, openSync, readFileSync } from "node:fs";
 import os from "node:os";
 import { dirname, join } from "node:path";
 import type { Context } from "../../context/Context.js";
@@ -75,7 +75,17 @@ export class DefaultServerLifecycleService implements ServerLifecycleService {
   }
 
   getHealth(_x: Context): ServerHealth {
-    return { status: "ok", timestamp: this.now().toISOString() };
+    let revision: string | undefined;
+    if (process.env.VITO_RELEASE_MODE === "1") {
+      try {
+        revision = /^Revision: ([a-f0-9]{40})$/m.exec(
+          readFileSync(join(process.cwd(), "RELEASE_INFO"), "utf8"),
+        )?.[1];
+      } catch {
+        /* source checkouts have no release marker */
+      }
+    }
+    return { status: "ok", timestamp: this.now().toISOString(), ...(revision ? { revision } : {}) };
   }
 
   getStatus(_x: Context): ServerStatus {
@@ -88,6 +98,7 @@ export class DefaultServerLifecycleService implements ServerLifecycleService {
     const memoryTotal = this.system.totalmem();
     const memoryFree = this.system.freemem();
     return {
+      ...(process.env.VITO_RELEASE_MODE === "1" ? { managedRelease: true } : {}),
       uptime: this.runtime.uptime(),
       pid: this.runtime.pid,
       nodeVersion: this.runtime.version,
@@ -113,8 +124,8 @@ export class DefaultServerLifecycleService implements ServerLifecycleService {
   private async rebuildAndRestart(): Promise<void> {
     try {
       await this.runCommand({
-        file: "./scripts/restart-vito.sh",
-        args: [],
+        file: process.env.VITO_RELEASE_MODE === "1" ? "pm2" : "./scripts/restart-vito.sh",
+        args: process.env.VITO_RELEASE_MODE === "1" ? ["restart", "vito-server"] : [],
         timeout: 900_000,
       });
     } catch (error: unknown) {

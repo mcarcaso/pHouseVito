@@ -109,7 +109,17 @@ export async function requestApply(
     try {
       const child = spawn(
         process.execPath,
-        [join(projectRoot, "dist/cli/update-worker.js"), root, resolve(stage), expectedRevision],
+        [
+          "--input-type=module",
+          "-e",
+          // PM2 kills the service's entire descendant tree, including detached children.
+          // Exit this trampoline so the actual supervisor is reparented before cutover.
+          "import { spawn } from 'node:child_process'; const worker = spawn(process.execPath, process.argv.slice(1), { detached: true, stdio: 'inherit' }); worker.once('error', () => process.exit(1)); worker.once('spawn', () => worker.unref());",
+          join(projectRoot, "dist/cli/update-worker.js"),
+          root,
+          resolve(stage),
+          expectedRevision,
+        ],
         {
           detached: true,
           stdio: ["ignore", fd, fd],
@@ -117,7 +127,9 @@ export async function requestApply(
         },
       );
       await new Promise<void>((done, fail) => {
-        child.once("spawn", done);
+        child.once("exit", (code) =>
+          code === 0 ? done() : fail(new Error("Update supervisor trampoline failed")),
+        );
         child.once("error", fail);
       });
       child.unref();

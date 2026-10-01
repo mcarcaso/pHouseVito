@@ -1,7 +1,9 @@
 import express from "express";
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
+import { readFile } from "node:fs/promises";
+import { verifyUpdateManifest } from "../cli/update-manifest.js";
 import { homedir } from "node:os";
 import { z } from "zod";
 import type { Context } from "../context/Context.js";
@@ -31,7 +33,16 @@ export class UpdateRouterService implements RouterService {
         path: `/server/update/${action}`,
         auth: "dashboard",
         schemas,
-        responseSchema: z.object({ output: z.string() }),
+        responseSchema: z.object({
+          output: z.string(),
+          stagedPlan: z
+            .object({
+              version: z.string(),
+              revision: z.string(),
+              dataImpact: z.record(z.string(), z.unknown()),
+            })
+            .optional(),
+        }),
         handler: async (routeX) => {
           const root = xProjectDir(routeX);
           const { stdout } = await exec(
@@ -39,7 +50,22 @@ export class UpdateRouterService implements RouterService {
             [join(root, "dist/cli/vito.js"), "update", action],
             { cwd: root, timeout: 240_000, maxBuffer: 1024 * 1024 },
           );
-          return { output: stdout.trim() };
+          const output = stdout.trim();
+          const staged = action === "stage" ? /^Verified and staged: (.+)$/m.exec(output) : null;
+          if (!staged) return { output };
+          const directory = dirname(staged[1]);
+          const manifest = verifyUpdateManifest(
+            await readFile(join(directory, "update-manifest.json")),
+            (await readFile(join(directory, "update-manifest.sig"), "utf8")).trim(),
+          );
+          return {
+            output,
+            stagedPlan: {
+              version: manifest.version,
+              revision: manifest.revision,
+              dataImpact: manifest.schema === 2 ? manifest.dataImpact : { kind: "unknown" },
+            },
+          };
         },
       });
     }

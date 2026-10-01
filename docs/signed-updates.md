@@ -79,4 +79,16 @@ node test/fixtures/update-supervisor-drill.mjs
 
 - September 30 disposable Hetzner Ubuntu 24.04 x64 / Node 24.13 / PM2 7.0.4 drill: clean real binary installers passed CLI cutover/expected health, tamper rejection, migration approval and a WAL-backed private targeted snapshot. A real authenticated dashboard request exposed PM2 killing the detached child worker with its parent service tree. The initial operation stopped before activation and retained its recovery lock; after inspection, operator recovery on the disposable VM restored the old service. Commit `e9c3250` added a double-fork trampoline. A newly built real installer then passed authenticated-dashboard-triggered automatic rollback from a deliberately broken startup release and returned the exact previous revision healthy, retaining fake data. Test-only good/broken commits existed only on the VM; no production credentials/private signing key were copied. Installers and locally signed metadata were pre-staged over SSH, so this iteration did not retest GitHub feed/download. The VM and its SSH-only firewall were deleted and deletion verified. Private evidence lives in `user/drive/private/ops/hetzner-updater-drill-20260930/` on the operator Mac.
 
-The fixture is not production upgrade proof. Before merge/distribution, finish browser visual QA, owner chat confirmation/progress end-to-end, review supervisor/ownership provisioning, and securely back up the signing key. Test other architectures separately. Crash/reboot reconciliation remains operator-led. No production cutover is authorized by these development checks.
+The fixture is not production upgrade proof. Before merge/distribution, finish owner chat confirmation/progress end-to-end, review supervisor/ownership provisioning, and securely back up the signing key. Test other architectures separately. Crash/reboot reconciliation remains operator-led. No production cutover is authorized by these development checks.
+
+### October 1 isolated browser QA
+
+The exported companion web was served only on loopback; all API responses were fixtures, external requests/WebSockets were blocked, and no actual update/restart was invoked. Chromium tests and screenshot review passed at 1440/light, 1920/dark, 390/light, 320/light and 320/dark. The updater card now shares the Server page's content width, visible themed buttons, and spacing. Cancellation sends no apply; confirmation includes the full **actually staged** revision and signed backup policy even if the feed changes between check and download. Stage now returns a reverified `stagedPlan`; stale/no-download results cannot enable Apply. Active updates and recovery-required states disable controls, interrupted polling recovers, and terminal status clears stale queued messaging. Breaking policies and checksum failures cannot enable Apply. Source installs explain why binary apply is unavailable and preserve source rebuild controls.
+
+Repeat after exporting web assets to a non-live staging directory:
+
+```sh
+node test/fixtures/update-dashboard-browser.mjs /absolute/staged-web /absolute/private-screenshot-dir
+```
+
+This exercises browser behavior with mocked endpoints, not native iOS/Safari or a real browser-to-signed-feed cutover. Those distinctions remain important. The real authenticated backend/supervisor rollback was independently tested on Hetzner. Private screenshots/results are under `user/drive/private/ops/updater-dashboard-qa/` on the operator Mac.

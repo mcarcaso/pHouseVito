@@ -12,8 +12,15 @@ const worker = fileURLToPath(new URL("../../dist/cli/update-apply.js", import.me
 const require = createRequire(import.meta.url);
 const Database = require("better-sqlite3");
 const parent = await realpath(await mkdtemp("/tmp/vud-"));
-for (const mode of ["success", "rollback", "migration"]) {
-  const fail = mode === "rollback";
+for (const mode of [
+  "success",
+  "rollback",
+  "migration",
+  "dashboard-success",
+  "dashboard-rollback",
+]) {
+  const fail = mode.endsWith("rollback");
+  const dashboard = mode.startsWith("dashboard-");
   const migration = mode === "migration";
   const root = join(parent, mode);
   const env = { ...process.env, PM2_HOME: join(root, "pm2"), VITO_RELEASE_MODE: "1" };
@@ -42,7 +49,7 @@ for (const mode of ["success", "rollback", "migration"]) {
     next = "b".repeat(40);
   await writeFile(join(root, "data/user/marker.txt"), "preserve me");
   await writeFile(join(prior, "RELEASE_INFO"), `Revision: ${baseline}\nDirty: 0\n`);
-  const app = `import http from 'node:http';import fs from 'node:fs';const revision=/Revision: ([a-f0-9]+)/.exec(fs.readFileSync('RELEASE_INFO','utf8'))[1];http.createServer((req,res)=>{res.setHeader('content-type','application/json');res.end(JSON.stringify({status:'ok',revision}));}).listen(${port},'127.0.0.1');`;
+  const app = `import http from 'node:http';import fs from 'node:fs';import {launchUpdateSupervisor} from ${JSON.stringify(worker)};const revision=/Revision: ([a-f0-9]+)/.exec(fs.readFileSync('RELEASE_INFO','utf8'))[1];http.createServer(async (req,res)=>{if(req.url==='/apply'){const fd=fs.openSync(${JSON.stringify(join(root, "supervisor.log"))},'a');try{await launchUpdateSupervisor([${JSON.stringify(join(root, "supervisor.mjs"))}],process.cwd(),fd);}finally{fs.closeSync(fd);}res.end('queued');return;}res.setHeader('content-type','application/json');res.end(JSON.stringify({status:'ok',revision}));}).listen(${port},'127.0.0.1');`;
   await writeFile(join(prior, "server.mjs"), app);
   await writeFile(join(prior, "run.sh"), "#!/bin/bash\nexec node server.mjs\n", { mode: 0o700 });
   await symlink(prior, join(root, "current"));
@@ -117,12 +124,31 @@ for (const mode of ["success", "rollback", "migration"]) {
       await new Promise((r) => setTimeout(r, 200));
     }
     const child = `import {runApplyWorker} from ${JSON.stringify(worker)};try {await runApplyWorker(${JSON.stringify(root)},${JSON.stringify(stage)},${JSON.stringify(next)},{publicKey:${JSON.stringify(key)},healthAttempts:2});}catch(e){if(!${fail})throw e;console.log('Expected unhealthy-new-release failure:',e.message);}`;
-    const result = await exec(process.execPath, ["--input-type=module", "-e", child], {
-      env,
-      timeout: 60000,
-      maxBuffer: 4 * 1024 * 1024,
-    });
-    console.log(result.stdout.trim());
+    if (dashboard) {
+      await writeFile(
+        join(root, "supervisor.mjs"),
+        "await new Promise(r=>setTimeout(r,500));" + child,
+      );
+      const response = await fetch(`http://127.0.0.1:${port}/apply`, { method: "POST" });
+      assert.equal(response.status, 200);
+      for (let n = 0; n < 200; n++) {
+        const status = JSON.parse(await readFile(join(root, "data/update-status.json"), "utf8"));
+        if (
+          ["succeeded", "rolled-back", "failed-before-activation", "recovery-required"].includes(
+            status.state,
+          )
+        )
+          break;
+        await new Promise((r) => setTimeout(r, 200));
+      }
+    } else {
+      const result = await exec(process.execPath, ["--input-type=module", "-e", child], {
+        env,
+        timeout: 60000,
+        maxBuffer: 4 * 1024 * 1024,
+      });
+      console.log(result.stdout.trim());
+    }
     const state = JSON.parse(await readFile(join(root, "data/update-status.json"), "utf8"));
     assert.equal(state.state, fail ? "rolled-back" : "succeeded");
     assert.equal(

@@ -71,6 +71,37 @@ export async function updateStatus(projectRoot: string): Promise<Record<string, 
   }
 }
 
+/** Double-fork so PM2 service tree termination cannot kill the cutover supervisor. */
+export async function launchUpdateSupervisor(
+  workerArgs: string[],
+  cwd: string,
+  fd: number,
+): Promise<void> {
+  const child = spawn(
+    process.execPath,
+    [
+      "--input-type=module",
+      "-e",
+      // PM2 kills the service's entire descendant tree, including detached children.
+      // Exit this trampoline so the actual supervisor is reparented before cutover.
+      "import { spawn } from 'node:child_process'; const worker = spawn(process.execPath, process.argv.slice(1), { detached: true, stdio: 'inherit' }); worker.once('error', () => process.exit(1)); worker.once('spawn', () => worker.unref());",
+      ...workerArgs,
+    ],
+    {
+      detached: true,
+      stdio: ["ignore", fd, fd],
+      cwd,
+    },
+  );
+  await new Promise<void>((done, fail) => {
+    child.once("exit", (code) =>
+      code === 0 ? done() : fail(new Error("Update supervisor trampoline failed")),
+    );
+    child.once("error", fail);
+  });
+  child.unref();
+}
+
 export async function requestApply(
   projectRoot: string,
   stage: string,
@@ -107,32 +138,11 @@ export async function requestApply(
     const log = await import("node:fs");
     const fd = log.openSync(join(root, "data/update.log"), "a", 0o600);
     try {
-      const child = spawn(
-        process.execPath,
-        [
-          "--input-type=module",
-          "-e",
-          // PM2 kills the service's entire descendant tree, including detached children.
-          // Exit this trampoline so the actual supervisor is reparented before cutover.
-          "import { spawn } from 'node:child_process'; const worker = spawn(process.execPath, process.argv.slice(1), { detached: true, stdio: 'inherit' }); worker.once('error', () => process.exit(1)); worker.once('spawn', () => worker.unref());",
-          join(projectRoot, "dist/cli/update-worker.js"),
-          root,
-          resolve(stage),
-          expectedRevision,
-        ],
-        {
-          detached: true,
-          stdio: ["ignore", fd, fd],
-          cwd: projectRoot,
-        },
+      await launchUpdateSupervisor(
+        [join(projectRoot, "dist/cli/update-worker.js"), root, resolve(stage), expectedRevision],
+        projectRoot,
+        fd,
       );
-      await new Promise<void>((done, fail) => {
-        child.once("exit", (code) =>
-          code === 0 ? done() : fail(new Error("Update supervisor trampoline failed")),
-        );
-        child.once("error", fail);
-      });
-      child.unref();
     } finally {
       log.closeSync(fd);
     }

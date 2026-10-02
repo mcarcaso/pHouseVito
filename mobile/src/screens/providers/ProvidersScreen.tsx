@@ -142,31 +142,35 @@ export function ProvidersScreen({
         const status = overview?.authStatus[provider.id];
         const connected = status?.hasAuth === true;
         return (
-          <Pressable
-            key={provider.id}
-            onPress={() => onOpen(provider.id)}
-            style={({ pressed }) => [styles.card, pressed && styles.pressed]}
-          >
-            <View style={[styles.providerIcon, connected && styles.providerIconConnected]}>
-              <Text style={styles.providerInitial}>{provider.name.slice(0, 1).toUpperCase()}</Text>
-            </View>
-            <View style={styles.copy}>
-              <Text style={styles.name}>{provider.name}</Text>
-              <View style={styles.statusRow}>
-                <View style={[styles.dot, connected && styles.dotConnected]} />
-                <Text style={[styles.status, connected && styles.statusConnected]}>
-                  {connected
-                    ? status?.authType === "oauth"
-                      ? "Subscription connected"
-                      : "API key configured"
-                    : "Not connected"}
+          <View key={provider.id} style={styles.card}>
+            <Pressable
+              accessibilityLabel={`Browse ${provider.name} models`}
+              onPress={() => onOpen(provider.id)}
+              style={({ pressed }) => [styles.cardMain, pressed && styles.pressed]}
+            >
+              <View style={[styles.providerIcon, connected && styles.providerIconConnected]}>
+                <Text style={styles.providerInitial}>
+                  {provider.name.slice(0, 1).toUpperCase()}
                 </Text>
               </View>
-            </View>
+              <View style={styles.copy}>
+                <Text style={styles.name}>{provider.name}</Text>
+                <View style={styles.statusRow}>
+                  <View style={[styles.dot, connected && styles.dotConnected]} />
+                  <Text style={[styles.status, connected && styles.statusConnected]}>
+                    {connected
+                      ? status?.authType === "oauth"
+                        ? "Subscription connected"
+                        : "API key configured"
+                      : "Not connected"}
+                  </Text>
+                </View>
+              </View>
+            </Pressable>
             <Pressable
+              accessibilityLabel={`${connected ? "Log out of" : "Log in to"} ${provider.name}`}
               disabled={busy === provider.id}
-              onPress={(event) => {
-                event.stopPropagation();
+              onPress={() => {
                 connected ? logout(provider.id, provider.name) : void login(provider.id);
               }}
               style={[styles.authButton, connected && styles.logoutButton]}
@@ -182,8 +186,13 @@ export function ProvidersScreen({
                 </Text>
               )}
             </Pressable>
-            <Ionicons name="chevron-forward" size={17} color={theme.colors.textMuted} />
-          </Pressable>
+            <Pressable
+              accessibilityLabel={`Open ${provider.name} models`}
+              onPress={() => onOpen(provider.id)}
+            >
+              <Ionicons name="chevron-forward" size={17} color={theme.colors.textMuted} />
+            </Pressable>
+          </View>
         );
       })}
     </ScrollView>
@@ -310,6 +319,13 @@ const createStyles = (theme: VitoTheme) =>
       borderWidth: 1,
       borderColor: theme.colors.separator,
       backgroundColor: theme.colors.surface,
+    },
+    cardMain: {
+      flex: 1,
+      minWidth: 0,
+      flexDirection: "row",
+      alignItems: "center",
+      gap: theme.space.md,
     },
     pressed: { opacity: 0.72 },
     providerIcon: {

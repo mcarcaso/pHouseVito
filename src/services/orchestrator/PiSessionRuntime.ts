@@ -193,7 +193,10 @@ export class PiSessionRuntime implements PiRuntime {
    * existing JSONL.
    */
   isFresh(): boolean {
-    if (this.piSession || this.config.resumePath) return false;
+    if (this.piSession) return false;
+    if (this.config.sessionDir && existsSync(join(this.config.sessionDir, FRESH_MARKER_FILE)))
+      return true;
+    if (this.config.resumePath) return false;
     if (!this.config.sessionDir) return true;
     const dir = this.config.sessionDir;
     if (existsSync(join(dir, FRESH_MARKER_FILE))) return true;

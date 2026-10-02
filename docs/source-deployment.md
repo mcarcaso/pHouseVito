@@ -25,6 +25,8 @@ The launcher executes `src/index.ts` through tsx, clears `VITO_RELEASE_MODE`, an
 
 Explicit context path overrides still take precedence. Existing source installs that do not use this launcher retain their default paths. This prevents a migration from silently switching Pi authentication back to a separate file under the service user's home directory.
 
+Vito resumes the latest persisted Pi file within the same Vito session directory even if the checkout path changes. Pi's cwd filter must not start a different conversation during a deployment move. The `/new` marker still takes precedence and starts a fresh conversation. Migration does not require rewriting the old session's cwd header or resetting conversation history.
+
 Health responses include the launcher's full source revision. It identifies the commit at startup; use Git status separately to inspect local edits. An already running process does not change its reported startup revision when someone fetches or edits its checkout.
 
 ## Cutover and rollback

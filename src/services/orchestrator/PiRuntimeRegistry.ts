@@ -1,6 +1,6 @@
 import { resolve } from "node:path";
 import type { Context } from "../../context/Context.js";
-import { xPiSessionsDir, xSkillStore } from "../../lib/x.js";
+import { xPiSessionStore, xPiSessionsDir, xSkillStore } from "../../lib/x.js";
 import type { ResolvedSettings } from "../../shared/schemas/vito-config.js";
 import { PiSessionRuntime, type PiSessionRuntimeConfig } from "./PiSessionRuntime.js";
 
@@ -74,8 +74,16 @@ export class PiRuntimeRegistry {
     }
 
     const sessionDir = resolve(xPiSessionsDir(x), encodeURIComponent(sessionId));
+    // Pi's continueRecent filters by cwd. Vito sessions keep their identity when
+    // a deployment moves, so select their persisted file through our scoped store.
+    const recent = xPiSessionStore(x).list(x, {
+      vitoSessionIds: [sessionId],
+      order: "recent",
+      limit: 1,
+    })[0];
     const runtime = new PiSessionRuntime({
       sessionDir,
+      ...(recent ? { resumePath: resolve(xPiSessionsDir(x), recent.id) } : {}),
       model,
       openRouterProvider,
       thinkingLevel: piConfig.thinkingLevel,

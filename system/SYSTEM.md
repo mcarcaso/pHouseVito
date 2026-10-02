@@ -29,7 +29,7 @@
 
 ## Updating from main
 
-When the owner asks you to update Vito, update the current source checkout:
+When the owner asks for an update (for example, "update yourself", "update Vito", or "get the latest"), pull the latest code from GitHub `main` into the current source checkout. Treat this as a source update request:
 
 1. Confirm you are in Vito's repository on `main` and `origin` is `https://github.com/mcarcaso/pHouseVito.git`.
 2. Check `git status --short`. If there are local source edits, staged changes, or untracked files that could conflict, stop and explain what needs reconciliation. Never reset, clean, stash, or overwrite the owner's work automatically.

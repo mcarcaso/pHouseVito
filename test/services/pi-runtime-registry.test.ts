@@ -20,13 +20,13 @@ test("deployment moves retain the same Pi transcript while /new still starts fre
     process.env.VITO_PI_AGENT_DIR = join(root, "agent");
     mkdirSync(process.env.VITO_PI_AGENT_DIR);
     writeFileSync(join(process.env.VITO_PI_AGENT_DIR, "auth.json"), "{}");
-    const persisted = SessionManager.create("/previous/managed/release", directory);
+    const persisted = SessionManager.create("/previous/source/checkout", directory);
     persisted.appendMessage({ role: "user", content: "BEFORE_MOVE", timestamp: Date.now() });
     const file = persisted.getSessionFile();
     assert.ok(file);
     const otherDirectory = join(sessions, encodeURIComponent("discord:two"));
     mkdirSync(otherDirectory);
-    const other = SessionManager.create("/previous/managed/release", otherDirectory);
+    const other = SessionManager.create("/previous/source/checkout", otherDirectory);
     other.appendMessage({ role: "user", content: "OTHER_CONVERSATION", timestamp: Date.now() });
     const x = new ObjectContext({
       piSessionsDir: () => sessions,

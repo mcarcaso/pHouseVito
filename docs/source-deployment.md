@@ -1,42 +1,65 @@
-# Source deployments with persistent user data
+# Deploying Vito from source
 
-Run Vito from an editable Git checkout with development dependencies installed. Keep customer state outside the checkout so preparing a new source revision does not replace databases, credentials, Pi sessions, apps, or Drive files.
+Vito runs from an editable Git checkout with backend and mobile development dependencies installed. Client state lives outside the checkout. Agents can work on source, while the owner controls deployment and restart.
 
-## Preparing a checkout
+## Update one client
 
-Inspect the current installation, service owner, PM2_HOME, process configuration, and local Git changes first. Preserve existing changes and deployment credentials. Prepare a separate checkout at the reviewed full revision rather than pulling over a live tree or resetting local edits.
+After approving that client's update and downtime:
 
-As the service owner, install backend and mobile dependencies with `npm ci --include=dev` and `npm --prefix mobile ci --include=dev`. Run `npm run check` and `npm run build`. Export the companion web into the new inactive checkout or a temporary staging directory. Never export over the running client's web directory during preparation.
+```bash
+./aws_deploy/deploy.sh mar
+```
 
-The prepared checkout's `user` symlink should resolve to the existing persistent user directory. Create it only when no user directory or link already exists; do not overwrite customer state. Smoke tests must use fake or appropriately isolated copy data with integrations disabled.
+The command reads that client's local `aws_deploy/state/<name>.json`, uses the existing SSH key (`~/.ssh/vito-deploy.pem`, or `VITO_SSH_KEY`), and requires a trusted known-host entry. It sends no operator deployment credentials to the client.
 
-## Source launcher and runtime paths
+On the host it discovers the existing Vito PM2 installation and:
 
-Configure only the Vito PM2 entry to run `scripts/run-source.sh` with bash and the checkout as its cwd. Preserve the existing owner, PM2_HOME, required environment, and process options. Do not apply a complete example ecosystem configuration over unrelated running apps.
+1. Checks that the online service runs the prepared source launcher, its current checkout is clean, and its origin is the expected repository.
+2. Fetches latest `origin/main` and prepares a new editable checkout on `main`. If that revision is already running, it exits without restarting.
+3. Installs backend and mobile dependencies, builds backend and companion web in that inactive checkout, and validates the client's existing config from the checkout directory.
+4. Stops only `vito-server`, takes consistent SQLite snapshots plus config, secrets, profiles, Pi sessions and authentication, and atomically switches the source pointer.
+5. Restarts Vito with its existing PM2 configuration. Checks exact local/public health revision, channel startup readiness, database integrity, config validity, process cwd, and unchanged unrelated PM2 apps; then saves PM2.
 
-The launcher executes `src/index.ts` through tsx, clears `VITO_RELEASE_MODE`, and defaults these paths beneath the persistent user directory:
+A preparation failure leaves the current process running. A failed cutover restores the prior code pointer and restarts Vito. It never automatically restores live user data. Private deployment logs, backups and results live in `~/vito-backups/source-deploys/`. Failed candidate checkouts and prior checkouts are retained for inspection; there is no automatic pruning.
 
-| Environment variable | Purpose                                                                   |
-| -------------------- | ------------------------------------------------------------------------- |
-| VITO_PI_AGENT_DIR    | Pi configuration directory; also selects the provider service's auth.json |
-| VITO_LOGS_DIR        | Trace and service log directory                                           |
-| VITO_ATTACHMENTS_DIR | Attachment directory                                                      |
-| VITO_SOURCE_REVISION | Full Git revision captured when the launcher starts                       |
+`deploy-all.sh` requires explicit client names and updates them sequentially, stopping on the first failure. It does not discover and update the entire fleet automatically.
 
-Explicit context path overrides still take precedence. Existing source installs that do not use this launcher retain their default paths. This prevents a migration from silently switching Pi authentication back to a separate file under the service user's home directory.
+## Installation layout
 
-Vito resumes the latest persisted Pi file within the same Vito session directory even if the checkout path changes. Pi's cwd filter must not start a different conversation during a deployment move. The `/new` marker still takes precedence and starts a fresh conversation. Migration does not require rewriting the old session's cwd header or resetting conversation history.
+```text
+~/vito-source/
+  run-current.sh             stable PM2 launcher
+  current -> checkouts/<checkout>
+  checkouts/<checkout>/      editable source, dependencies and web build
+    user -> <existing persistent user directory>
+  data/user/                 default for new installations
+```
 
-Health responses include the launcher's full source revision. It identifies the commit at startup; use Git status separately to inspect local edits. An already running process does not change its reported startup revision when someone fetches or edits its checkout.
+`spinup.sh` prepares this layout for a new instance. Existing clients require individual inspected migrations; `deploy.sh` refuses to migrate a different installation automatically. Retain any existing data location and symlink it into the checkout. Do not move credentials or replace deployment settings from another machine. Do not overwrite old source edits.
 
-## Cutover and rollback
+The stable launcher is installed from `scripts/run-source-current.sh`. PM2 runs `<root>/run-current.sh` with bash and `<root>` as cwd, under the existing service owner and PM2_HOME. It resolves `current` and executes that checkout's `scripts/run-source.sh`, which runs TypeScript through tsx. Updates retain the Vito entry's environment and options and never reload other PM2 apps.
 
-Before an approved cutover, save the Vito process configuration privately and take reviewed consistent snapshots of affected persistent state. SQLite snapshots must include WAL changes through the backup API. Stop and replace only Vito's process entry, start the prepared checkout, and verify its process cwd, revision-bearing local and public health responses, database integrity, config validity, enabled channels, and unrelated application status.
+## Runtime paths and conversations
 
-Keep the prior installation available. If verification fails, stop only Vito and restore its previous process configuration and code target. Do not automatically restore user snapshots or discard new messages. Data compatibility requires review independently of whether the code is distributed as source or a release bundle.
+| Variable               | Purpose                                           |
+| ---------------------- | ------------------------------------------------- |
+| `VITO_PI_AGENT_DIR`    | Pi configuration directory and provider auth.json |
+| `VITO_LOGS_DIR`        | Trace and service logs                            |
+| `VITO_ATTACHMENTS_DIR` | Attachments                                       |
+| `VITO_SOURCE_REVISION` | Full commit captured by the launcher at startup   |
 
-## Subsequent updates
+Set the first three to canonical paths in persistent client storage during provisioning. The checkout launcher defaults them beneath `user/`. Explicit context overrides take precedence; source installs without the launcher keep their existing path defaults.
 
-Review local source edits and the target revision before updating. Reconcile agent changes deliberately; never use a blind reset or overwrite deployment configuration from another machine. Prepare dependencies, checks, and web assets before restarting. Use an approved cutover and verify the running revision afterward. A staged source checkout can provide a code rollback without requiring signed binary installers.
+Pi sessions resume from the latest validated file scoped to the same Vito session, even when the source checkout's path changes. `/new` still starts a fresh conversation. Deployments do not rewrite transcript cwd headers.
 
-The existing `aws_deploy/deploy-source.sh` remains a legacy in-place path: it pulls, installs, builds, and restarts without these preparation and health gates. Do not use it unchanged for a managed-to-source migration.
+Health reports the source revision at startup. Check Git status separately for edits to mutable source; the revision does not prove that a checkout remains unchanged.
+
+## Preparation and recovery limits
+
+Merge the source deployment changes into `main` before using the update command. The deployer fetches Git on the client; private-repository access must already work there. It never copies operator Git or cloud credentials. The deployer accepts Node 22.19+ or Node 24; review other majors separately. routine updates do not install Node, OS packages, browser libraries, or change privilege boundaries.
+
+Review startup database/config transformations before approving each update. Source distribution does not make a destructive migration safe. Snapshots are a recovery resource; code rollback cannot undo incompatible data transformations. Rehearse risky revisions on disposable or isolated copy data with integrations disabled.
+
+During initial migrations, preserve required environment and process options, take a fresh consistent backup, switch only Vito, and verify enabled channels and unrelated apps. Keep the former installation available until reviewed cleanup is approved.
+
+Worker or host crashes during a stopped cutover require operator recovery. There is no automatic reboot reconciliation. Keep backups and prior checkouts private and review retention manually. A typical source build may take minutes while the existing process continues serving; only the final stop/snapshot/switch/restart needs downtime.

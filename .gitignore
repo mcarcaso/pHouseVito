@@ -6,7 +6,6 @@ node_modules
 
 # Build outputs
 dist/
-.releases/
 
 # Runtime data
 data/
@@ -35,3 +34,8 @@ temp/
 # Deploy state (contains instance IDs, IPs)
 aws_deploy/state/
 
+
+# Private operator material
+/backups/
+/vito-release-signing-key.pem
+__pycache__/

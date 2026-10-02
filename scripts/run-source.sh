@@ -8,7 +8,6 @@ cd "$ROOT"
   echo 'Source deployment requires its user directory and installed dev dependencies' >&2
   exit 1
 }
-unset VITO_RELEASE_MODE
 export VITO_PI_AGENT_DIR="${VITO_PI_AGENT_DIR:-$ROOT/user/pi-agent}"
 export VITO_LOGS_DIR="${VITO_LOGS_DIR:-$ROOT/user/logs}"
 export VITO_ATTACHMENTS_DIR="${VITO_ATTACHMENTS_DIR:-$ROOT/user/attachments}"

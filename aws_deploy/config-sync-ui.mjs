@@ -11,15 +11,24 @@
 import { readFileSync, readdirSync } from "fs";
 import { resolve, dirname, basename } from "path";
 import { fileURLToPath } from "url";
-import { execSync, exec } from "child_process";
+import { execFileSync, exec } from "child_process";
 import { createServer } from "http";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const STATE_DIR = resolve(__dirname, "state");
 const DEFAULT_CONFIG_PATH = resolve(__dirname, "..", "user.example", "vito.config.json");
-const REMOTE_CONFIG_PATH = "/opt/vito/user/vito.config.json";
 const KEY_PATH = resolve(process.env.HOME, ".ssh", "vito-deploy.pem");
-const SSH_OPTS = `-i ${KEY_PATH} -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o LogLevel=ERROR -o ConnectTimeout=10`;
+const SSH_OPTS = [
+  "-i",
+  KEY_PATH,
+  "-o",
+  "BatchMode=yes",
+  "-o",
+  "StrictHostKeyChecking=yes",
+  "-o",
+  "ConnectTimeout=10",
+];
+const shellQuote = (value) => "'" + value.replaceAll("'", "'\"'\"'") + "'";
 
 const LEGACY_CONFIG_PREFIXES = [
   "settings.currentContext",
@@ -42,23 +51,25 @@ function getAllNames() {
     .map((f) => basename(f, ".json"));
 }
 
-function ssh(ip, cmd) {
-  return execSync(`ssh ${SSH_OPTS} ubuntu@${ip} ${JSON.stringify(cmd)}`, {
+function ssh(ip, cmd, input) {
+  if (!/^[0-9.]+$/.test(ip)) throw new Error("Invalid deployment address");
+  return execFileSync("ssh", [...SSH_OPTS, `ubuntu@${ip}`, cmd], {
     encoding: "utf-8",
     timeout: 30000,
+    input,
   }).trim();
 }
 
 function sshWrite(ip, remotePath, content) {
-  execSync(
-    `ssh ${SSH_OPTS} ubuntu@${ip} "cat > ${remotePath}" << 'CONFIGEOF'\n${content}\nCONFIGEOF`,
-    { encoding: "utf-8", timeout: 30000 },
-  );
+  const script =
+    "import json,os,pathlib,sys,tempfile; p=pathlib.Path(sys.argv[1]); data=sys.stdin.read(); json.loads(data); fd,tmp=tempfile.mkstemp(dir=p.parent); os.write(fd,data.encode()); os.close(fd); os.chmod(tmp,p.stat().st_mode & 0o777); os.replace(tmp,p)";
+  ssh(ip, `python3 -c ${shellQuote(script)} ${shellQuote(remotePath)}`, content);
 }
 
 function fetchRemoteConfig(ip) {
-  const raw = ssh(ip, `cat ${REMOTE_CONFIG_PATH}`);
-  return JSON.parse(raw);
+  const script =
+    "import json,pathlib,subprocess; rows=json.loads(subprocess.check_output(['pm2','jlist'])); e=next(x for x in rows if x['name']=='vito-server'); p=(pathlib.Path('/proc/'+str(e['pid'])+'/cwd').resolve()/'user/vito.config.json').resolve(); print(json.dumps({'configPath':str(p),'config':json.loads(p.read_text())}))";
+  return JSON.parse(ssh(ip, `python3 -c ${shellQuote(script)}`));
 }
 
 function isLegacyConfigPath(path) {
@@ -83,8 +94,8 @@ for (const name of names) {
   const ip = state.elastic_ip;
   console.log(`Fetching config from ${name} (${ip})...`);
   try {
-    const remoteCfg = fetchRemoteConfig(ip);
-    instances[name] = { ip, remoteCfg, error: null };
+    const { configPath, config: remoteCfg } = fetchRemoteConfig(ip);
+    instances[name] = { ip, configPath, remoteCfg, error: null };
     console.log(`  OK`);
   } catch (e) {
     instances[name] = { ip, remoteCfg: null, error: e.message };
@@ -746,7 +757,7 @@ const server = createServer((req, res) => {
           res.end(JSON.stringify({ ok: false, error: "Unknown instance: " + instance }));
           return;
         }
-        sshWrite(inst.ip, REMOTE_CONFIG_PATH, config);
+        sshWrite(inst.ip, inst.configPath, config);
         // Update cached remote config
         try {
           inst.remoteCfg = JSON.parse(config);
@@ -773,7 +784,7 @@ const server = createServer((req, res) => {
           res.end(JSON.stringify({ ok: false, error: "Unknown instance: " + instance }));
           return;
         }
-        ssh(inst.ip, "cd /opt/vito && npx pm2 restart vito-server");
+        ssh(inst.ip, "pm2 restart vito-server");
         res.writeHead(200, { "Content-Type": "application/json" });
         res.end(JSON.stringify({ ok: true }));
       } catch (e) {

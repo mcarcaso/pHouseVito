@@ -308,19 +308,25 @@ echo ">>> Installing certbot with Route53 plugin …"
 sudo pip3 install certbot certbot-dns-route53
 
 echo ">>> Cloning repo …"
-sudo git clone -b main "$REPO_URL" /opt/vito
-sudo chown -R ubuntu:ubuntu /opt/vito
-cd /opt/vito
+SOURCE_ROOT="$HOME/vito-source"
+mkdir -p "$SOURCE_ROOT/checkouts" "$SOURCE_ROOT/data"
+chmod 700 "$SOURCE_ROOT" "$SOURCE_ROOT/data"
+git clone -b main "$REPO_URL" "$SOURCE_ROOT/checkouts/initial"
+cd "$SOURCE_ROOT/checkouts/initial"
+cp -a user.example "$SOURCE_ROOT/data/user"
+ln -s "$SOURCE_ROOT/data/user" user
+ln -s "$SOURCE_ROOT/checkouts/initial" "$SOURCE_ROOT/current"
+install -m 700 scripts/run-source-current.sh "$SOURCE_ROOT/run-current.sh"
 
 echo ">>> Building Vito …"
-npm ci
+npm ci --include=dev
 ./scripts/install-runtime-deps.sh
-npm --prefix mobile ci
+npm --prefix mobile ci --include=dev
 npm run build:mobile:web
 npm run build
 
 echo ">>> Setting up user directory …"
-cp -r user.example/* user/ 2>/dev/null || cp -r user.example/. user/
+mkdir -p user/logs user/pi-agent user/attachments
 
 echo ">>> Configuring vito.config.json …"
 node -e "
@@ -350,19 +356,21 @@ module.exports = {
   apps: [
     {
       name: 'vito-server',
-      script: './node_modules/.bin/tsx',
-      args: 'src/index.ts',
-      interpreter: '$NODE_PATH',
-      cwd: '/opt/vito',
+      script: '$SOURCE_ROOT/run-current.sh',
+      interpreter: 'bash',
+      cwd: '$SOURCE_ROOT',
       watch: false,
       env: {
         NODE_ENV: 'production',
         PORT: '3030',
         HOST: '127.0.0.1',
         CUSTOMER_NAME: '$NAME',
+        VITO_PI_AGENT_DIR: '$SOURCE_ROOT/data/user/pi-agent',
+        VITO_LOGS_DIR: '$SOURCE_ROOT/data/user/logs',
+        VITO_ATTACHMENTS_DIR: '$SOURCE_ROOT/data/user/attachments',
       },
-      error_file: 'user/logs/pm2-error.log',
-      out_file: 'user/logs/pm2-out.log',
+      error_file: '$SOURCE_ROOT/data/user/logs/pm2-error.log',
+      out_file: '$SOURCE_ROOT/data/user/logs/pm2-out.log',
       log_date_format: 'YYYY-MM-DD HH:mm:ss',
       merge_logs: true,
       autorestart: true,
@@ -417,8 +425,8 @@ sudo systemctl restart caddy
 sudo systemctl enable caddy
 
 echo ">>> Starting Vito via PM2 …"
-cd /opt/vito
-pm2 start user/ecosystem.config.cjs
+cd "$SOURCE_ROOT/current"
+pm2 start user/ecosystem.config.cjs --only vito-server
 pm2 save
 
 # Non-critical: pm2 startup and certbot cron — don't let these kill the script

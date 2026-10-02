@@ -155,6 +155,10 @@ def update(root, old, rows, env, public_url):
     if remote != REPOSITORY:
         raise RuntimeError("Unexpected origin repository; inspect it before deployment")
     old_revision = run("git", "rev-parse", "HEAD", cwd=old)
+    with urllib.request.urlopen("http://127.0.0.1:3030/api/health", timeout=3) as response:
+        running = json.load(response)
+    if running.get("status") == "ok" and running.get("revision") != old_revision:
+        raise RuntimeError("Checkout revision differs from running Vito (code may have been pulled without restarting). Complete the owner's /restart, then retry deploy.sh; no deployment changes were made")
     health("http://127.0.0.1:3030/api/health", old_revision, attempts=1)
     run("git", "fetch", "origin", "+refs/heads/main:refs/remotes/origin/main", cwd=old)
     revision = run("git", "rev-parse", "origin/main", cwd=old)

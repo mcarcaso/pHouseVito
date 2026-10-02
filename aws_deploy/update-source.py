@@ -182,7 +182,7 @@ def update(root, old, rows, env, public_url):
     # Build only in the inactive checkout; do not run smoke tests on client data.
     if not (candidate / "scripts/run-source.sh").is_file():
         raise RuntimeError("Target main does not support the source launcher; merge source deployment changes first")
-    os.environ.setdefault("NODE_OPTIONS", "--max-old-space-size=384")
+    os.environ.setdefault("NODE_OPTIONS", os.environ.get("VITO_BUILD_NODE_OPTIONS", "--max-old-space-size=768"))
     for args in (("npm", "ci", "--include=dev"),
                  ("npm", "--prefix", "mobile", "ci", "--include=dev"),
                  ("npm", "run", "build"), ("npm", "run", "build:mobile:web")):

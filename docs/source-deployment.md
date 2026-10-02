@@ -63,3 +63,5 @@ Review startup database/config transformations before approving each update. Sou
 During initial migrations, preserve required environment and process options, take a fresh consistent backup, switch only Vito, and verify enabled channels and unrelated apps. Keep the former installation available until reviewed cleanup is approved.
 
 Worker or host crashes during a stopped cutover require operator recovery. There is no automatic reboot reconciliation. Keep backups and prior checkouts private and review retention manually. A typical source build may take minutes while the existing process continues serving; only the final stop/snapshot/switch/restart needs downtime.
+
+Builds default to a 768 MB Node heap cap; `VITO_BUILD_NODE_OPTIONS` on the target can override it when `NODE_OPTIONS` is unset. Verify available RAM and swap before updating small instances. A lower cap can fail backend type compilation; build failures leave the running service unchanged.

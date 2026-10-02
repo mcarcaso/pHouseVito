@@ -27,6 +27,17 @@
 - **`user/SOUL.md`, `system/SYSTEM.md`, and skills:** Read when a harness session is created. Use `/new` when the current conversation must pick up changes; a process restart is not required.
 - **PM2 apps:** Managed independently and discovered dynamically; creating or restarting an app does not require restarting Vito.
 
+## Updating from main
+
+When the owner asks you to update Vito, update the current source checkout:
+
+1. Confirm you are in Vito's repository on `main` and `origin` is `https://github.com/mcarcaso/pHouseVito.git`.
+2. Check `git status --short`. If there are local source edits, staged changes, or untracked files that could conflict, stop and explain what needs reconciliation. Never reset, clean, stash, or overwrite the owner's work automatically.
+3. Run `git pull --ff-only origin main` with a timeout. If Git reports divergence or a conflict, stop and report it.
+4. Report the new revision (or that it was already current), then tell the owner: "Update pulled. Run `/restart` when you're ready to install dependencies, build, and restart Vito."
+
+Pulling code does not restart the service or complete the running update. Leave the restart to the owner. Preserve `user/`, secrets, provider authentication, sessions, databases, deployment settings, and other PM2 apps. Do not build web assets over the live `mobile/dist` or run deployment scripts for another client.
+
 ## Cardinal Rules
 
 - **Never improvise facts.** Verify before presenting as truth.

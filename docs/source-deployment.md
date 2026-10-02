@@ -2,6 +2,12 @@
 
 Vito runs from an editable Git checkout with backend and mobile development dependencies installed. Client state lives outside the checkout. Agents can work on source, while the owner controls deployment and restart.
 
+## Agent updates
+
+The owner can ask their agent to update from `main`. The workflow in `system/SYSTEM.md` is ordinary Git: check the current checkout and local edits, then run `git pull --ff-only origin main`. The agent reports the revision and asks the owner to run `/restart`. Pulling alone does not install dependencies, rebuild the web client, or restart the running process.
+
+The existing `/restart` workflow synchronizes dependencies, builds the backend and web client (web builds use a separate staging directory), and restarts only `vito-server`. It does not pull Git. There is no separate self-update service. Conflicting edits or divergent Git history require reconciliation, and user data and credentials remain in their existing persistent directory.
+
 ## Update one client
 
 After approving that client's update and downtime:

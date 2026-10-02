@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import { exec } from "node:child_process";
 import { promisify } from "node:util";
 import { Cron } from "croner";
@@ -126,7 +127,11 @@ export class CronerCronService implements CronService {
       author: "system",
       timestamp: Date.now(),
       content: prompt,
-      raw: { cronJob: job.name, sendCondition: job.sendCondition || null },
+      raw: {
+        cronJob: job.name,
+        sendCondition: job.sendCondition || null,
+        deliveryKey: `cron:${job.name}:${randomUUID()}`,
+      },
     };
     if (!this.onJob) throw new Error("Cron service has not been started");
     await this.onJob(event, channelName);

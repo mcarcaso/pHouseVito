@@ -3,6 +3,9 @@ import { describe, it } from "node:test";
 import { ObjectContext } from "../../src/context/ObjectContext.js";
 import { createDatabase } from "../../src/lib/sqlite/database.js";
 import { CronerCronService } from "../../src/services/cron/CronerCronService.js";
+import type { Client } from "discord.js";
+import { DiscordOutputHandler } from "../../src/services/channels/discord/DiscordOutputHandler.js";
+import { SqliteDiscordQueueStore } from "../../src/stores/discord/SqliteDiscordQueueStore.js";
 import type { InboundEvent } from "../../src/lib/types/inbound-event.js";
 
 describe("CronerCronService", () => {
@@ -116,4 +119,61 @@ describe("CronerCronService", () => {
     service.stop(x);
     db.close();
   });
+});
+
+it("distinct cron jobs in the same millisecond have separate durable Discord deliveries", async (t) => {
+  const instant = Date.now();
+  t.mock.method(Date, "now", () => instant);
+  const db = createDatabase(":memory:");
+  const store = new SqliteDiscordQueueStore();
+  const x = new ObjectContext({
+    db: () => db,
+    discordQueueStore: () => store,
+    jobService: () => ({ recover: () => {} }),
+  });
+  const sent: Array<Record<string, unknown>> = [];
+  const client = {
+    channels: {
+      fetch: async () => ({
+        id: "channel-1",
+        send: async (message: Record<string, unknown>) => {
+          sent.push(message);
+          return {};
+        },
+      }),
+    },
+  } as unknown as Client;
+  const service = new CronerCronService();
+  service.start(x, {
+    timezone: "UTC",
+    jobs: ["first", "second"].map((name) => ({
+      name,
+      schedule: "0 0 * * *",
+      session: "discord:channel-1",
+      prompt: name,
+    })),
+    onJob: async (event) => {
+      const handler = new DiscordOutputHandler(x, client, event);
+      await handler.relay(event.content);
+      await handler.endMessage();
+      await handler.stopTyping();
+    },
+  });
+  try {
+    await service.triggerJob(x, "first");
+    await service.triggerJob(x, "second");
+    await service.triggerJob(x, "first");
+    assert.equal(sent.length, 3);
+    assert.equal(new Set(sent.map((message) => message.nonce)).size, 3);
+    assert.equal(
+      db
+        .prepare("SELECT COUNT(*) FROM discord_deliveries WHERE status = 'completed'")
+        .pluck()
+        .get(),
+      3,
+    );
+  } finally {
+    service.stop(x);
+    db.close();
+  }
 });

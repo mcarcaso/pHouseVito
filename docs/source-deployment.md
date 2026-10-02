@@ -20,13 +20,12 @@ The command reads that client's local `aws_deploy/state/<name>.json`, uses the e
 
 On the host it discovers the existing Vito PM2 installation and:
 
-1. Checks that the online service runs the prepared source launcher, its current checkout is clean, and its origin is the expected repository.
-2. Fetches latest `origin/main` and prepares a new editable checkout on `main`. If that revision is already running, it exits without restarting.
-3. Installs backend and mobile dependencies, builds backend and companion web in that inactive checkout, and validates the client's existing config from the checkout directory.
-4. Stops only `vito-server`, takes consistent SQLite snapshots plus config, secrets, profiles, Pi sessions and authentication, and atomically switches the source pointer.
-5. Restarts Vito with its existing PM2 configuration. Checks exact local/public health revision, channel startup readiness, database integrity, config validity, process cwd, and unchanged unrelated PM2 apps; then saves PM2.
+1. Checks the source launcher, clean `main` checkout, expected Git origin, and external persistent user path.
+2. Runs `git pull --ff-only origin main` in that existing checkout.
+3. Runs `scripts/restart-vito.sh`: sync dependencies when needed, build backend, build web into a temporary staging directory, publish web assets, then restart only `vito-server`.
+4. Checks exact local/public health revision, running checkout, and unchanged other PM2 apps; then saves PM2.
 
-A preparation failure leaves the current process running. A failed cutover restores the prior code pointer and restarts Vito. It never automatically restores live user data. Private deployment logs, backups and results live in `~/vito-backups/source-deploys/`. Failed candidate checkouts and prior checkouts are retained for inspection; there is no automatic pruning.
+It always runs the restart workflow, including when code was already pulled or `main` is unchanged. There are no routine backups, new checkouts, pointer switches, or automatic rollback. Build failures stop before the PM2 restart; pulled source and dependency changes remain on disk. Review and take backups explicitly before risky data migrations. Existing backups and previous checkouts are retained.
 
 `deploy-all.sh` requires explicit client names and updates them sequentially, stopping on the first failure. It does not discover and update the entire fleet automatically.
 
@@ -64,10 +63,10 @@ Health reports the source revision at startup. Check Git status separately for e
 
 Merge the source deployment changes into `main` before using the update command. The deployer fetches Git on the client; private-repository access must already work there. It never copies operator Git or cloud credentials. The deployer accepts Node 22.19+ or Node 24; review other majors separately. routine updates do not install Node, OS packages, browser libraries, or change privilege boundaries.
 
-Review startup database/config transformations before approving each update. Source distribution does not make a destructive migration safe. Snapshots are a recovery resource; code rollback cannot undo incompatible data transformations. Rehearse risky revisions on disposable or isolated copy data with integrations disabled.
+Review startup database/config transformations before approving each update. Take explicit backups and rehearse risky migrations on disposable or isolated copy data with integrations disabled. Routine updates do not back up or restore user data.
 
 During initial migrations, preserve required environment and process options, take a fresh consistent backup, switch only Vito, and verify enabled channels and unrelated apps. Keep the former installation available until reviewed cleanup is approved.
 
-Worker or host crashes during a stopped cutover require operator recovery. There is no automatic reboot reconciliation. Keep backups and prior checkouts private and review retention manually. A typical source build may take minutes while the existing process continues serving; only the final stop/snapshot/switch/restart needs downtime.
+Interrupted or failed updates require operator recovery. A typical source build may take minutes while the existing process continues serving; the final PM2 restart causes the service interruption.
 
 Builds default to a 1536 MB Node heap cap; `VITO_BUILD_NODE_OPTIONS` on the target can override it when `NODE_OPTIONS` is unset. Verify available RAM and swap before updating small instances. A lower cap can fail backend type compilation; build failures leave the running service unchanged.

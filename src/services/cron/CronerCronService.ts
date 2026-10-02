@@ -16,7 +16,7 @@ import type { CronHealth, CronService, StartCronArgs } from "./CronService.js";
 const execAsync = promisify(exec);
 
 export class CronerCronService implements CronService {
-  private readonly jobs = new Map<string, Cron>();
+  private readonly jobs = new Map<string, Pick<Cron, "stop" | "isRunning" | "nextRun">>();
   private readonly jobConfigs = new Map<string, CronJobConfig>();
   private globalTimezone = DEFAULT_TIMEZONE;
   private onJob?: (event: InboundEvent, channelName: string | null) => Promise<void>;
@@ -176,23 +176,57 @@ export class CronerCronService implements CronService {
     const nextAt = this.readOrInitializeNextRun(x, job);
     if (!nextAt) return;
     const scheduledAt = nextAt;
-    const target = new Date(Math.max(Date.now() + 10, new Date(nextAt).getTime()));
-    const cron = new Cron(target, { maxRuns: 1 }, async () => {
-      // Advance before executing. If the process dies during uncertain script
-      // side effects, this occurrence is never blindly replayed.
-      this.advanceScriptSchedule(x, job);
+    // Relative wakeups cannot silently expire during timer construction. Recheck
+    // wall time on every wake, including after sleep or a clock adjustment.
+    let stopped = false;
+    let running = false;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const due = new Date(nextAt);
+    const handle = {
+      stop: () => {
+        stopped = true;
+        if (timer) clearTimeout(timer);
+      },
+      isRunning: () => !stopped,
+      nextRun: () => (stopped ? null : due),
+    };
+    const current = () => !stopped && this.jobs.get(job.name) === handle;
+    const arm = () => {
+      if (!current()) return;
+      timer = setTimeout(
+        () => {
+          void wake();
+        },
+        Math.max(1, Math.min(30_000, due.getTime() - Date.now())),
+      );
+    };
+    const wake = async () => {
+      if (!current() || running) return;
+      if (Date.now() < due.getTime()) {
+        arm();
+        return;
+      }
+      running = true;
       try {
+        // Preserve uncertain-side-effect protection: advance before executing.
+        this.advanceScriptSchedule(x, job);
         await xJobService(x).execute(x, job, scheduledAt);
       } catch (error) {
         console.error(`[Jobs] ${job.name} failed before a run outcome was saved:`, error);
       } finally {
-        this.jobs.delete(job.name);
-        if (this.jobConfigs.get(job.name) === job && "cron" in job.schedule && job.enabled) {
-          this.scheduleScriptJob(x, job);
+        // Handle identity is the generation token. A stale completion must not
+        // delete or rearm a replacement created by reload, pause, or timezone change.
+        if (current()) {
+          handle.stop();
+          this.jobs.delete(job.name);
+          if (this.jobConfigs.get(job.name) === job && "cron" in job.schedule && job.enabled) {
+            this.scheduleScriptJob(x, job);
+          }
         }
       }
-    });
-    this.jobs.set(job.name, cron);
+    };
+    this.jobs.set(job.name, handle);
+    arm();
   }
 
   private scheduleLegacyJob(x: Context, job: LegacyCronJobConfig): void {

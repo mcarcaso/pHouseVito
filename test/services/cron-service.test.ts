@@ -117,3 +117,82 @@ describe("CronerCronService", () => {
     db.close();
   });
 });
+
+it("dispatches overdue work after a blocked event loop without losing its timer", async () => {
+  const db = createDatabase(":memory:");
+  let calls = 0;
+  const job = {
+    name: "late",
+    script: "/tmp/fake.ts",
+    schedule: { at: new Date(Date.now() - 1000).toISOString() },
+    enabled: true,
+    timeoutMs: 1000,
+  };
+  const x = new ObjectContext({
+    db: () => db,
+    jobService: () => ({
+      recover() {},
+      async execute() {
+        calls++;
+      },
+    }),
+  });
+  const service = new CronerCronService();
+  try {
+    service.start(x, { jobs: [job], timezone: "UTC", onJob: async () => {} });
+    const until = Date.now() + 50;
+    while (Date.now() < until) {
+      /* Simulate event-loop delay, no real jobs. */
+    }
+    await new Promise((resolve) => setTimeout(resolve, 60));
+    assert.equal(calls, 1);
+    assert.equal(service.checkHealth(x)[0]?.isActive, false);
+  } finally {
+    service.stop(x);
+    db.close();
+  }
+});
+
+it("does not let an old running generation delete a timezone replacement", async () => {
+  const db = createDatabase(":memory:");
+  let finish!: () => void;
+  const blocked = new Promise<void>((resolve) => {
+    finish = resolve;
+  });
+  const job = {
+    name: "reload-running",
+    script: "/tmp/fake.ts",
+    schedule: { cron: "0 7 * * *" },
+    enabled: true,
+    timeoutMs: 1000,
+  };
+  db.prepare("INSERT INTO job_schedule_state(name, config, next_at) VALUES (?, ?, ?)").run(
+    job.name,
+    JSON.stringify({ schedule: job.schedule, timezone: "UTC" }),
+    "2026-01-01T07:00:00.000Z",
+  );
+  const x = new ObjectContext({
+    db: () => db,
+    jobService: () => ({
+      recover() {},
+      async execute() {
+        await blocked;
+      },
+    }),
+  });
+  const service = new CronerCronService();
+  try {
+    service.start(x, { jobs: [job], timezone: "UTC", onJob: async () => {} });
+    await new Promise((resolve) => setTimeout(resolve, 30));
+    service.reload(x, [job], "America/Toronto");
+    const replacement = service.checkHealth(x)[0]?.nextRun?.toISOString();
+    finish();
+    await new Promise((resolve) => setTimeout(resolve, 30));
+    assert.equal(service.checkHealth(x)[0]?.isActive, true);
+    assert.equal(service.checkHealth(x)[0]?.nextRun?.toISOString(), replacement);
+  } finally {
+    finish();
+    service.stop(x);
+    db.close();
+  }
+});

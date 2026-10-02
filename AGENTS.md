@@ -29,7 +29,7 @@ npm run restart                   # sync deps, build backend/companion web, rest
 npm run restart:process           # fast PM2-only restart without rebuilding
 ```
 
-Production deploy: `VITO_ARTIFACT_DIR=/secure/artifacts ./aws_deploy/deploy.sh mike5`. The deployer detects Linux architecture and Node compatibility, installs the matching immutable binary release, verifies its embedded Git revision, switches atomically, restarts only Vito, health-checks, and rolls back on failure. Source-checkout deployments retain the explicit `--legacy-source` fallback while they are migrated once to `/opt/vito-managed`.
+Production deploy: `./aws_deploy/deploy.sh <name>`. For an already provisioned source installation, the deployer fetches latest `origin/main`, prepares a separate editable checkout with dependencies and backend/companion web builds, snapshots persistent state, switches the source pointer, restarts only `vito-server`, verifies exact revision health, and restores the prior code on failure without restoring live user data. It refuses local code edits or unprepared installations. Initial client migrations require individual inspection and approval. User data remains outside checkouts. See `docs/source-deployment.md`.
 
 ## Architecture
 

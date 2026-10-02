@@ -407,3 +407,7 @@ This is a personal project, but suggestions and improvements are welcome!
 ## License
 
 MIT
+
+## Client source deployments
+
+Update an individually approved, prepared client from latest `main` with `./aws_deploy/deploy.sh <name>`. Source and web builds are prepared before restarting only Vito; local source edits are preserved by refusing an overwrite. See [the source deployment guide](docs/source-deployment.md) for provisioning, persistent data, backups, health checks, and rollback.

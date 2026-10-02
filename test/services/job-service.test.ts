@@ -247,7 +247,7 @@ describe("DefaultJobService", () => {
       const run = harness.store.claim(
         harness.x,
         harness.job,
-        new Date().toISOString(),
+        "2026-01-01T00:00:00.000Z",
         new Date().toISOString(),
       );
       assert.ok(run);
@@ -257,7 +257,7 @@ describe("DefaultJobService", () => {
       const delivery = harness.store.claim(
         harness.x,
         harness.job,
-        new Date().toISOString(),
+        "2026-01-01T00:01:00.000Z",
         new Date().toISOString(),
       );
       assert.ok(delivery);

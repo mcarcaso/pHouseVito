@@ -3,6 +3,10 @@ import { z } from "zod";
 export const serverHealthResponseSchema = z.object({
   status: z.literal("ok"),
   timestamp: z.string(),
+  revision: z
+    .string()
+    .regex(/^[a-f0-9]{40}$/)
+    .optional(),
 });
 
 export const serverStatusResponseSchema = z.object({

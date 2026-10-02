@@ -2,8 +2,9 @@ import assert from "node:assert/strict";
 import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { describe, it } from "node:test";
+import { describe, it, mock } from "node:test";
 import { z } from "zod";
+import { ModelRuntime } from "@earendil-works/pi-coding-agent";
 import { ObjectContext } from "../../src/context/ObjectContext.js";
 import { DefaultProviderService } from "../../src/services/providers/DefaultProviderService.js";
 import { FileSecretService } from "../../src/services/secrets/FileSecretService.js";
@@ -55,6 +56,85 @@ describe("DefaultProviderService", () => {
       );
       assert.deepEqual(service.getLoginStatus(x, "test-provider"), { status: "success" });
     } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+  it("cancels an unfinished login on logout and permits a fresh login", async () => {
+    const { root, x, service } = createHarness();
+    let cancellations = 0;
+    const runtime = {
+      getProvider: () => ({ auth: { oauth: {} } }),
+      login: async (
+        _id: string,
+        _type: string,
+        interaction: Parameters<ModelRuntime["login"]>[2],
+      ) => {
+        interaction.notify({ type: "auth_url", url: "https://login.example.test" });
+        await new Promise<void>((_resolve, reject) => {
+          interaction.signal!.addEventListener(
+            "abort",
+            () => {
+              cancellations++;
+              reject(interaction.signal!.reason);
+            },
+            { once: true },
+          );
+        });
+      },
+      logout: async () => {},
+    };
+    const create = mock.method(
+      ModelRuntime,
+      "create",
+      async () => runtime as unknown as ModelRuntime,
+    );
+    try {
+      assert.equal((await service.startLogin(x, "openai-codex")).status, "login_started");
+      await assert.rejects(service.startLogin(x, "openai-codex"), /already in progress/);
+      await service.logout(x, "openai-codex");
+      assert.equal(cancellations, 1);
+      assert.deepEqual(service.getLoginStatus(x, "openai-codex"), { status: "none" });
+      assert.equal((await service.startLogin(x, "openai-codex")).status, "login_started");
+      await service.logout(x, "openai-codex");
+      assert.equal(cancellations, 2);
+    } finally {
+      create.mock.restore();
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+  it("expires abandoned logins so retry is possible", async (t) => {
+    const { root, x, service } = createHarness();
+    t.mock.timers.enable({ apis: ["setTimeout"] });
+    const runtime = {
+      getProvider: () => ({ auth: { oauth: {} } }),
+      login: async (
+        _id: string,
+        _type: string,
+        interaction: Parameters<ModelRuntime["login"]>[2],
+      ) => {
+        interaction.notify({ type: "auth_url", url: "https://login.example.test" });
+        await interaction.prompt({ type: "input", message: "Code", signal: interaction.signal });
+      },
+      logout: async () => {},
+    };
+    const create = mock.method(
+      ModelRuntime,
+      "create",
+      async () => runtime as unknown as ModelRuntime,
+    );
+    try {
+      await service.startLogin(x, "openai-codex");
+      assert.equal(service.getLoginStatus(x, "openai-codex").status, "prompt");
+      t.mock.timers.tick(10 * 60 * 1000);
+      await new Promise<void>((resolve) => setImmediate(resolve));
+      assert.deepEqual(service.getLoginStatus(x, "openai-codex"), {
+        status: "error",
+        error: "Login expired; please try again",
+      });
+      assert.equal((await service.startLogin(x, "openai-codex")).status, "login_started");
+      await service.logout(x, "openai-codex");
+    } finally {
+      create.mock.restore();
       rmSync(root, { recursive: true, force: true });
     }
   });

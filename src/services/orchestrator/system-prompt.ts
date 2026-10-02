@@ -28,14 +28,8 @@
 import { DEFAULT_TIMEZONE } from "../../shared/defaults.js";
 import { CAPABILITIES_MAP } from "./capabilities.js";
 
-export type DeploymentMode = "source-checkout" | "managed-release";
-
-const DEPLOYMENT_INSTRUCTIONS: Record<DeploymentMode, string> = {
-  "source-checkout":
-    "This Vito runs from an editable source checkout. Core code lives in src/ and the companion web source in mobile/. Build backend changes, but never restart Vito yourself; tell the owner when a restart is needed. Build companion web assets away from the live served mobile/dist directory, then publish them safely. Keep client/user-owned apps and data under user/.",
-  "managed-release":
-    "This Vito runs from a versioned managed release, not an editable source checkout. Release files (dist/, system/, node_modules/, mobile/dist/, launchers) are immutable; do not edit them, run a core build, npm install, or look for src/ here. Mutable client config, data, skills and apps live under user/. Core changes require a newly built and verified release installed by an operator. Do not switch release pointers or restart the service yourself; ask the owner/operator for an approved deployment. Source-checkout paths elsewhere in the instructions describe development, not this host.",
-};
+const DEPLOYMENT_INSTRUCTIONS =
+  "This Vito runs from an editable source checkout. Core code lives in src/ and the companion web source in mobile/. Build backend changes, but never restart Vito yourself; tell the owner when a restart is needed. Build companion web assets away from the live served mobile/dist directory, then publish them safely. Keep client/user-owned apps and data under user/.";
 
 const COMMANDS_SECTION =
   "Deterministic controls (handled before the model): /new, /session [id], /compact, /model [provider/model], /login [provider], /stop, /status, /help, and owner-only /restart.";
@@ -59,7 +53,6 @@ export interface BuildSystemPromptOptions {
   channelPrompt?: string;
   customInstructions?: string;
   botName?: string;
-  deploymentMode: DeploymentMode;
   /** Stable identifiers for the Vito session this pi conversation lives inside. */
   session?: {
     id: string; // e.g., "dashboard:default" or "telegram:123:456"
@@ -78,7 +71,7 @@ export function buildSystemPrompt(opts: BuildSystemPromptOptions): string {
 
   // SYSTEM.md + commands
   parts.push(buildSystemBlock(opts.systemInstructions, opts.botName));
-  parts.push(`<deployment>\n${DEPLOYMENT_INSTRUCTIONS[opts.deploymentMode]}\n</deployment>`);
+  parts.push(`<deployment>\n${DEPLOYMENT_INSTRUCTIONS}\n</deployment>`);
 
   // Stable session identity. Doesn't change for the lifetime of this pi
   // session, so it caches with the rest of the prefix. Useful when memory

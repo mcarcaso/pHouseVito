@@ -3,6 +3,7 @@ import type { Context } from "../../context/Context.js";
 export interface ServerHealth {
   status: "ok";
   timestamp: string;
+  revision?: string;
 }
 
 export interface ServerStatus {

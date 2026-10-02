@@ -32,13 +32,6 @@ async function main() {
     db,
     userDir: USER_DIR,
     skillsDir,
-    ...(process.env.VITO_RELEASE_MODE === "1"
-      ? {
-          logsDir: resolve(USER_DIR, "logs"),
-          attachmentsDir: resolve(USER_DIR, "attachments"),
-          piAuthPath: resolve(USER_DIR, "pi-agent", "auth.json"),
-        }
-      : {}),
   });
   xSecretService(x).load(x);
   const vitoService = xVitoService(x);

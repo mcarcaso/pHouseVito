@@ -16,6 +16,24 @@ function waitForBackgroundWork(): Promise<void> {
 }
 
 describe("DefaultServerLifecycleService", () => {
+  it("keeps the source revision of the running process across later environment changes", () => {
+    const previous = process.env.VITO_SOURCE_REVISION;
+    try {
+      process.env.VITO_SOURCE_REVISION = "a".repeat(40);
+      const service = new DefaultServerLifecycleService();
+      process.env.VITO_SOURCE_REVISION = "b".repeat(40);
+      assert.equal(service.getHealth(new ObjectContext({})).revision, "a".repeat(40));
+      process.env.VITO_SOURCE_REVISION = "not-a-revision";
+      assert.equal(
+        new DefaultServerLifecycleService().getHealth(new ObjectContext({})).revision,
+        undefined,
+      );
+    } finally {
+      if (previous === undefined) delete process.env.VITO_SOURCE_REVISION;
+      else process.env.VITO_SOURCE_REVISION = previous;
+    }
+  });
+
   it("reports deterministic health and runtime status", () => {
     const x = new ObjectContext({});
     let cpuSample = 0;

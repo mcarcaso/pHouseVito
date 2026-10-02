@@ -64,6 +64,7 @@ export class DefaultServerLifecycleService implements ServerLifecycleService {
   private previousCpu: CpuSnapshot;
   private readonly runCommand: CommandRunner;
   private readonly schedule: Scheduler;
+  private readonly revision: string | undefined;
 
   constructor(options: DefaultServerLifecycleServiceOptions = {}) {
     this.now = options.now ?? (() => new Date());
@@ -72,10 +73,16 @@ export class DefaultServerLifecycleService implements ServerLifecycleService {
     this.previousCpu = cpuSnapshot(this.system.cpus());
     this.runCommand = options.runCommand ?? runLifecycleCommand;
     this.schedule = options.schedule ?? ((callback, delayMs) => setTimeout(callback, delayMs));
+    const revision = process.env.VITO_SOURCE_REVISION;
+    this.revision = revision && /^[a-f0-9]{40}$/.test(revision) ? revision : undefined;
   }
 
   getHealth(_x: Context): ServerHealth {
-    return { status: "ok", timestamp: this.now().toISOString() };
+    return {
+      status: "ok",
+      timestamp: this.now().toISOString(),
+      ...(this.revision ? { revision: this.revision } : {}),
+    };
   }
 
   getStatus(_x: Context): ServerStatus {

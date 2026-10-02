@@ -1,12 +1,11 @@
 # User directory (created from user.example/ on first run)
-user/
+/user
 
 # Dependencies
-node_modules/
+node_modules
 
 # Build outputs
 dist/
-.releases/
 
 # Runtime data
 data/
@@ -36,3 +35,7 @@ temp/
 aws_deploy/state/
 
 
+# Private operator material
+/backups/
+/vito-release-signing-key.pem
+__pycache__/

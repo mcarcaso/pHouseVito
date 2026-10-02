@@ -13,6 +13,7 @@ import { modelAutocompleteChoices } from "./model-autocomplete.js";
 import { ProviderLoginConflictError } from "./ProviderService.js";
 
 interface PendingLogin {
+  controller: AbortController;
   status: "pending" | "prompt" | "success" | "error";
   error?: string;
   promptMessage?: string;
@@ -33,6 +34,7 @@ const oauthProviderListSchema = z.array(
 export class DefaultProviderService implements ProviderService {
   private readonly pendingLogins = new Map<string, PendingLogin>();
   private runtime?: Promise<ModelRuntime>;
+  private readonly signingOut = new Set<string>();
 
   async getOverview(x: Context): Promise<ProviderOverview> {
     const secrets = xSecretService(x);
@@ -70,6 +72,8 @@ export class DefaultProviderService implements ProviderService {
   }
 
   async startLogin(x: Context, providerId: string): Promise<ProviderLoginStartResult> {
+    if (this.signingOut.has(providerId))
+      throw new ProviderLoginConflictError("Sign-out in progress");
     const piAuth = xSecretService(x).getPiAuth(x);
     if (piAuth[providerId]?.type === "oauth" && piAuth[providerId]?.access) {
       return { status: "already_authenticated" };
@@ -79,8 +83,14 @@ export class DefaultProviderService implements ProviderService {
     if (existing?.status === "pending" || existing?.status === "prompt") {
       throw new ProviderLoginConflictError("Login already in progress");
     }
-    this.pendingLogins.set(providerId, { status: "pending" });
+    const pending: PendingLogin = { status: "pending", controller: new AbortController() };
+    this.pendingLogins.set(providerId, pending);
 
+    const timeout = setTimeout(
+      () => pending.controller.abort(new Error("Login expired; please try again")),
+      10 * 60 * 1000,
+    );
+    timeout.unref();
     return await new Promise<ProviderLoginStartResult>((resolve, reject) => {
       let responseSettled = false;
       const resolveOnce = (result: ProviderLoginStartResult): void => {
@@ -99,20 +109,37 @@ export class DefaultProviderService implements ProviderService {
           const provider = runtime.getProvider(providerId);
           if (!provider?.auth.oauth)
             throw new Error(`Provider does not support OAuth: ${providerId}`);
+          pending.controller.signal.throwIfAborted();
           await runtime.login(providerId, "oauth", {
-            notify: (event) => this.handleAuthEvent(providerId, event, resolveOnce),
-            prompt: async (prompt) => await this.handleAuthPrompt(providerId, prompt),
+            signal: pending.controller.signal,
+            notify: (event) => {
+              pending.controller.signal.throwIfAborted();
+              this.handleAuthEvent(providerId, event, resolveOnce);
+            },
+            prompt: async (prompt) => {
+              pending.controller.signal.throwIfAborted();
+              return await this.handleAuthPrompt(providerId, {
+                ...prompt,
+                signal: prompt.signal
+                  ? AbortSignal.any([prompt.signal, pending.controller.signal])
+                  : pending.controller.signal,
+              });
+            },
           });
           resolveOnce({ status: "already_authenticated" });
-          this.pendingLogins.set(providerId, { status: "success" });
+          if (this.pendingLogins.get(providerId) === pending) pending.status = "success";
           console.log(`[oauth/${providerId}] Login successful`);
         })
         .catch((error: unknown) => {
           const message = error instanceof Error ? error.message : String(error);
-          this.pendingLogins.set(providerId, { status: "error", error: message });
+          if (this.pendingLogins.get(providerId) === pending) {
+            pending.status = "error";
+            pending.error = message;
+          }
           console.error(`[oauth/${providerId}] Login failed:`, message);
           rejectOnce(error instanceof Error ? error : new Error(message));
-        });
+        })
+        .finally(() => clearTimeout(timeout));
     });
   }
 
@@ -141,11 +168,24 @@ export class DefaultProviderService implements ProviderService {
       throw new ProviderLoginConflictError("No login prompt is waiting for this provider");
     }
     pending.resolvePrompt(args.value);
-    this.pendingLogins.set(args.providerId, { status: "pending" });
+    pending.status = "pending";
+    pending.resolvePrompt = undefined;
   }
 
   async logout(x: Context, providerId: string): Promise<void> {
-    await (await this.getRuntime(x)).logout(providerId);
+    if (this.signingOut.has(providerId))
+      throw new ProviderLoginConflictError("Sign-out in progress");
+    this.signingOut.add(providerId);
+    const pending = this.pendingLogins.get(providerId);
+    pending?.controller.abort(new Error("Login cancelled by sign-out"));
+    // Keep the entry until logout completes, so a new login cannot race credential removal.
+    if (pending) pending.status = "pending";
+    try {
+      await (await this.getRuntime(x)).logout(providerId);
+    } finally {
+      this.signingOut.delete(providerId);
+      if (this.pendingLogins.get(providerId) === pending) this.pendingLogins.delete(providerId);
+    }
   }
 
   private getRuntime(x: Context): Promise<ModelRuntime> {
@@ -203,10 +243,16 @@ export class DefaultProviderService implements ProviderService {
       const onAbort = (): void => reject(signal?.reason ?? new Error("Login prompt cancelled"));
       if (signal?.aborted) return onAbort();
       signal?.addEventListener("abort", onAbort, { once: true });
-      this.pendingLogins.set(providerId, {
+      const pending = this.pendingLogins.get(providerId);
+      if (!pending) {
+        signal?.removeEventListener("abort", onAbort);
+        reject(new Error("Login cancelled"));
+        return;
+      }
+      Object.assign(pending, {
         status: "prompt",
         promptMessage,
-        resolvePrompt: (value) => {
+        resolvePrompt: (value: string) => {
           signal?.removeEventListener("abort", onAbort);
           resolve(value);
         },

@@ -1,8 +1,8 @@
 # User directory (created from user.example/ on first run)
-user/
+/user
 
 # Dependencies
-node_modules/
+node_modules
 
 # Build outputs
 dist/
@@ -34,5 +34,4 @@ temp/
 
 # Deploy state (contains instance IDs, IPs)
 aws_deploy/state/
-
 

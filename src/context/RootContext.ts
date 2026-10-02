@@ -72,13 +72,16 @@ export function RootContext(args: RootContextArgs): Context {
     projectDir: () => args.projectDir ?? process.cwd(),
     skillsDir: () => args.skillsDir,
     systemSkillsDir: () => args.systemSkillsDir ?? resolve(process.cwd(), "system", "skills"),
-    logsDir: () => args.logsDir ?? resolve(process.cwd(), "logs"),
+    logsDir: () => args.logsDir ?? resolve(process.env.VITO_LOGS_DIR || "logs"),
     secretsPath: () => args.secretsPath ?? join(args.userDir, "secrets.json"),
-    piAuthPath: () => args.piAuthPath ?? resolve(homedir(), ".pi", "agent", "auth.json"),
+    piAuthPath: () =>
+      args.piAuthPath ??
+      resolve(process.env.VITO_PI_AGENT_DIR || resolve(homedir(), ".pi", "agent"), "auth.json"),
     piSessionsDir: () => args.piSessionsDir ?? join(args.userDir, "pi-sessions"),
     driveDir: () => args.driveDir ?? join(args.userDir, "drive"),
     appsDir: () => args.appsDir ?? join(args.userDir, "apps"),
-    attachmentsDir: () => args.attachmentsDir ?? resolve(process.cwd(), "data", "attachments"),
+    attachmentsDir: () =>
+      args.attachmentsDir ?? resolve(process.env.VITO_ATTACHMENTS_DIR || "data/attachments"),
     vitoService: () => new FileVitoService(),
     voiceService: (x) => new DefaultVoiceService(xAskApiService(x)),
     quickCommandService: (x) => new DefaultQuickCommandService(xAskApiService(x)),

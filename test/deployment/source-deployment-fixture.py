@@ -79,7 +79,7 @@ with tempfile.TemporaryDirectory(prefix="vito-source-tests-") as temporary:
                 git(checkout, "checkout", "--detach")
             calls.clear()
             try:
-                d.update(installation, checkout, rows, "https://fixture.invalid/api/health")
+                d.update(installation, checkout, rows, "https://fixture.invalid/api/health", force=True)
                 raise AssertionError("non-main checkout accepted")
             except RuntimeError as error:
                 assert "not on main" in str(error)
@@ -122,10 +122,14 @@ with tempfile.TemporaryDirectory(prefix="vito-source-tests-") as temporary:
         assert not any(c[0] == "pm2" for c in calls)
         (user / "fail-build").unlink()
 
+        # Force builds/restarts even when the current revision is healthy.
+        d.update(installation, checkout, rows, "https://fixture.invalid/api/health", force=True)
+        assert (user / "restarts").read_text().splitlines() == ["restart", "restart"]
+
         # A stale public revision must not skip the restart workflow.
         with patch.object(d, "health_matches", lambda url, rev: url.startswith("http://127.")):
             d.update(installation, checkout, rows, "https://fixture.invalid/api/health")
-        assert (user / "restarts").read_text().splitlines() == ["restart", "restart"]
+        assert (user / "restarts").read_text().splitlines() == ["restart", "restart", "restart"]
 
         # Divergent local commits are preserved and refuse pull before restart.
         git(checkout, "config", "user.email", "fixture@example.invalid")
@@ -142,5 +146,5 @@ with tempfile.TemporaryDirectory(prefix="vito-source-tests-") as temporary:
         except RuntimeError:
             pass
         assert git(checkout, "rev-parse", "HEAD") == local
-        assert (user / "restarts").read_text().splitlines() == ["restart", "restart"]
+        assert (user / "restarts").read_text().splitlines() == ["restart", "restart", "restart"]
 print("source deployment scenarios passed")

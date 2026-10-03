@@ -49,7 +49,7 @@ def health(url, revision):
     raise RuntimeError("Exact revision health check failed; inspect pm2 logs vito-server --lines 50 --nostream")
 
 
-def update(root, checkout, rows, public_url):
+def update(root, checkout, rows, public_url, force=False):
     if run("git", "status", "--porcelain", cwd=checkout):
         raise RuntimeError("Local source edits exist; reconcile them before deploying")
     if run("git", "remote", "get-url", "origin", cwd=checkout) != REPOSITORY:
@@ -69,7 +69,7 @@ def update(root, checkout, rows, public_url):
     revision = run("git", "rev-parse", "HEAD", cwd=checkout)
     if (checkout / "user").resolve() != user:
         raise RuntimeError("Persistent user path changed")
-    if (previous == revision
+    if (not force and previous == revision
             and health_matches("http://127.0.0.1:3030/api/health", revision)
             and health_matches(public_url, revision)):
         print("Already running latest main; skipping build and restart", flush=True)
@@ -91,7 +91,7 @@ def update(root, checkout, rows, public_url):
     print(json.dumps({"state": "succeeded", "revision": revision, "checkout": str(checkout)}), flush=True)
 
 
-def main(public_url):
+def main(public_url, force=False):
     version = tuple(int(part) for part in run("node", "-p", "process.versions.node").split("."))
     if version[0] not in (22, 24) or (version[0] == 22 and version[1] < 19):
         raise RuntimeError("Source deployment requires Node 22.19+ or Node 24")
@@ -111,14 +111,15 @@ def main(public_url):
         raise RuntimeError("Expected a provisioned source deployment")
     with (root / ".deploy.lock").open("a") as lock:
         fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
-        update(root, checkout, rows, public_url)
+        update(root, checkout, rows, public_url, force=force)
 
 
 if __name__ == "__main__":
     try:
-        if len(sys.argv) != 2 or not sys.argv[1].startswith("https://"):
-            raise RuntimeError("Expected public HTTPS health URL")
-        main(sys.argv[1])
+        if (len(sys.argv) not in (2, 3) or not sys.argv[1].startswith("https://")
+                or (len(sys.argv) == 3 and sys.argv[2] != "--force")):
+            raise RuntimeError("Expected public HTTPS health URL and optional --force")
+        main(sys.argv[1], force=len(sys.argv) == 3)
     except Exception as error:
         print("Deployment failed: " + str(error), file=sys.stderr)
         sys.exit(1)

@@ -1,3 +1,4 @@
+import { CHANNEL_CATALOG } from "../../../../src/shared/channel-catalog";
 import { StyleSheet } from "react-native";
 import { useEffect, useMemo, useState } from "react";
 import {
@@ -49,7 +50,7 @@ export function SettingsScreen({
     void api<Dict>("/api/config")
       .then((value) => {
         setConfig(value);
-        setChannel(Object.keys(value.channels ?? {})[0] ?? "");
+        setChannel(CHANNEL_CATALOG[0].name);
         const configured = Object.keys(value.sessions ?? {});
         setSession(configured[0] ?? "");
         void getSessions().then((sessions) => {
@@ -101,7 +102,7 @@ export function SettingsScreen({
       void savePatch({
         channels: {
           ...config.channels,
-          [channel]: { ...config.channels[channel], settings: nextSettings },
+          [channel]: { ...config.channels?.[channel], settings: nextSettings },
         },
       });
     else void savePatch({ sessions: { ...config.sessions, [session]: nextSettings } });
@@ -115,7 +116,7 @@ export function SettingsScreen({
       void savePatch({
         channels: {
           ...config.channels,
-          [channel]: { ...config.channels[channel], settings: nextSettings },
+          [channel]: { ...config.channels?.[channel], settings: nextSettings },
         },
       });
     if (scope === "session")
@@ -125,7 +126,7 @@ export function SettingsScreen({
   const resetAllOverrides = () => {
     if (!config || scope === "global") return;
     if (scope === "channel") {
-      const nextChannel = { ...config.channels[channel] };
+      const nextChannel = { ...config.channels?.[channel] };
       delete nextChannel.settings;
       void savePatch({ channels: { ...config.channels, [channel]: nextChannel } });
     } else {
@@ -145,7 +146,7 @@ export function SettingsScreen({
         )}
       </View>
     );
-  const channelNames = Object.keys(config.channels ?? {});
+  const channelNames = CHANNEL_CATALOG.map((item) => item.name);
   const sessionIds = [
     ...new Set([
       ...availableSessions.map((item) => item.id),

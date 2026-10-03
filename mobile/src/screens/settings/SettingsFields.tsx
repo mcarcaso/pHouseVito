@@ -1,8 +1,11 @@
+import type { ChannelSetupStatus } from "../../../../src/shared/channel-catalog";
 import type { VitoTheme } from "../../hooks/useVitoTheme";
 import { StyleSheet } from "react-native";
 import { useEffect, useState, type ReactNode } from "react";
 import {
   ActivityIndicator,
+  Alert,
+  Platform,
   Modal,
   Pressable,
   ScrollView,
@@ -40,6 +43,62 @@ export function ChannelSetup({
   styles: any;
 }) {
   const channelConfig = config.channels?.[channel] ?? {};
+  const [setup, setSetup] = useState<ChannelSetupStatus | null>(null);
+  const [setupError, setSetupError] = useState<string | null>(null);
+  const [restarting, setRestarting] = useState(false);
+  const [restartRequested, setRestartRequested] = useState(false);
+  const [restartRequired, setRestartRequired] = useState(false);
+  useEffect(() => {
+    let active = true;
+    const refresh = async () => {
+      try {
+        const statuses = await api<ChannelSetupStatus[]>("/api/channels/setup");
+        if (active) {
+          setSetup(statuses.find((item) => item.name === channel) ?? null);
+          const needsRestart = statuses.some((item) => item.restartRequired);
+          setRestartRequired(needsRestart);
+          if (!needsRestart) setRestartRequested(false);
+          setSetupError(null);
+        }
+      } catch (cause) {
+        if (active) {
+          setSetup(null);
+          setSetupError(
+            cause instanceof Error ? cause.message : "Could not check channel requirements",
+          );
+        }
+      }
+    };
+    setSetup(null);
+    void refresh();
+    const timer = setInterval(() => void refresh(), 10000);
+    return () => {
+      active = false;
+      clearInterval(timer);
+    };
+  }, [channel, channelConfig.enabled]);
+  const restart = () => {
+    const message =
+      "Rebuild and restart Vito to apply channel changes? Chats will briefly disconnect. Disabling Dashboard will remove dashboard access after restart.";
+    const perform = async () => {
+      setRestarting(true);
+      try {
+        await api("/api/server/restart", { method: "POST" });
+        setRestartRequested(true);
+      } catch (cause) {
+        setSetupError(cause instanceof Error ? cause.message : "Restart request failed");
+      } finally {
+        setRestarting(false);
+      }
+    };
+    if (Platform.OS === "web") {
+      if (window.confirm(message)) void perform();
+    } else
+      Alert.alert("Restart Vito?", message, [
+        { text: "Cancel", style: "cancel" },
+        { text: "Restart", style: "destructive", onPress: () => void perform() },
+      ]);
+  };
   const managed = channel === "discord" || channel === "telegram";
   const [pending, setPending] = useState<string | null>(null);
   const [result, setResult] = useState<{ success: boolean; message: string } | null>(null);
@@ -81,9 +140,46 @@ export function ChannelSetup({
       <ToggleField
         label="Enabled"
         value={channelConfig.enabled === true}
-        onChange={(value) => void saveChannel({ enabled: value })}
+        disabled={
+          restarting ||
+          restartRequested ||
+          (channelConfig.enabled !== true && (!setup || setup.missingSecrets.length > 0))
+        }
+        hint={
+          !setup
+            ? "Checking channel requirements…"
+            : setup.requiredSecrets.length === 0
+              ? "No secrets required."
+              : setup.missingSecrets.length > 0
+                ? `Set ${setup.missingSecrets.join(", ")} in Secrets before enabling.`
+                : `Required secrets configured: ${setup.requiredSecrets.join(", ")}.`
+        }
+        onChange={(value) => {
+          if (!value || (setup && setup.missingSecrets.length === 0))
+            void saveChannel({ enabled: value });
+        }}
         styles={styles}
       />
+      {setupError && <Text style={styles.hint}>{setupError}</Text>}
+      <Text style={styles.hint}>
+        Enabling or disabling a channel requires a server restart. Existing channel connections
+        remain unchanged until then.
+      </Text>
+      {restartRequired && !restartRequested && (
+        <ActionField
+          label="Restart required"
+          description="Saved channel changes are not active until Vito restarts."
+          button={restarting ? "Requesting restart…" : "Rebuild & restart"}
+          disabled={restarting}
+          onPress={restart}
+          styles={styles}
+        />
+      )}
+      {restartRequested && (
+        <Text style={styles.hint}>
+          Restart requested. Vito may briefly disconnect; reconnect after the rebuild completes.
+        </Text>
+      )}
       {managed && (
         <>
           <ActionField
@@ -463,10 +559,12 @@ export function ToggleField({
   onChange,
   overridden,
   onReset,
+  disabled,
   styles,
 }: {
   label: string;
   hint?: string;
+  disabled?: boolean;
   value: boolean;
   onChange: (v: boolean) => void;
   overridden?: boolean;
@@ -475,7 +573,7 @@ export function ToggleField({
 }) {
   return (
     <Row {...{ label, hint, overridden, onReset, styles }}>
-      <Switch value={value} onValueChange={onChange} />
+      <Switch value={value} onValueChange={onChange} disabled={disabled} />
     </Row>
   );
 }

@@ -21,8 +21,9 @@ writeFileSync(
 writeFileSync(join(userDir, "SOUL.md"), "test soul\n");
 
 const db = createDatabase(":memory:");
+const secretValues = new Map<string, string>();
 const x = dashboardRouterContext(
-  {},
+  { secretService: () => ({ get: (_x: unknown, key: string) => secretValues.get(key) }) },
   RootContext({
     db,
     userDir,
@@ -63,6 +64,73 @@ after(async () => {
 });
 
 describe("config router", () => {
+  it("lists all supported channels, including absent config, without secret values", async () => {
+    const response = await fetch(`${baseUrl}/api/channels/setup`);
+    assert.equal(response.status, 200);
+    const statuses = (await response.json()) as Array<{
+      name: string;
+      enabled: boolean;
+      missingSecrets: string[];
+      requiredSecrets: string[];
+    }>;
+    assert.deepEqual(
+      statuses.map((item) => item.name),
+      ["dashboard", "discord", "telegram", "whatsapp"],
+    );
+    assert.deepEqual(statuses.find((item) => item.name === "dashboard")?.requiredSecrets, []);
+    assert.equal(statuses.find((item) => item.name === "whatsapp")?.enabled, false);
+    assert.deepEqual(statuses.find((item) => item.name === "whatsapp")?.missingSecrets, [
+      "WHATSAPP_AGENT_API_KEY",
+    ]);
+  });
+
+  it("rejects enabling without required secrets, but allows disable and tracks restart need", async () => {
+    const update = (enabled: boolean) =>
+      fetch(`${baseUrl}/api/config`, {
+        method: "PUT",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ channels: { discord: { enabled } } }),
+      });
+    secretValues.set("DISCORD_BOT_TOKEN", "  ");
+    const rejected = await update(true);
+    assert.equal(rejected.status, 400);
+    assert.match(((await rejected.json()) as { error: string }).error, /DISCORD_BOT_TOKEN/);
+    assert.equal(xVitoService(x).getConfig(x).channels.discord?.enabled, false);
+    secretValues.set("DISCORD_BOT_TOKEN", "test-secret-never-exposed");
+    assert.equal((await update(true)).status, 200);
+    const response = await fetch(`${baseUrl}/api/channels/setup`);
+    const text = await response.text();
+    assert.ok(!text.includes("test-secret-never-exposed"));
+    const statuses = JSON.parse(text) as Array<{
+      name: string;
+      restartRequired: boolean;
+      missingSecrets: string[];
+      startupEnabled: boolean;
+    }>;
+    const discord = statuses.find((item) => item.name === "discord");
+    assert.equal(discord?.restartRequired, true);
+    assert.equal(discord?.startupEnabled, false);
+    assert.deepEqual(discord?.missingSecrets, []);
+    secretValues.delete("DISCORD_BOT_TOKEN");
+    assert.equal((await update(false)).status, 200);
+    const reverted = (await (await fetch(`${baseUrl}/api/channels/setup`)).json()) as Array<{
+      name: string;
+      restartRequired: boolean;
+    }>;
+    assert.equal(reverted.find((item) => item.name === "discord")?.restartRequired, false);
+  });
+
+  it("allows a zero-secret channel to be enabled without credentials", async () => {
+    for (const enabled of [false, true]) {
+      const response = await fetch(`${baseUrl}/api/config`, {
+        method: "PUT",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ channels: { dashboard: { enabled } } }),
+      });
+      assert.equal(response.status, 200);
+    }
+  });
+
   it("returns validated config and defaults", async () => {
     const configResponse = await fetch(`${baseUrl}/api/config`);
     assert.equal(configResponse.status, 200);

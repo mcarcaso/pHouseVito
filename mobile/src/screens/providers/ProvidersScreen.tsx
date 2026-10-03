@@ -2,7 +2,6 @@ import { Ionicons } from "@expo/vector-icons";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   ActivityIndicator,
-  Alert,
   Linking,
   Pressable,
   RefreshControl,
@@ -25,6 +24,18 @@ interface ProviderOverview {
   authStatus: Record<string, AuthStatus>;
   oauthProviders: Array<{ id: string; name: string }>;
 }
+interface LoginFlow {
+  id: string;
+  url?: string;
+  userCode?: string;
+  instructions?: string;
+  promptMessage?: string;
+}
+interface LoginStatus {
+  status: "none" | "pending" | "prompt" | "success" | "error";
+  error?: string;
+  promptMessage?: string;
+}
 interface Model {
   id: string;
   [key: string]: unknown;
@@ -45,6 +56,10 @@ export function ProvidersScreen({
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [busy, setBusy] = useState<string | null>(null);
+  const [loginFlow, setLoginFlow] = useState<LoginFlow | null>(null);
+  const [promptValue, setPromptValue] = useState("");
+  const [logoutTarget, setLogoutTarget] = useState<{ id: string; name: string } | null>(null);
+  const [authError, setAuthError] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const load = useCallback(
     async (refresh = false) => {
@@ -65,56 +80,109 @@ export function ProvidersScreen({
   useEffect(() => {
     void load();
   }, [load, refreshKey]);
+  useEffect(() => {
+    if (!loginFlow) return;
+    let cancelled = false;
+    let timer: ReturnType<typeof setTimeout>;
+    const poll = async () => {
+      try {
+        const status = await api<LoginStatus>(
+          `/api/auth/provider/${encodeURIComponent(loginFlow.id)}/login/status`,
+        );
+        if (cancelled) return;
+        if (status.status === "success") {
+          setLoginFlow(null);
+          await load(true);
+          return;
+        }
+        if (status.status === "error" || status.status === "none") {
+          setAuthError(status.error ?? "Login ended. Please try again.");
+          setLoginFlow(null);
+          return;
+        }
+        if (status.status === "prompt") {
+          setLoginFlow((current) =>
+            current ? { ...current, promptMessage: status.promptMessage } : current,
+          );
+        }
+      } catch (cause) {
+        if (cancelled) return;
+        setAuthError(cause instanceof Error ? cause.message : "Could not check login status");
+        setLoginFlow(null);
+        return;
+      }
+      if (!cancelled) timer = setTimeout(() => void poll(), 2000);
+    };
+    timer = setTimeout(() => void poll(), 1000);
+    return () => {
+      cancelled = true;
+      clearTimeout(timer);
+    };
+  }, [loginFlow?.id, load]);
   const login = async (id: string) => {
     setBusy(id);
+    setAuthError(null);
     try {
       const result = await api<{
         status: string;
         url?: string;
         verificationUri?: string;
         userCode?: string;
+        instructions?: string;
       }>(`/api/auth/provider/${encodeURIComponent(id)}/login`, { method: "POST" });
-      const url = result.url ?? result.verificationUri;
-      if (result.userCode)
-        Alert.alert(
-          "Enter this device code",
-          result.userCode,
-          url
-            ? [
-                { text: "Open login page", onPress: () => void Linking.openURL(url) },
-                { text: "Cancel", style: "cancel" },
-              ]
-            : undefined,
-        );
-      else if (url) await Linking.openURL(url);
-      else if (result.status === "already_authenticated") await load(true);
+      if (result.status === "already_authenticated") await load(true);
+      else {
+        setPromptValue("");
+        setLoginFlow({
+          id,
+          url: result.url ?? result.verificationUri,
+          userCode: result.userCode,
+          instructions: result.instructions,
+        });
+      }
     } catch (cause) {
-      Alert.alert("Login failed", cause instanceof Error ? cause.message : "Please try again.");
+      setAuthError(cause instanceof Error ? cause.message : "Login failed. Please try again.");
     } finally {
       setBusy(null);
     }
   };
-  const logout = (id: string, name: string) =>
-    Alert.alert(
-      `Log out of ${name}?`,
-      "Vito will no longer be able to use subscription authentication for this provider.",
-      [
-        { text: "Cancel", style: "cancel" },
-        {
-          text: "Log out",
-          style: "destructive",
-          onPress: async () => {
-            setBusy(id);
-            try {
-              await api(`/api/auth/provider/${encodeURIComponent(id)}/logout`, { method: "POST" });
-              await load(true);
-            } finally {
-              setBusy(null);
-            }
-          },
-        },
-      ],
-    );
+  const logout = async (id: string) => {
+    setBusy(id);
+    setAuthError(null);
+    try {
+      await api(`/api/auth/provider/${encodeURIComponent(id)}/logout`, { method: "POST" });
+      if (loginFlow?.id === id) setLoginFlow(null);
+      setLogoutTarget(null);
+      await load(true);
+    } catch (cause) {
+      setAuthError(cause instanceof Error ? cause.message : "Could not log out");
+    } finally {
+      setBusy(null);
+    }
+  };
+  const openLogin = async () => {
+    try {
+      if (loginFlow?.url) await Linking.openURL(loginFlow.url);
+    } catch (cause) {
+      setAuthError(cause instanceof Error ? cause.message : "Could not open login page");
+    }
+  };
+  const submitPrompt = async () => {
+    if (!loginFlow) return;
+    setBusy(loginFlow.id);
+    try {
+      await api(`/api/auth/provider/${encodeURIComponent(loginFlow.id)}/login/prompt`, {
+        method: "POST",
+        body: JSON.stringify({ value: promptValue }),
+      });
+      setLoginFlow((current) => (current ? { ...current, promptMessage: undefined } : current));
+      setPromptValue("");
+    } catch (cause) {
+      setAuthError(cause instanceof Error ? cause.message : "Could not submit login response");
+    } finally {
+      setBusy(null);
+    }
+  };
   if (loading)
     return (
       <View style={styles.center}>
@@ -138,6 +206,85 @@ export function ProvidersScreen({
         <Text style={styles.secondary}>Manage access and browse the models available to Vito.</Text>
       </View>
       {error && <Text style={styles.error}>{error}</Text>}
+      {authError && (
+        <Text accessibilityRole="alert" style={styles.error}>
+          {authError}
+        </Text>
+      )}
+      {loginFlow && (
+        <View style={styles.loginPanel}>
+          <Text style={styles.name}>Complete sign-in</Text>
+          {loginFlow.userCode && (
+            <>
+              <Text style={styles.secondary}>Open the login page and enter this code:</Text>
+              <Text selectable style={styles.name}>
+                {loginFlow.userCode}
+              </Text>
+            </>
+          )}
+          {loginFlow.instructions && <Text style={styles.secondary}>{loginFlow.instructions}</Text>}
+          {loginFlow.url && (
+            <>
+              <Pressable
+                accessibilityRole="link"
+                onPress={() => void openLogin()}
+                style={styles.authButton}
+              >
+                <Text style={styles.authButtonText}>Open login page</Text>
+              </Pressable>
+              <Text selectable style={styles.secondary}>
+                {loginFlow.url}
+              </Text>
+            </>
+          )}
+          {loginFlow.promptMessage && (
+            <>
+              <Text style={styles.secondary}>{loginFlow.promptMessage}</Text>
+              <TextInput
+                value={promptValue}
+                onChangeText={setPromptValue}
+                autoCapitalize="none"
+                accessibilityLabel="Login response"
+                style={styles.searchInput}
+              />
+              <Pressable
+                disabled={busy === loginFlow.id || !promptValue.trim()}
+                onPress={() => void submitPrompt()}
+                style={styles.authButton}
+              >
+                <Text style={styles.authButtonText}>Submit response</Text>
+              </Pressable>
+            </>
+          )}
+          <Text style={styles.secondary}>Waiting for sign-in to finish…</Text>
+          <Pressable
+            disabled={busy === loginFlow.id}
+            onPress={() => void logout(loginFlow.id)}
+            style={styles.authButton}
+          >
+            <Text style={styles.authButtonText}>Cancel sign-in</Text>
+          </Pressable>
+        </View>
+      )}
+      {logoutTarget && (
+        <View style={styles.loginPanel}>
+          <Text style={styles.name}>Log out of {logoutTarget.name}?</Text>
+          <Text style={styles.secondary}>
+            Vito will no longer be able to use this subscription.
+          </Text>
+          <Pressable
+            disabled={busy === logoutTarget.id}
+            onPress={() => void logout(logoutTarget.id)}
+            style={styles.authButton}
+          >
+            <Text style={styles.logoutText}>Confirm logout</Text>
+          </Pressable>
+          <Pressable onPress={() => setLogoutTarget(null)}>
+            <Text style={styles.secondary}>Cancel</Text>
+          </Pressable>
+        </View>
+      )}
+
       {providers.map((provider) => {
         const status = overview?.authStatus[provider.id];
         const connected = status?.hasAuth === true;
@@ -169,9 +316,9 @@ export function ProvidersScreen({
             </Pressable>
             <Pressable
               accessibilityLabel={`${connected ? "Log out of" : "Log in to"} ${provider.name}`}
-              disabled={busy === provider.id}
+              disabled={busy === provider.id || loginFlow?.id === provider.id}
               onPress={() => {
-                connected ? logout(provider.id, provider.name) : void login(provider.id);
+                connected ? setLogoutTarget(provider) : void login(provider.id);
               }}
               style={[styles.authButton, connected && styles.logoutButton]}
             >
@@ -309,6 +456,12 @@ const createStyles = (theme: VitoTheme) =>
       marginTop: theme.space.xs,
     },
     error: { color: theme.colors.danger, textAlign: "center", padding: theme.space.md },
+    loginPanel: {
+      padding: theme.space.md,
+      gap: theme.space.sm,
+      borderRadius: 16,
+      backgroundColor: theme.colors.surface,
+    },
     card: {
       minHeight: 76,
       flexDirection: "row",

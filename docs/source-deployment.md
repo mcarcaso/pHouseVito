@@ -25,9 +25,9 @@ On the host it discovers the existing Vito PM2 installation and:
 3. Runs `scripts/restart-vito.sh`: sync dependencies when needed, build backend, build web into a temporary staging directory, publish web assets, then restart only `vito-server`.
 4. Checks exact local/public health revision, running checkout, and unchanged other PM2 apps; then saves PM2.
 
-It always runs the restart workflow, including when code was already pulled or `main` is unchanged. There are no routine backups, new checkouts, pointer switches, or automatic rollback. Build failures stop before the PM2 restart; pulled source and dependency changes remain on disk. Review and take backups explicitly before risky data migrations. Existing backups and previous checkouts are retained.
+If the pull leaves the revision unchanged and both local and public health already report that exact healthy revision, deployment skips dependency installation, builds, and restart. Use `./aws_deploy/deploy.sh elia --force` to rebuild and restart even when already current; all checkout and health checks still apply. Already-pulled code still runs the restart workflow when the service is running an older revision. There are no routine backups, new checkouts, pointer switches, or automatic rollback. Build failures stop before the PM2 restart; pulled source and dependency changes remain on disk. Review and take backups explicitly before risky data migrations. Existing backups and previous checkouts are retained.
 
-`deploy-all.sh` requires explicit client names and updates them sequentially, stopping on the first failure. It does not discover and update the entire fleet automatically.
+`./aws_deploy/deploy-all.sh` with no arguments lists every client represented by a local `aws_deploy/state/*.json` file and requires typing `yes` before updating them. Any other answer or closed input cancels. Pass explicit names to select a subset without that prompt, for example `./aws_deploy/deploy-all.sh mar elia`. Updates run sequentially and stop on the first failure.
 
 ## Installation layout
 
@@ -69,4 +69,4 @@ During initial migrations, preserve required environment and process options, ta
 
 Interrupted or failed updates require operator recovery. A typical source build may take minutes while the existing process continues serving; the final PM2 restart causes the service interruption.
 
-Builds default to a 1536 MB Node heap cap; `VITO_BUILD_NODE_OPTIONS` on the target can override it when `NODE_OPTIONS` is unset. Verify available RAM and swap before updating small instances. A lower cap can fail backend type compilation; build failures leave the running service unchanged.
+Fresh provisioning and source updates default to a 1536 MB Node heap cap for builds; `VITO_BUILD_NODE_OPTIONS` on the target can override it when `NODE_OPTIONS` is unset. Fresh provisioning creates 2 GB of swap and scopes the heap setting to the builds so it does not reach PM2. Verify available RAM and swap before updating small instances. A lower cap can fail backend type compilation; update build failures leave the running service unchanged.

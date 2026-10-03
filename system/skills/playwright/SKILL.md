@@ -88,4 +88,4 @@ Screenshots/output files are written under `user/drive/screenshots/` by the MCP 
 
 ## Legacy Wrapper
 
-The old local wrapper still exists at `user/skills/playwright/index.js` for fallback/debugging, but prefer MCP for new work.
+Some older installations may have a user-owned wrapper at `user/skills/playwright/index.js`. It is not part of the built-in platform; check that it exists before using it. Prefer MCP for new work.

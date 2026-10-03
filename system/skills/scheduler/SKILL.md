@@ -42,7 +42,7 @@ Every job schedule carries an explicit IANA timezone. Missing timezone in older 
 { "at": "2026-09-26T09:00:00", "timezone": "America/Toronto" }
 ```
 
-Never guess a session or destination. Use the current conversation when Mike does not specify another one.
+Never guess a session or destination. Use the current conversation when the user does not specify another one.
 
 ## Job context
 

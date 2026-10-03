@@ -4,6 +4,11 @@ set -euo pipefail
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$ROOT_DIR"
 
+# Dashboard and chat restarts need the same build heap as SSH deployments.
+# Small instances otherwise give tsc a default heap below its requirements.
+DEFAULT_BUILD_NODE_OPTIONS="--max-old-space-size=1536"
+export NODE_OPTIONS="${NODE_OPTIONS:-${VITO_BUILD_NODE_OPTIONS:-$DEFAULT_BUILD_NODE_OPTIONS}}"
+
 sync_dependencies() {
   local label="$1"
   local directory="$2"

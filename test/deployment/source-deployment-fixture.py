@@ -47,6 +47,7 @@ with tempfile.TemporaryDirectory(prefix="vito-source-tests-") as temporary:
     rows = apps + [{"name": "vito-server", "pid": 456, "pm2_env": {"status": "online"}}]
     calls = []
     health_calls = []
+    running_revision = previous
     real_run = d.run
 
     def run(*args, **kwargs):
@@ -58,6 +59,7 @@ with tempfile.TemporaryDirectory(prefix="vito-source-tests-") as temporary:
     with patch.object(d, "REPOSITORY", str(origin)), patch.object(d, "run", run), \
             patch.object(d, "processes", lambda: rows), \
             patch.object(d, "running_cwd", lambda pid: checkout), \
+            patch.object(d, "health_matches", lambda url, rev: running_revision == rev), \
             patch.object(d, "health", lambda url, rev: health_calls.append((url, rev))):
         (checkout / "source.txt").write_text("agent edit")
         try:
@@ -68,6 +70,23 @@ with tempfile.TemporaryDirectory(prefix="vito-source-tests-") as temporary:
         assert (checkout / "source.txt").read_text() == "agent edit"
         assert not (user / "restarts").exists()
         git(checkout, "checkout", "--", "source.txt")
+
+        # Wrong branches and detached HEAD fail before pulling or restarting.
+        for branch in ("feature-fixture", None):
+            if branch:
+                git(checkout, "checkout", "-b", branch)
+            else:
+                git(checkout, "checkout", "--detach")
+            calls.clear()
+            try:
+                d.update(installation, checkout, rows, "https://fixture.invalid/api/health", force=True)
+                raise AssertionError("non-main checkout accepted")
+            except RuntimeError as error:
+                assert "not on main" in str(error)
+                assert (branch or "detached HEAD") in str(error)
+            assert not any(c[:2] == ("git", "pull") for c in calls)
+            assert not (user / "restarts").exists()
+            git(checkout, "checkout", "main")
 
         # Build failure leaves pulled code in place and does not restart.
         (user / "fail-build").touch()
@@ -92,6 +111,26 @@ with tempfile.TemporaryDirectory(prefix="vito-source-tests-") as temporary:
         assert not (root / "vito-backups").exists()
         assert not any(c[:2] in (("pm2", "stop"), ("pm2", "restart")) for c in calls)
 
+        # Matching checkout and running revision skip build/restart even if a build would fail.
+        running_revision = revision
+        (user / "fail-build").touch()
+        calls.clear()
+        health_calls.clear()
+        d.update(installation, checkout, rows, "https://fixture.invalid/api/health")
+        assert (user / "restarts").read_text().splitlines() == ["restart"]
+        assert not health_calls
+        assert not any(c[0] == "pm2" for c in calls)
+        (user / "fail-build").unlink()
+
+        # Force builds/restarts even when the current revision is healthy.
+        d.update(installation, checkout, rows, "https://fixture.invalid/api/health", force=True)
+        assert (user / "restarts").read_text().splitlines() == ["restart", "restart"]
+
+        # A stale public revision must not skip the restart workflow.
+        with patch.object(d, "health_matches", lambda url, rev: url.startswith("http://127.")):
+            d.update(installation, checkout, rows, "https://fixture.invalid/api/health")
+        assert (user / "restarts").read_text().splitlines() == ["restart", "restart", "restart"]
+
         # Divergent local commits are preserved and refuse pull before restart.
         git(checkout, "config", "user.email", "fixture@example.invalid")
         git(checkout, "config", "user.name", "fixture")
@@ -107,5 +146,5 @@ with tempfile.TemporaryDirectory(prefix="vito-source-tests-") as temporary:
         except RuntimeError:
             pass
         assert git(checkout, "rev-parse", "HEAD") == local
-        assert (user / "restarts").read_text().splitlines() == ["restart"]
+        assert (user / "restarts").read_text().splitlines() == ["restart", "restart", "restart"]
 print("source deployment scenarios passed")

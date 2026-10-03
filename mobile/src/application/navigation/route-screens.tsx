@@ -379,11 +379,16 @@ export function RootSecretDetailScreen({
 }) {
   const [secret, setSecret] = useState<Secret | null>(null);
   useEffect(() => {
-    void api<Secret[]>("/api/secrets").then((items) =>
-      setSecret(items.find((item) => item.key === route.params.key) ?? null),
-    );
+    let active = true;
+    setSecret(null);
+    void api<Secret[]>("/api/secrets", { cache: "no-store" }).then((items) => {
+      if (active) setSecret(items.find((item) => item.key === route.params.key) ?? null);
+    });
+    return () => {
+      active = false;
+    };
   }, [route.params.key]);
-  if (!secret) return <ActivityIndicator style={{ flex: 1 }} />;
+  if (!secret || secret.key !== route.params.key) return <ActivityIndicator style={{ flex: 1 }} />;
   return (
     <SecretEditorScreen
       secret={secret}

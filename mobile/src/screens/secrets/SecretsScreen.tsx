@@ -23,6 +23,12 @@ export type Secret = {
   description?: string;
 };
 
+// Notify mounted list panes without sharing secret values between screens.
+const secretChangeListeners = new Set<() => void>();
+function notifySecretsChanged() {
+  for (const listener of secretChangeListeners) listener();
+}
+
 export function SecretsScreen({
   onOpen,
   onUnauthorized,
@@ -35,16 +41,37 @@ export function SecretsScreen({
   const [secrets, setSecrets] = useState<Secret[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
-  useEffect(() => {
-    void api<Secret[]>("/api/secrets")
-      .then(setSecrets)
+  const loadRequest = useRef(0);
+  const loadSecrets = useCallback(() => {
+    const request = ++loadRequest.current;
+    void api<Secret[]>("/api/secrets", { cache: "no-store" })
+      .then((items) => {
+        if (request !== loadRequest.current) return;
+        setSecrets(items);
+        setError(null);
+      })
       .catch((cause) => {
+        if (request !== loadRequest.current) return;
         const message = cause instanceof Error ? cause.message : "Could not load secrets";
         if (message.toLowerCase().includes("unauthorized")) onUnauthorized();
         setError(message);
       })
-      .finally(() => setLoading(false));
+      .finally(() => {
+        if (request === loadRequest.current) setLoading(false);
+      });
   }, [onUnauthorized]);
+  useFocusEffect(
+    useCallback(() => {
+      loadSecrets();
+    }, [loadSecrets]),
+  );
+  useEffect(() => {
+    secretChangeListeners.add(loadSecrets);
+    return () => {
+      secretChangeListeners.delete(loadSecrets);
+      loadRequest.current++;
+    };
+  }, [loadSecrets]);
   if (loading)
     return (
       <View style={styles.center}>
@@ -84,7 +111,15 @@ export function SecretsScreen({
   );
 }
 
-export function SecretEditorScreen({
+export function SecretEditorScreen(props: {
+  secret?: Secret;
+  onSaved: () => void;
+  onDeleted?: () => void;
+}) {
+  return <SecretEditorForm key={props.secret?.key ?? "new"} {...props} />;
+}
+
+function SecretEditorForm({
   secret,
   onSaved,
   onDeleted,
@@ -147,6 +182,7 @@ export function SecretEditorScreen({
       });
       if (secret && !system && nextKey !== secret.key)
         await api(`/api/secrets/${encodeURIComponent(secret.key)}`, { method: "DELETE" });
+      notifySecretsChanged();
       onSaved();
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : "Could not save secret");
@@ -199,6 +235,7 @@ export function SecretEditorScreen({
               method: "PUT",
               body: JSON.stringify({ value: "" }),
             });
+            notifySecretsChanged();
             onSaved();
           } catch (cause) {
             setError(cause instanceof Error ? cause.message : "Could not clear secret");
@@ -217,6 +254,7 @@ export function SecretEditorScreen({
         onPress: async () => {
           try {
             await api(`/api/secrets/${encodeURIComponent(secret.key)}`, { method: "DELETE" });
+            notifySecretsChanged();
             onDeleted?.();
           } catch (cause) {
             setError(cause instanceof Error ? cause.message : "Could not delete secret");

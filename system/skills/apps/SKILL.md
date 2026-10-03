@@ -12,7 +12,7 @@ Create and deploy web apps using ANY technology stack — static HTML, React, No
 - **App directory:** `user/apps/<name>/` — each deployed app gets its own folder
 - **Metadata:** `.vito-app.json` in each app folder (name, description, port, URL, createdAt)
 - **PM2 tracking:** Each app registered as `app-<name>` in PM2
-- **Ports:** Auto-assigned starting from 3100 (configurable via `apps.portStart` in config.json)
+- **Ports:** Auto-assigned starting from 3100 (configurable via `apps.portStart` in `user/vito.config.json`)
 
 ## Configuration
 
@@ -31,9 +31,11 @@ If not set, apps will be accessible at `http://localhost:<port>`.
 
 ## Lifecycle
 
-- **create_app:** Writes files → installs deps → starts server on assigned port → verifies app → **runs `pm2 save`**
+- **create_app:** Writes files → installs deps → starts server on assigned port → **runs `pm2 save`**
 - **delete_app:** Stops PM2 process → deletes files → **runs `pm2 save`**
-- **Updates:** If app name already exists, files are overwritten and the server is restarted → verify app → **run `pm2 save`**
+- **Updates:** If app name already exists, supplied files are overwritten and the server is restarted → **runs `pm2 save`**
+
+The CLI starts the process but does not perform an HTTP health check. After create/update, check PM2 status and the app URL before reporting success.
 
 **PM2 persistence is non-optional.** If you create, update, restore, restart, or delete app processes, finish by running:
 
@@ -100,7 +102,7 @@ Use Vito's project CLI. It delegates to the existing app deployment workflow whi
   --files '[{"path":"index.html","content":"<h1>Hello</h1>"},{"path":"style.css","content":"body{margin:0}"}]'
 ```
 
-- If the app already exists, files are overwritten and the server is restarted.
+- If the app already exists, supplied files are overwritten and the server is restarted. Other existing project files are retained.
 - The `--files` flag takes a JSON array of `{path, content}` objects.
 
 ### List all apps

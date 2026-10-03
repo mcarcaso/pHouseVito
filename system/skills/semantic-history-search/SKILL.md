@@ -5,17 +5,17 @@ description: Search past conversations by meaning using hybrid semantic + keywor
 
 # Semantic History Search
 
-Search all past conversations by **meaning**, not just exact words. Uses hybrid retrieval: semantic embeddings + FTS5 BM25 keyword search, merged via Reciprocal Rank Fusion. Backed by `user/embeddings.db`.
+Search all past conversations by **meaning**, not just exact words. Uses hybrid retrieval: semantic embeddings + FTS5 BM25 keyword search, merged via Reciprocal Rank Fusion. Backed by `user/embeddings.db`. Retrieval is agent-initiated; Vito does not automatically search or inject recalled memories on every turn. Use **memory-recall** when you want profile, atomic facts, and transcript evidence together.
 
 ## When to Use
 
-Before searching conversation history, check `user/profile.md` for durable identity, relationship, preference, safety, and current-policy facts. The profile is curated and authoritative for those facts; this skill retrieves underlying conversation evidence and episodic context.
+Before searching conversation history, check `user/profile.md` for durable identity, relationship, preference, safety, and current-policy facts. The profile is curated context; verify stale, conflicting, or consequential claims against dated evidence. This skill retrieves underlying conversation evidence and episodic context.
 
 Use this skill when:
 
 - You need to **recall what was discussed** about a topic — "what did we talk about regarding X?"
 - The user says "remember when we..." or "what did we decide about..."
-- Auto-recalled memories (`<recalled-memories>`) aren't enough and you need to **dig deeper**
+- The visible session or curated profile lacks evidence and you need to **dig deeper**
 - You need to find **decisions, context, or reasoning** from older conversations
 - You're looking for something **conceptual** — you know the idea but not the exact words
 

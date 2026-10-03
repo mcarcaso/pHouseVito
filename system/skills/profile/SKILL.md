@@ -90,7 +90,7 @@ Default window: last 24 hours across all sessions.
 Use the message database through the history-search conventions. Example:
 
 ```bash
-sqlite3 user/vito.db <<'SQL'
+TZ=America/Toronto sqlite3 -readonly user/vito.db <<'SQL'
 SELECT
   COUNT(*) AS total_messages,
   SUM(CASE WHEN type='user' THEN 1 ELSE 0 END) AS user_messages,
@@ -113,7 +113,7 @@ Use **raw transcript mode** when manageable, roughly:
 Pull exact messages:
 
 ```bash
-sqlite3 user/vito.db <<'SQL'
+TZ=America/Toronto sqlite3 -readonly user/vito.db <<'SQL'
 .mode json
 SELECT
   session_id,

@@ -24,17 +24,17 @@ Use this skill when:
 
 ### messages table
 
-| Column         | Type    | Description                                                     |
-| -------------- | ------- | --------------------------------------------------------------- |
-| id             | INTEGER | Auto-increment primary key                                      |
-| session_id     | TEXT    | e.g. `dashboard:default`, `telegram:123456789`                  |
-| channel        | TEXT    | `dashboard`, `telegram`, or `discord`                           |
-| channel_target | TEXT    | `default`, telegram chat ID, or discord channel ID              |
-| timestamp      | INTEGER | Unix epoch in **milliseconds**                                  |
-| type           | TEXT    | `user`, `thought`, `assistant`, `tool_start`, or `tool_end`     |
-| content        | JSON    | Message content (JSON string — use `json_extract` or just cast) |
-| compacted      | INTEGER | 1 = compacted (knowledge extracted to memory docs)              |
-| archived       | INTEGER | 1 = archived (old session, fully processed)                     |
+| Column         | Type    | Description                                                             |
+| -------------- | ------- | ----------------------------------------------------------------------- |
+| id             | INTEGER | Auto-increment primary key                                              |
+| session_id     | TEXT    | e.g. `dashboard:default`, `telegram:123456789`                          |
+| channel        | TEXT    | `dashboard`, `telegram`, or `discord`                                   |
+| channel_target | TEXT    | `default`, telegram chat ID, or discord channel ID                      |
+| timestamp      | INTEGER | Unix epoch in **milliseconds**                                          |
+| type           | TEXT    | `user`, `thought`, `assistant`, `tool_start`, or `tool_end`             |
+| content        | JSON    | Serialized string or object; use `json_extract` to read text            |
+| compacted      | INTEGER | Legacy metadata; not proof of Pi compaction or completed fact ingestion |
+| archived       | INTEGER | 1 = archived by a conversation reset; rows remain stored                |
 
 ### sessions table
 
@@ -46,6 +46,8 @@ Use this skill when:
 | created_at     | INTEGER | Unix epoch ms                         |
 | last_active_at | INTEGER | Unix epoch ms                         |
 | config         | JSON    | Session-specific config               |
+
+User/assistant content can be a JSON string or an object with `text` and `attachments`. Use `json_extract(content, '$')` for strings and `json_extract(content, '$.text')` for objects. Do not assume every content value is a quoted string.
 
 ## Common Queries
 
@@ -128,14 +130,16 @@ ORDER BY timestamp ASC;
 
 ## How to Execute
 
+Use read-only access. SQLite's `localtime` uses the CLI process timezone, which need not match Vito's settings. The examples use `America/Toronto`; substitute the intended IANA zone from `settings.timezone` before date-based searches.
+
 ```bash
-sqlite3 user/vito.db "YOUR QUERY HERE"
+TZ=America/Toronto sqlite3 -readonly user/vito.db "YOUR QUERY HERE"
 ```
 
 For multi-line or complex queries:
 
 ```bash
-sqlite3 user/vito.db <<'EOF'
+TZ=America/Toronto sqlite3 -readonly user/vito.db <<'EOF'
 SELECT ...
 FROM ...
 WHERE ...;
@@ -146,7 +150,7 @@ EOF
 
 - **Timestamps are in milliseconds** — divide by 1000 for unix seconds
 - Use `datetime(timestamp/1000, 'unixepoch', 'localtime')` for readable times
-- **content is a JSON string** — for user/assistant messages it's typically just a quoted string
+- **content is serialized JSON** — strings and attachment-bearing objects both occur
 - Filter `type IN ('user', 'assistant')` to skip thoughts and tool messages
 - Use `substr(content, 1, 200)` for previews to avoid dumping huge messages
 - **Summarize results** for the user — don't dump raw SQL output

@@ -11,8 +11,8 @@
 - Service name: `vito-server`
 - Logs: `pm2 logs vito-server --lines 50 --nostream` — **--nostream is MANDATORY**
 - Status: `pm2 ls` (just `pm2 ls`, nothing else)
-- **⚠️ FORBIDDEN: `--no-daemon`** — This flag hangs FOREVER. Never use it. Not as a fallback, not with `||`, not ever. If you write `--no-daemon` anywhere in a pm2 command, you will freeze.
-- For ports, check `pm2 ls` or the app's ecosystem config
+- Do not use PM2 `--no-daemon` for service management. It runs PM2 in the foreground and blocks the command until it exits.
+- For app ports and URLs, use `./vito apps list`, the app's `.vito-app.json`, or its ecosystem config. `pm2 ls` shows process status, not listening ports.
 
 ## Bash
 
@@ -23,8 +23,9 @@
 ## Restart vs Reload
 
 - **Core code and companion web:** Core code runs from an editable source checkout. Build changes and ask the owner before restarting Vito. Never build web assets in a directory currently served to users.
-- **`user/vito.config.json`:** Watched and reloaded without a process restart. Model/runtime settings reconcile lazily, but settings that alter the system prompt require a fresh harness session.
-- **`user/SOUL.md`, `system/SYSTEM.md`, and skills:** Read when a harness session is created. Use `/new` when the current conversation must pick up changes; a process restart is not required.
+- **`user/vito.config.json`:** Watched and reloaded without a process restart. Model/runtime settings reconcile lazily, but settings that alter the system prompt require a fresh Pi session.
+- **`user/SOUL.md`, `system/SYSTEM.md`, and custom instructions:** The prompt is captured when a Pi runtime is created and reused across turns. Use `/new` for the current conversation to pick up changes; these files do not replace an already active prompt.
+- **Skills:** Discovery is captured when a Pi runtime is created. Use `/new` to discover new skills or changed descriptions. Read existing skill files when using them; a Vito restart is not required.
 - **PM2 apps:** Managed independently and discovered dynamically; creating or restarting an app does not require restarting Vito.
 
 ## Updating from main
@@ -56,7 +57,7 @@ When instructions are vague, investigate before asking:
 
 The visible conversation is **only the current session**. Anything outside it — a person, project, decision, file, preference, or commitment the user mentions but you don't see in this session — must be looked up before responding.
 
-- If the user references something not in the visible conversation: call **semantic-history-search** before answering.
+- If the user references something not in the visible conversation: use **memory-recall** for profile, facts, and transcript evidence together, or **semantic-history-search** for episodic context, before answering.
 - If the user asks "what did I say about X" / "when did I last...": call **keyword-history-search**.
 - If `user/profile.md` is silent on a topic and the user implies you should already know: search memory.
 - Don't fabricate continuity ("as we discussed last time") without first verifying via search.
@@ -70,14 +71,19 @@ You own `user/profile.md`. When the conversation reveals a durable fact about th
 ## File Structure
 
 - **Database:** `user/vito.db`
+- **Embeddings:** `user/embeddings.db`
+- **Pi conversations:** `user/pi-sessions/` (separate from SQLite message History)
+- **Provider OAuth:** `$VITO_PI_AGENT_DIR/auth.json` when set, otherwise `~/.pi/agent/auth.json`. On prepared source deployments this is normally `user/pi-agent/auth.json`; do not replace it with a different home-directory copy.
 - **Profile:** `user/profile.md`
 - **Config:** `user/vito.config.json`
 - **Secrets:** `user/secrets.json` (manage through `SecretService`/dashboard; never expose values)
-- **Skills:** `user/skills/<name>/`
+- **Skills:** `user/skills/<name>/` overrides matching built-in skills in `system/skills/<name>/`
 - **Apps:** `user/apps/<name>/` — user-owned applications, prototypes, and their source/build files
 - **Drive:** `user/drive/` — user-organized hosted files and sites (see below)
 - **Backend:** `src/`
 - **Companion app:** `mobile/`
+
+On prepared client deployments, `user/` is a symlink to persistent data outside the source checkout, normally `~/vito-source/data/user`. Work in the running checkout; preserve the link, data, credentials, and any compatibility paths used by other apps. A source revision in health describes startup, so a pull or local edit alone does not prove the running service has updated.
 
 ## User-Owned Apps and Projects
 
@@ -112,11 +118,19 @@ Directories served through `/d/` fall back to their `index.html`, which is how h
 
 All non-secret runtime configuration lives in `user/vito.config.json`; credentials live separately in `user/secrets.json`. Browser-safe Zod schemas and inferred API/config types live in `src/shared/schemas/` and can be consumed by both the backend and companion app. Server-only types and runtime schemas live in `src/lib/types/`. Domain-specific types otherwise remain with their owning stores and services rather than in a global catch-all module.
 
-Settings cascade: **Global** → **Channel** → **Session** (most specific wins).
+Settings cascade: **Global** → **Channel** → **Session** (most specific wins). Channel overrides go in `channels.<name>.settings`; session overrides go in `sessions.<session-id>`.
+
+Chat/runtime models use `settings.pi-coding-agent`. Memory contextualization and fact extraction can use separate models in `settings.memory`; check those too when changing or removing provider access. Disabling a provider login does not automatically change model selections.
 
 **When told to change a setting, write it to `user/vito.config.json` directly, preserve unrelated values, and run `npm run validate:config` afterward.**
 
 `system/SYSTEM.md` is project-owned system policy, not user configuration. The dashboard exposes it read-only. Direct edits are an advanced maintenance operation and should not be used as a substitute for config, soul, profile, or skill changes.
+
+## Jobs and timezones
+
+Read the **scheduler** skill before creating or changing jobs. New jobs are TypeScript scripts with structured schedules saved through `./vito jobs save`. Existing declarative prompt jobs remain supported; convert them before using script-job management operations.
+
+Every structured schedule has its own explicit IANA timezone, independent of the chat timezone. Use `America/Toronto` when an older job has no timezone; preserve an existing explicit timezone unless the user asks to change it. One-time schedules use local wall time plus timezone; legacy offset timestamps normalize without changing their instant. Reject ambiguous or nonexistent DST wall times instead of guessing. Job config reloads without restarting Vito.
 
 ## Sessions
 
@@ -134,9 +148,10 @@ Format: `channelName:targetName` (e.g., `"dashboard:default"`)
 1. Create `user/skills/<name>/`
 2. Must have `SKILL.md` with frontmatter (`name`, `description`), usage, examples
 3. No SKILL.md = skill doesn't exist
+4. Built-in skills are read-only through Vito's skill management. Put client-specific overrides under `user/skills/`; editing built-ins is core platform maintenance.
 
 ## MEDIA Protocol
 
-- Skills return plain output (file paths)
-- You use `MEDIA:/absolute/path` when sharing with user (must be absolute path)
-- Channels handle rendering
+- Tools and skills can return text, JSON, or file paths. Confirm a returned file exists before sharing it.
+- Use `MEDIA:/absolute/path` on its own line when sharing a file (must be an absolute path).
+- Channels handle rendering.

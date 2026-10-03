@@ -19,8 +19,8 @@
  *   - <memory> with current/cross-session messages (pi keeps current-session
  *     history in its AgentSession; cross-session is opt-in via skills)
  *   - PiRuntime instructions (we control the runtime, no quirks to document)
- *   - User profile — pi sessions live for days/weeks, but profile.md is updated
- *     by a background process every turn. Inlining it would freeze a stale
+ *   - User profile — pi sessions live for days/weeks, while profile.md can be updated
+ *     by the agent or a profile discovery job. Inlining it would freeze a stale
  *     snapshot in the cached system prompt. Instead, the capabilities map
  *     tells the agent to Read user/profile.md on first response in a session.
  */

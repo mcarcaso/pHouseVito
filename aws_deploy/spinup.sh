@@ -322,8 +322,13 @@ echo ">>> Building Vito …"
 npm ci --include=dev
 ./scripts/install-runtime-deps.sh
 npm --prefix mobile ci --include=dev
-npm run build:mobile:web
-npm run build
+# Small instances give Node a default heap too small for TypeScript, even with
+# swap available. Match source updates, and keep build options out of PM2.
+(
+  export NODE_OPTIONS="${NODE_OPTIONS-${VITO_BUILD_NODE_OPTIONS---max-old-space-size=1536}}"
+  npm run build:mobile:web
+  npm run build
+)
 
 echo ">>> Setting up user directory …"
 mkdir -p user/logs user/pi-agent user/attachments

@@ -69,4 +69,4 @@ During initial migrations, preserve required environment and process options, ta
 
 Interrupted or failed updates require operator recovery. A typical source build may take minutes while the existing process continues serving; the final PM2 restart causes the service interruption.
 
-Builds default to a 1536 MB Node heap cap; `VITO_BUILD_NODE_OPTIONS` on the target can override it when `NODE_OPTIONS` is unset. Verify available RAM and swap before updating small instances. A lower cap can fail backend type compilation; build failures leave the running service unchanged.
+Fresh provisioning and source updates default to a 1536 MB Node heap cap for builds; `VITO_BUILD_NODE_OPTIONS` on the target can override it when `NODE_OPTIONS` is unset. Fresh provisioning creates 2 GB of swap and scopes the heap setting to the builds so it does not reach PM2. Verify available RAM and swap before updating small instances. A lower cap can fail backend type compilation; update build failures leave the running service unchanged.

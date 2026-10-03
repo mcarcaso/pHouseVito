@@ -24,7 +24,8 @@
         "monochromeImage": "./assets/android-icon-monochrome.png",
         "backgroundColor": "#1b2746"
       },
-      "package": "com.phouse.vito"
+      "package": "com.phouse.vito",
+      "versionCode": 1
     },
     "web": {
       "favicon": "./assets/favicon.png"

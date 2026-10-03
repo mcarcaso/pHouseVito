@@ -12,7 +12,7 @@
     "restart": "./scripts/restart-vito.sh",
     "logs": "pm2 logs vito-server",
     "status": "pm2 status",
-    "build": "tsc",
+    "build": "tsc --noCheck",
     "typecheck": "tsc --noEmit",
     "test": "tsx --test test/**/*.test.ts",
     "vito": "tsx src/cli/vito.ts",

@@ -46,6 +46,10 @@ For automatic push setup on new instances, copy `aws_deploy/.env.example` to `aw
 
 The stable launcher is installed from `scripts/run-source-current.sh`. PM2 runs `<root>/run-current.sh` with bash and `<root>` as cwd, under the existing service owner and PM2_HOME. It resolves `current` and executes that checkout's `scripts/run-source.sh`, which runs TypeScript through tsx. Updates retain the Vito entry's environment and options and never reload other PM2 apps.
 
+Backend builds use `tsc --noCheck` to emit output without a full type check, including during restart, spinup, and deployment. Run `npm run typecheck` or `npm run check` separately to validate types before deploying. Companion web export also transpiles without a full TypeScript check; `npm run typecheck:mobile` validates its types separately.
+
+New instances provisioned with `spinup.sh` use `openrouter` model `meta/muse-spark-1.3` without a provider routing restriction. Existing instance model settings are retained during deployment.
+
 ## Runtime paths and conversations
 
 | Variable               | Purpose                                           |

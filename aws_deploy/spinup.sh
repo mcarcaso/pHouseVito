@@ -346,6 +346,11 @@ node -e "
   const p = 'user/vito.config.json';
   const cfg = JSON.parse(fs.readFileSync(p, 'utf-8'));
   cfg.apps = { ...cfg.apps, baseDomain: '$FQDN' };
+  cfg.settings['pi-coding-agent'].model = {
+    provider: 'openrouter',
+    name: 'meta/muse-spark-1.3',
+  };
+  delete cfg.settings['pi-coding-agent'].openRouterProvider;
   fs.writeFileSync(p, JSON.stringify(cfg, null, 2) + '\n');
 "
 

@@ -61,6 +61,7 @@ function toolActivity(name?: string): AgentActivity {
 export class ProgressPresenter {
   private readonly startedAt = Date.now();
   private summary?: string;
+  private visible = false;
   private activity: AgentActivity = "thinking";
   private count = 0;
   private work: Array<{ id: string; name: string; status: "running" | "completed" | "failed" }> =
@@ -82,8 +83,12 @@ export class ProgressPresenter {
     if (this.closed) return;
     if (event.kind === "thinking") {
       if (event.activity) this.activity = event.activity;
-      if (event.content?.trim()) this.summary = event.content.trim().slice(0, 300);
+      if (event.content?.trim()) {
+        this.summary = event.content.trim().slice(0, 300);
+        this.visible = true;
+      }
     } else if (event.kind === "tool_start") {
+      this.visible = true;
       this.activity = toolActivity(event.toolName);
       this.count++;
       this.work.push({
@@ -100,7 +105,7 @@ export class ProgressPresenter {
         .find((w) => w.id === event.toolCallId?.slice(0, 200));
       if (item) item.status = event.isError ? "failed" : "completed";
     }
-    if (!this.summary) return;
+    if (!this.visible) return;
     const delay = Math.max(0, 2_000 - (Date.now() - this.updatedAt));
     if (delay && !this.timer) {
       this.timer = setTimeout(() => {
@@ -118,7 +123,7 @@ export class ProgressPresenter {
     const url =
       typeof this.conversationUrl === "function" ? this.conversationUrl() : this.conversationUrl;
     return [
-      `⏳ ${this.summary}`,
+      `⏳ ${this.summary ?? "Working…"}`,
       [
         duration,
         labels[this.activity],
@@ -137,10 +142,10 @@ export class ProgressPresenter {
   }
 
   private async update(): Promise<void> {
-    if (this.closed || !this.summary) return;
+    if (this.closed || !this.visible) return;
     const text = this.text();
     this.pending = this.pending.then(async () => {
-      if (this.closed || !this.summary) return;
+      if (this.closed || !this.visible) return;
       try {
         if (this.handle !== undefined) await this.transport.editProgress(this.handle, text);
         else this.handle = await this.transport.sendProgress(text);
@@ -157,6 +162,7 @@ export class ProgressPresenter {
     if (this.timer) clearTimeout(this.timer);
     this.timer = undefined;
     this.summary = undefined;
+    this.visible = false;
     await this.pending;
     if (this.handle !== undefined) await this.transport.deleteProgress(this.handle).catch(() => {});
     this.handle = undefined;

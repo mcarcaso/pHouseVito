@@ -383,3 +383,42 @@ test("Slack supplies a quoted thread root without requesting bot-inaccessible th
     await f.close();
   }
 });
+
+test("Slack routes every Discord-equivalent control, preserving model/provider/session arguments", async () => {
+  const f = await fixture();
+  const commands = [
+    "help",
+    "status",
+    "new",
+    "compact",
+    "stop",
+    "restart",
+    "model",
+    "model openai/gpt-6-luna",
+    "session",
+    "session slack:T123:C123",
+    "login openai",
+    "unknown-command",
+  ];
+  try {
+    for (const [index, text] of commands.entries()) {
+      await f.socket.emit("slash_commands", {
+        command: "/vito",
+        text,
+        team_id: "T123",
+        channel_id: "C123",
+        user_id: "UOWNER",
+        trigger_id: `parity-${index}`,
+      });
+      await until(() => f.events.length === index + 1);
+      const event = f.events[index];
+      assert.equal(event.content, text === "unknown-command" ? "/help" : `/${text}`);
+      assert.equal(event.sessionKey, "slack:T123:C123");
+      assert.equal(event.hasMention, true);
+      assert.equal((event.raw as Record<string, unknown>).commandAuthorized, true);
+      await until(() => f.store.counts(f.x).active === 0);
+    }
+  } finally {
+    await f.close();
+  }
+});

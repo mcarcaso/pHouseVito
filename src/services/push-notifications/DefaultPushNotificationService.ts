@@ -5,13 +5,6 @@ import type { FinalAssistantMessage, PushNotificationService } from "./PushNotif
 const DEFAULT_GATEWAY_URL = "https://kdxjux37p8.execute-api.us-east-1.amazonaws.com";
 const GATEWAY_DEVICE = "phouse-vito-push-gateway";
 
-interface ExpoTicket {
-  status?: string;
-  id?: string;
-  message?: string;
-  details?: { error?: string };
-}
-
 function notificationBody(content: string): string {
   return content
     .replace(/```[\s\S]*?```/g, "")
@@ -102,9 +95,8 @@ export class DefaultPushNotificationService implements PushNotificationService {
     if (!body || body.includes("NO_REPLY") || body === "*(interrupted)*") return;
     const store = xPushNotificationStore(x);
     const gateway = this.gateway(x);
-    const devices = gateway
-      ? [{ token: GATEWAY_DEVICE }]
-      : store.listDevices(x).map((device) => ({ token: device.token }));
+    if (!gateway) return;
+    const devices = [{ token: GATEWAY_DEVICE }];
     const now = Date.now();
     for (const device of devices) {
       store.enqueue(x, {
@@ -149,18 +141,7 @@ export class DefaultPushNotificationService implements PushNotificationService {
       return;
     }
 
-    const devices = xPushNotificationStore(x).listDevices(x);
-    const results = await Promise.allSettled(
-      devices.map((device) =>
-        this.deliverThroughExpo(x, { device_token: device.token, ...notification }),
-      ),
-    );
-    const failures = results.filter((result) => result.status === "rejected");
-    if (failures.length > 0) {
-      throw new Error(
-        `Server-start push failed for ${failures.length} of ${devices.length} device(s)`,
-      );
-    }
+    throw new Error("pHouseVitoPush account key is required to send notifications");
   }
 
   async deliverPending(x: Context): Promise<void> {
@@ -168,6 +149,8 @@ export class DefaultPushNotificationService implements PushNotificationService {
     this.delivering = true;
     const store = xPushNotificationStore(x);
     try {
+      // Missing configuration must not burn retry attempts or discard queued messages.
+      if (!this.gateway(x) || !xSecretService(x).get(x, "PHOUSE_VITO_PUSH_API_KEY")?.trim()) return;
       for (const row of store.listPending(x, 50)) {
         store.update(x, row.id, {
           status: "sending",
@@ -175,10 +158,9 @@ export class DefaultPushNotificationService implements PushNotificationService {
           updated_at: Date.now(),
         });
         try {
-          const receiptId =
-            row.device_token === GATEWAY_DEVICE
-              ? await this.deliverThroughGateway(x, row)
-              : await this.deliverThroughExpo(x, row);
+          // Even older local-device queue rows must use the authenticated gateway.
+          // Gateway message idempotency prevents duplicate fan-out for the same message.
+          const receiptId = await this.deliverThroughGateway(x, row);
           store.update(x, row.id, {
             status: "sent",
             receipt_id: receiptId,
@@ -205,6 +187,9 @@ export class DefaultPushNotificationService implements PushNotificationService {
   ): Promise<string> {
     const gateway = this.gateway(x);
     if (!gateway) throw new Error("pHouseVitoPush is not configured");
+    const apiKey = xSecretService(x).get(x, "PHOUSE_VITO_PUSH_API_KEY");
+    if (!apiKey?.trim())
+      throw new Error("PHOUSE_VITO_PUSH_API_KEY is required to send notifications");
     const data = JSON.parse(row.data) as Record<string, unknown>;
     const response = await this.fetcher(`${gateway.url}/v1/notifications`, {
       method: "POST",
@@ -212,6 +197,7 @@ export class DefaultPushNotificationService implements PushNotificationService {
         "Content-Type": "application/json",
         Authorization: `Bearer ${gateway.key}`,
         "Idempotency-Key": idempotencyKey,
+        "x-api-key": apiKey,
       },
       body: JSON.stringify({
         sessionId: String(data.sessionId || ""),
@@ -224,32 +210,5 @@ export class DefaultPushNotificationService implements PushNotificationService {
     if (!response.ok) throw new Error(`Push gateway delivery failed (${response.status})`);
     const result = (await response.json()) as { notificationId?: unknown };
     return typeof result.notificationId === "string" ? result.notificationId : idempotencyKey;
-  }
-
-  private async deliverThroughExpo(
-    x: Context,
-    row: { device_token: string; title: string; body: string; data: string },
-  ): Promise<string> {
-    const response = await this.fetcher("https://exp.host/--/api/v2/push/send", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        to: row.device_token,
-        sound: "default",
-        title: row.title,
-        body: row.body,
-        data: JSON.parse(row.data),
-      }),
-    });
-    if (!response.ok) throw new Error(`Expo Push API failed (${response.status})`);
-    const payload = (await response.json()) as { data?: ExpoTicket };
-    const ticket = payload.data;
-    if (ticket?.status !== "ok" || !ticket.id) {
-      const error = ticket?.message || ticket?.details?.error || "Expo rejected notification";
-      if (ticket?.details?.error === "DeviceNotRegistered")
-        xPushNotificationStore(x).deleteDevice(x, row.device_token);
-      throw new Error(error);
-    }
-    return ticket.id;
   }
 }

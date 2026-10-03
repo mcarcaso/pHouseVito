@@ -29,7 +29,7 @@ npm run restart                   # sync deps, build backend/companion web, rest
 npm run restart:process           # fast PM2-only restart without rebuilding
 ```
 
-Production deploy: `./aws_deploy/deploy.sh <name>`. For an already provisioned source installation, the deployer runs `git pull --ff-only origin main` in the existing clean checkout, then the existing dependency/build/restart script for only `vito-server`, and checks exact local/public revision health. Routine deployment does not create backups, switch checkouts, or automatically roll back. It refuses local code edits, divergent history, or unprepared installations. Initial client migrations require individual inspection and approval. User data remains outside checkouts. See `docs/source-deployment.md`.
+Production deploy: `./aws_deploy/deploy.sh <name>`. For an already provisioned source installation, the deployer runs `git pull --ff-only origin main` in the existing clean checkout, then the existing dependency/build/restart script for only `vito-server`, and checks exact local/public revision health. When the checkout is unchanged and local/public health already match the latest revision, deployment skips builds and restart. Routine deployment does not create backups, switch checkouts, or automatically roll back. It refuses local code edits, divergent history, or unprepared installations. Initial client migrations require individual inspection and approval. User data remains outside checkouts. See `docs/source-deployment.md`.
 
 ## Architecture
 

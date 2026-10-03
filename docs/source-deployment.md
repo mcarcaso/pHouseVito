@@ -25,7 +25,7 @@ On the host it discovers the existing Vito PM2 installation and:
 3. Runs `scripts/restart-vito.sh`: sync dependencies when needed, build backend, build web into a temporary staging directory, publish web assets, then restart only `vito-server`.
 4. Checks exact local/public health revision, running checkout, and unchanged other PM2 apps; then saves PM2.
 
-It always runs the restart workflow, including when code was already pulled or `main` is unchanged. There are no routine backups, new checkouts, pointer switches, or automatic rollback. Build failures stop before the PM2 restart; pulled source and dependency changes remain on disk. Review and take backups explicitly before risky data migrations. Existing backups and previous checkouts are retained.
+If the pull leaves the revision unchanged and both local and public health already report that exact healthy revision, deployment skips dependency installation, builds, and restart. Already-pulled code still runs the restart workflow when the service is running an older revision. There are no routine backups, new checkouts, pointer switches, or automatic rollback. Build failures stop before the PM2 restart; pulled source and dependency changes remain on disk. Review and take backups explicitly before risky data migrations. Existing backups and previous checkouts are retained.
 
 `deploy-all.sh` requires explicit client names and updates them sequentially, stopping on the first failure. It does not discover and update the entire fleet automatically.
 

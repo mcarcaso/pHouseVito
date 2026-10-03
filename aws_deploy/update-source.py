@@ -32,15 +32,19 @@ def running_cwd(pid):
     return Path(f"/proc/{pid}/cwd").resolve()
 
 
+def health_matches(url, revision):
+    try:
+        with urllib.request.urlopen(url, timeout=3) as response:
+            data = json.load(response)
+        return data.get("status") == "ok" and data.get("revision") == revision
+    except (OSError, ValueError):
+        return False
+
+
 def health(url, revision):
     for _ in range(60):
-        try:
-            with urllib.request.urlopen(url, timeout=3) as response:
-                data = json.load(response)
-            if data.get("status") == "ok" and data.get("revision") == revision:
-                return
-        except (OSError, ValueError):
-            pass
+        if health_matches(url, revision):
+            return
         time.sleep(1)
     raise RuntimeError("Exact revision health check failed; inspect pm2 logs vito-server --lines 50 --nostream")
 
@@ -50,19 +54,27 @@ def update(root, checkout, rows, public_url):
         raise RuntimeError("Local source edits exist; reconcile them before deploying")
     if run("git", "remote", "get-url", "origin", cwd=checkout) != REPOSITORY:
         raise RuntimeError("Unexpected origin repository")
-    if run("git", "branch", "--show-current", cwd=checkout) != "main":
-        raise RuntimeError("Expected main branch; reconcile the checkout before deploying")
+    branch = run("git", "branch", "--show-current", cwd=checkout)
+    if branch != "main":
+        raise RuntimeError(f"Checkout is not on main (current: {branch or 'detached HEAD'}); switch to main before deploying")
     user = (checkout / "user").resolve()
     if not (checkout / "user").is_symlink() or not user.is_dir() or user.is_relative_to(root / "checkouts"):
         raise RuntimeError("Expected persistent user data outside source checkouts")
     if not (checkout / "scripts/restart-vito.sh").is_file():
         raise RuntimeError("Source restart script missing")
 
+    previous = run("git", "rev-parse", "HEAD", cwd=checkout)
     print("Pulling latest main into the current checkout", flush=True)
     run("git", "pull", "--ff-only", "origin", "main", cwd=checkout)
     revision = run("git", "rev-parse", "HEAD", cwd=checkout)
     if (checkout / "user").resolve() != user:
         raise RuntimeError("Persistent user path changed")
+    if (previous == revision
+            and health_matches("http://127.0.0.1:3030/api/health", revision)
+            and health_matches(public_url, revision)):
+        print("Already running latest main; skipping build and restart", flush=True)
+        print(json.dumps({"state": "unchanged", "revision": revision, "checkout": str(checkout)}), flush=True)
+        return
     os.environ.setdefault("NODE_OPTIONS", os.environ.get("VITO_BUILD_NODE_OPTIONS", "--max-old-space-size=1536"))
     print("Building and restarting only Vito", flush=True)
     # SSH owns this process, so it survives the Vito PM2 restart.

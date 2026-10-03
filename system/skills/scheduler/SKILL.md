@@ -36,10 +36,10 @@ export default async function (job) {
 }
 ```
 
-A one-time schedule uses an explicit offset:
+Every job schedule carries an explicit IANA timezone. Missing timezone in older definitions is normalized to America/Toronto, never inherited from global settings. A one-time schedule uses local wall time without an offset plus timezone:
 
 ```json
-{ "at": "2026-09-26T09:00:00-04:00" }
+{ "at": "2026-09-26T09:00:00", "timezone": "America/Toronto" }
 ```
 
 Never guess a session or destination. Use the current conversation when Mike does not specify another one.
@@ -83,8 +83,8 @@ Conversion writes user-owned TypeScript under `user/jobs/`, preserves the schedu
 
 ## Scheduling behavior
 
-- Ordinary cron schedules use the agent timezone from `settings.timezone` unless the job overrides it.
-- One-time schedules require an ISO timestamp with an explicit offset.
+- Cron schedules use their own explicit timezone, independent of `settings.timezone`. Previously local schedules default to America/Toronto.
+- One-time schedules require local YYYY-MM-DDTHH:mm[:ss] without an offset and an IANA timezone. DST gaps and repeated hours are rejected. Legacy offset timestamps normalize into local wall time while preserving their instant.
 - Recurring schedules catch up at most once after downtime.
 - The same job cannot overlap itself.
 - A claimed or uncertain run is never blindly replayed after restart.

@@ -1,3 +1,4 @@
+import { resolveJobTime } from "../../shared/job-time.js";
 import { randomUUID } from "node:crypto";
 import { exec } from "node:child_process";
 import { promisify } from "node:util";
@@ -30,17 +31,22 @@ export class CronerCronService implements CronService {
 
   private getJobTimezone(job: CronJobConfig): string {
     if (isScriptJob(job)) {
-      return "cron" in job.schedule
-        ? (job.schedule.timezone ?? this.globalTimezone ?? DEFAULT_TIMEZONE)
-        : "UTC";
+      return "cron" in job.schedule ? (job.schedule.timezone ?? "America/Toronto") : "UTC";
     }
-    return job.timezone || this.globalTimezone || DEFAULT_TIMEZONE;
+    return job.timezone || "America/Toronto";
   }
 
   getScheduleError(_x: Context, job: CronJobConfig, globalTimezone?: string): string | null {
     if (isScriptJob(job)) {
       if ("at" in job.schedule) {
-        const date = new Date(job.schedule.at);
+        let date: Date;
+        try {
+          date = new Date(
+            resolveJobTime(job.schedule.at, job.schedule.timezone ?? "America/Toronto"),
+          );
+        } catch (error) {
+          return String(error);
+        }
         if (Number.isNaN(date.getTime())) return "Invalid one-time schedule";
         if (date.getTime() <= Date.now()) return "One-time schedule must be in the future";
         return null;
@@ -48,7 +54,7 @@ export class CronerCronService implements CronService {
       try {
         const cron = new Cron(job.schedule.cron, {
           paused: true,
-          timezone: job.schedule.timezone ?? globalTimezone ?? DEFAULT_TIMEZONE,
+          timezone: job.schedule.timezone ?? "America/Toronto",
         });
         cron.stop();
         return null;
@@ -57,7 +63,7 @@ export class CronerCronService implements CronService {
       }
     }
 
-    const timezone = job.timezone || globalTimezone || DEFAULT_TIMEZONE;
+    const timezone = job.timezone || "America/Toronto";
     if (this.isISODate(job.schedule)) {
       const date = new Date(job.schedule);
       if (Number.isNaN(date.getTime())) return "Invalid ISO date schedule";
@@ -142,7 +148,8 @@ export class CronerCronService implements CronService {
   }
 
   private calculateNextScriptRun(job: ScriptJobConfig): string | null {
-    if ("at" in job.schedule) return job.schedule.at;
+    if ("at" in job.schedule)
+      return resolveJobTime(job.schedule.at, job.schedule.timezone ?? "America/Toronto");
     const cron = new Cron(job.schedule.cron, {
       paused: true,
       timezone: this.getJobTimezone(job),
@@ -314,19 +321,13 @@ export class CronerCronService implements CronService {
   }
 
   reload(x: Context, jobs: CronJobConfig[], timezone?: string): void {
-    const previousTimezone = this.globalTimezone;
     this.setTimezone(timezone ?? DEFAULT_TIMEZONE);
-    const timezoneChanged = previousTimezone !== this.globalTimezone;
     const nextByName = new Map(jobs.map((job) => [job.name, job]));
     for (const [name, current] of [...this.jobConfigs]) {
       const next = nextByName.get(name);
       if (!next) {
         this.removeJob(x, name);
-      } else if (
-        JSON.stringify(current) !== JSON.stringify(next) ||
-        (timezoneChanged &&
-          (isScriptJob(next) ? "cron" in next.schedule && !next.schedule.timezone : !next.timezone))
-      ) {
+      } else if (JSON.stringify(current) !== JSON.stringify(next)) {
         this.unscheduleJob(x, name, false);
         this.scheduleJob(x, next);
       }

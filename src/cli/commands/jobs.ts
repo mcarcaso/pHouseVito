@@ -1,3 +1,4 @@
+import { localJobTime } from "../../shared/job-time.js";
 import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
 import { basename, join, resolve } from "node:path";
 import { Cron } from "croner";
@@ -105,15 +106,22 @@ function scriptForLegacy(job: LegacyCronJobConfig): string {
 }
 
 function convertedSchedule(job: LegacyCronJobConfig): ScriptJobConfig["schedule"] {
-  if (/^\d{4}-\d{2}-\d{2}T/.test(job.schedule)) return { at: new Date(job.schedule).toISOString() };
+  if (/^\d{4}-\d{2}-\d{2}T/.test(job.schedule))
+    return {
+      at: localJobTime(job.schedule, job.timezone ?? "America/Toronto"),
+      timezone: job.timezone ?? "America/Toronto",
+    };
   if (job.oneTime) {
     const cron = new Cron(job.schedule, { paused: true, timezone: job.timezone });
     const next = cron.nextRun();
     cron.stop();
     if (!next) throw new Error(`Legacy job ${job.name} has no next run`);
-    return { at: next.toISOString() };
+    return {
+      at: localJobTime(next.toISOString(), job.timezone ?? "America/Toronto"),
+      timezone: job.timezone ?? "America/Toronto",
+    };
   }
-  return { cron: job.schedule, ...(job.timezone ? { timezone: job.timezone } : {}) };
+  return { cron: job.schedule, timezone: job.timezone ?? "America/Toronto" };
 }
 
 function convertLegacy(job: LegacyCronJobConfig, userDir: string): ScriptJobConfig {

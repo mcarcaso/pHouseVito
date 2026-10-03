@@ -1,3 +1,4 @@
+import { localJobTime } from "../../src/shared/job-time.js";
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import { ObjectContext } from "../../src/context/ObjectContext.js";
@@ -44,7 +45,7 @@ describe("CronerCronService", () => {
     assert.deepEqual(service.checkHealth(x), []);
   });
 
-  it("recalculates inherited script schedules when the global timezone changes", () => {
+  it("pins previously local script schedules to Toronto despite global timezone changes", () => {
     const db = createDatabase(":memory:");
     const x = new ObjectContext({ db: () => db, jobService: () => ({ recover: () => {} }) });
     const service = new CronerCronService();
@@ -72,7 +73,7 @@ describe("CronerCronService", () => {
     const after = db
       .prepare("SELECT next_at, config FROM job_schedule_state WHERE name = ?")
       .get("inherited") as { next_at: string; config: string };
-    assert.notEqual(after.next_at, before.next_at);
+    assert.equal(after.next_at, before.next_at);
     assert.equal(JSON.parse(after.config).timezone, "America/Toronto");
     const explicitState = db
       .prepare("SELECT config FROM job_schedule_state WHERE name = ?")
@@ -184,7 +185,7 @@ it("dispatches overdue work after a blocked event loop without losing its timer"
   const job = {
     name: "late",
     script: "/tmp/fake.ts",
-    schedule: { at: new Date(Date.now() - 1000).toISOString() },
+    schedule: { at: localJobTime(new Date(Date.now() - 1000).toISOString(), "America/Toronto") },
     enabled: true,
     timeoutMs: 1000,
   };
@@ -244,7 +245,11 @@ it("does not let an old running generation delete a timezone replacement", async
   try {
     service.start(x, { jobs: [job], timezone: "UTC", onJob: async () => {} });
     await new Promise((resolve) => setTimeout(resolve, 30));
-    service.reload(x, [job], "America/Toronto");
+    service.reload(
+      x,
+      [{ ...job, schedule: { cron: "0 7 * * *", timezone: "America/Toronto" } }],
+      "America/Toronto",
+    );
     const replacement = service.checkHealth(x)[0]?.nextRun?.toISOString();
     finish();
     await new Promise((resolve) => setTimeout(resolve, 30));

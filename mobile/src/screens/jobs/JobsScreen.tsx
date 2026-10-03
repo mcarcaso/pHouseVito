@@ -17,7 +17,7 @@ import { useThemeStyles, useVitoTheme, type VitoTheme } from "../../hooks/useVit
 type Job = {
   name: string;
   script?: string;
-  schedule: string | { at: string } | { cron: string; timezone?: string };
+  schedule: string | { at: string; timezone: string } | { cron: string; timezone: string };
   session?: string;
   timeoutMs?: number;
   enabled?: boolean;
@@ -184,7 +184,7 @@ export function JobEditorScreen({ name, onDone }: { name?: string; onDone: () =>
       name: "",
       script: "",
       schedule: "",
-      timezone: "",
+      timezone: "America/Toronto",
       session: "",
       timeoutMs: "300000",
       enabled: true,
@@ -202,8 +202,8 @@ export function JobEditorScreen({ name, onDone }: { name?: string; onDone: () =>
           } else if (found?.script) {
             const schedule = scheduleText(found);
             const timezone =
-              typeof found.schedule === "object" && "cron" in found.schedule
-                ? (found.schedule.timezone ?? "")
+              typeof found.schedule === "object"
+                ? (found.schedule.timezone ?? "America/Toronto")
                 : "";
             setJob({
               name: found.name,
@@ -237,8 +237,8 @@ export function JobEditorScreen({ name, onDone }: { name?: string; onDone: () =>
       ...(!name ? { name: job.name } : {}),
       script: job.script,
       schedule: oneTime
-        ? { at: job.schedule }
-        : { cron: job.schedule, ...(job.timezone ? { timezone: job.timezone } : {}) },
+        ? { at: job.schedule, timezone: job.timezone }
+        : { cron: job.schedule, timezone: job.timezone },
       ...(job.session ? { session: job.session } : {}),
       timeoutMs: Number(job.timeoutMs),
       enabled: job.enabled,
@@ -285,7 +285,7 @@ export function JobEditorScreen({ name, onDone }: { name?: string; onDone: () =>
       {field("name", "Name")}
       {field("script", "Absolute TypeScript path")}
       {field("schedule", "Cron expression or ISO time")}
-      {field("timezone", "Timezone override")}
+      {field("timezone", "Timezone (IANA, required)")}
       {field("session", "Session (optional)")}
       {field("timeoutMs", "Timeout (milliseconds)")}
       <Pressable disabled={saving} onPress={save} style={s.save}>

@@ -33,6 +33,7 @@ const inboundEventMetadataSchema = z
     discordAuthorId: z.string().optional(),
     discordChannelId: z.string().optional(),
     discordDiscarded: z.number().int().nonnegative().optional(),
+    slackDiscarded: z.number().int().nonnegative().optional(),
     commandAuthorized: z.boolean().optional(),
   })
   .passthrough();

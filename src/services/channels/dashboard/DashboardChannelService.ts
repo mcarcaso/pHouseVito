@@ -132,6 +132,7 @@ export class DashboardChannelService implements ChannelService {
 
     app.use("/api/cron", await new CronRouterService().createRouter(x));
 
+    app.use("/api/slack", await new ChannelManagementRouterService("slack").createRouter(x));
     app.use("/api/discord", await new ChannelManagementRouterService("discord").createRouter(x));
     app.use("/api/telegram", await new ChannelManagementRouterService("telegram").createRouter(x));
 

@@ -149,6 +149,18 @@ export function createDatabase(dbPath: string): Database.Database {
       expires_at INTEGER NOT NULL
     );
 
+    CREATE TABLE IF NOT EXISTS slack_inbox (
+      id TEXT PRIMARY KEY,
+      target TEXT NOT NULL,
+      status TEXT NOT NULL CHECK(status IN ('pending','active','steering','completed','interrupted')),
+      data TEXT NOT NULL,
+      error TEXT,
+      created_at INTEGER NOT NULL
+    );
+    CREATE INDEX IF NOT EXISTS idx_slack_inbox_pending ON slack_inbox(status, target);
+    CREATE UNIQUE INDEX IF NOT EXISTS idx_slack_inbox_active_target
+      ON slack_inbox(target) WHERE status = 'active';
+
     CREATE TABLE IF NOT EXISTS discord_inbox (
       id TEXT PRIMARY KEY,
       channel TEXT NOT NULL,

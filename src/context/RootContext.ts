@@ -46,6 +46,7 @@ import { SqlitePushNotificationStore } from "../stores/push-notifications/Sqlite
 import { SqliteAppPreferenceStore } from "../stores/app-preferences/SqliteAppPreferenceStore.js";
 import { SqliteJobRunStore } from "../stores/jobs/SqliteJobRunStore.js";
 import { SqliteDiscordQueueStore } from "../stores/discord/SqliteDiscordQueueStore.js";
+import { SqliteSlackQueueStore } from "../stores/slack/SqliteSlackQueueStore.js";
 import { xAskApiService, xDb, xSecretService, xVitoService } from "../lib/x.js";
 import { ObjectContext } from "./ObjectContext.js";
 import type { Context } from "./Context.js";
@@ -97,6 +98,7 @@ export function RootContext(args: RootContextArgs): Context {
     jobService: () => new DefaultJobService(),
     jobRunStore: () => new SqliteJobRunStore(),
     discordQueueStore: () => new SqliteDiscordQueueStore(),
+    slackQueueStore: () => new SqliteSlackQueueStore(),
     providerService: () => new DefaultProviderService(),
     appStore: () => new FileAppStore(),
     attachmentStore: () => new FileAttachmentStore(),

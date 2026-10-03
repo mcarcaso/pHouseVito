@@ -87,6 +87,7 @@ export class DefaultPushNotificationService implements PushNotificationService {
   enqueueForMessage(x: Context, message: FinalAssistantMessage): void {
     if (
       message.channel === "discord" ||
+      message.channel === "slack" ||
       message.channel === "telegram" ||
       message.channel === "whatsapp"
     )

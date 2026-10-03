@@ -75,9 +75,17 @@ describe("config router", () => {
     }>;
     assert.deepEqual(
       statuses.map((item) => item.name),
-      ["dashboard", "discord", "telegram", "whatsapp"],
+      ["dashboard", "discord", "slack", "telegram", "whatsapp"],
     );
     assert.deepEqual(statuses.find((item) => item.name === "dashboard")?.requiredSecrets, []);
+    assert.deepEqual(statuses.find((item) => item.name === "slack")?.requiredSecrets, [
+      "SLACK_BOT_TOKEN",
+      "SLACK_APP_TOKEN",
+    ]);
+    assert.deepEqual(statuses.find((item) => item.name === "slack")?.missingSecrets, [
+      "SLACK_BOT_TOKEN",
+      "SLACK_APP_TOKEN",
+    ]);
     assert.equal(statuses.find((item) => item.name === "whatsapp")?.enabled, false);
     assert.deepEqual(statuses.find((item) => item.name === "whatsapp")?.missingSecrets, [
       "WHATSAPP_AGENT_API_KEY",

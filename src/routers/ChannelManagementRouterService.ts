@@ -9,7 +9,7 @@ import {
 } from "../services/channels/ChannelRegistryService.js";
 import { emptyRouteSchema, unknownRouteSchema, registerRoute } from "./register-route.js";
 import { jsonResponseSchema } from "../shared/schemas/json.js";
-export type ManagedChannelName = "discord" | "telegram";
+export type ManagedChannelName = "discord" | "telegram" | "slack";
 
 function channelErrorMiddleware(
   error: unknown,

@@ -13,6 +13,7 @@ import {
   xVitoService,
 } from "./lib/x.js";
 import { DashboardChannelService } from "./services/channels/dashboard/DashboardChannelService.js";
+import { SlackChannelService } from "./services/channels/slack/SlackChannelService.js";
 import { DiscordChannelService } from "./services/channels/discord/DiscordChannelService.js";
 import { TelegramChannelService } from "./services/channels/telegram/TelegramChannelService.js";
 import { WhatsAppAgentChannelService } from "./services/channels/whatsapp/WhatsAppAgentChannelService.js";
@@ -69,6 +70,7 @@ async function main() {
   orchestrator.registerChannel(x, new TelegramChannelService());
   orchestrator.registerChannel(x, new WhatsAppAgentChannelService());
   orchestrator.registerChannel(x, new DiscordChannelService());
+  orchestrator.registerChannel(x, new SlackChannelService());
 
   // Start channels
   await orchestrator.start(x);

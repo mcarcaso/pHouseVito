@@ -31,6 +31,7 @@ import {
   xDb,
   xInboundAttachmentService,
   xDiscordQueueStore,
+  xSlackQueueStore,
   xMessageStore,
   xPiSessionStore,
   xPiSessionsDir,
@@ -918,7 +919,8 @@ export class PiOrchestratorService implements OrchestratorService {
     const queue = this.sessionQueues.get(sessionKey);
     const queued = queue?.splice(0) ?? [];
     const metadata = parseInboundEventMetadata(event.raw);
-    const queuedCount = queued.length + (metadata.discordDiscarded ?? 0);
+    const queuedCount =
+      queued.length + (metadata.discordDiscarded ?? 0) + (metadata.slackDiscarded ?? 0);
     for (const pending of queued) pending.reject(new Error("Request cleared by /stop"));
 
     const active = this.activeRequests.get(sessionKey);
@@ -945,7 +947,7 @@ export class PiOrchestratorService implements OrchestratorService {
   private async handleRestartCommand(event: InboundEvent, channel: ChannelService): Promise<void> {
     const handler = channel.createOutputHandler(this.x, event);
     if (
-      event.channel === "discord" &&
+      (event.channel === "discord" || event.channel === "slack") &&
       parseInboundEventMetadata(event.raw).commandAuthorized !== true
     ) {
       await handler.relay("Only the bot owner can restart Vito.");
@@ -970,6 +972,10 @@ export class PiOrchestratorService implements OrchestratorService {
     if (event.channel === "discord") {
       const counts = xDiscordQueueStore(this.x).counts(this.x);
       durable = `\nDiscord queue: ${counts.pending} pending, ${counts.active} active, ${counts.interrupted} interrupted`;
+    }
+    if (event.channel === "slack") {
+      const counts = xSlackQueueStore(this.x).counts(this.x);
+      durable = `\nSlack queue: ${counts.pending} pending, ${counts.active} active, ${counts.interrupted} interrupted`;
     }
     await handler.relay(
       `Session: \`${session.id}\`\nModel: \`${model}\`\nState: ${this.activeRequests.has(event.sessionKey) ? "busy" : "idle"}\nQueued here: ${queue}${durable}`,

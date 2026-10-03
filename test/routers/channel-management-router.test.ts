@@ -20,10 +20,10 @@ import type {
 } from "../../src/services/channels/ChannelService.js";
 
 class TestChannelRegistryService implements ChannelRegistryService {
-  configured = new Set<ManagedChannelName>(["discord"]);
+  configured = new Set<ManagedChannelName>(["discord", "slack"]);
 
   register(_x: Context, channel: ChannelService): void {
-    if (channel.name === "discord" || channel.name === "telegram") {
+    if (channel.name === "discord" || channel.name === "telegram" || channel.name === "slack") {
       this.configured.add(channel.name);
     }
   }
@@ -62,6 +62,7 @@ const service = new TestChannelRegistryService();
 const x = dashboardRouterContext({ channelRegistryService: () => service });
 const app = express();
 app.use("/api/discord", await new ChannelManagementRouterService("discord").createRouter(x));
+app.use("/api/slack", await new ChannelManagementRouterService("slack").createRouter(x));
 app.use("/api/telegram", await new ChannelManagementRouterService("telegram").createRouter(x));
 
 let server: Server;
@@ -96,6 +97,13 @@ describe("channel management router", () => {
     const response = await fetch(`${baseUrl}/api/discord/register-commands`, { method: "POST" });
     assert.equal(response.status, 200);
     assert.deepEqual(await response.json(), { success: true, count: 5 });
+  });
+
+  it("exposes Slack alias management through the scoped dashboard router", async () => {
+    const response = await fetch(`${baseUrl}/api/slack/auto-alias`, { method: "POST" });
+    assert.equal(response.status, 200);
+    const result = (await response.json()) as AliasGenerationResult;
+    assert.deepEqual(result.sessions.updated, ["slack:updated"]);
   });
 
   it("preserves alias-generation response shape", async () => {

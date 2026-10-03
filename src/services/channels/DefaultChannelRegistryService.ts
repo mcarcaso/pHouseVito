@@ -35,7 +35,7 @@ export class DefaultChannelRegistryService implements ChannelRegistryService {
     const management = this.getManagement(x, channelName);
     const sessions = xSessionStore(x).list(x, {
       channels: [channelName],
-      ...(channelName === "discord" ? {} : { hasAlias: false }),
+      ...(channelName === "discord" || channelName === "slack" ? {} : { hasAlias: false }),
     });
     const updated: string[] = [];
     const failed: string[] = [];

@@ -16,6 +16,7 @@ A personal AI agent framework with persistent memory, extensible skills, and mul
 - **CLI** - Terminal-based chat interface
 - **Dashboard** - Web-based UI with real-time updates
 - **Discord** - Durable ordered queues, deterministic controls, progress, attachments, and guild/channel filtering ([details](docs/discord.md))
+- **Slack** - Socket Mode, channels/DMs/threads, progress, attachments, controls, and queued steering ([setup](docs/slack.md))
 - **Telegram** - Bot integration with chat ID filtering
 
 ### 🔌 Pi Runtime
@@ -390,6 +391,7 @@ Channels are adapters that convert between platform-specific formats and Vito's 
 
 ## Roadmap
 
+- [x] Slack channel adapter
 - [x] Discord channel adapter
 - [x] Telegram channel adapter
 - [x] Cron job system for scheduled tasks

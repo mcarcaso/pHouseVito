@@ -42,6 +42,7 @@ import type { PushNotificationStore } from "../stores/push-notifications/PushNot
 import type { AppPreferenceStore } from "../stores/app-preferences/AppPreferenceStore.js";
 import type { JobRunStore } from "../stores/jobs/JobRunStore.js";
 import type { DiscordQueueStore } from "../stores/discord/DiscordQueueStore.js";
+import type { SlackQueueStore } from "../stores/slack/SlackQueueStore.js";
 
 // Context accessors are the intentional casting boundary for opaque scopes.
 export const xDashboardUser = (x: Context): DashboardUser =>
@@ -98,6 +99,8 @@ export const xInboundAttachmentService = (x: Context): InboundAttachmentService 
 export const xCronService = (x: Context): CronService => x.get("cronService") as CronService;
 export const xJobService = (x: Context): JobService => x.get("jobService") as JobService;
 export const xJobRunStore = (x: Context): JobRunStore => x.get("jobRunStore") as JobRunStore;
+export const xSlackQueueStore = (x: Context): SlackQueueStore =>
+  x.get("slackQueueStore") as SlackQueueStore;
 export const xDiscordQueueStore = (x: Context): DiscordQueueStore =>
   x.get("discordQueueStore") as DiscordQueueStore;
 export const xMemoryService = (x: Context): MemoryService =>

@@ -89,7 +89,7 @@ function ChannelIcon({ channel }: { channel: string }) {
   const styles = useThemeStyles(createStyles);
   const theme = useVitoTheme();
   const size = 19;
-  if (channel === "discord" || channel === "telegram")
+  if (channel === "discord" || channel === "telegram" || channel === "slack")
     return (
       <FontAwesome6
         accessibilityElementsHidden

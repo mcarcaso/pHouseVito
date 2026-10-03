@@ -62,6 +62,8 @@ const PROVIDER_API_KEYS: Record<string, ProviderApiKeyInfo> = {
 };
 
 const SYSTEM_KEYS: Record<string, string> = {
+  SLACK_BOT_TOKEN: "Slack bot OAuth token (xoxb-) — install the app in your workspace",
+  SLACK_APP_TOKEN: "Slack app-level token (xapp-) — requires connections:write for Socket Mode",
   TELEGRAM_BOT_TOKEN:
     "Telegram Bot API token — get from @BotFather (required for Telegram channel)",
   WHATSAPP_AGENT_API_KEY: "WhatsApp Agent Platform API token — WhatsApp agent chat info",

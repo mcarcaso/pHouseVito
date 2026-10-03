@@ -110,6 +110,7 @@ export const channelConfigSchema = z
     settings: settingsSchema.optional(),
     allowedChatIds: z.array(channelIdentifierSchema).optional(),
     allowedGuildIds: z.array(z.string()).optional(),
+    allowedWorkspaceIds: z.array(z.string()).optional(),
     allowedChannelIds: z.array(z.string()).optional(),
     allowedUserIds: z.array(z.string()).optional(),
     allowDms: z.boolean().optional(),

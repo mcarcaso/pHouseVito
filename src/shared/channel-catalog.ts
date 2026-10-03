@@ -2,6 +2,7 @@
 export const CHANNEL_CATALOG = [
   { name: "dashboard", requiredSecrets: [] },
   { name: "discord", requiredSecrets: ["DISCORD_BOT_TOKEN"] },
+  { name: "slack", requiredSecrets: ["SLACK_BOT_TOKEN", "SLACK_APP_TOKEN"] },
   { name: "telegram", requiredSecrets: ["TELEGRAM_BOT_TOKEN"] },
   { name: "whatsapp", requiredSecrets: ["WHATSAPP_AGENT_API_KEY"] },
 ] as const;

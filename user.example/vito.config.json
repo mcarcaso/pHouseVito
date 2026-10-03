@@ -32,6 +32,17 @@
       "enabled": false,
       "allowedGuildIds": [],
       "allowedChannelIds": []
+    },
+    "slack": {
+      "enabled": false,
+      "allowedWorkspaceIds": [],
+      "allowedChannelIds": [],
+      "allowedUserIds": [],
+      "ownerIds": [],
+      "allowDms": true,
+      "settings": {
+        "requireMention": true
+      }
     }
   },
   "cron": {

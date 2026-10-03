@@ -32,43 +32,45 @@ describe("PiOrchestratorService", () => {
     assert.equal(configReads, 1);
   });
 
-  it("allows only an explicitly authorized Discord owner to restart", async () => {
-    let restarts = 0;
-    const replies: string[] = [];
-    const x = new ObjectContext({
-      userDir: () => "/tmp/vito-orchestrator-owner-test",
-      vitoService: () => ({ getConfig: () => config }),
-      skillStore: () => ({ list: () => [] }),
-      serverLifecycleService: () => ({ requestRestart: () => void (restarts += 1) }),
+  for (const name of ["discord", "slack"]) {
+    it(`allows only an explicitly authorized ${name} owner to restart`, async () => {
+      let restarts = 0;
+      const replies: string[] = [];
+      const x = new ObjectContext({
+        userDir: () => "/tmp/vito-orchestrator-owner-test",
+        vitoService: () => ({ getConfig: () => config }),
+        skillStore: () => ({ list: () => [] }),
+        serverLifecycleService: () => ({ requestRestart: () => void (restarts += 1) }),
+      });
+      const channel = {
+        name,
+        capabilities: { typing: false, reactions: false, attachments: false, streaming: false },
+        start: async () => {},
+        stop: async () => {},
+        listen: async () => () => {},
+        createOutputHandler: () => ({
+          relay: async (message: string) => void replies.push(message),
+          endMessage: async () => {},
+          stopTyping: async () => {},
+        }),
+      };
+      const service = new PiOrchestratorService();
+      const event = (authorized: boolean) => ({
+        sessionKey: `${name}:one`,
+        channel: name,
+        target: "one",
+        author: "Mike",
+        timestamp: Date.now(),
+        content: "/restart",
+        raw: { commandAuthorized: authorized },
+      });
+      await service.handleInbound(x, event(false), channel);
+      assert.equal(restarts, 0);
+      assert.match(replies[0] ?? "", /Only the bot owner/);
+      await service.handleInbound(x, event(true), channel);
+      assert.equal(restarts, 1);
     });
-    const channel = {
-      name: "discord",
-      capabilities: { typing: false, reactions: false, attachments: false, streaming: false },
-      start: async () => {},
-      stop: async () => {},
-      listen: async () => () => {},
-      createOutputHandler: () => ({
-        relay: async (message: string) => void replies.push(message),
-        endMessage: async () => {},
-        stopTyping: async () => {},
-      }),
-    };
-    const service = new PiOrchestratorService();
-    const event = (authorized: boolean) => ({
-      sessionKey: "discord:one",
-      channel: "discord",
-      target: "one",
-      author: "Mike",
-      timestamp: Date.now(),
-      content: "/restart",
-      raw: { commandAuthorized: authorized },
-    });
-    await service.handleInbound(x, event(false), channel);
-    assert.equal(restarts, 0);
-    assert.match(replies[0] ?? "", /Only the bot owner/);
-    await service.handleInbound(x, event(true), channel);
-    assert.equal(restarts, 1);
-  });
+  }
 
   it("injects accepted steering into the active Pi turn and persists it once", async () => {
     const created: unknown[] = [];

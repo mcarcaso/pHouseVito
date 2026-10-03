@@ -99,7 +99,7 @@ export function ChannelSetup({
         { text: "Restart", style: "destructive", onPress: () => void perform() },
       ]);
   };
-  const managed = channel === "discord" || channel === "telegram";
+  const managed = channel === "discord" || channel === "telegram" || channel === "slack";
   const [pending, setPending] = useState<string | null>(null);
   const [result, setResult] = useState<{ success: boolean; message: string } | null>(null);
   const run = async (action: "register-commands" | "auto-alias") => {
@@ -128,9 +128,11 @@ export function ChannelSetup({
   const idFields =
     channel === "discord"
       ? ["allowedGuildIds", "allowedChannelIds"]
-      : channel === "telegram"
-        ? ["allowedChatIds"]
-        : [];
+      : channel === "slack"
+        ? ["allowedWorkspaceIds", "allowedChannelIds", "allowedUserIds", "ownerIds"]
+        : channel === "telegram"
+          ? ["allowedChatIds"]
+          : [];
   return (
     <Section
       title="Channel setup"
@@ -160,6 +162,21 @@ export function ChannelSetup({
         }}
         styles={styles}
       />
+      {channel === "slack" && (
+        <Text style={styles.hint}>
+          Import docs/slack-app-manifest.json in Slack app settings to set up Socket Mode and /vito
+          controls. Set both Slack tokens in Secrets and add owner user IDs below for restart
+          access.
+        </Text>
+      )}
+      {channel === "slack" && (
+        <ToggleField
+          label="Allow direct messages"
+          value={channelConfig.allowDms !== false}
+          onChange={(value) => void saveChannel({ allowDms: value })}
+          styles={styles}
+        />
+      )}
       {setupError && <Text style={styles.hint}>{setupError}</Text>}
       <Text style={styles.hint}>
         Enabling or disabling a channel requires a server restart. Existing channel connections
@@ -182,35 +199,37 @@ export function ChannelSetup({
       )}
       {managed && (
         <>
-          <ActionField
-            label={channel === "discord" ? "Slash commands" : "Bot commands"}
-            description={
-              channel === "discord"
-                ? "Register Discord slash commands. Only needed when commands change."
-                : "Register /new and /stop in Telegram's command menu."
-            }
-            button={
-              pending === "register-commands"
-                ? "Registering…"
-                : channel === "discord"
-                  ? "Register Slash Commands"
-                  : "Register Bot Commands"
-            }
-            disabled={pending !== null}
-            onPress={() => void run("register-commands")}
-            styles={styles}
-          />
+          {channel !== "slack" && (
+            <ActionField
+              label={channel === "discord" ? "Slash commands" : "Bot commands"}
+              description={
+                channel === "discord"
+                  ? "Register Discord slash commands. Only needed when commands change."
+                  : "Register /new and /stop in Telegram's command menu."
+              }
+              button={
+                pending === "register-commands"
+                  ? "Registering…"
+                  : channel === "discord"
+                    ? "Register Slash Commands"
+                    : "Register Bot Commands"
+              }
+              disabled={pending !== null}
+              onPress={() => void run("register-commands")}
+              styles={styles}
+            />
+          )}
           <ActionField
             label="Auto-generate aliases"
             description={
-              channel === "discord"
-                ? "Refreshes all Discord session names from current channel names. Inaccessible channels keep their existing names."
+              channel === "discord" || channel === "slack"
+                ? "Refreshes session names from current channel names. Inaccessible channels keep their existing names."
                 : "Sets the chat name for sessions without an alias."
             }
             button={
               pending === "auto-alias"
                 ? "Refreshing…"
-                : channel === "discord"
+                : channel === "discord" || channel === "slack"
                   ? "Refresh Channel Names"
                   : "Set Default Aliases"
             }
@@ -232,9 +251,15 @@ export function ChannelSetup({
           label={
             field === "allowedGuildIds"
               ? "Allowed server IDs"
-              : field === "allowedChannelIds"
-                ? "Allowed channel IDs"
-                : "Allowed chat IDs"
+              : field === "allowedWorkspaceIds"
+                ? "Allowed workspace IDs"
+                : field === "allowedUserIds"
+                  ? "Allowed user IDs"
+                  : field === "ownerIds"
+                    ? "Owner user IDs (can restart Vito)"
+                    : field === "allowedChannelIds"
+                      ? "Allowed channel IDs"
+                      : "Allowed chat IDs"
           }
           values={channelConfig[field] ?? []}
           onChange={(values) => void saveChannel({ [field]: values })}

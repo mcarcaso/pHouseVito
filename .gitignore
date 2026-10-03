@@ -39,3 +39,5 @@ aws_deploy/state/
 /backups/
 /vito-release-signing-key.pem
 __pycache__/
+
+.env

@@ -12,6 +12,7 @@ import {
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "node:test";
+import { pathToFileURL } from "node:url";
 
 test("deploy-all runs concurrently, saves escaped live panes and logs, and reports failures", () => {
   const dir = mkdtempSync(join(tmpdir(), "vito-deploy-all-"));
@@ -44,10 +45,13 @@ echo "$1 done"
       timeout: 15000,
     });
     assert.equal(result.status, 1, result.stderr);
-    assert.match(result.stderr, /Failed deployments: second/);
-    assert.match(result.stdout, /\[first\] Deployment succeeded/);
+    assert.equal(result.stderr, "");
     const runs = join(dir, "state", "deploy-logs");
     const run = join(runs, readdirSync(runs)[0]);
+    assert.equal(
+      result.stdout,
+      `click here to view logs: ${pathToFileURL(join(run, "index.html")).href}\n`,
+    );
     const html = readFileSync(join(run, "index.html"), "utf8");
     assert.match(html, /&lt;script&gt;unsafe&lt;\/script&gt;/);
     assert.match(html, /Finished · logs saved/);

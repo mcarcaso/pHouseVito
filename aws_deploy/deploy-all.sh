@@ -35,7 +35,6 @@ for name in "$@"; do
   [[ "$duplicate" == true ]] || names+=("$name")
 done
 
-echo "Deploying in parallel: ${names[*]}"
 command -v node >/dev/null || { echo 'Node.js is required for the deployment dashboard' >&2; exit 1; }
 mkdir -p "$SCRIPT_DIR/state/deploy-logs"
 LOG_DIR="$(mktemp -d "$SCRIPT_DIR/state/deploy-logs/run-$(date +%Y%m%d-%H%M%S).XXXXXX")"
@@ -45,18 +44,15 @@ for name in "${names[@]}"; do
   touch "$LOG_DIR/$name.log"
   echo running > "$LOG_DIR/$name.status"
 done
-node "$SCRIPT_DIR/deploy-dashboard.mjs" "$LOG_DIR" "${names[@]}" &
+node "$SCRIPT_DIR/deploy-dashboard.mjs" "$LOG_DIR" "${names[@]}" >"$LOG_DIR/dashboard.log" 2>&1 &
 DASHBOARD_PID=$!
 trap 'rm -f "$LOG_DIR/.running"; wait "$DASHBOARD_PID" || true' EXIT
-echo "Live dashboard: $LOG_DIR/index.html"
-echo "Instance logs:  $LOG_DIR/<name>.log"
+DASHBOARD_URL="$(node --input-type=module -e 'import { pathToFileURL } from "node:url"; console.log(pathToFileURL(process.argv[1]).href)' "$LOG_DIR/index.html")"
+printf 'click here to view logs: %s\n' "$DASHBOARD_URL"
 pids=()
 for name in "${names[@]}"; do
   (
-    if "$SCRIPT_DIR/deploy.sh" "$name" </dev/null 2>&1 | tee "$LOG_DIR/$name.log" |
-      while IFS= read -r line || [[ -n "$line" ]]; do
-        printf '[%s] %s\n' "$name" "$line"
-      done
+    if "$SCRIPT_DIR/deploy.sh" "$name" </dev/null >"$LOG_DIR/$name.log" 2>&1
     then
       echo succeeded > "$LOG_DIR/$name.status"
     else
@@ -71,17 +67,13 @@ failed=()
 for index in "${!pids[@]}"; do
   if wait "${pids[$index]}"; then
     echo succeeded > "$LOG_DIR/${names[$index]}.status"
-    echo "[${names[$index]}] Deployment succeeded."
   else
     echo failed > "$LOG_DIR/${names[$index]}.status"
     failed+=("${names[$index]}")
-    echo "[${names[$index]}] Deployment failed." >&2
   fi
 done
 rm -f "$LOG_DIR/.running"
 wait "$DASHBOARD_PID"
 if [[ ${#failed[@]} -gt 0 ]]; then
-  echo "Failed deployments: ${failed[*]}" >&2
   exit 1
 fi
-echo "All deployments succeeded."

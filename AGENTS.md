@@ -11,7 +11,7 @@ Vito — personal AI agent that runs as a long-lived service across Dashboard, D
 ```bash
 npm run dev              # tsx watch src/index.ts
 npm run dev:mobile:web   # Expo web dev server (separate terminal)
-npm run build            # tsc → dist/
+npm run build            # tsc --noCheck → dist/ (type checking stays in npm run check)
 npm run build:mobile:web # Expo export → mobile/dist/
 npm run check            # backend/mobile types + tests + example config validation
 npm run format           # Format the repository with Prettier

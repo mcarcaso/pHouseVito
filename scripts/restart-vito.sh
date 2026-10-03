@@ -5,7 +5,7 @@ ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$ROOT_DIR"
 
 # Dashboard and chat restarts need the same build heap as SSH deployments.
-# Small instances otherwise give tsc a default heap below its requirements.
+# Keep enough heap for backend emission and the companion web export.
 DEFAULT_BUILD_NODE_OPTIONS="--max-old-space-size=1536"
 export NODE_OPTIONS="${NODE_OPTIONS:-${VITO_BUILD_NODE_OPTIONS:-$DEFAULT_BUILD_NODE_OPTIONS}}"
 
@@ -42,7 +42,7 @@ sync_dependencies() {
 sync_dependencies "backend" "." npm ci --include=dev
 sync_dependencies "mobile" "mobile" npm --prefix mobile ci --include=dev
 
-echo "[Vito] Building backend..."
+echo "[Vito] Building backend without a full type check..."
 npm run build
 
 echo "[Vito] Building companion web client away from the live site..."

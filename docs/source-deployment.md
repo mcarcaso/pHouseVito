@@ -42,7 +42,13 @@ If the pull leaves the revision unchanged and both local and public health alrea
 
 `spinup.sh` prepares this layout for a new instance. Existing clients require individual inspected migrations; `deploy.sh` refuses to migrate a different installation automatically. Retain any existing data location and symlink it into the checkout. Do not move credentials or replace deployment settings from another machine. Do not overwrite old source edits.
 
+For automatic push setup on new instances, copy `aws_deploy/.env.example` to `aws_deploy/.env` and set `PHOUSE_VITO_PUSH_API_KEY`. Spinup requires local Node.js and installed repository dependencies (`npm ci`). It calls the same account-creation API as the push registration page at `https://d163752fjydz82.cloudfront.net/`, names the account after the instance, and writes both the returned `PHOUSE_VITO_PUSH_KEY` and the service `PHOUSE_VITO_PUSH_API_KEY` into persistent `user/secrets.json`. Credentials travel through private temporary files and are removed after setup. A missing or blank API key skips push setup; a configured key that fails provisioning stops setup. Push account creation is not retried automatically, since each successful request creates a new account. Routine `deploy.sh` updates do not create or replace push keys.
+
 The stable launcher is installed from `scripts/run-source-current.sh`. PM2 runs `<root>/run-current.sh` with bash and `<root>` as cwd, under the existing service owner and PM2_HOME. It resolves `current` and executes that checkout's `scripts/run-source.sh`, which runs TypeScript through tsx. Updates retain the Vito entry's environment and options and never reload other PM2 apps.
+
+Backend builds use `tsc --noCheck` to emit output without a full type check, including during restart, spinup, and deployment. Run `npm run typecheck` or `npm run check` separately to validate types before deploying. Companion web export also transpiles without a full TypeScript check; `npm run typecheck:mobile` validates its types separately.
+
+New instances provisioned with `spinup.sh` use `openrouter` model `meta/muse-spark-1.3` without a provider routing restriction. Existing instance model settings are retained during deployment.
 
 ## Runtime paths and conversations
 

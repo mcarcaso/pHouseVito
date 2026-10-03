@@ -38,7 +38,8 @@ OPENROUTER_KEY_FILE=$(mktemp)
 chmod 600 "$OPENROUTER_KEY_FILE"
 printf '%s' "$OPENROUTER_API_KEY" > "$OPENROUTER_KEY_FILE"
 unset OPENROUTER_API_KEY
-trap 'rm -f "$OPENROUTER_KEY_FILE"' EXIT
+PUSH_SECRETS_FILE=""
+trap 'rm -f "$OPENROUTER_KEY_FILE"; [ -z "$PUSH_SECRETS_FILE" ] || rm -f "$PUSH_SECRETS_FILE"' EXIT
 
 # ── 1. Pre-flight checks ───────────────────────────────────────────
 
@@ -46,6 +47,8 @@ log "Pre-flight checks …"
 command -v aws >/dev/null || die "AWS CLI not found. Install: https://docs.aws.amazon.com/cli/latest/userguide/install-cliv2.html"
 command -v jq  >/dev/null || die "jq not found. Install: brew install jq"
 command -v curl >/dev/null || die "curl not found"
+command -v node >/dev/null || die "Node.js not found (required for push provisioning)"
+node --input-type=module -e 'import("dotenv")' >/dev/null 2>&1 || die "Local dependencies missing. Run npm ci before spinup."
 aws sts get-caller-identity >/dev/null 2>&1 || die "AWS credentials not configured. Run: aws configure"
 
 # Restrict SSH to the operator's address unless an explicit CIDR is supplied.
@@ -261,7 +264,11 @@ ok "State saved to $STATE_FILE"
 # ── 9. Remote setup ────────────────────────────────────────────────
 
 log "Running remote setup (this takes a few minutes) …"
+PUSH_SECRETS_FILE=$(mktemp)
+chmod 600 "$PUSH_SECRETS_FILE"
+node "$SCRIPT_DIR/provision-push.mjs" "$SCRIPT_DIR/.env" "$PUSH_SECRETS_FILE" "$NAME"
 scp $SSH_OPTS "$OPENROUTER_KEY_FILE" "ubuntu@$ELASTIC_IP:/home/ubuntu/.vito-openrouter-key" >/dev/null
+scp $SSH_OPTS "$PUSH_SECRETS_FILE" "ubuntu@$ELASTIC_IP:/home/ubuntu/.vito-push-secrets" >/dev/null
 
 ssh $SSH_OPTS "ubuntu@$ELASTIC_IP" bash -s "$NAME" "$DOMAIN" "$REPO_URL" << 'REMOTE_SCRIPT'
 set -euo pipefail
@@ -269,7 +276,7 @@ NAME="$1"
 DOMAIN="$2"
 REPO_URL="$3"
 FQDN="${NAME}.${DOMAIN}"
-trap 'rm -f /home/ubuntu/.vito-openrouter-key' EXIT
+trap 'rm -f /home/ubuntu/.vito-openrouter-key /home/ubuntu/.vito-push-secrets' EXIT
 
 export DEBIAN_FRONTEND=noninteractive
 
@@ -339,20 +346,29 @@ node -e "
   const p = 'user/vito.config.json';
   const cfg = JSON.parse(fs.readFileSync(p, 'utf-8'));
   cfg.apps = { ...cfg.apps, baseDomain: '$FQDN' };
+  cfg.settings['pi-coding-agent'].model = {
+    provider: 'openrouter',
+    name: 'meta/muse-spark-1.3',
+  };
+  delete cfg.settings['pi-coding-agent'].openRouterProvider;
   fs.writeFileSync(p, JSON.stringify(cfg, null, 2) + '\n');
 "
 
 echo ">>> Writing secrets …"
 chmod 600 /home/ubuntu/.vito-openrouter-key
+chmod 600 /home/ubuntu/.vito-push-secrets
 node << 'NODE_SCRIPT'
   const fs = require('fs');
   const p = 'user/secrets.json';
   const keyPath = '/home/ubuntu/.vito-openrouter-key';
   const secrets = JSON.parse(fs.readFileSync(p, 'utf-8'));
   secrets.OPENROUTER_API_KEY = fs.readFileSync(keyPath, 'utf-8');
+  const pushPath = '/home/ubuntu/.vito-push-secrets';
+  Object.assign(secrets, JSON.parse(fs.readFileSync(pushPath, 'utf-8')));
   fs.writeFileSync(p, JSON.stringify(secrets, null, 2) + '\n', { mode: 0o600 });
   fs.chmodSync(p, 0o600);
   fs.unlinkSync(keyPath);
+  fs.unlinkSync(pushPath);
 NODE_SCRIPT
 
 echo ">>> Generating ecosystem.config.cjs …"

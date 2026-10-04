@@ -30,6 +30,11 @@ export const settingsSchema = z
   .object({
     customInstructions: z.string().optional(),
     requireMention: z.boolean().optional(),
+    passiveMemory: z.boolean().optional(),
+    rememberUserIds: z
+      .union([z.enum(["everyone", "nobody"]), z.array(z.string().min(1))])
+      .optional(),
+    invokeUserIds: z.union([z.enum(["everyone", "nobody"]), z.array(z.string().min(1))]).optional(),
     traceMessageUpdates: z.boolean().optional(),
     timezone: timezoneSchema.optional(),
     "pi-coding-agent": piRuntimeConfigSchema.partial().optional(),
@@ -66,6 +71,15 @@ export const settingsPatchSchema = z
   .object({
     customInstructions: z.string().nullable().optional(),
     requireMention: z.boolean().nullable().optional(),
+    passiveMemory: z.boolean().nullable().optional(),
+    rememberUserIds: z
+      .union([z.enum(["everyone", "nobody"]), z.array(z.string().min(1))])
+      .nullable()
+      .optional(),
+    invokeUserIds: z
+      .union([z.enum(["everyone", "nobody"]), z.array(z.string().min(1))])
+      .nullable()
+      .optional(),
     traceMessageUpdates: z.boolean().nullable().optional(),
     timezone: timezoneSchema.nullable().optional(),
     "pi-coding-agent": piRuntimeConfigSchema.partial().nullable().optional(),
@@ -312,6 +326,9 @@ export type VitoConfigPatch = z.infer<typeof vitoConfigPatchSchema>;
 export type ResolvedSettings = {
   customInstructions?: string;
   requireMention?: boolean;
+  passiveMemory?: boolean;
+  rememberUserIds?: Settings["rememberUserIds"];
+  invokeUserIds?: Settings["invokeUserIds"];
   traceMessageUpdates?: boolean;
   timezone?: string;
   "pi-coding-agent"?: Partial<PiRuntimeConfig>;

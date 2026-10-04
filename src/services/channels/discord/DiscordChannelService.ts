@@ -1,3 +1,4 @@
+import { captureSilentInbound } from "../passive-memory.js";
 import {
   Client,
   GatewayIntentBits,
@@ -349,7 +350,7 @@ export class DiscordChannelService implements ChannelService {
 
     const isAllowed = (msg: DiscordMessage): boolean => {
       const { guildIds, channelIds, userIds, allowDms } = getAllowlist();
-      if (userIds.length > 0 && !userIds.includes(msg.author.id)) return false;
+
       if (!msg.guild) return allowDms;
       if (guildIds.length > 0 && !guildIds.includes(msg.guild.id)) return false;
       if (channelIds.length > 0 && !channelIds.includes(msg.channel.id)) return false;
@@ -425,6 +426,8 @@ export class DiscordChannelService implements ChannelService {
         channel: "discord",
         target: target,
         author: msg.author.tag,
+        authorId: msg.author.id,
+        messageId: msg.id,
         timestamp: Date.now(),
         content,
         raw: {
@@ -452,6 +455,7 @@ export class DiscordChannelService implements ChannelService {
         }));
       }
 
+      if (captureSilentInbound(x, event)) return;
       const command = content.toLowerCase();
       if (command === "/restart" && !this.isOwner(x, msg.author.id)) {
         await msg.reply("Only the bot owner can restart Vito.");
@@ -542,6 +546,7 @@ export class DiscordChannelService implements ChannelService {
         channel: "discord",
         target,
         author: interaction.user.tag,
+        authorId: interaction.user.id,
         timestamp: Date.now(),
         content,
         hasMention: true,

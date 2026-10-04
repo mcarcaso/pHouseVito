@@ -1,3 +1,4 @@
+import { captureSilentInbound } from "../passive-memory.js";
 import { randomUUID } from "node:crypto";
 import { basename, resolve } from "node:path";
 import { SocketModeClient } from "@slack/socket-mode";
@@ -160,11 +161,17 @@ export class SlackChannelService implements ChannelService {
     };
   }
 
-  private allowed(x: Context, team: string, channel: string, user: string): boolean {
+  private allowed(
+    x: Context,
+    team: string,
+    channel: string,
+    user: string,
+    checkUser = true,
+  ): boolean {
     const cfg = xVitoService(x).getConfig(x).channels.slack;
     if (!cfg?.enabled || team !== this.teamId) return false;
     if (cfg.allowedWorkspaceIds?.length && !cfg.allowedWorkspaceIds.includes(team)) return false;
-    if (cfg.allowedUserIds?.length && !cfg.allowedUserIds.includes(user)) return false;
+    if (checkUser && cfg.allowedUserIds?.length && !cfg.allowedUserIds.includes(user)) return false;
     if (channel.startsWith("D")) return cfg.allowDms !== false;
     return !cfg.allowedChannelIds?.length || cfg.allowedChannelIds.includes(channel);
   }
@@ -185,7 +192,7 @@ export class SlackChannelService implements ChannelService {
         message.subtype !== "thread_broadcast")
     )
       return;
-    if (!this.allowed(x, team, message.channel, message.user)) return;
+    if (!this.allowed(x, team, message.channel, message.user, false)) return;
     const content = message.text.split(`<@${this.botUserId}>`).join("").trim();
     if (!content && !message.files.length) return;
     const target = slackTarget(team, message.channel, message.thread_ts);
@@ -194,10 +201,6 @@ export class SlackChannelService implements ChannelService {
       message.channel.startsWith("D") ||
       message.type === "app_mention" ||
       message.text.includes(`<@${this.botUserId}>`);
-    const settings = getEffectiveSettings(xVitoService(x).getConfig(x), "slack", sessionKey);
-    // Deterministic controls work without a mention, matching Discord's stop behavior.
-    if (!hasMention && settings.requireMention && content !== "/stop" && content !== "/restart")
-      return;
     const attachments: Attachment[] = message.files.map((file) => ({
       type: file.mimetype?.startsWith("image/")
         ? "image"
@@ -211,7 +214,7 @@ export class SlackChannelService implements ChannelService {
       filename: file.name || file.id,
     }));
     const id = `${team}:${message.channel}:${message.ts}`;
-    return {
+    const durable: DurableSlackEvent = {
       id,
       authorId: message.user,
       event: {
@@ -219,6 +222,8 @@ export class SlackChannelService implements ChannelService {
         channel: "slack",
         target,
         author: message.user,
+        authorId: message.user,
+        messageId: message.ts,
         timestamp: Math.floor(Number(message.ts) * 1000),
         content,
         attachments,
@@ -232,6 +237,8 @@ export class SlackChannelService implements ChannelService {
         },
       },
     };
+    if (captureSilentInbound(x, durable.event)) return;
+    return durable;
   }
 
   private async handleEnvelope(x: Context, envelope: SlackEnvelope): Promise<void> {
@@ -262,6 +269,7 @@ export class SlackChannelService implements ChannelService {
               target,
               sessionKey: `slack:${target}`,
               author: command.user_id,
+              authorId: command.user_id,
               timestamp: Date.now(),
               content: CONTROLS.has(control)
                 ? `/${control}${args.length ? ` ${args.join(" ")}` : ""}`

@@ -149,3 +149,21 @@ describe("EmbeddingMessageStore", () => {
     db.close();
   });
 });
+
+it("checks user-only passive chunks without an assistant turn and keeps small buffers pending", async () => {
+  const { db, embeddingDb, calls, store, x } = setup();
+  try {
+    createMessage(store, x, "user", "small");
+    store.cmd(x, { type: "check-session", sessionIds: ["dashboard:test"] });
+    assert.equal(calls.length, 0);
+    createMessage(store, x, "user", "background ".repeat(230));
+    assert.equal(calls.length, 0);
+    store.cmd(x, { type: "check-session", sessionIds: ["dashboard:test"] });
+    await new Promise((resolve) => setImmediate(resolve));
+    assert.equal(calls.length, 1);
+    assert.ok(calls[0].every((candidate) => candidate.messages.every((m) => m.type === "user")));
+  } finally {
+    db.close();
+    embeddingDb.close();
+  }
+});

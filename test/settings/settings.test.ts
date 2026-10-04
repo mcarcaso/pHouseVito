@@ -90,6 +90,9 @@ describe("getEffectiveSettings", () => {
     assert.deepEqual(settings, {
       customInstructions: "session",
       requireMention: false,
+      passiveMemory: false,
+      rememberUserIds: undefined,
+      invokeUserIds: undefined,
       traceMessageUpdates: true,
       timezone: "Asia/Tokyo",
       "pi-coding-agent": undefined,

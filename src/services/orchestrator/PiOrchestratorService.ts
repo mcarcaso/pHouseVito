@@ -1,3 +1,9 @@
+import {
+  captureSilentInbound,
+  backgroundPrompt,
+  advanceBackgroundCursor,
+  activeBackgroundBounds,
+} from "../channels/passive-memory.js";
 /**
  * Process-lifetime application service coordinating channels, queues, cron,
  * commands, and one persisted PiSessionRuntime per Vito session.
@@ -470,6 +476,7 @@ export class PiOrchestratorService implements OrchestratorService {
     channel: ChannelService | null,
   ): Promise<void> {
     this.initialize(x);
+    if (captureSilentInbound(x, event)) return;
     const sessionKey = event.sessionKey;
     console.log(`[Orchestrator] ⚡ from ${sessionKey}: "${event.content?.slice(0, 50)}"`);
 
@@ -739,16 +746,9 @@ export class PiOrchestratorService implements OrchestratorService {
           .filter((p): p is string => Boolean(p)),
       });
 
-      if (requireMention && hasMention && channel?.gatherMentionContext) {
-        try {
-          const mentionContext = await channel.gatherMentionContext(this.x, event);
-          if (mentionContext) promptText = `${mentionContext}\n\n${promptText}`;
-        } catch (err) {
-          console.warn(
-            `[Orchestrator] Failed to gather mention context for ${event.sessionKey}: ${err instanceof Error ? err.message : String(err)}`,
-          );
-        }
-      }
+      // Only locally captured, permitted background; never platform-fetch excluded speakers.
+      const capturedBackground = backgroundPrompt(this.x, event);
+      if (capturedBackground) promptText = `${capturedBackground}\n\n${promptText}`;
 
       // If this run is going to create a BRAND-NEW pi AgentSession, seed
       // the first prompt with the tail of this Vito session's SQLite history.
@@ -802,12 +802,14 @@ export class PiOrchestratorService implements OrchestratorService {
       });
 
       try {
+        activeBackgroundBounds.set(event.sessionKey, event.timestamp);
         await runtime.run(
           systemPrompt,
           promptText,
           { onRawEvent: () => {}, onNormalizedEvent: () => {} },
           abortController.signal,
         );
+        if (!abortController.signal.aborted) advanceBackgroundCursor(this.x, event);
         this.firstTurnDone.add(vitoSession.id);
       } catch (err) {
         console.error(
@@ -816,6 +818,7 @@ export class PiOrchestratorService implements OrchestratorService {
         if (!abortController.signal.aborted) throw err;
         return;
       } finally {
+        activeBackgroundBounds.delete(event.sessionKey);
         externalSignal?.removeEventListener("abort", abortFromExternal);
         this.activeRequests.delete(event.sessionKey);
       }
@@ -844,6 +847,7 @@ export class PiOrchestratorService implements OrchestratorService {
     const recent = xMessageStore(this.x)
       .list(this.x, {
         sessionIds: [vitoSessionId],
+        excludePassive: true,
         limit,
         excludeTypes: ["thought", "tool_start", "tool_end"],
         order: "newest",
@@ -863,6 +867,9 @@ export class PiOrchestratorService implements OrchestratorService {
         continue;
       }
       if (!text) continue;
+      try {
+        if (JSON.parse(msg.content)?.passive === true) continue;
+      } catch {}
       const speaker =
         msg.type === "user"
           ? typeof msg.author === "string" && msg.author

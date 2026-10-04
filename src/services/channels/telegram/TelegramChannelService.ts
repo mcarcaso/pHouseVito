@@ -1,3 +1,4 @@
+import { captureSilentInbound } from "../passive-memory.js";
 import { Bot } from "grammy";
 import type { Context } from "../../../context/Context.js";
 import { xOrchestratorService, xSecretService, xVitoService } from "../../../lib/x.js";
@@ -45,7 +46,7 @@ export class TelegramChannelService implements ChannelService {
     console.log(`Telegram bot started as @${this.bot.botInfo.username}`);
 
     // Start long polling (non-blocking)
-    this.bot.start({ drop_pending_updates: true });
+    this.bot.start({ drop_pending_updates: false });
   }
 
   async stop(_x: Context): Promise<void> {
@@ -159,6 +160,10 @@ export class TelegramChannelService implements ChannelService {
     });
 
     const dispatch = (event: InboundEvent, messageId: number, senderId?: number) => {
+      event.authorId = senderId === undefined ? undefined : String(senderId);
+      event.messageId = String(messageId);
+      event.authorIsBot = (event.raw as { from?: { is_bot?: boolean } }).from?.is_bot;
+      if (event.authorIsBot || captureSilentInbound(x, event)) return;
       const id = `${event.target}:${messageId}`;
       const active = xOrchestratorService(x)
         .listRuns(x)

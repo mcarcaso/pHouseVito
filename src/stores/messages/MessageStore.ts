@@ -22,6 +22,7 @@ export interface MessageFilter {
   types?: MsgType[];
   excludeTypes?: MsgType[];
   archived?: boolean;
+  excludePassive?: boolean;
   afterId?: number;
   beforeId?: number;
   throughId?: number;

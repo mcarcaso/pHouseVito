@@ -53,6 +53,7 @@ function buildFilter(args: MessageFilter): SqlFilter {
   appendArrayFilter(clauses, params, "type", args.types);
   appendArrayFilter(clauses, params, "type", args.excludeTypes, true);
 
+  if (args.excludePassive) clauses.push("id NOT IN (SELECT message_id FROM passive_messages)");
   if (args.archived !== undefined) {
     clauses.push("archived = ?");
     params.push(args.archived ? 1 : 0);

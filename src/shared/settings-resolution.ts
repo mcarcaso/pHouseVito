@@ -32,6 +32,9 @@ export function resolveSettings(
   return {
     customInstructions: settings.customInstructions,
     requireMention: settings.requireMention,
+    passiveMemory: settings.passiveMemory ?? false,
+    rememberUserIds: settings.rememberUserIds,
+    invokeUserIds: settings.invokeUserIds,
     traceMessageUpdates: settings.traceMessageUpdates ?? false,
     timezone: settings.timezone,
     "pi-coding-agent": settings["pi-coding-agent"],

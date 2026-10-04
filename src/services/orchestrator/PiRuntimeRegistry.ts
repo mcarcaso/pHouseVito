@@ -1,3 +1,4 @@
+import { backgroundHistoryTool } from "../channels/passive-memory.js";
 import { resolve } from "node:path";
 import type { Context } from "../../context/Context.js";
 import { xPiSessionStore, xPiSessionsDir, xSkillStore } from "../../lib/x.js";
@@ -35,6 +36,7 @@ export class PiRuntimeRegistry {
       openRouterProvider: piConfig.openRouterProvider,
       thinkingLevel: piConfig.thinkingLevel,
       skills: xSkillStore(x).list(x, {}),
+      customTools: [backgroundHistoryTool(x, sessionId)],
     });
     this.runtimes.set(sessionId, runtime);
     return runtime;
@@ -88,6 +90,7 @@ export class PiRuntimeRegistry {
       openRouterProvider,
       thinkingLevel: piConfig.thinkingLevel,
       skills: xSkillStore(x).list(x, {}),
+      customTools: [backgroundHistoryTool(x, sessionId)],
     } satisfies PiSessionRuntimeConfig);
     this.runtimes.set(sessionId, runtime);
     console.log(

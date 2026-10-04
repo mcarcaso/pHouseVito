@@ -27,7 +27,10 @@ interface ArchiveSessionsCommand {
   sessionIds: string[];
 }
 
-function commandSessionIds(input: unknown, type: "finalize-session" | "archive-sessions") {
+function commandSessionIds(
+  input: unknown,
+  type: "finalize-session" | "archive-sessions" | "check-session",
+) {
   if (!input || typeof input !== "object") return null;
   const command = input as { type?: unknown; sessionIds?: unknown };
   if (command.type !== type || !Array.isArray(command.sessionIds)) return null;
@@ -80,6 +83,11 @@ export class EmbeddingMessageStore implements MessageStore {
   }
 
   cmd(x: Context, command: unknown): unknown {
+    const checked = commandSessionIds(command, "check-session");
+    if (checked) {
+      for (const sessionId of checked) this.kickoff(x, sessionId, false);
+      return checked.length;
+    }
     const finalized = commandSessionIds(command, "finalize-session");
     if (finalized) {
       for (const sessionId of finalized) this.kickoff(x, sessionId, true);

@@ -14,6 +14,9 @@ export interface InboundEvent {
   channel: string;
   target: string;
   author: string;
+  authorId?: string;
+  messageId?: string;
+  authorIsBot?: boolean;
   timestamp: number;
   content: string;
   attachments?: Attachment[];

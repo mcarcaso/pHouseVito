@@ -382,5 +382,19 @@ export function createDatabase(dbPath: string): Database.Database {
     "CREATE INDEX IF NOT EXISTS idx_messages_session_archived_id ON messages(session_id, archived, id DESC)",
   );
 
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS passive_messages (
+      message_id INTEGER PRIMARY KEY REFERENCES messages(id) ON DELETE CASCADE,
+      session_id TEXT NOT NULL REFERENCES sessions(id) ON DELETE CASCADE,
+      platform_id TEXT NOT NULL,
+      author_id TEXT NOT NULL,
+      UNIQUE(session_id, platform_id)
+    );
+    CREATE INDEX IF NOT EXISTS idx_passive_session ON passive_messages(session_id, message_id);
+    CREATE TABLE IF NOT EXISTS passive_cursors (
+      session_id TEXT PRIMARY KEY REFERENCES sessions(id) ON DELETE CASCADE,
+      through_timestamp INTEGER NOT NULL DEFAULT 0
+    );
+  `);
   return db;
 }

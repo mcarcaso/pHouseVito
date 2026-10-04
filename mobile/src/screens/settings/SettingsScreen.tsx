@@ -94,9 +94,9 @@ export function SettingsScreen({
     }
   };
 
-  const updateSetting = (path: string[], value: unknown) => {
+  const updateSettings = (values: Record<string, unknown>) => {
     if (!config) return;
-    const nextSettings = setPath(overrides, path, value);
+    const nextSettings = { ...overrides, ...values };
     if (scope === "global") void savePatch({ settings: nextSettings });
     else if (scope === "channel")
       void savePatch({
@@ -106,6 +106,12 @@ export function SettingsScreen({
         },
       });
     else void savePatch({ sessions: { ...config.sessions, [session]: nextSettings } });
+  };
+
+  const updateSetting = (path: string[], value: unknown) => {
+    if (!config) return;
+    const nextSettings = setPath(overrides, path, value);
+    updateSettings(nextSettings);
   };
 
   const resetSetting = (path: string[]) => {
@@ -292,12 +298,86 @@ export function SettingsScreen({
           }
           styles={styles}
         >
+          <ChoiceField
+            label="Participation preset"
+            options={[
+              { value: "always", label: "Always participate" },
+              { value: "listen", label: "Listen, respond on mention" },
+              { value: "mention", label: "Mention only" },
+            ]}
+            value={
+              effective.requireMention === false
+                ? "always"
+                : effective.passiveMemory
+                  ? "listen"
+                  : "mention"
+            }
+            onChange={(v) =>
+              updateSettings({ requireMention: v !== "always", passiveMemory: v === "listen" })
+            }
+            styles={styles}
+          />
           <ToggleField
             label="Require @mention"
             value={effective.requireMention !== false}
             overridden={scope !== "global" && overrides.requireMention !== undefined}
             onChange={(v) => updateSetting(["requireMention"], v)}
             onReset={() => resetSetting(["requireMention"])}
+            styles={styles}
+          />
+          <ToggleField
+            label="Remember background messages"
+            hint="Store permitted silent chatter and process it through memory, without an agent turn. Off by default."
+            value={effective.passiveMemory === true}
+            overridden={scope !== "global" && overrides.passiveMemory !== undefined}
+            onChange={(v) => updateSetting(["passiveMemory"], v)}
+            onReset={() => resetSetting(["passiveMemory"])}
+            styles={styles}
+          />
+          <TextField
+            label="Remember from: everyone, nobody, or comma-separated user IDs"
+            value={
+              Array.isArray(effective.rememberUserIds)
+                ? effective.rememberUserIds.join(", ")
+                : (effective.rememberUserIds ?? "everyone")
+            }
+            overridden={scope !== "global" && overrides.rememberUserIds !== undefined}
+            onCommit={(v) =>
+              updateSetting(
+                ["rememberUserIds"],
+                v.trim() === "everyone" || v.trim() === "nobody"
+                  ? v.trim()
+                  : v
+                      .split(",")
+                      .map((id) => id.trim())
+                      .filter(Boolean),
+              )
+            }
+            onReset={() => resetSetting(["rememberUserIds"])}
+            styles={styles}
+          />
+          <TextField
+            label="Can invoke: everyone, nobody, or comma-separated user IDs"
+            value={
+              Array.isArray(effective.invokeUserIds)
+                ? effective.invokeUserIds.join(", ")
+                : (effective.invokeUserIds ?? "")
+            }
+            overridden={scope !== "global" && overrides.invokeUserIds !== undefined}
+            onCommit={(v) =>
+              v.trim()
+                ? updateSetting(
+                    ["invokeUserIds"],
+                    v.trim() === "everyone" || v.trim() === "nobody"
+                      ? v.trim()
+                      : v
+                          .split(",")
+                          .map((id) => id.trim())
+                          .filter(Boolean),
+                  )
+                : resetSetting(["invokeUserIds"])
+            }
+            onReset={() => resetSetting(["invokeUserIds"])}
             styles={styles}
           />
           <ToggleField

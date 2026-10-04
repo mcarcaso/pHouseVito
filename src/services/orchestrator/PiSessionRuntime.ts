@@ -20,6 +20,7 @@ import {
   DefaultResourceLoader,
   SessionManager as PiSessionManager,
   type AgentSession,
+  type ToolDefinition,
   type AgentSessionEvent,
 } from "@earendil-works/pi-coding-agent";
 import { existsSync, mkdirSync, readdirSync, unlinkSync, writeFileSync } from "fs";
@@ -49,6 +50,7 @@ export interface PiSessionRuntimeConfig {
   openRouterProvider?: string;
   thinkingLevel?: "off" | "low" | "medium" | "high";
   skills?: Skill[];
+  customTools?: ToolDefinition[];
   /**
    * Directory pi will write its session JSONL file to. When set, the
    * conversation persists across restarts and shows up under the dashboard's
@@ -358,6 +360,7 @@ export class PiSessionRuntime implements PiRuntime {
     const { session } = await createAgentSession({
       ...(agentDir ? { agentDir } : {}),
       sessionManager,
+      customTools: this.config.customTools,
       model,
       resourceLoader,
       thinkingLevel: this.config.thinkingLevel || "off",

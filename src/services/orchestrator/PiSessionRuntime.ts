@@ -15,6 +15,7 @@
  */
 
 import { getModel } from "@earendil-works/pi-ai/compat";
+import { steeringHandoff } from "./steering-handoff.js";
 import {
   createAgentSession,
   DefaultResourceLoader,
@@ -412,11 +413,17 @@ export class PiSessionRuntime implements PiRuntime {
     );
   }
 
+  private steeringPending = false;
+
   async steer(userMessage: string): Promise<boolean> {
     const session = this.piSession;
-    if (!session?.isStreaming) return false;
-    await session.steer(userMessage);
-    return true;
+    if (!session?.isStreaming || this.steeringPending) return false;
+    this.steeringPending = true;
+    try {
+      return await steeringHandoff(session, userMessage);
+    } finally {
+      this.steeringPending = false;
+    }
   }
 
   async run(

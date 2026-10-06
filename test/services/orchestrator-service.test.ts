@@ -156,10 +156,63 @@ describe("PiOrchestratorService", () => {
     ]);
     assert.equal(await service.steerQueued(x, event.sessionKey, "123:42", "8"), "forbidden");
     assert.equal(await service.steerQueued(x, event.sessionKey, "123:99", "7"), "expired");
+    // Turn ended while the click was being handed to Pi: retain the original queue item.
+    internal.runtimeRegistry = { get: () => ({ steer: async () => false }) };
+    assert.equal(await service.steerQueued(x, event.sessionKey, "123:42", "7"), "expired");
+    assert.equal(internal.sessionQueues.get(event.sessionKey)?.length, 1);
+    assert.equal(resolved, 0);
+    assert.equal(records.length, 0);
+    internal.runtimeRegistry = { get: () => ({ steer: async () => true }) };
     assert.equal(await service.steerQueued(x, event.sessionKey, "123:42", "7"), "steered");
     assert.equal(await service.steerQueued(x, event.sessionKey, "123:42", "7"), "expired");
     assert.equal(resolved, 1);
     assert.equal(records.length, 1);
+  });
+
+  it("releases the worker and rejects failed turns even when error delivery fails", async () => {
+    const service = new PiOrchestratorService();
+    const x = new ObjectContext({
+      userDir: () => "/tmp/vito-queue-failure-test",
+      vitoService: () => ({ getConfig: () => config }),
+      skillStore: () => ({ list: () => [] }),
+    });
+    service.reloadConfig(x, config);
+    const internal = service as unknown as {
+      processMessage: () => Promise<void>;
+      sessionProcessing: Set<string>;
+    };
+    let attempts = 0;
+    internal.processMessage = async () => {
+      if (++attempts === 1) throw new Error("turn failed");
+    };
+    const channel = {
+      name: "dashboard",
+      capabilities: { typing: false, reactions: false, attachments: false, streaming: false },
+      start: async () => {},
+      stop: async () => {},
+      listen: async () => () => {},
+      createOutputHandler: () => ({
+        relay: async () => {
+          throw new Error("delivery failed");
+        },
+      }),
+    };
+    const event = {
+      sessionKey: "dashboard:failure",
+      channel: "dashboard",
+      target: "failure",
+      author: "Mike",
+      timestamp: Date.now(),
+      content: "test",
+    };
+    const first = service.handleInbound(x, event, channel);
+    const second = service.handleInbound(x, event, channel);
+    await assert.rejects(first, /turn failed/);
+    await second;
+    assert.equal(attempts, 2);
+    assert.equal(internal.sessionProcessing.has(event.sessionKey), false);
+    await service.handleInbound(x, event, channel);
+    assert.equal(attempts, 3);
   });
 
   it("serializes one session across orchestrator instances and cancels queued turns", async () => {

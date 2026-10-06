@@ -515,41 +515,50 @@ export class PiOrchestratorService implements OrchestratorService {
     this.sessionProcessing.add(sessionKey);
     const queue = this.sessionQueues.get(sessionKey);
 
-    while (queue && queue.length > 0) {
-      if (queue[0].steering) {
-        await queue[0].steering;
-        continue;
-      }
-      const {
-        event,
-        channel,
-        resolve: resolveCompletion,
-        reject: rejectCompletion,
-      } = queue.shift()!;
-      try {
-        const signal = eventAbortSignal(event);
-        if (!signal?.aborted) {
-          await this.withSessionLease(sessionKey, signal, () =>
-            this.processMessage(event, channel),
-          );
+    try {
+      while (queue && queue.length > 0) {
+        if (queue[0].steering) {
+          await queue[0].steering;
+          continue;
         }
-        resolveCompletion();
-      } catch (err) {
-        if (!eventAbortSignal(event)?.aborted) {
-          console.error(`[Orchestrator] Error processing message for ${sessionKey}:`, err);
-          if (channel) {
-            const handler = channel.createOutputHandler(this.x, event);
-            await handler.relay("Sorry, something went wrong processing that message.");
-            await handler.endMessage?.();
+        const {
+          event,
+          channel,
+          resolve: resolveCompletion,
+          reject: rejectCompletion,
+        } = queue.shift()!;
+        try {
+          const signal = eventAbortSignal(event);
+          if (!signal?.aborted) {
+            await this.withSessionLease(sessionKey, signal, () =>
+              this.processMessage(event, channel),
+            );
           }
+          resolveCompletion();
+        } catch (err) {
+          if (!eventAbortSignal(event)?.aborted) {
+            console.error(`[Orchestrator] Error processing message for ${sessionKey}:`, err);
+            if (channel) {
+              try {
+                const handler = channel.createOutputHandler(this.x, event);
+                await handler.relay("Sorry, something went wrong processing that message.");
+                await handler.endMessage?.();
+              } catch (deliveryError) {
+                console.error(
+                  `[Orchestrator] Error notification failed for ${sessionKey}:`,
+                  deliveryError,
+                );
+              }
+            }
+          }
+          rejectCompletion(err);
         }
-        rejectCompletion(err);
       }
-    }
-
-    this.sessionProcessing.delete(sessionKey);
-    if (queue && queue.length === 0) {
-      this.sessionQueues.delete(sessionKey);
+    } finally {
+      this.sessionProcessing.delete(sessionKey);
+      if (queue && queue.length === 0) {
+        this.sessionQueues.delete(sessionKey);
+      }
     }
   }
 

@@ -1,5 +1,6 @@
 import { captureSilentInbound } from "../passive-memory.js";
 import { Bot } from "grammy";
+import { telegramRateLimitRetry } from "./rate-limit.js";
 import type { Context } from "../../../context/Context.js";
 import { xOrchestratorService, xSecretService, xVitoService } from "../../../lib/x.js";
 import type { OutputHandler } from "../../../lib/output/OutputHandler.js";
@@ -42,6 +43,7 @@ export class TelegramChannelService implements ChannelService {
     }
 
     this.bot = new Bot(token);
+    this.bot.api.config.use(telegramRateLimitRetry());
     await this.bot.init();
     console.log(`Telegram bot started as @${this.bot.botInfo.username}`);
 

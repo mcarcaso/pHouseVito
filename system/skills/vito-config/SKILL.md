@@ -190,6 +190,62 @@ The Settings screen currently exposes the chunk contextualizer model, chat model
 
 Context, compaction, and retrieval are not arbitrary knobs: top-level `compaction` is accepted as an open object, but schema acceptance alone does not establish an active runtime option. Do not invent context-window, embedding-model, compaction-threshold, or streaming fields. Check consumers before documenting or changing them. `streamMode` is explicitly rejected by current write APIs; `harness` is legacy, not an active settings selector.
 
+## Native MCP server configuration
+
+Use this skill for adding, editing, disabling, or removing native MCP connections. Dashboard → Intelligence → MCP manages the same top-level `mcp.servers` configuration in `user/vito.config.json`; it is not part of the Global → Channel → Session settings cascade. Do not configure ambient `.pi/mcp.json` files: Vito does not import them.
+
+Before configuring a service, verify its official endpoint/command, supported transport, authentication, and tool coverage. Prefer provider-maintained MCP servers when available; do not replace working API skills with custom adapters solely to use MCP. Retain safety/workflow guidance and any features the server does not cover.
+
+### Server setup and credentials
+
+- Server names use letters, numbers, `_`, or `-` (1–64 characters).
+- HTTP uses `type: "http"` and an HTTPS `url` (HTTP only on loopback). Credentials, query strings, and fragments in URLs are rejected. Streamable HTTP is supported; SSE-only servers are not.
+- Stdio uses `type: "stdio"`, `command`, optional `args`, `cwd`, and `env`. These commands execute locally and are not sandboxed; verify trust before installing or launching. Connections are per conversation, so multiple server processes can be expected.
+- Actual credentials belong in Secrets, managed through SecretService/dashboard. Header and environment values in config must be `${SECRET_NAME}` or `Bearer ${SECRET_NAME}` references, never literal keys. Stdio receives basic launch variables plus explicit secret-backed environment entries, not every provider secret.
+- `enabled` controls availability; `timeout` is in seconds (1–120). Preserve unrelated servers when editing, then run `npm run validate:config`.
+
+Example (merge into existing config; replace placeholder endpoint and secret reference):
+
+```json
+{
+  "mcp": {
+    "servers": {
+      "example": {
+        "type": "http",
+        "url": "https://example.com/mcp",
+        "headers": { "Authorization": "Bearer ${EXAMPLE_API_KEY}" },
+        "enabled": true,
+        "exposure": "deferred",
+        "timeout": 45
+      }
+    }
+  }
+}
+```
+
+### Discovery and exposure
+
+Default to `exposure: "deferred"`: use `tool_search` to discover native tools, then call the exposed tools normally. Do not route configured native tools through the generic MCP CLI bridge.
+
+Other exposure modes are `direct` (all schemas upfront), `codemode-deferred` (discovery/calls through code mode), and `hidden`. Optional `toolExposure` overrides per-tool visibility, including a `"*"` fallback. Exposure is not a sandbox or authorization boundary; existing skills and shell access remain independent. Removing a tool does not erase its past schemas or results from the transcript.
+
+### OAuth
+
+For OAuth HTTP servers, add `oauth: {}` or verified `clientId`, secret-backed `clientSecret`, and `scope` settings. Do not combine OAuth with an Authorization header. Use dashboard **Connect account → Open authorization page**; the owner signs in and consents. Do not use Pi's own browser/loopback login flow.
+
+The callback defaults to `https://<apps.baseDomain>/api/mcp/oauth/callback`. Override `mcp.oauthCallbackUrl` for a different public dashboard origin; the path must remain `/api/mcp/oauth/callback`. HTTPS is required except on loopback. HTTPS callbacks also supply a public client metadata document at `/api/mcp/oauth/client-metadata` for providers supporting URL-based client registration; other providers may require dynamic registration or a pre-registered client ID. The provider must permit the callback.
+
+Tokens/client credentials are private in `user/mcp-oauth.json`; do not read or expose them in chat. Pending flows expire after 10 minutes or a restart. Disconnect clears local credentials, not the provider's grant; provider-side revocation is separate. For resource/issuer mismatches, verify the provider's canonical regional endpoint rather than bypassing SDK security checks. Never assume successful setup means authorization succeeded.
+
+### Testing and reload
+
+1. Validate config and check missing-secret/auth status.
+2. **Check connection** performs initialization and tool listing only, through a separate temporary client. It neither calls tools nor verifies the active chat connection.
+3. Discover and run a harmless native tool in the actual conversation to verify end-to-end access. Confirm before communications, purchases, deletions, or other consequential actions; do not test them as connection probes.
+4. Server config and credential changes reconcile at the next serialized turn boundary, preserving history. Tool-list notifications update live. No process restart or `/new` is required for ordinary MCP edits; in-flight calls are not immediately cancelled. Initial deployment of core MCP code requires an owner-controlled restart.
+
+For architecture, limitations, and OAuth details, read `docs/native-mcp.md`. Verify fields in `src/shared/schemas/mcp.ts` and behavior in `src/services/mcp/` and `src/services/orchestrator/PiSessionRuntime.ts`.
+
 ## Reload versus fresh session versus restart
 
 - Participation/permission config edits: hot reload; no restart or `/new` needed.

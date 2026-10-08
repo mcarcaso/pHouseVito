@@ -1,6 +1,6 @@
-# Native MCP (experimental)
+# Native MCP
 
-Dashboard → Intelligence → MCP manages native Pi MCP servers. This is an experiment on `feat/native-mcp-dashboard`; existing MCP skills and their CLI bridge remain independent.
+Dashboard → Intelligence → MCP manages native Pi MCP servers. Native MCP is integrated into the main codebase; existing skills and their CLI bridge remain independent. Agent configuration guidance lives in `system/skills/vito-config/SKILL.md`.
 
 ## Ownership and persistence
 
@@ -62,6 +62,7 @@ For an HTTP server without an Authorization header, use **Connect account → Op
 
 - Authorization code flow with PKCE S256, cryptographically random state, 10-minute pending-flow expiry, one-use callbacks, and configuration-change checks.
 - RFC 9728 resource metadata / authorization-server discovery and dynamic client registration use the MCP SDK. Advanced settings support a pre-registered client ID, optional secret reference, and requested scopes when the provider requires them. Not every provider supports dynamic registration.
+- HTTPS callback configurations publish public client metadata at `/api/mcp/oauth/client-metadata`; the SDK uses this URL as the client ID when the provider supports client metadata documents. It contains public registration fields only, never credentials. Loopback HTTP flows retain dynamic/pre-registered client handling.
 - Redirect URI defaults to `https://<apps.baseDomain>/api/mcp/oauth/callback`. Override `mcp.oauthCallbackUrl` when the dashboard has a different public origin; its path must be `/api/mcp/oauth/callback`. HTTPS is required except on loopback. Never derive this URI from incoming Host headers. The provider must permit this redirect URI.
 - The callback is state-authenticated, not dashboard-cookie-authenticated, so it works when returning from another browser/device. It has a dedicated restricted context, no-store/no-referrer headers, and a restrictive CSP. Raw provider errors, authorization codes, tokens, and client secrets are not rendered.
 - Tokens and dynamic client credentials live in private, atomically written `user/mcp-oauth.json` (mode 0600), not browser-safe configuration. Pending state/verifiers live in memory and expire on restart.

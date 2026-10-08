@@ -32,6 +32,10 @@ test("deployment moves retain the same Pi transcript while /new still starts fre
       piSessionsDir: () => sessions,
       piSessionStore: () => new FilePiSessionStore(),
       skillStore: () => ({ list: () => [] }),
+      mcpService: () => ({
+        revision: () => "empty",
+        loadConfig: () => ({ servers: [], errors: [] }),
+      }),
     });
     const runtime = await registry.getOrCreate(x, sessionId, {});
     assert.equal(runtime.isFresh(), false);

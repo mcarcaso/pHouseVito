@@ -6,6 +6,7 @@ import type { MainRouteName, RootStackParamList } from "./route-types";
 export const routeForArea: Record<OperationArea, MainRouteName> = {
   memory: "Memory",
   profile: "Profile",
+  mcp: "Mcp",
   skills: "Skills",
   jobs: "Jobs",
   apps: "Apps",
@@ -37,6 +38,11 @@ export const operationMeta: Record<
   profile: {
     icon: "person-outline",
     description: "Stable facts and preferences",
+    group: "Intelligence",
+  },
+  mcp: {
+    icon: "extension-puzzle-outline",
+    description: "External tool servers",
     group: "Intelligence",
   },
   skills: { icon: "construct-outline", description: "Capabilities", group: "Intelligence" },

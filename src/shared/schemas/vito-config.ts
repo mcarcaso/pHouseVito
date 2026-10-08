@@ -1,5 +1,6 @@
 import { localJobTime, resolveJobTime } from "../job-time.js";
 import { z } from "zod";
+import { mcpConfigSchema } from "./mcp.js";
 
 const timezoneSchema = z
   .string()
@@ -230,6 +231,7 @@ export const cronJobPatchSchema = scriptJobConfigSchema.omit({ name: true }).par
 
 export const vitoConfigPatchSchema = z
   .object({
+    mcp: mcpConfigSchema.optional(),
     bot: botConfigSchema.partial().optional(),
     apps: appsConfigSchema.partial().optional(),
     settings: settingsWriteSchema.optional(),
@@ -241,6 +243,7 @@ export const vitoConfigPatchSchema = z
 
 export const vitoConfigSchema = z
   .object({
+    mcp: mcpConfigSchema.optional(),
     bot: botConfigSchema.optional(),
     apps: appsConfigSchema.optional(),
     settings: settingsSchema,

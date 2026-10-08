@@ -131,3 +131,19 @@ export const xAppPreferenceStore = (x: Context): AppPreferenceStore =>
 export const xTraceStore = (x: Context): TraceStore => x.get("traceStore") as TraceStore;
 export const xTraceEventStore = (x: Context): TraceEventStore =>
   x.get("traceEventStore") as TraceEventStore;
+
+export function xMcpStore(x: Context): import("../stores/mcp/McpStore.js").McpStore {
+  return x.get("mcpStore") as import("../stores/mcp/McpStore.js").McpStore;
+}
+export function xMcpService(x: Context): import("../services/mcp/McpService.js").McpService {
+  return x.get("mcpService") as import("../services/mcp/McpService.js").McpService;
+}
+
+export function xMcpOAuthStore(x: Context): import("../stores/mcp/McpOAuthStore.js").McpOAuthStore {
+  return x.get("mcpOAuthStore") as import("../stores/mcp/McpOAuthStore.js").McpOAuthStore;
+}
+export function xMcpOAuthService(
+  x: Context,
+): import("../services/mcp/McpOAuthService.js").McpOAuthService {
+  return x.get("mcpOAuthService") as import("../services/mcp/McpOAuthService.js").McpOAuthService;
+}

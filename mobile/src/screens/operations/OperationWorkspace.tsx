@@ -25,6 +25,7 @@ import { operationAreas, type OperationArea } from "./operation-catalog";
 const paths: Record<OperationArea, string> = {
   memory: "/api/memory/embeddings/stats",
   profile: "/api/memory/profile",
+  mcp: "/api/mcp",
   skills: "/api/skills",
   jobs: "/api/cron/jobs",
   apps: "/api/apps",

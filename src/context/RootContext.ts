@@ -1,3 +1,7 @@
+import { FileMcpOAuthStore } from "../stores/mcp/FileMcpOAuthStore.js";
+import { DefaultMcpOAuthService } from "../services/mcp/DefaultMcpOAuthService.js";
+import { ConfigMcpStore } from "../stores/mcp/ConfigMcpStore.js";
+import { DefaultMcpService } from "../services/mcp/DefaultMcpService.js";
 import type Database from "better-sqlite3";
 import { homedir } from "node:os";
 import { join, resolve } from "node:path";
@@ -122,6 +126,10 @@ export function RootContext(args: RootContextArgs): Context {
     sessionService: () => new DefaultSessionService(),
     piSessionStore: () => new FilePiSessionStore(),
     sessionStore: () => new SqliteSessionStore(),
+    mcpOAuthStore: () => new FileMcpOAuthStore(),
+    mcpOAuthService: () => new DefaultMcpOAuthService(),
+    mcpStore: () => new ConfigMcpStore(),
+    mcpService: () => new DefaultMcpService(),
     skillStore: () => new FileSkillStore(),
     messageStore: () => new EmbeddingMessageStore(new SqliteMessageStore()),
     voiceTaskStore: () => new SqliteVoiceTaskStore(),

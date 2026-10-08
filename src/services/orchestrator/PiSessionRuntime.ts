@@ -18,6 +18,11 @@ import { getModel } from "@earendil-works/pi-ai/compat";
 import { steeringHandoff } from "./steering-handoff.js";
 import {
   createAgentSession,
+  createMcpExtension,
+  createToolSearchExtension,
+  createCodemodeExtension,
+  type LoadedMcpConfig,
+  type McpTransportFactory,
   DefaultResourceLoader,
   SessionManager as PiSessionManager,
   type AgentSession,
@@ -52,6 +57,11 @@ export interface PiSessionRuntimeConfig {
   thinkingLevel?: "off" | "low" | "medium" | "high";
   skills?: Skill[];
   customTools?: ToolDefinition[];
+  mcp?: {
+    revision: () => string;
+    loadConfig: () => LoadedMcpConfig;
+    createTransport?: McpTransportFactory;
+  };
   /**
    * Directory pi will write its session JSONL file to. When set, the
    * conversation persists across restarts and shows up under the dashboard's
@@ -288,7 +298,7 @@ export class PiSessionRuntime implements PiRuntime {
           /* ignore */
         }
         try {
-          stale.dispose();
+          await this.closeSession(stale, "new");
         } catch {
           /* ignore */
         }
@@ -310,13 +320,30 @@ export class PiSessionRuntime implements PiRuntime {
         // ignore
       }
       try {
-        this.piSession.dispose();
+        await this.closeSession(this.piSession, "quit");
       } catch {
         // ignore
       }
       this.piSession = null;
       this.storedSystemPrompt = null;
     }
+  }
+
+  private async closeSession(session: AgentSession, reason: "new" | "quit"): Promise<void> {
+    try {
+      if (this.config.mcp) await session.extensionRunner.emit({ type: "session_shutdown", reason });
+    } finally {
+      session.dispose();
+    }
+  }
+
+  private mcpRevision?: string;
+
+  private async reconcileMcp(session: AgentSession): Promise<void> {
+    const revision = this.config.mcp?.revision();
+    if (revision === this.mcpRevision) return;
+    await session.reload();
+    this.mcpRevision = revision;
   }
 
   private async createSession(systemPrompt: string): Promise<AgentSession> {
@@ -326,6 +353,24 @@ export class PiSessionRuntime implements PiRuntime {
       cwd: process.cwd(),
       agentDir: agentDir ?? process.cwd(),
       noExtensions: true,
+      extensionFactories: this.config.mcp
+        ? [
+            createToolSearchExtension(),
+            createCodemodeExtension(),
+            createMcpExtension({
+              loadConfig: () => this.config.mcp!.loadConfig(),
+              createTransport: this.config.mcp.createTransport,
+              // Dashboard configuration is authoritative; Pi command mutations must not
+              // write a second mcp.json or bypass validated owner routes.
+              updateConfig: () => {
+                throw new Error("Manage MCP servers in the Vito dashboard");
+              },
+              openUrl: () => {
+                throw new Error("Authorize MCP servers through the Vito dashboard");
+              },
+            }),
+          ]
+        : [],
       noPromptTemplates: true,
       noThemes: true,
       additionalSkillPaths,
@@ -370,6 +415,18 @@ export class PiSessionRuntime implements PiRuntime {
       session.setAutoCompactionEnabled(true);
     } catch (err) {
       console.warn("[PiSessionRuntime] Failed to enable auto-compaction:", err);
+    }
+    if (this.config.mcp) {
+      try {
+        const revision = this.config.mcp.revision();
+        await session.bindExtensions({
+          onError: (error) => console.warn("[MCP] Extension error:", error.error),
+        });
+        this.mcpRevision = revision;
+      } catch (error) {
+        await this.closeSession(session, "quit").catch(() => {});
+        throw error;
+      }
     }
     this.piSession = session;
     this.storedSystemPrompt = systemPrompt;
@@ -434,6 +491,8 @@ export class PiSessionRuntime implements PiRuntime {
   ): Promise<void> {
     this.aborted = false;
     const piSession = await this.ensureSession(systemPrompt);
+    // Only reconcile at the serialized turn boundary. Never interrupt a tool call.
+    await this.reconcileMcp(piSession);
 
     // Wire abort. Each run() may bring its own AbortSignal; we relay to pi.abort().
     const abortHandler = async () => {

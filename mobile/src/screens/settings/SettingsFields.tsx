@@ -261,6 +261,13 @@ export function ChannelSetup({
                       ? "Allowed channel IDs"
                       : "Allowed chat IDs"
           }
+          emptyHint={
+            field === "ownerIds"
+              ? channelConfig.ownerIds === undefined
+                ? `Uses allowed user IDs when unset${channelConfig.allowedUserIds?.length ? ": " + channelConfig.allowedUserIds.join(", ") : " — no explicit allowed users, so no inherited owners"}`
+                : "Explicitly empty owner list — no inherited owners"
+              : undefined
+          }
           values={channelConfig[field] ?? []}
           onChange={(values) => void saveChannel({ [field]: values })}
           styles={styles}
@@ -299,6 +306,7 @@ export function ActionField({
   );
 }
 export function IdListField({
+  emptyHint,
   label,
   values,
   onChange,
@@ -306,6 +314,7 @@ export function IdListField({
 }: {
   label: string;
   values: string[];
+  emptyHint?: string;
   onChange: (values: string[]) => void;
   styles: any;
 }) {
@@ -313,7 +322,9 @@ export function IdListField({
   return (
     <View style={styles.row}>
       <Text style={styles.label}>{label}</Text>
-      {values.length === 0 && <Text style={styles.hint}>None configured — all allowed</Text>}
+      {values.length === 0 && (
+        <Text style={styles.hint}>{emptyHint ?? "None configured — all allowed"}</Text>
+      )}
       <View style={styles.idWrap}>
         {values.map((value) => (
           <Pressable

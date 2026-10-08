@@ -1,3 +1,4 @@
+import { channelOwnerIds } from "../owner-permissions.js";
 import { captureSilentInbound } from "../passive-memory.js";
 import {
   Client,
@@ -130,11 +131,7 @@ export class DiscordChannelService implements ChannelService {
   }
 
   private isOwner(x: Context, userId: string): boolean {
-    const discord = xVitoService(x).getConfig(x).channels.discord as
-      (Record<string, unknown> & { ownerIds?: unknown }) | undefined;
-    const configured = Array.isArray(discord?.ownerIds)
-      ? discord.ownerIds.filter((id): id is string => typeof id === "string")
-      : [];
+    const configured = channelOwnerIds(xVitoService(x).getConfig(x).channels.discord);
     return configured.includes(userId) || this.applicationOwnerIds.has(userId);
   }
 

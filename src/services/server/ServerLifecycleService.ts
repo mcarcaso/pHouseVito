@@ -4,6 +4,7 @@ export interface ServerHealth {
   status: "ok";
   timestamp: string;
   revision?: string;
+  runs?: { active: number; queued: number };
 }
 
 export interface ServerStatus {

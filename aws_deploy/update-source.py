@@ -32,6 +32,20 @@ def running_cwd(pid):
     return Path(f"/proc/{pid}/cwd").resolve()
 
 
+def require_idle():
+    try:
+        with urllib.request.urlopen("http://127.0.0.1:3030/api/health", timeout=3) as response:
+            data = json.load(response)
+        counts = data["runs"]
+        active, queued = counts["active"], counts["queued"]
+        if data.get("status") != "ok" or any(type(n) is not int or n < 0 for n in (active, queued)):
+            raise ValueError("Invalid activity counts")
+    except (OSError, ValueError, KeyError, TypeError) as error:
+        raise RuntimeError("Cannot verify session activity; deploy requires a running server with activity-aware health") from error
+    if active or queued:
+        raise RuntimeError(f"Vito has {active} active and {queued} queued turns; retry deployment when idle")
+
+
 def health_matches(url, revision):
     try:
         with urllib.request.urlopen(url, timeout=3) as response:
@@ -63,6 +77,7 @@ def update(root, checkout, rows, public_url, force=False):
     if not (checkout / "scripts/restart-vito.sh").is_file():
         raise RuntimeError("Source restart script missing")
 
+    require_idle()
     previous = run("git", "rev-parse", "HEAD", cwd=checkout)
     print("Pulling latest main into the current checkout", flush=True)
     run("git", "pull", "--ff-only", "origin", "main", cwd=checkout)
@@ -75,10 +90,12 @@ def update(root, checkout, rows, public_url, force=False):
         print("Already running latest main; skipping build and restart", flush=True)
         print(json.dumps({"state": "unchanged", "revision": revision, "checkout": str(checkout)}), flush=True)
         return
+    require_idle()
     os.environ.setdefault("NODE_OPTIONS", os.environ.get("VITO_BUILD_NODE_OPTIONS", "--max-old-space-size=1536"))
     print("Building and restarting only Vito", flush=True)
     # SSH owns this process, so it survives the Vito PM2 restart.
-    subprocess.run(["./scripts/restart-vito.sh"], cwd=checkout, check=True, timeout=1800)
+    subprocess.run(["./scripts/restart-vito.sh"], cwd=checkout, check=True, timeout=1800,
+                   env={**os.environ, "VITO_DEPLOY_REQUIRE_IDLE": "1"})
     health("http://127.0.0.1:3030/api/health", revision)
     health(public_url, revision)
     after = processes()

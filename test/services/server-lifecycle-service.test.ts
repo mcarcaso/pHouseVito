@@ -16,6 +16,14 @@ function waitForBackgroundWork(): Promise<void> {
 }
 
 describe("DefaultServerLifecycleService", () => {
+  it("reports live activity counts without exposing conversation details", () => {
+    let runs: { status: "active" | "queued" }[] = [{ status: "active" }, { status: "queued" }];
+    const service = new DefaultServerLifecycleService({ getRuns: () => runs });
+    assert.deepEqual(service.getHealth(new ObjectContext({})).runs, { active: 1, queued: 1 });
+    runs = [];
+    assert.deepEqual(service.getHealth(new ObjectContext({})).runs, { active: 0, queued: 0 });
+  });
+
   it("keeps the source revision of the running process across later environment changes", () => {
     const previous = process.env.VITO_SOURCE_REVISION;
     try {

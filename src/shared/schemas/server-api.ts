@@ -3,6 +3,9 @@ import { z } from "zod";
 export const serverHealthResponseSchema = z.object({
   status: z.literal("ok"),
   timestamp: z.string(),
+  runs: z
+    .object({ active: z.number().int().nonnegative(), queued: z.number().int().nonnegative() })
+    .optional(),
   revision: z
     .string()
     .regex(/^[a-f0-9]{40}$/)

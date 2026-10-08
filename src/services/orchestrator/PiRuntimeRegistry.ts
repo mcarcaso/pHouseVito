@@ -41,6 +41,7 @@ export class PiRuntimeRegistry {
         ? {
             revision: () => xMcpService(x).revision(x),
             loadConfig: () => xMcpService(x).loadConfig(x),
+            createTransport: xMcpService(x).transport?.(x),
           }
         : undefined,
     });
@@ -101,6 +102,7 @@ export class PiRuntimeRegistry {
         ? {
             revision: () => xMcpService(x).revision(x),
             loadConfig: () => xMcpService(x).loadConfig(x),
+            createTransport: xMcpService(x).transport?.(x),
           }
         : undefined,
     } satisfies PiSessionRuntimeConfig);

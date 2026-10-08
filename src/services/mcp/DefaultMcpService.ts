@@ -1,10 +1,14 @@
+import { StdioTransport, StreamableHttpTransport } from "@earendil-works/pi-mcp";
+import { resolve } from "node:path";
+import { homedir } from "node:os";
+import type { McpTransportFactory } from "@earendil-works/pi-coding-agent";
 import { createHash } from "node:crypto";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
 import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js";
 import type { Context } from "../../context/Context.js";
 import type { LoadedMcpConfig, McpServerConfig } from "@earendil-works/pi-coding-agent";
-import { xMcpStore, xSecretService } from "../../lib/x.js";
+import { xMcpStore, xSecretService, xMcpOAuthService } from "../../lib/x.js";
 import type { McpService, McpOverview } from "./McpService.js";
 import type { McpServer } from "../../shared/schemas/mcp.js";
 
@@ -15,6 +19,11 @@ export class DefaultMcpService implements McpService {
         name,
         server,
         missingSecrets: this.missing(x, server),
+        oauth:
+          server.type === "http" &&
+          !Object.keys(server.headers ?? {}).some((k) => k.toLowerCase() === "authorization")
+            ? xMcpOAuthService(x).status(x, name)
+            : { status: "none" as const },
       })),
       revision: this.revision(x),
       applyPolicy: "next-turn",
@@ -24,24 +33,30 @@ export class DefaultMcpService implements McpService {
     // Hash secret values as well, so credential rotation reconnects between turns.
     const servers = xMcpStore(x).list(x);
     const credentials = Object.values(servers)
-      .flatMap((s) => Object.values(s.type === "http" ? (s.headers ?? {}) : (s.env ?? {})))
+      .flatMap((s) => [
+        ...Object.values(s.type === "http" ? (s.headers ?? {}) : (s.env ?? {})),
+        ...(s.type === "http" && s.oauth?.clientSecret ? [s.oauth.clientSecret] : []),
+      ])
       .map((value) => {
         const key = /\$\{([A-Z][A-Z0-9_]*)\}/.exec(value)?.[1];
         return key ? (xSecretService(x).get(x, key) ?? "") : "";
       });
     return createHash("sha256")
-      .update(JSON.stringify([servers, credentials]))
+      .update(JSON.stringify([servers, credentials, xMcpOAuthService(x).revision(x)]))
       .digest("hex");
   }
   private missing(x: Context, server: McpServer): string[] {
     return [
       ...new Set(
-        Object.values(server.type === "http" ? (server.headers ?? {}) : (server.env ?? {})).flatMap(
-          (value) => {
-            const key = /\$\{([A-Z][A-Z0-9_]*)\}/.exec(value)?.[1];
-            return key && !xSecretService(x).get(x, key) ? [key] : [];
-          },
-        ),
+        [
+          ...Object.values(server.type === "http" ? (server.headers ?? {}) : (server.env ?? {})),
+          ...(server.type === "http" && server.oauth?.clientSecret
+            ? [server.oauth.clientSecret]
+            : []),
+        ].flatMap((value) => {
+          const key = /\$\{([A-Z][A-Z0-9_]*)\}/.exec(value)?.[1];
+          return key && !xSecretService(x).get(x, key) ? [key] : [];
+        }),
       ),
     ];
   }
@@ -78,6 +93,40 @@ export class DefaultMcpService implements McpService {
     });
     return { servers, errors };
   }
+  transport(x: Context): McpTransportFactory {
+    return (entry, cwd) => {
+      const stored = xMcpStore(x).list(x)[entry.name];
+      if (!stored) throw new Error("MCP server was removed");
+      const config = this.resolve(x, stored);
+      if ("url" in config)
+        return new StreamableHttpTransport({
+          url: config.url,
+          headers: config.headers,
+          authProvider: Object.keys(config.headers ?? {}).some(
+            (key) => key.toLowerCase() === "authorization",
+          )
+            ? undefined
+            : xMcpOAuthService(x).nativeProvider(x, entry.name),
+        });
+      const expand = (value: string) =>
+        value === "~"
+          ? homedir()
+          : value.startsWith("~/")
+            ? resolve(homedir(), value.slice(2))
+            : value;
+      const env: Record<string, string> = {};
+      for (const key of ["PATH", "HOME", "TMPDIR", "SYSTEMROOT"])
+        if (process.env[key]) env[key] = process.env[key]!;
+      return new StdioTransport({
+        command: expand(config.command),
+        args: config.args?.map(expand),
+        cwd: resolve(cwd, expand(config.cwd ?? ".")),
+        env: { ...env, ...config.env },
+        inheritEnv: false,
+        stderr: "pipe",
+      });
+    };
+  }
   async test(x: Context, name: string) {
     const stored = xMcpStore(x).list(x)[name];
     if (!stored) throw new Error("MCP server not found");
@@ -88,10 +137,18 @@ export class DefaultMcpService implements McpService {
       const value = process.env[key];
       if (value !== undefined) env[key] = value;
     }
+    const headers = "url" in server ? { ...server.headers } : undefined;
+    if (
+      "url" in server &&
+      !Object.keys(headers ?? {}).some((key) => key.toLowerCase() === "authorization")
+    ) {
+      const token = await xMcpOAuthService(x).nativeProvider(x, name).token();
+      if (token) headers!.Authorization = `Bearer ${token}`;
+    }
     const transport =
       "url" in server
         ? new StreamableHTTPClientTransport(new URL(server.url), {
-            requestInit: { headers: server.headers },
+            requestInit: { headers },
           })
         : new StdioClientTransport({
             command: server.command,
@@ -123,7 +180,7 @@ export class DefaultMcpService implements McpService {
       return result;
     } catch {
       throw new Error(
-        "Connection check failed. Verify the URL/command, credentials and server availability. OAuth-only servers are not supported by this dashboard yet.",
+        "Connection check failed. Verify the URL/command, credentials and server availability. For OAuth servers, use Connect in the dashboard first.",
       );
     } finally {
       if (timer) clearTimeout(timer);

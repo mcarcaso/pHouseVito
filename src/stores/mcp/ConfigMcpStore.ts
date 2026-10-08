@@ -10,7 +10,10 @@ export class ConfigMcpStore implements McpStore {
   save(x: Context, name: string, server: McpServer): void {
     mcpNameSchema.parse(name);
     const config = xVitoService(x).getConfig(x);
-    config.mcp = { servers: { ...this.list(x), [name]: mcpServerSchema.parse(server) } };
+    config.mcp = {
+      ...config.mcp,
+      servers: { ...this.list(x), [name]: mcpServerSchema.parse(server) },
+    };
     xVitoService(x).saveConfig(x, config);
   }
   remove(x: Context, name: string): void {
@@ -18,7 +21,7 @@ export class ConfigMcpStore implements McpStore {
     const config = xVitoService(x).getConfig(x);
     const servers = this.list(x);
     delete servers[name];
-    config.mcp = { servers };
+    config.mcp = { ...config.mcp, servers };
     xVitoService(x).saveConfig(x, config);
   }
 }

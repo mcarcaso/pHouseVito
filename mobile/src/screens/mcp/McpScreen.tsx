@@ -1,6 +1,7 @@
 import { Ionicons } from "@expo/vector-icons";
 import { useEffect, useState } from "react";
 import {
+  Linking,
   ActivityIndicator,
   Pressable,
   ScrollView,
@@ -14,7 +15,12 @@ import { api } from "../../services/api/client";
 import { useThemeStyles, useVitoTheme, type VitoTheme } from "../../hooks/useVitoTheme";
 import { mcpSaveSchema, type McpServer } from "../../../../src/shared/schemas/mcp";
 
-type Entry = { name: string; server: McpServer; missingSecrets: string[] };
+type Entry = {
+  name: string;
+  server: McpServer;
+  missingSecrets: string[];
+  oauth?: { status: "none" | "pending" | "connected" | "error"; message?: string };
+};
 type Overview = { servers: Entry[]; applyPolicy: string };
 type Tool = { name: string; description?: string };
 const exposures = [
@@ -48,6 +54,10 @@ export function McpScreen({ onUnauthorized }: { onUnauthorized: () => void }) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
+  const [authorizationUrls, setAuthorizationUrls] = useState<Record<string, string>>({});
+  const [clientId, setClientId] = useState("");
+  const [clientSecret, setClientSecret] = useState("");
+  const [scope, setScope] = useState("");
   const [editing, setEditing] = useState<string | null>(null);
   const [name, setName] = useState("");
   const [transport, setTransport] = useState<"http" | "stdio">("http");
@@ -86,8 +96,69 @@ export function McpScreen({ onUnauthorized }: { onUnauthorized: () => void }) {
       active = false;
     };
   }, [onUnauthorized]);
+  const awaitingOAuth = entries.some((entry) => entry.oauth?.status === "pending");
+  useEffect(() => {
+    if (!awaitingOAuth) return;
+    let active = true;
+    const timer = setInterval(() => {
+      void api<Overview>("/api/mcp")
+        .then((data) => {
+          if (active) setEntries(data.servers);
+        })
+        .catch((cause) => {
+          if (active) handleError(cause);
+        });
+    }, 2000);
+    return () => {
+      active = false;
+      clearInterval(timer);
+    };
+  }, [awaitingOAuth, onUnauthorized]);
+  const connect = async (entry: Entry) => {
+    setBusy(true);
+    setError("");
+    try {
+      const result = await api<{ url: string }>(
+        `/api/mcp/${encodeURIComponent(entry.name)}/oauth/start`,
+        { method: "POST", body: "{}" },
+      );
+      setAuthorizationUrls((previous) => ({ ...previous, [entry.name]: result.url }));
+      const data = await api<Overview>("/api/mcp");
+      setEntries(data.servers);
+    } catch (cause) {
+      handleError(cause);
+    } finally {
+      setBusy(false);
+    }
+  };
+  const disconnect = async (entry: Entry) => {
+    setBusy(true);
+    setError("");
+    try {
+      const data = await api<Overview>(
+        `/api/mcp/${encodeURIComponent(entry.name)}/oauth/disconnect`,
+        { method: "POST", body: "{}" },
+      );
+      setEntries(data.servers);
+      setAuthorizationUrls((previous) => {
+        const next = { ...previous };
+        delete next[entry.name];
+        return next;
+      });
+      setNotice(
+        "Local OAuth credentials removed. Active calls finish; conversations reconnect next turn. Revoke provider access separately if needed.",
+      );
+    } catch (cause) {
+      handleError(cause);
+    } finally {
+      setBusy(false);
+    }
+  };
   const startEdit = (entry?: Entry) => {
     const server = entry?.server;
+    setClientId(server?.type === "http" ? (server.oauth?.clientId ?? "") : "");
+    setClientSecret(server?.type === "http" ? (server.oauth?.clientSecret ?? "") : "");
+    setScope(server?.type === "http" ? (server.oauth?.scope ?? "") : "");
     setEditing(entry?.name ?? "");
     setName(entry?.name ?? "");
     setTransport(server?.type ?? "http");
@@ -134,7 +205,19 @@ export function McpScreen({ onUnauthorized }: { onUnauthorized: () => void }) {
           timeout: Number(timeout),
           ...(toolExposure ? { toolExposure } : {}),
           ...(transport === "http"
-            ? { url: endpoint, ...(refs ? { headers: refs } : {}) }
+            ? {
+                url: endpoint,
+                ...(refs ? { headers: refs } : {}),
+                ...(clientId || clientSecret || scope
+                  ? {
+                      oauth: {
+                        ...(clientId ? { clientId } : {}),
+                        ...(clientSecret ? { clientSecret } : {}),
+                        ...(scope ? { scope } : {}),
+                      },
+                    }
+                  : {}),
+              }
             : {
                 command: endpoint,
                 args: args ? args.split("\n") : [],
@@ -391,6 +474,28 @@ export function McpScreen({ onUnauthorized }: { onUnauthorized: () => void }) {
           </Pressable>
           {advanced && (
             <>
+              {transport === "http" && (
+                <>
+                  {input(
+                    "OAuth client ID (optional)",
+                    clientId,
+                    setClientId,
+                    "Usually registered automatically",
+                  )}
+                  {input(
+                    "OAuth client secret reference (optional)",
+                    clientSecret,
+                    setClientSecret,
+                    "${OAUTH_CLIENT_SECRET}",
+                  )}
+                  {input(
+                    "OAuth scopes (optional)",
+                    scope,
+                    setScope,
+                    "Space-separated provider scopes",
+                  )}
+                </>
+              )}
               {input("Request timeout (seconds)", timeout, setTimeoutValue, "30")}
               {input(
                 "Per-tool visibility rules (optional JSON)",
@@ -466,6 +571,47 @@ export function McpScreen({ onUnauthorized }: { onUnauthorized: () => void }) {
                 </View>
               </View>
             )}
+            {entry.server.type === "http" &&
+              !Object.keys(entry.server.headers ?? {}).some(
+                (key) => key.toLowerCase() === "authorization",
+              ) && (
+                <View style={styles.toolSection}>
+                  <Text style={styles.label}>Browser authorization</Text>
+                  <Text style={styles.small}>
+                    {entry.oauth?.status === "connected"
+                      ? "OAuth credentials saved. Expired access tokens refresh automatically when supported by the provider."
+                      : entry.oauth?.status === "pending"
+                        ? "Waiting for authorization. Open the provider page, approve access, then return here."
+                        : (entry.oauth?.message ??
+                          "If this server requires OAuth, connect your account here. Public servers can be checked without signing in.")}
+                  </Text>
+                  <View style={styles.actions}>
+                    {entry.oauth?.status !== "pending" &&
+                      button(
+                        entry.oauth?.status === "connected"
+                          ? "Reconnect account"
+                          : "Connect account",
+                        () => void connect(entry),
+                      )}
+                    {entry.oauth?.status === "pending" &&
+                      authorizationUrls[entry.name] &&
+                      button(
+                        "Open authorization page",
+                        () => {
+                          void Linking.openURL(authorizationUrls[entry.name]).catch(handleError);
+                        },
+                        true,
+                      )}
+                    {(entry.oauth?.status === "connected" || entry.oauth?.status === "pending") &&
+                      button(
+                        entry.oauth?.status === "pending"
+                          ? "Cancel authorization"
+                          : "Disconnect account",
+                        () => void disconnect(entry),
+                      )}
+                  </View>
+                </View>
+              )}
             {check?.error && <Text style={styles.error}>{check.error}</Text>}
             {check?.tools && (
               <View style={styles.toolSection}>

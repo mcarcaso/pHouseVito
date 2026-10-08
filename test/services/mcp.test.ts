@@ -31,6 +31,7 @@ function context() {
         return structuredClone(config);
       },
     }),
+    mcpOAuthService: () => ({ revision: () => "", status: () => ({ status: "none" }) }),
     mcpStore: () => new ConfigMcpStore(),
     mcpService: () => new DefaultMcpService(),
     secretService: () => ({ get: (_x: unknown, name: string) => secrets[name] }),

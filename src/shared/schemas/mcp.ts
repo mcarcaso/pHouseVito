@@ -41,6 +41,14 @@ export const mcpServerSchema = z.discriminatedUnion("type", [
       type: z.literal("http"),
       url: httpUrl,
       headers: z.record(z.string().min(1).max(128), secretReference).optional(),
+      oauth: z
+        .object({
+          clientId: z.string().min(1).max(512).optional(),
+          clientSecret: secretReference.optional(),
+          scope: z.string().max(1024).optional(),
+        })
+        .strict()
+        .optional(),
     })
     .strict(),
   z
@@ -55,7 +63,10 @@ export const mcpServerSchema = z.discriminatedUnion("type", [
     .strict(),
 ]);
 export const mcpConfigSchema = z
-  .object({ servers: z.record(mcpNameSchema, mcpServerSchema).default({}) })
+  .object({
+    servers: z.record(mcpNameSchema, mcpServerSchema).default({}),
+    oauthCallbackUrl: httpUrl.optional(),
+  })
   .strict();
 export type McpServer = z.infer<typeof mcpServerSchema>;
 export const mcpSaveSchema = z.object({ name: mcpNameSchema, server: mcpServerSchema }).strict();

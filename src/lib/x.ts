@@ -138,3 +138,12 @@ export function xMcpStore(x: Context): import("../stores/mcp/McpStore.js").McpSt
 export function xMcpService(x: Context): import("../services/mcp/McpService.js").McpService {
   return x.get("mcpService") as import("../services/mcp/McpService.js").McpService;
 }
+
+export function xMcpOAuthStore(x: Context): import("../stores/mcp/McpOAuthStore.js").McpOAuthStore {
+  return x.get("mcpOAuthStore") as import("../stores/mcp/McpOAuthStore.js").McpOAuthStore;
+}
+export function xMcpOAuthService(
+  x: Context,
+): import("../services/mcp/McpOAuthService.js").McpOAuthService {
+  return x.get("mcpOAuthService") as import("../services/mcp/McpOAuthService.js").McpOAuthService;
+}

@@ -22,6 +22,7 @@ test("MCP routes require owner dashboard authentication and validate mutations",
         return config;
       },
     }),
+    mcpOAuthService: () => ({ revision: () => "", status: () => ({ status: "none" }) }),
     mcpStore: () => new ConfigMcpStore(),
     mcpService: () => new DefaultMcpService(),
     secretService: () => ({ get: () => undefined }),

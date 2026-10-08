@@ -4,6 +4,7 @@ import { z } from "zod";
 import type { Context } from "../context/Context.js";
 import { DashboardUserContext } from "../context/DashboardUserContext.js";
 import {
+  McpOAuthCallbackContext,
   AskApiContext,
   DashboardAuthContext,
   PublicDriveContext,
@@ -37,7 +38,7 @@ export interface ValidatedRouteInput<
   body: z.output<TBody>;
 }
 
-export type HttpAuthPolicy = "public" | "public-drive" | "dashboard" | "ask";
+export type HttpAuthPolicy = "public" | "public-drive" | "dashboard" | "ask" | "mcp-auth";
 export type HttpMethod = "GET" | "POST" | "PUT" | "PATCH" | "DELETE" | "OPTIONS";
 
 const DEFAULT_JSON_LIMIT = "1mb";
@@ -106,6 +107,7 @@ function resolveRequestContext(
   req: Request,
   res: Response,
 ): Context | null {
+  if (auth === "mcp-auth") return McpOAuthCallbackContext(rootX);
   if (auth === "public") return PublicHttpContext(rootX);
   if (auth === "public-drive") return PublicDriveContext(rootX);
 

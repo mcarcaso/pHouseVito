@@ -51,6 +51,8 @@ const dashboardDependencyKeys = [
   "serverLifecycleService",
   "piSessionStore",
   "sessionStore",
+  "mcpOAuthService",
+  "mcpOAuthStore",
   "mcpStore",
   "mcpService",
   "skillStore",

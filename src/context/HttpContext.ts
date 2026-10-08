@@ -38,3 +38,17 @@ export function DashboardAuthContext(rootX: Context): Context {
     "piAuthPath",
   ]);
 }
+
+/** OAuth callbacks have only the state-scoped MCP credential dependencies, no management APIs. */
+export function McpOAuthCallbackContext(rootX: Context): Context {
+  return explicitContext(rootX, [
+    "mcpOAuthService",
+    "mcpOAuthStore",
+    "mcpStore",
+    "vitoService",
+    "userDir",
+    "projectDir",
+    "secretService",
+    "secretsPath",
+  ]);
+}

@@ -22,6 +22,7 @@ import {
   createToolSearchExtension,
   createCodemodeExtension,
   type LoadedMcpConfig,
+  type McpTransportFactory,
   DefaultResourceLoader,
   SessionManager as PiSessionManager,
   type AgentSession,
@@ -56,7 +57,11 @@ export interface PiSessionRuntimeConfig {
   thinkingLevel?: "off" | "low" | "medium" | "high";
   skills?: Skill[];
   customTools?: ToolDefinition[];
-  mcp?: { revision: () => string; loadConfig: () => LoadedMcpConfig };
+  mcp?: {
+    revision: () => string;
+    loadConfig: () => LoadedMcpConfig;
+    createTransport?: McpTransportFactory;
+  };
   /**
    * Directory pi will write its session JSONL file to. When set, the
    * conversation persists across restarts and shows up under the dashboard's
@@ -354,13 +359,14 @@ export class PiSessionRuntime implements PiRuntime {
             createCodemodeExtension(),
             createMcpExtension({
               loadConfig: () => this.config.mcp!.loadConfig(),
+              createTransport: this.config.mcp.createTransport,
               // Dashboard configuration is authoritative; Pi command mutations must not
               // write a second mcp.json or bypass validated owner routes.
               updateConfig: () => {
                 throw new Error("Manage MCP servers in the Vito dashboard");
               },
               openUrl: () => {
-                throw new Error("Dashboard OAuth support is not available yet");
+                throw new Error("Authorize MCP servers through the Vito dashboard");
               },
             }),
           ]

@@ -54,7 +54,22 @@ Removing/disabling a server does not erase previous schemas/results from convers
 
 “Check connection” opens a separate, time-bounded MCP client, initializes the server, lists tools (including pagination), then closes it. It never calls a tool. This is not a live-chat connection-status indicator. Remote errors are sanitized to avoid returning credentials.
 
-Initial version supports header/env secret authentication, **not dashboard OAuth sign-in**, URL query credentials, SSE-only servers, or automatic skill migration. Pi's OAuth browser-opening hook is deliberately blocked in this deployment until a dashboard-aware flow is implemented.
+Authentication supports secret-backed headers/environment values and **dashboard OAuth**. URL query credentials, SSE-only servers, and automatic skill migration remain unsupported. Pi's own loopback/browser sign-in command is blocked; use the dashboard flow instead.
+
+## Browser OAuth
+
+For an HTTP server without an Authorization header, use **Connect account → Open authorization page**, approve access at the provider, then return to Vito. The dashboard polls pending authorization and shows saved credentials, reconnect, cancel, and disconnect actions. Public servers can still be checked without signing in.
+
+- Authorization code flow with PKCE S256, cryptographically random state, 10-minute pending-flow expiry, one-use callbacks, and configuration-change checks.
+- RFC 9728 resource metadata / authorization-server discovery and dynamic client registration use the MCP SDK. Advanced settings support a pre-registered client ID, optional secret reference, and requested scopes when the provider requires them. Not every provider supports dynamic registration.
+- Redirect URI defaults to `https://<apps.baseDomain>/api/mcp/oauth/callback`. Override `mcp.oauthCallbackUrl` when the dashboard has a different public origin; its path must be `/api/mcp/oauth/callback`. HTTPS is required except on loopback. Never derive this URI from incoming Host headers. The provider must permit this redirect URI.
+- The callback is state-authenticated, not dashboard-cookie-authenticated, so it works when returning from another browser/device. It has a dedicated restricted context, no-store/no-referrer headers, and a restrictive CSP. Raw provider errors, authorization codes, tokens, and client secrets are not rendered.
+- Tokens and dynamic client credentials live in private, atomically written `user/mcp-oauth.json` (mode 0600), not browser-safe configuration. Pending state/verifiers live in memory and expire on restart.
+- A shared OAuth service supplies native Pi transports and discovery checks. Native access-token refresh is serialized per server URL to prevent rotated refresh-token races across conversations; rejected tokens may be refreshed on 401. Credential changes participate in the turn-boundary revision digest.
+- Disconnect deletes local credentials and invalidates pending flows/in-flight credential writes. It is **not provider-side grant revocation**; revoke access in the provider's account settings when necessary. In-flight tool calls can finish; existing connections reconcile next turn.
+- Native stdio transports now inherit only basic process-launch variables plus explicitly configured secret references, rather than every Vito provider secret. Commands are still not sandboxed.
+
+Verification includes a local OAuth/MCP provider covering dynamic registration, state/PKCE, replay and cancelled-flow rejection, credential permissions, authenticated discovery/native access, concurrent refresh rotation, disconnect, configuration changes, and public callback/owner management boundaries. Dashboard OAuth UI states are browser-tested with a mock provider; real-provider consent remains a separate acceptance test.
 
 ## Verification
 

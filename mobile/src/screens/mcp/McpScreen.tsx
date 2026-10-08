@@ -127,6 +127,15 @@ export function McpScreen({ onUnauthorized }: { onUnauthorized: () => void }) {
       setEntries(data.servers);
     } catch (cause) {
       handleError(cause);
+      // Refresh persisted OAuth status so a sanitized provider failure is visible.
+      try {
+        const data = await api<Overview>("/api/mcp");
+        setEntries(data.servers);
+        const failed = data.servers.find((server) => server.name === entry.name);
+        if (failed?.oauth?.message) setError(failed.oauth.message);
+      } catch {
+        // Keep the original request error if status refresh also fails.
+      }
     } finally {
       setBusy(false);
     }

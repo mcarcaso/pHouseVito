@@ -256,3 +256,18 @@ test(
     }
   },
 );
+
+test("MCP public client metadata contains only public registration fields", () => {
+  const x = new ObjectContext({
+    vitoService: () => ({ getConfig: () => ({ apps: { baseDomain: "vito.example.com" } }) }),
+  });
+  const metadata = new DefaultMcpOAuthService().clientMetadata(x);
+  assert.deepEqual(metadata, {
+    client_id: "https://vito.example.com/api/mcp/oauth/client-metadata",
+    client_name: "Vito MCP",
+    redirect_uris: ["https://vito.example.com/api/mcp/oauth/callback"],
+    grant_types: ["authorization_code", "refresh_token"],
+    response_types: ["code"],
+    token_endpoint_auth_method: "none",
+  });
+});

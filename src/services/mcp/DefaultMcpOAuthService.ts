@@ -44,6 +44,18 @@ export class DefaultMcpOAuthService implements McpOAuthService {
       );
     return url;
   }
+  clientMetadata(x: Context) {
+    const callback = new URL(this.callback(x));
+    const clientId = new URL("/api/mcp/oauth/client-metadata", callback).href;
+    return {
+      client_id: clientId,
+      client_name: "Vito MCP",
+      redirect_uris: [callback.href],
+      grant_types: ["authorization_code", "refresh_token"],
+      response_types: ["code"],
+      token_endpoint_auth_method: "none",
+    };
+  }
   private clean() {
     for (const [state, flow] of this.flows) if (flow.expires < Date.now()) this.flows.delete(state);
   }
@@ -89,6 +101,9 @@ export class DefaultMcpOAuthService implements McpOAuthService {
     );
     return {
       redirectUrl: callbackUrl,
+      ...(new URL(callbackUrl).protocol === "https:"
+        ? { clientMetadataUrl: new URL("/api/mcp/oauth/client-metadata", callbackUrl).href }
+        : {}),
       clientMetadata: {
         client_name: "Vito MCP",
         redirect_uris: [callbackUrl],

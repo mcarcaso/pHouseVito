@@ -117,6 +117,15 @@ export class McpRouterService implements RouterService {
           );
       },
     });
+    registerRoute(x, {
+      router,
+      method: "GET",
+      path: "/oauth/client-metadata",
+      auth: "mcp-auth",
+      schemas: { params: emptyRouteSchema, query: emptyRouteSchema, body: unknownRouteSchema },
+      responseSchema: jsonResponseSchema,
+      handler: (routeX) => xMcpOAuthService(routeX).clientMetadata(routeX),
+    });
     return router;
   }
 }

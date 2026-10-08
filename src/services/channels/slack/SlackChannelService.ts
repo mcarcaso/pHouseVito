@@ -1,3 +1,4 @@
+import { channelOwnerIds } from "../owner-permissions.js";
 import { captureSilentInbound } from "../passive-memory.js";
 import { randomUUID } from "node:crypto";
 import { basename, resolve } from "node:path";
@@ -177,7 +178,7 @@ export class SlackChannelService implements ChannelService {
   }
 
   private owner(x: Context, user: string): boolean {
-    return xVitoService(x).getConfig(x).channels.slack?.ownerIds?.includes(user) === true;
+    return channelOwnerIds(xVitoService(x).getConfig(x).channels.slack).includes(user);
   }
 
   private message(x: Context, body: unknown): DurableSlackEvent | undefined {

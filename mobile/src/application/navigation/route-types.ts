@@ -11,6 +11,7 @@ export type MainTabParamList = {
   More: undefined;
   Memory: undefined;
   Profile: undefined;
+  Mcp: undefined;
   Skills: ResourceRouteParams | undefined;
   Jobs: ResourceRouteParams | undefined;
   Apps: ResourceRouteParams | undefined;

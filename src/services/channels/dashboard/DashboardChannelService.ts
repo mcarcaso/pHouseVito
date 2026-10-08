@@ -34,6 +34,7 @@ import {
 } from "../../../routers/SecretDropRouterService.js";
 import { ServerLifecycleRouterService } from "../../../routers/ServerLifecycleRouterService.js";
 import { SessionRouterService } from "../../../routers/SessionRouterService.js";
+import { McpRouterService } from "../../../routers/McpRouterService.js";
 import { SkillRouterService } from "../../../routers/SkillRouterService.js";
 import { SystemContentRouterService } from "../../../routers/SystemContentRouterService.js";
 import { TraceRouterService } from "../../../routers/TraceRouterService.js";
@@ -128,6 +129,7 @@ export class DashboardChannelService implements ChannelService {
 
     app.use("/api/sessions", await new SessionRouterService().createRouter(x));
 
+    app.use("/api/mcp", await new McpRouterService().createRouter(x));
     app.use("/api/skills", await new SkillRouterService().createRouter(x));
 
     app.use("/api/cron", await new CronRouterService().createRouter(x));

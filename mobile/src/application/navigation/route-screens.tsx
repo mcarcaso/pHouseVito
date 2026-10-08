@@ -40,6 +40,7 @@ import { MemoryScreen, type MemoryPage } from "../../screens/memory/MemoryScreen
 import { OperationWorkspace } from "../../screens/operations/OperationWorkspace";
 import { AppDetailScreen, AppsScreen } from "../../screens/apps/AppsScreen";
 import { ProviderModelsScreen, ProvidersScreen } from "../../screens/providers/ProvidersScreen";
+import { McpScreen } from "../../screens/mcp/McpScreen";
 import { SkillsScreen } from "../../screens/skills/SkillsScreen";
 import { SettingsScreen } from "../../screens/settings/SettingsScreen";
 import { ThemeScreen } from "../../screens/theme/ThemeScreen";
@@ -277,6 +278,8 @@ export function RootOperationScreen({
       />
     );
   }
+  if (area === "mcp")
+    return <McpScreen onUnauthorized={() => navigation.navigate("Main", { screen: "More" })} />;
   if (area === "skills") {
     return (
       <SkillsScreen

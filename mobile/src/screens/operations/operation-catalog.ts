@@ -1,6 +1,7 @@
 export type OperationArea =
   | "memory"
   | "profile"
+  | "mcp"
   | "skills"
   | "jobs"
   | "apps"
@@ -17,6 +18,7 @@ export type OperationArea =
 export const operationAreas: Array<{ id: OperationArea; label: string; icon: string }> = [
   { id: "memory", label: "Memory", icon: "🧠" },
   { id: "profile", label: "Profile", icon: "◯" },
+  { id: "mcp", label: "MCP", icon: "🔌" },
   { id: "skills", label: "Skills", icon: "🛠️" },
   { id: "jobs", label: "Jobs", icon: "⏰" },
   { id: "apps", label: "Apps", icon: "🚀" },

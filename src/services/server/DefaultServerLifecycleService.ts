@@ -38,6 +38,7 @@ type CommandRunner = (command: LifecycleCommand) => Promise<void>;
 type Scheduler = (callback: () => void, delayMs: number) => unknown;
 
 export interface DefaultServerLifecycleServiceOptions {
+  getRuns?: () => { status: "active" | "queued" }[];
   now?: () => Date;
   runtime?: ServerRuntime;
   system?: SystemRuntime;
@@ -58,6 +59,7 @@ function cpuSnapshot(cpus: ReturnType<typeof os.cpus>): CpuSnapshot {
 }
 
 export class DefaultServerLifecycleService implements ServerLifecycleService {
+  private readonly getRuns: DefaultServerLifecycleServiceOptions["getRuns"];
   private readonly now: () => Date;
   private readonly runtime: ServerRuntime;
   private readonly system: SystemRuntime;
@@ -67,6 +69,7 @@ export class DefaultServerLifecycleService implements ServerLifecycleService {
   private readonly revision: string | undefined;
 
   constructor(options: DefaultServerLifecycleServiceOptions = {}) {
+    this.getRuns = options.getRuns;
     this.now = options.now ?? (() => new Date());
     this.runtime = options.runtime ?? process;
     this.system = options.system ?? os;
@@ -78,7 +81,16 @@ export class DefaultServerLifecycleService implements ServerLifecycleService {
   }
 
   getHealth(_x: Context): ServerHealth {
+    const runs = this.getRuns?.();
     return {
+      ...(runs
+        ? {
+            runs: {
+              active: runs.filter((run) => run.status === "active").length,
+              queued: runs.filter((run) => run.status === "queued").length,
+            },
+          }
+        : {}),
       status: "ok",
       timestamp: this.now().toISOString(),
       ...(this.revision ? { revision: this.revision } : {}),

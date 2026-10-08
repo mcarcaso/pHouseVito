@@ -51,7 +51,13 @@ import { SqliteAppPreferenceStore } from "../stores/app-preferences/SqliteAppPre
 import { SqliteJobRunStore } from "../stores/jobs/SqliteJobRunStore.js";
 import { SqliteDiscordQueueStore } from "../stores/discord/SqliteDiscordQueueStore.js";
 import { SqliteSlackQueueStore } from "../stores/slack/SqliteSlackQueueStore.js";
-import { xAskApiService, xDb, xSecretService, xVitoService } from "../lib/x.js";
+import {
+  xAskApiService,
+  xDb,
+  xSecretService,
+  xVitoService,
+  xOrchestratorService,
+} from "../lib/x.js";
 import { ObjectContext } from "./ObjectContext.js";
 import type { Context } from "./Context.js";
 
@@ -122,7 +128,10 @@ export function RootContext(args: RootContextArgs): Context {
     orchestratorService: () => new PiOrchestratorService(),
     secretService: () => new FileSecretService(),
     secretDropService: (x) => new SqliteSecretDropService(x, xDb(x), xSecretService(x)),
-    serverLifecycleService: () => new DefaultServerLifecycleService(),
+    serverLifecycleService: (x) =>
+      new DefaultServerLifecycleService({
+        getRuns: () => xOrchestratorService(x).listRuns(x),
+      }),
     sessionService: () => new DefaultSessionService(),
     piSessionStore: () => new FilePiSessionStore(),
     sessionStore: () => new SqliteSessionStore(),

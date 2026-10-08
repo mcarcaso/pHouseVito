@@ -58,6 +58,7 @@ with tempfile.TemporaryDirectory(prefix="vito-source-tests-") as temporary:
 
     with patch.object(d, "REPOSITORY", str(origin)), patch.object(d, "run", run), \
             patch.object(d, "processes", lambda: rows), \
+            patch.object(d, "require_idle", lambda: None), \
             patch.object(d, "running_cwd", lambda pid: checkout), \
             patch.object(d, "health_matches", lambda url, rev: running_revision == rev), \
             patch.object(d, "health", lambda url, rev: health_calls.append((url, rev))):
@@ -87,6 +88,18 @@ with tempfile.TemporaryDirectory(prefix="vito-source-tests-") as temporary:
             assert not any(c[:2] == ("git", "pull") for c in calls)
             assert not (user / "restarts").exists()
             git(checkout, "checkout", "main")
+
+        # Busy sessions fail before pulling, including forced deployments.
+        for force in (False, True):
+            calls.clear()
+            with patch.object(d, "require_idle", side_effect=RuntimeError("active turns")):
+                try:
+                    d.update(installation, checkout, rows, "https://fixture.invalid/api/health", force=force)
+                    raise AssertionError("busy deployment accepted")
+                except RuntimeError as error:
+                    assert "active turns" in str(error)
+            assert not any(c[:2] == ("git", "pull") for c in calls)
+            assert not (user / "restarts").exists()
 
         # Build failure leaves pulled code in place and does not restart.
         (user / "fail-build").touch()
@@ -148,3 +161,20 @@ with tempfile.TemporaryDirectory(prefix="vito-source-tests-") as temporary:
         assert git(checkout, "rev-parse", "HEAD") == local
         assert (user / "restarts").read_text().splitlines() == ["restart", "restart", "restart"]
 print("source deployment scenarios passed")
+
+# The health preflight fails closed for old servers and malformed responses.
+import io
+import json
+for payload, blocked in [
+    ({"status": "ok", "runs": {"active": 0, "queued": 0}}, False),
+    ({"status": "ok", "runs": {"active": 1, "queued": 0}}, True),
+    ({"status": "ok", "runs": {"active": 0, "queued": 1}}, True),
+    ({"status": "ok"}, True),
+    ({"status": "ok", "runs": {"active": False, "queued": 0}}, True),
+]:
+    with patch.object(d.urllib.request, "urlopen", return_value=io.BytesIO(json.dumps(payload).encode())):
+        try:
+            d.require_idle()
+            assert not blocked
+        except RuntimeError:
+            assert blocked

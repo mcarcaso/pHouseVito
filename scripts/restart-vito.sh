@@ -51,6 +51,29 @@ trap 'rm -rf "$WEB_STAGE"' EXIT
 (cd "$ROOT_DIR/mobile" && ./node_modules/.bin/expo export --platform web --output-dir "$WEB_STAGE")
 test -s "$WEB_STAGE/index.html"
 
+# Deployments recheck after the potentially long build, before publishing/restarting.
+if [[ "${VITO_DEPLOY_REQUIRE_IDLE:-}" == "1" ]]; then
+  node --input-type=module <<'JS'
+try {
+  const response = await fetch("http://127.0.0.1:3030/api/health", {
+    signal: AbortSignal.timeout(3000),
+  });
+  const health = await response.json();
+  const { active, queued } = health.runs ?? {};
+  if (!response.ok || health.status !== "ok" ||
+      ![active, queued].every((count) => Number.isInteger(count) && count >= 0)) {
+    throw new Error("Cannot verify session activity");
+  }
+  if (active || queued) {
+    throw new Error(`Vito has ${active} active and ${queued} queued turns; retry deployment when idle`);
+  }
+} catch (error) {
+  console.error(`Deployment failed: ${error.message}`);
+  process.exit(1);
+}
+JS
+fi
+
 # Publish assets first and switch the entry point last. Keep old hashed assets
 # so in-flight browser sessions never point at missing JavaScript during cutover.
 echo "[Vito] Publishing companion web client..."

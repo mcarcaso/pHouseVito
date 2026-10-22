@@ -1,3 +1,4 @@
+import { enqueueJobStart } from "../../services/jobs/JobStartQueue.js";
 import { localJobTime } from "../../shared/job-time.js";
 import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
 import { basename, join, resolve } from "node:path";
@@ -20,7 +21,7 @@ Commands:
   save FILE                    Create or update a script job from JSON
   pause NAME                   Pause a script job
   resume NAME                  Resume a script job
-  run NAME                     Run now without channel delivery
+  run NAME                     Queue a nonblocking server run with configured channel progress
   cancel RUN_ID                Cancel an active run
   remove NAME --yes            Remove a job
   history [NAME]               Show recent run history
@@ -236,17 +237,20 @@ export async function runJobsCommand(args: string[], projectRoot: string): Promi
 
     if (command === "run") {
       if (options.positional.length !== 1) throw new Error("Usage: vito jobs run NAME");
-      const existing = config.cron.jobs[find(options.positional[0])];
-      if (!existing) throw new Error("Job not found");
-      if (!isScriptJob(existing)) throw new Error("Convert this legacy job first");
-      const run = await xJobService(x).execute(
-        x,
-        { ...existing, delivery: undefined },
-        new Date().toISOString(),
+      const job = config.cron.jobs[find(options.positional[0])];
+      if (!job || !isScriptJob(job)) throw new Error("Configured script job not found");
+      const requestId = enqueueJobStart(options.userDir, job.name);
+      print(
+        {
+          requestId,
+          name: job.name,
+          state: "queued",
+          message:
+            "Queued for the running server; use jobs history/logs to inspect progress. Server must be running.",
+        },
+        options.json,
       );
-      if (!run) throw new Error("Job is already running");
-      print(run, options.json);
-      return run.state === "completed" || run.state === "skipped" ? 0 : 1;
+      return 0;
     }
 
     if (command === "cancel") {

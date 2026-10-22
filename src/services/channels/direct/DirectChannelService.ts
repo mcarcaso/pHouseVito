@@ -16,6 +16,7 @@ import type { InboundEvent } from "../../../lib/types/inbound-event.js";
 import type { ChannelService } from "../ChannelService.js";
 
 interface PendingRequest {
+  progress?: OutputHandler;
   resolve: (response: string) => void;
   reject: (error: Error) => void;
   collectedMessages: string[];
@@ -58,6 +59,7 @@ export class DirectChannelService implements ChannelService {
    * This is the main entry point for API/programmatic use.
    */
   async ask(options: {
+    progress?: OutputHandler;
     question: string;
     session?: string; // e.g., "api:bland-phone" — defaults to "api:default"
     author?: string;
@@ -84,6 +86,7 @@ export class DirectChannelService implements ChannelService {
         resolve,
         reject,
         collectedMessages: [],
+        progress: options.progress,
       });
     });
 
@@ -141,6 +144,10 @@ Do NOT use markdown formatting unless specifically requested.`;
       if (timeoutHandle) clearTimeout(timeoutHandle);
       options.signal?.removeEventListener("abort", abort);
     }
+  }
+
+  getProgressHandler(requestId: string): OutputHandler | undefined {
+    return this.pendingRequests.get(requestId)?.progress;
   }
 
   createOutputHandler(_x: Context, event: InboundEvent): OutputHandler {

@@ -1,3 +1,4 @@
+import type { OutputHandler } from "../../src/lib/output/OutputHandler.js";
 import assert from "node:assert/strict";
 import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -15,7 +16,7 @@ function createHarness(script: string) {
   writeFileSync(scriptPath, script);
   const db = createDatabase(join(root, "vito.db"));
   const store = new SqliteJobRunStore();
-  const prompts: Array<{ session: string; message: string }> = [];
+  const prompts: Array<{ session: string; message: string; progress?: OutputHandler }> = [];
   const deliveries: string[] = [];
   const contexts: Array<{ session: string; content: string; key: string }> = [];
   const failures = { append: false, relay: false };
@@ -25,7 +26,10 @@ function createHarness(script: string) {
     piAuthPath: () => join(root, "auth.json"),
     jobRunStore: () => store,
     orchestratorService: () => ({
-      prompt: async (_x: unknown, input: { session: string; message: string }) => {
+      prompt: async (
+        _x: unknown,
+        input: { session: string; message: string; progress?: OutputHandler },
+      ) => {
         prompts.push(input);
         return `answer-${prompts.length}`;
       },
@@ -119,6 +123,52 @@ describe("DefaultJobService", () => {
       );
       assert.deepEqual(run?.promptSessions, ["dashboard:shared", "dashboard:shared"]);
       assert.equal(run?.delivery, "none");
+    } finally {
+      cleanup(harness.root, harness.db);
+    }
+  });
+
+  it("wires contextual prompt progress to delivery, but keeps final output script-owned", async () => {
+    const harness = createHarness(`export default async function(job) {
+      await job.prompt({ session: "discord:room", message: "scan" });
+      return;
+    }`);
+    try {
+      const run = await harness.service.execute(
+        harness.x,
+        {
+          ...harness.job,
+          delivery: { channel: "discord", target: "room" },
+        },
+        new Date().toISOString(),
+      );
+      assert.equal(run?.state, "skipped");
+      assert.ok(harness.prompts[0].progress);
+      await harness.prompts[0].progress!.relay("Scanning");
+      assert.deepEqual(harness.deliveries, ["Scanning"]);
+      assert.equal(run?.delivery, "none");
+    } finally {
+      cleanup(harness.root, harness.db);
+    }
+  });
+
+  it("uses a terminal progress override without channel delivery", async () => {
+    const harness = createHarness(`export default async function(job) {
+      return (await job.prompt({ session: "discord:room", message: "scan" })).text;
+    }`);
+    const messages: string[] = [];
+    const progress: OutputHandler = {
+      relay: async (text) => {
+        messages.push(text);
+      },
+    };
+    try {
+      const run = await harness.service.execute(harness.x, harness.job, new Date().toISOString(), {
+        progress,
+      });
+      assert.equal(harness.prompts[0].progress, progress);
+      assert.equal(run?.delivery, "none");
+      assert.deepEqual(harness.deliveries, []);
     } finally {
       cleanup(harness.root, harness.db);
     }

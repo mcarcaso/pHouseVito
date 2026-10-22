@@ -14,6 +14,8 @@ export type RelayDelivery = "chat" | "final";
 
 export interface RelayOptions {
   handler: OutputHandler | null;
+  /** Live commentary/activity only; final output remains owned by the caller. */
+  progressHandler?: OutputHandler;
   delivery?: RelayDelivery;
 }
 
@@ -76,11 +78,13 @@ function progressEvent(value: unknown): AgentActivityEvent | undefined {
 export class RelayPiRuntime extends ProxyPiRuntime {
   private readonly handler: OutputHandler | null;
   private readonly delivery: RelayDelivery;
+  private readonly progressHandler?: OutputHandler;
   private finalMessages: string[] = [];
 
   constructor(delegate: PiRuntime, opts: RelayOptions) {
     super(delegate);
     this.handler = opts.handler;
+    this.progressHandler = opts.progressHandler;
     this.delivery = opts.delivery ?? "chat";
   }
 
@@ -91,6 +95,7 @@ export class RelayPiRuntime extends ProxyPiRuntime {
     signal?: AbortSignal,
   ): Promise<void> {
     this.finalMessages = [];
+    const progress = this.progressHandler ?? (this.delivery === "chat" ? this.handler : null);
     let deliveryQueue = Promise.resolve();
     const enqueueDelivery = (action: () => Promise<void>) => {
       deliveryQueue = deliveryQueue.then(action);
@@ -100,12 +105,12 @@ export class RelayPiRuntime extends ProxyPiRuntime {
       onInvocation: callbacks.onInvocation,
       onRawEvent: (event) => {
         callbacks.onRawEvent(event);
-        if (this.delivery !== "chat") return;
-        const progress = progressEvent(event);
-        if (progress) {
+        if (!progress) return;
+        const activity = progressEvent(event);
+        if (activity) {
           enqueueDelivery(async () => {
             try {
-              await this.handler?.relayEvent?.(progress);
+              await progress?.relayEvent?.(activity);
             } catch {
               // Progress is non-authoritative; assistant delivery still proceeds.
             }
@@ -113,6 +118,16 @@ export class RelayPiRuntime extends ProxyPiRuntime {
         }
       },
       onNormalizedEvent: (event) => {
+        if (event.kind === "commentary" && event.content && this.progressHandler) {
+          enqueueDelivery(async () => {
+            try {
+              await this.progressHandler?.relay(`💬 ${event.content}`);
+              await this.progressHandler?.endMessage?.();
+            } catch {
+              // Progress failures must not change the job outcome.
+            }
+          });
+        }
         if ((event.kind === "commentary" || event.kind === "assistant") && event.content) {
           if (event.kind === "assistant") this.finalMessages.push(event.content);
           if (this.delivery === "chat" && this.handler) {
@@ -128,10 +143,10 @@ export class RelayPiRuntime extends ProxyPiRuntime {
           }
         }
 
-        if (this.delivery === "chat" && event.kind === "tool_start") {
+        if (progress && event.kind === "tool_start") {
           enqueueDelivery(async () => {
             try {
-              await this.handler?.relayEvent?.({
+              await progress?.relayEvent?.({
                 kind: "tool_start",
                 toolName: event.tool,
                 toolCallId: event.callId,
@@ -141,10 +156,10 @@ export class RelayPiRuntime extends ProxyPiRuntime {
               // Progress is non-authoritative; assistant delivery still proceeds.
             }
           });
-        } else if (this.delivery === "chat" && event.kind === "tool_end") {
+        } else if (progress && event.kind === "tool_end") {
           enqueueDelivery(async () => {
             try {
-              await this.handler?.relayEvent?.({
+              await progress?.relayEvent?.({
                 kind: "tool_end",
                 toolName: event.tool,
                 toolCallId: event.callId,

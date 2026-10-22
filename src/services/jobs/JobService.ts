@@ -1,3 +1,4 @@
+import type { OutputHandler } from "../../lib/output/OutputHandler.js";
 import type { Context } from "../../context/Context.js";
 import type { ScriptJobConfig } from "../../shared/schemas/vito-config.js";
 
@@ -29,7 +30,12 @@ export interface JobRun {
 
 export interface JobService {
   recover(x: Context): void;
-  execute(x: Context, job: ScriptJobConfig, scheduledAt: string): Promise<JobRun | undefined>;
+  execute(
+    x: Context,
+    job: ScriptJobConfig,
+    scheduledAt: string,
+    options?: { progress?: OutputHandler },
+  ): Promise<JobRun | undefined>;
   cancel(x: Context, runId: string): boolean;
   runs(x: Context, query?: { name?: string; limit?: number }): JobRun[];
 }

@@ -1,10 +1,11 @@
+import { consumeJobStarts } from "../jobs/JobStartQueue.js";
 import { resolveJobTime } from "../../shared/job-time.js";
 import { randomUUID } from "node:crypto";
 import { exec } from "node:child_process";
 import { promisify } from "node:util";
 import { Cron } from "croner";
 import type { Context } from "../../context/Context.js";
-import { xDb, xJobService } from "../../lib/x.js";
+import { xDb, xJobService, xUserDir } from "../../lib/x.js";
 import { DEFAULT_TIMEZONE } from "../../shared/defaults.js";
 import type { InboundEvent } from "../../lib/types/inbound-event.js";
 import {
@@ -18,6 +19,7 @@ import type { CronHealth, CronService, StartCronArgs } from "./CronService.js";
 const execAsync = promisify(exec);
 
 export class CronerCronService implements CronService {
+  private startPoll?: ReturnType<typeof setInterval>;
   private readonly jobs = new Map<string, Pick<Cron, "stop" | "isRunning" | "nextRun">>();
   private readonly jobConfigs = new Map<string, CronJobConfig>();
   private globalTimezone = DEFAULT_TIMEZONE;
@@ -87,10 +89,29 @@ export class CronerCronService implements CronService {
     xJobService(x).recover(x);
     console.log(`[Cron] Using timezone: ${this.globalTimezone}`);
     for (const job of args.jobs) this.scheduleJob(x, job);
+    this.startPoll = setInterval(() => {
+      try {
+        consumeJobStarts(xUserDir(x), (name, requestedAt) => {
+          const job = this.jobConfigs.get(name);
+          if (!job || !isScriptJob(job)) throw new Error(`Script job not found: ${name}`);
+          void xJobService(x)
+            .execute(x, job, requestedAt)
+            .then((run) => {
+              if (!run) console.warn(`[Jobs] ${name} is already running; start skipped`);
+            })
+            .catch((error) => console.error(`[Jobs] Could not start ${name}:`, error));
+        });
+      } catch (error) {
+        console.error("[Jobs] Start queue poll failed:", error);
+      }
+    }, 500);
+    this.startPoll.unref();
     console.log(`[Cron] Scheduler started with ${args.jobs.length} job(s) — croner`);
   }
 
   stop(_x: Context): void {
+    clearInterval(this.startPoll);
+    this.startPoll = undefined;
     for (const [name, job] of this.jobs) {
       job.stop();
       console.log(`Stopped cron job: ${name}`);

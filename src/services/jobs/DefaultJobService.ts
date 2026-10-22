@@ -1,3 +1,4 @@
+import type { OutputHandler } from "../../lib/output/OutputHandler.js";
 import { existsSync, statSync } from "node:fs";
 import { isAbsolute } from "node:path";
 import { ModelRuntime } from "@earendil-works/pi-coding-agent";
@@ -100,6 +101,7 @@ export class DefaultJobService implements JobService {
     x: Context,
     job: ScriptJobConfig,
     scheduledAt: string,
+    options: { progress?: OutputHandler } = {},
   ): Promise<JobRun | undefined> {
     const store = xJobRunStore(x);
     const run = store.claim(x, job, scheduledAt, new Date().toISOString());
@@ -134,7 +136,8 @@ export class DefaultJobService implements JobService {
           scheduledAt,
           session: job.session,
         },
-        call: async (call) => await this.handleCall(x, run, call, controller.signal),
+        call: async (call) =>
+          await this.handleCall(x, run, call, controller.signal, options.progress),
       });
       controller.signal.throwIfAborted();
       const parsed = resultSchema.parse(value);
@@ -191,15 +194,34 @@ export class DefaultJobService implements JobService {
     run: JobRun,
     call: JobScriptCall,
     signal: AbortSignal,
+    progressOverride?: OutputHandler,
   ): Promise<unknown> {
     signal.throwIfAborted();
     if (call.method === "prompt") {
       const input = promptInputSchema.parse(call.input);
       xJobRunStore(x).addPrompt(x, run.id, input.session);
       run.promptSessions.push(input.session);
+      let progress = progressOverride;
+      const destination = run.job.delivery;
+      if (!progress && destination) {
+        const registration = xChannelRegistryService(x).get(x, destination.channel);
+        if (registration) {
+          progress = registration.channel.createOutputHandler(registration.x, {
+            sessionKey: `${destination.channel}:${destination.target}`,
+            channel: destination.channel,
+            target: destination.target,
+            author: "scheduled-job",
+            timestamp: Date.now(),
+            content: "",
+            hasMention: true,
+            raw: { synthetic: true, source: "scheduled-job-progress" },
+          });
+        }
+      }
       return {
         text: await xOrchestratorService(x).prompt(x, {
           session: input.session,
+          progress,
           message: `[Scheduled job: ${run.job.name}; run: ${run.id}; scheduled for ${run.scheduledAt}. This is scheduled work, not a new message typed by the user.]\n${input.message}`,
           signal,
         }),

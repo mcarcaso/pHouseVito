@@ -1,3 +1,4 @@
+import type { OutputHandler } from "../../lib/output/OutputHandler.js";
 import type { SteerQueuedResult } from "./QueuedSteering.js";
 import type { Context } from "../../context/Context.js";
 import type { ChannelService } from "../channels/ChannelService.js";
@@ -15,6 +16,7 @@ export interface AskOptions {
 }
 
 export interface ContextualPromptOptions {
+  progress?: OutputHandler;
   message: string;
   session: string;
   author?: string;

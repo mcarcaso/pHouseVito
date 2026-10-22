@@ -70,6 +70,73 @@ describe("RelayPiRuntime", () => {
     assert.deepEqual(delivered, ["💬 Checking the files.", "Done."]);
   });
 
+  it("streams job progress before completion without leaking private thought or duplicating the final", async () => {
+    const progress: string[] = [];
+    const final: string[] = [];
+    let release!: () => void;
+    const gate = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const runtime: PiRuntime = {
+      getName: () => "fake",
+      async run(_system, _user, callbacks) {
+        callbacks.onNormalizedEvent({ kind: "thought", content: "private" });
+        callbacks.onNormalizedEvent({ kind: "commentary", content: "Scanning Drive" });
+        callbacks.onNormalizedEvent({ kind: "tool_start", tool: "read", callId: "1", args: {} });
+        await gate;
+        callbacks.onNormalizedEvent({ kind: "assistant", content: "NO_REPLY" });
+      },
+    };
+    const pending = withRelay(runtime, {
+      handler: {
+        relay: async (text) => {
+          final.push(text);
+        },
+      },
+      delivery: "final",
+      progressHandler: {
+        relay: async (text) => {
+          progress.push(text);
+        },
+        relayEvent: async (event) => {
+          progress.push(event.kind);
+        },
+      },
+    }).run("system", "hello", { onRawEvent() {}, onNormalizedEvent() {} });
+    await new Promise((resolve) => setImmediate(resolve));
+    assert.deepEqual(progress, ["💬 Scanning Drive", "tool_start"]);
+    assert.deepEqual(final, []);
+    release();
+    await pending;
+    assert.deepEqual(final, ["NO_REPLY"]);
+    assert.deepEqual(progress, ["💬 Scanning Drive", "tool_start"]);
+  });
+
+  it("does not fail a job when its live progress destination is unavailable", async () => {
+    const delivered: string[] = [];
+    const runtime: PiRuntime = {
+      getName: () => "fake",
+      async run(_system, _user, callbacks) {
+        callbacks.onNormalizedEvent({ kind: "commentary", content: "Working" });
+        callbacks.onNormalizedEvent({ kind: "assistant", content: "Done" });
+      },
+    };
+    await withRelay(runtime, {
+      handler: {
+        relay: async (text) => {
+          delivered.push(text);
+        },
+      },
+      delivery: "final",
+      progressHandler: {
+        relay: async () => {
+          throw new Error("offline");
+        },
+      },
+    }).run("system", "hello", { onRawEvent() {}, onNormalizedEvent() {} });
+    assert.deepEqual(delivered, ["Done"]);
+  });
+
   it("delivers only the final answer in final mode", async () => {
     const delivered: string[] = [];
     const handler: OutputHandler = {

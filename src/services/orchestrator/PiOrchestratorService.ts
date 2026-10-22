@@ -190,6 +190,7 @@ export class PiOrchestratorService implements OrchestratorService {
     await this.ensureDirectChannelReady();
     return this.getDirectChannel().ask({
       question: options.message,
+      progress: options.progress,
       session: options.session,
       author: options.author ?? "scheduled-job",
       timeoutMs: null,
@@ -741,7 +742,11 @@ export class PiOrchestratorService implements OrchestratorService {
         userTimestamp: event.timestamp,
         author: event.author,
       });
-      const relayRuntime = withRelay(persistedRuntime, { handler, delivery });
+      const progressHandler =
+        isDirectChannel && rawMetadata.requestId
+          ? this.getDirectChannel().getProgressHandler(rawMetadata.requestId)
+          : undefined;
+      const relayRuntime = withRelay(persistedRuntime, { handler, delivery, progressHandler });
       const runtime = withTyping(relayRuntime, handler);
 
       // Per-turn user message: [datetime, from author, via channel] <content>

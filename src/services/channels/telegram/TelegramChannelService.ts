@@ -1,6 +1,7 @@
 import { captureSilentInbound } from "../passive-memory.js";
 import { Bot } from "grammy";
 import { telegramRateLimitRetry } from "./rate-limit.js";
+import { answerTelegramCallback, installTelegramErrorHandler } from "./errors.js";
 import type { Context } from "../../../context/Context.js";
 import { xOrchestratorService, xSecretService, xVitoService } from "../../../lib/x.js";
 import type { OutputHandler } from "../../../lib/output/OutputHandler.js";
@@ -43,6 +44,7 @@ export class TelegramChannelService implements ChannelService {
     }
 
     this.bot = new Bot(token);
+    installTelegramErrorHandler(this.bot);
     this.bot.api.config.use(telegramRateLimitRetry());
     await this.bot.init();
     console.log(`Telegram bot started as @${this.bot.botInfo.username}`);
@@ -130,7 +132,7 @@ export class TelegramChannelService implements ChannelService {
     bot.callbackQuery(/^vito-steer:(\d+)$/, async (ctx) => {
       const origin = ctx.callbackQuery.message;
       if (!origin || !isAllowed(origin.chat.id)) {
-        await ctx.answerCallbackQuery({ text: "This message is no longer available." });
+        await answerTelegramCallback(ctx, "This message is no longer available.");
         return;
       }
       const threadId = "message_thread_id" in origin ? origin.message_thread_id : undefined;
@@ -144,9 +146,10 @@ export class TelegramChannelService implements ChannelService {
         id,
         String(ctx.from.id),
       );
-      await ctx.answerCallbackQuery({
-        text: result === "steered" ? "Steering requested." : `Cannot steer: ${result}.`,
-      });
+      await answerTelegramCallback(
+        ctx,
+        result === "steered" ? "Steering requested." : `Cannot steer: ${result}.`,
+      );
       if (result === "steered" || result === "expired") {
         const notice = this.steeringNotices.get(id);
         this.steeringNotices.delete(id);
